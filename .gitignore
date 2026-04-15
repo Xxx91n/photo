@@ -12,3 +12,7 @@ docs/
 # local worktrees
 .worktrees/
 worktrees/
+
+# dotnet
+**/bin/
+**/obj/
