@@ -1,0 +1,51 @@
+using PhotoPrivacy.Core.Configuration;
+
+namespace PhotoPrivacy.Core.Tests.Configuration;
+
+public sealed class AppConfigValidatorTests
+{
+    [Fact]
+    public void Validate_Should_Throw_When_ExifToolPath_Is_Not_Absolute()
+    {
+        var cfg = AppConfig.Default with
+        {
+            ExifTool = AppConfig.Default.ExifTool with { Path = "ExifTool.exe" }
+        };
+
+        Assert.Throws<AppConfigValidationException>(() => AppConfigValidator.Validate(cfg));
+    }
+
+    [Fact]
+    public void Validate_Should_Throw_When_ExtraArgs_Contain_StayOpen()
+    {
+        var cfg = AppConfig.Default with
+        {
+            ExifTool = AppConfig.Default.ExifTool with { ExtraExifToolArgs = ["-stay_open", "true"] }
+        };
+
+        Assert.Throws<AppConfigValidationException>(() => AppConfigValidator.Validate(cfg));
+    }
+
+    [Fact]
+    public void Validate_Should_Throw_When_ExiftoolFiles_Directory_Missing()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        var tempExe = Path.Combine(tempDir, "fake_exiftool.exe");
+        File.WriteAllText(tempExe, "x");
+
+        try
+        {
+            var cfg = AppConfig.Default with
+            {
+                ExifTool = AppConfig.Default.ExifTool with { Path = tempExe }
+            };
+
+            Assert.Throws<AppConfigValidationException>(() => AppConfigValidator.Validate(cfg));
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
+}
