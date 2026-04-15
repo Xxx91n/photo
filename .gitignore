@@ -1,0 +1,14 @@
+# docx
+docs/
+
+# vscode
+*.code-workspace
+.idea/
+.vscode/
+
+# Agent
+*.skill
+
+# local worktrees
+.worktrees/
+worktrees/
