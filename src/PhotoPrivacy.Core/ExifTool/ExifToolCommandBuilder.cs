@@ -35,11 +35,12 @@ public static class ExifToolCommandBuilder
     public static string BuildWipeTaskBlock(string targetPath, string taskId)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("-all=");
-        sb.AppendLine("-overwrite_original");
-        sb.AppendLine(targetPath);
-        sb.AppendLine($"-echo1 TASK_DONE_{taskId}");
-        sb.AppendLine("-execute");
+        sb.Append("-all=\n");
+        sb.Append("-overwrite_original\n");
+        sb.Append(targetPath + "\n");
+        sb.Append("-echo1\n");
+        sb.Append($"TASK_DONE_{taskId}\n");
+        sb.Append("-execute\n");
         return sb.ToString();
     }
 }
