@@ -110,11 +110,11 @@ public sealed class ExifToolBridge : IExifToolBridge
 
         try
         {
-            var sb = new StringBuilder();
-            sb.AppendLine($"-echo1 {marker}");
-            sb.AppendLine("-execute");
+            // Use explicit \n (not AppendLine/\r\n) — ExifTool stay_open protocol
+            // requires LF-only line endings; \r\n breaks argument parsing.
+            var cmd = $"-echo1 {marker}\n-execute\n";
 
-            await _process.WriteStdinAsync(sb.ToString(), cancellationToken);
+            await _process.WriteStdinAsync(cmd, cancellationToken);
             await tcs.Task.WaitAsync(timeoutCts.Token);
             return true;
         }
