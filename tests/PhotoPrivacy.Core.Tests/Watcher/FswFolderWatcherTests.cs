@@ -21,25 +21,39 @@ public sealed class FswFolderWatcherTests
         var scanner = new FakeRecoveryScanner([lost1, lost2]);
         var audit = new InMemoryAuditLogger();
         var collected = new List<string>();
+        var factory = new FakeFileSystemWatcherFactory();
 
         var watcher = new FswFolderWatcher(cfg, scanner, audit, path =>
         {
             collected.Add(path);
             return Task.CompletedTask;
-        });
+        }, factory);
 
         try
         {
+            watcher.Start();
             await watcher.RecoverFromErrorAsync(new InternalBufferOverflowException("overflow"));
 
             Assert.Contains(lost1, collected);
             Assert.Contains(lost2, collected);
             Assert.Contains(audit.Events, e => e.EventType == "fsw_recovered");
+            Assert.True(factory.CreatedCount >= 2);
         }
         finally
         {
             watcher.Stop();
             Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
+    private sealed class FakeFileSystemWatcherFactory : IFileSystemWatcherFactory
+    {
+        public int CreatedCount { get; private set; }
+
+        public FileSystemWatcher Create(string path)
+        {
+            CreatedCount++;
+            return new FileSystemWatcher(path);
         }
     }
 

@@ -9,6 +9,7 @@ public sealed class FswFolderWatcher : IFolderWatcher
     private readonly IRecoveryScanner _scanner;
     private readonly IAuditLogger _audit;
     private readonly Func<string, Task> _onPath;
+    private readonly IFileSystemWatcherFactory _factory;
 
     private FileSystemWatcher? _fsw;
 
@@ -16,12 +17,14 @@ public sealed class FswFolderWatcher : IFolderWatcher
         AppConfig config,
         IRecoveryScanner scanner,
         IAuditLogger audit,
-        Func<string, Task> onPath)
+        Func<string, Task> onPath,
+        IFileSystemWatcherFactory? factory = null)
     {
         _config = config;
         _scanner = scanner;
         _audit = audit;
         _onPath = onPath;
+        _factory = factory ?? (IFileSystemWatcherFactory)new DefaultFileSystemWatcherFactory();
     }
 
     public void Start()
@@ -48,12 +51,10 @@ public sealed class FswFolderWatcher : IFolderWatcher
 
     private FileSystemWatcher BuildWatcher()
     {
-        var watcher = new FileSystemWatcher(_config.Watch.HotFolder)
-        {
-            IncludeSubdirectories = _config.Watch.IncludeSubdirectories,
-            InternalBufferSize = _config.Watch.InternalBufferSize,
-            NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.DirectoryName
-        };
+        var watcher = _factory.Create(_config.Watch.HotFolder);
+        watcher.IncludeSubdirectories = _config.Watch.IncludeSubdirectories;
+        watcher.InternalBufferSize = _config.Watch.InternalBufferSize;
+        watcher.NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.DirectoryName;
 
         watcher.Created += (_, e) => _ = _onPath(e.FullPath);
         watcher.Changed += (_, e) => _ = _onPath(e.FullPath);
@@ -80,5 +81,13 @@ public sealed class FswFolderWatcher : IFolderWatcher
         await _audit.WriteAsync(
             new AuditEvent("fsw_recovered", DateTimeOffset.UtcNow, Guid.NewGuid().ToString("N"), _config.Watch.HotFolder, "recreated_watcher", null),
             CancellationToken.None);
+    }
+
+    private sealed class DefaultFileSystemWatcherFactory : IFileSystemWatcherFactory
+    {
+        public FileSystemWatcher Create(string path)
+        {
+            return new FileSystemWatcher(path);
+        }
     }
 }

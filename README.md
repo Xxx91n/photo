@@ -54,16 +54,21 @@ powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1 -HotFolder D:\hot -Au
 
 2) **真实清理验证（会调用 ExifTool）**
 - 在 `config/config.json` 中设置 `exiftool.dry_run = false`
+- 并确认 `exiftool.path` 指向真实可执行文件，否则程序会快速失败退出（不会进入清理流程）
 - 准备测试文件后执行：
 
 ```bash
 dotnet run --project src/PhotoPrivacy.Cli/PhotoPrivacy.Cli.csproj -- --config .\config\config.json --once true
 ```
 
-- 期望结果：
+- 期望结果（在 ExifTool 路径可用时）：
   - 成功文件被清理元数据（按你的输出策略落地）
   - 失败文件按重试后进入隔离目录
   - 审计日志含 `file_processing_succeeded`/`file_processing_failed`/`file_quarantined`
+
+- 期望结果（在 ExifTool 路径不可用时）：
+  - 进程直接报错退出（`exiftool.path not found`）
+  - 不会生成清理成功审计
 
 3) **持续监听验证**
 - 前台常驻运行：

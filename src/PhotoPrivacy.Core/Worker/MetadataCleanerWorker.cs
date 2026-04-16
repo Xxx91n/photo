@@ -196,10 +196,10 @@ public sealed class MetadataCleanerWorker : BackgroundService
 
     private async Task DrainOnceAsync(CancellationToken cancellationToken)
     {
-        for (var i = 0; i < 8; i++)
+        for (var i = 0; i < 20; i++)
         {
             await DrainReadyItemsAsync(cancellationToken);
-            await Task.Delay(120, cancellationToken);
+            await Task.Delay(150, cancellationToken);
         }
     }
 

@@ -17,6 +17,11 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
             return Task.CompletedTask;
         }
 
+        if (!File.Exists(exePath))
+        {
+            throw new FileNotFoundException("ExifTool executable not found.", exePath);
+        }
+
         var startInfo = new ProcessStartInfo
         {
             FileName = exePath,

@@ -12,6 +12,7 @@ docs/
 # local worktrees
 .worktrees/
 worktrees/
+config.json
 
 # dotnet
 **/bin/
