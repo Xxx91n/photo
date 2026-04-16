@@ -7,6 +7,7 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
     private Process? _process;
     private StreamWriter? _stdin;
     private Task? _stdoutPumpTask;
+    private CancellationTokenSource? _pumpCts;
 
     public event Action<string>? StdoutLine;
 
@@ -38,19 +39,31 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
         _stdin = _process.StandardInput;
         _stdin.AutoFlush = true;
 
+        // Use a dedicated CTS so the pump loop is not tied to the host
+        // cancellation token — this lets us cancel it explicitly on stop.
+        _pumpCts = new CancellationTokenSource();
+        var pumpToken = _pumpCts.Token;
+
         _stdoutPumpTask = Task.Run(async () =>
         {
-            while (!cancellationToken.IsCancellationRequested && _process is { HasExited: false })
+            try
             {
-                var line = await _process.StandardOutput.ReadLineAsync(cancellationToken);
-                if (line is null)
+                while (!pumpToken.IsCancellationRequested)
                 {
-                    break;
-                }
+                    var line = await _process.StandardOutput.ReadLineAsync(pumpToken);
+                    if (line is null)
+                    {
+                        break;
+                    }
 
-                StdoutLine?.Invoke(line);
+                    StdoutLine?.Invoke(line);
+                }
             }
-        }, cancellationToken);
+            catch (OperationCanceledException)
+            {
+                // normal shutdown path
+            }
+        }, pumpToken);
 
         return Task.CompletedTask;
     }
@@ -73,40 +86,51 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
             return;
         }
 
+        // 1. Ask ExifTool to exit gracefully.
         try
         {
             if (_stdin is not null)
             {
                 await _stdin.WriteAsync("-stay_open\nFalse\n-execute\n");
-                await _stdin.FlushAsync(cancellationToken);
+                await _stdin.FlushAsync(CancellationToken.None);
             }
         }
         catch
         {
-            // ignore and fallback to kill below
+            // ignore — process may already be dead
         }
 
+        // 2. Give it up to 2 s to exit on its own, then force-kill.
         if (!_process.WaitForExit(2000))
         {
             _process.Kill(entireProcessTree: true);
+        }
+
+        // 3. Cancel the pump loop and wait with a short hard timeout.
+        if (_pumpCts is not null)
+        {
+            await _pumpCts.CancelAsync();
         }
 
         if (_stdoutPumpTask is not null)
         {
             try
             {
-                await _stdoutPumpTask.WaitAsync(cancellationToken);
+                await _stdoutPumpTask.WaitAsync(TimeSpan.FromSeconds(1));
             }
             catch
             {
-                // ignore shutdown race
+                // timeout or cancellation — acceptable
             }
         }
 
+        // 4. Clean up.
         _stdin?.Dispose();
+        _pumpCts?.Dispose();
         _process.Dispose();
 
         _stdin = null;
+        _pumpCts = null;
         _process = null;
         _stdoutPumpTask = null;
     }
