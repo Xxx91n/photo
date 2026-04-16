@@ -12,6 +12,11 @@ public static class AppConfigValidator
 
     public static void Validate(AppConfig config)
     {
+        if (config.ExifTool.DryRun)
+        {
+            return;
+        }
+
         if (!Path.IsPathFullyQualified(config.ExifTool.Path))
         {
             throw new AppConfigValidationException("exiftool.path must be absolute");

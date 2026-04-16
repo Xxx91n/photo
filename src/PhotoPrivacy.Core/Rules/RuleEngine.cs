@@ -14,12 +14,14 @@ public sealed class RuleEngine
     public RuleDecision Decide(string sourcePath)
     {
         var extension = Path.GetExtension(sourcePath);
-        if (!_config.Rules.AllowedExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
+        var allowedExtensions = _config.Rules.AllowedExtensions ?? [];
+        if (!allowedExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
         {
             return new RuleDecision(false, "extension_not_allowed", null, false, null);
         }
 
-        foreach (var pattern in _config.Rules.ExcludedPatterns)
+        var excludedPatterns = _config.Rules.ExcludedPatterns ?? [];
+        foreach (var pattern in excludedPatterns)
         {
             if (MatchesPattern(Path.GetFileName(sourcePath), pattern))
             {

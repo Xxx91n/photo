@@ -4,6 +4,7 @@
     "path": "D:\\tools\\A_system\\ExifToolGUI\\ExifTool\\ExifTool.exe",
     "enable_windows_long_path": true,
     "enable_large_file_support": true,
+    "dry_run": false,
     "extra_exiftool_args": []
   },
   "watch": {

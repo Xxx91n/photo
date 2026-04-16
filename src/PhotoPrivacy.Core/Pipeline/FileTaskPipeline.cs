@@ -54,6 +54,11 @@ public sealed class FileTaskPipeline
             }
 
             var target = decision.OutputPath;
+            if (!string.Equals(target, sourcePath, StringComparison.OrdinalIgnoreCase))
+            {
+                _fileOperations.Copy(sourcePath, target, overwrite: true);
+            }
+
             var targetDir = Path.GetDirectoryName(target);
             if (!string.IsNullOrWhiteSpace(targetDir))
             {
@@ -88,8 +93,9 @@ public sealed class FileTaskPipeline
             if (_config.Quarantine.Enabled)
             {
                 _fileOperations.EnsureDirectory(_config.Quarantine.Directory);
-                var destination = Path.Combine(_config.Quarantine.Directory, Path.GetFileName(sourcePath));
-                _fileOperations.Move(sourcePath, destination);
+                var failedFilePath = target;
+                var destination = Path.Combine(_config.Quarantine.Directory, Path.GetFileName(failedFilePath));
+                _fileOperations.Move(failedFilePath, destination);
                 await _audit.WriteAsync(
                     new AuditEvent("file_quarantined", DateTimeOffset.UtcNow, Guid.NewGuid().ToString("N"), sourcePath, destination, null),
                     cancellationToken);

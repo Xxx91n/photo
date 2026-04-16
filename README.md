@@ -9,7 +9,19 @@
 dotnet run --project src/PhotoPrivacy.Cli/PhotoPrivacy.Cli.csproj
 ```
 
-4. 运行 Windows Service（管理员 PowerShell）：
+4. 仅运行一次（适合测试）：
+
+```bash
+dotnet run --project src/PhotoPrivacy.Cli/PhotoPrivacy.Cli.csproj -- --once true
+```
+
+5. 启用 dry-run（不实际调用 ExifTool，仅走流程并写审计）：
+
+```bash
+dotnet run --project src/PhotoPrivacy.Cli/PhotoPrivacy.Cli.csproj -- --once true --dry-run true
+```
+
+6. 运行 Windows Service（管理员 PowerShell）：
 
 ```powershell
 dotnet publish src/PhotoPrivacy.Service/PhotoPrivacy.Service.csproj -c Release -o .\publish\service
@@ -23,7 +35,48 @@ dotnet test PhotoPrivacy.sln
 powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1 -HotFolder D:\hot -AuditFolder D:\hot\_audit
 ```
 
+### 允许你验证程序功能的方法
+
+1) **最安全流程验证（推荐）**：dry-run + 固定输出目录
+- 在 `config/config.json` 中设置：
+  - `exiftool.dry_run = true`
+  - `rules.output_mode = "fixed_directory"`
+  - `rules.output_directory = "<你的输出目录>"`
+- 执行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1 -HotFolder D:\hot -AuditFolder D:\hot\_audit -ConfigPath .\config\config.json
+```
+
+- 期望结果：
+  - 输出目录出现复制后的文件
+  - 审计日志出现 `dry_run_wipe_skipped` 和 `file_processing_succeeded`
+
+2) **真实清理验证（会调用 ExifTool）**
+- 在 `config/config.json` 中设置 `exiftool.dry_run = false`
+- 准备测试文件后执行：
+
+```bash
+dotnet run --project src/PhotoPrivacy.Cli/PhotoPrivacy.Cli.csproj -- --config .\config\config.json --once true
+```
+
+- 期望结果：
+  - 成功文件被清理元数据（按你的输出策略落地）
+  - 失败文件按重试后进入隔离目录
+  - 审计日志含 `file_processing_succeeded`/`file_processing_failed`/`file_quarantined`
+
+3) **持续监听验证**
+- 前台常驻运行：
+
+```bash
+dotnet run --project src/PhotoPrivacy.Cli/PhotoPrivacy.Cli.csproj -- --config .\config\config.json
+```
+
+- 向热文件夹持续投放文件，观察：
+  - 防抖是否生效（不会重复风暴处理）
+  - `fsw_error` 后是否出现 `fsw_recovered`
+
 ## Notes
 - 当前实现严格采用 `FileSystemWatcher` 事件驱动，不轮询。
-- ExifTool 设计目标是 `stay_open` 单进程桥接；MVP-1 当前骨架已具备命令构建与桥接测试。
+- ExifTool 采用 `stay_open` 单进程桥接；支持 `dry_run` 方便无损联调。
 - 请勿修改 ExifToolGUI 目录内容，本项目仅调用指定路径的 ExifTool 可执行文件。

@@ -46,6 +46,59 @@ public sealed class FileTaskPipelineTests
         Assert.Equal(1, bridge.Calls);
     }
 
+    [Fact]
+    public async Task HandleAsync_Should_Copy_To_Fixed_Output_Before_Wiping()
+    {
+        var cfg = AppConfig.Default with
+        {
+            Rules = AppConfig.Default.Rules with
+            {
+                OutputMode = "fixed_directory",
+                OutputDirectory = @"D:\clean"
+            },
+            Watch = AppConfig.Default.Watch with { HotFolder = @"D:\hot" },
+            Retry = AppConfig.Default.Retry with { MaxAttempts = 1, BackoffSeconds = [0] }
+        };
+
+        var ruleEngine = new RuleEngine(cfg);
+        var bridge = new CaptureTargetBridge();
+        var fileOps = new InMemoryFileOperations();
+        var audit = new InMemoryAuditLogger();
+        var pipeline = new FileTaskPipeline(cfg, ruleEngine, bridge, fileOps, audit);
+
+        await pipeline.HandleAsync(@"D:\hot\album\a.jpg", CancellationToken.None);
+
+        Assert.Contains(fileOps.Copies, c => c.Source == @"D:\hot\album\a.jpg" && c.Destination == @"D:\clean\album\a.jpg");
+        Assert.Equal(@"D:\clean\album\a.jpg", bridge.LastTargetPath);
+    }
+
+    [Fact]
+    public async Task HandleAsync_Should_Move_Output_File_To_Quarantine_When_Retry_Exhausted_And_Output_Is_Fixed()
+    {
+        var cfg = AppConfig.Default with
+        {
+            Rules = AppConfig.Default.Rules with
+            {
+                OutputMode = "fixed_directory",
+                OutputDirectory = @"D:\clean"
+            },
+            Watch = AppConfig.Default.Watch with { HotFolder = @"D:\hot" },
+            Retry = AppConfig.Default.Retry with { MaxAttempts = 1, BackoffSeconds = [0] },
+            Quarantine = AppConfig.Default.Quarantine with { Enabled = true, Directory = @"D:\quarantine" }
+        };
+
+        var ruleEngine = new RuleEngine(cfg);
+        var bridge = new AlwaysFailBridge();
+        var fileOps = new InMemoryFileOperations();
+        var audit = new InMemoryAuditLogger();
+        var pipeline = new FileTaskPipeline(cfg, ruleEngine, bridge, fileOps, audit);
+
+        await pipeline.HandleAsync(@"D:\hot\album\a.jpg", CancellationToken.None);
+
+        Assert.Contains(fileOps.Moves, m => m.Source == @"D:\clean\album\a.jpg" && m.Destination == @"D:\quarantine\a.jpg");
+        Assert.Contains(audit.Events, e => e.EventType == "file_quarantined");
+    }
+
     private sealed class InMemoryFileOperations : IFileOperations
     {
         public List<(string Source, string Destination)> Moves { get; } = [];
@@ -88,6 +141,21 @@ public sealed class FileTaskPipelineTests
         public Task WipeMetadataAsync(string targetPath, CancellationToken cancellationToken)
         {
             throw new InvalidOperationException("fail");
+        }
+    }
+
+    private sealed class CaptureTargetBridge : IExifToolBridge
+    {
+        public string LastTargetPath { get; private set; } = string.Empty;
+
+        public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task WipeMetadataAsync(string targetPath, CancellationToken cancellationToken)
+        {
+            LastTargetPath = targetPath;
+            return Task.CompletedTask;
         }
     }
 

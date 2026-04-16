@@ -6,6 +6,7 @@ public sealed record ExifToolOptions(
     string Path,
     bool EnableWindowsLongPath,
     bool EnableLargeFileSupport,
+    bool DryRun,
     string[] ExtraExifToolArgs);
 
 public sealed record WatchOptions(
@@ -44,6 +45,7 @@ public sealed record AppConfig(
             Path: DefaultPaths.ExifToolPath,
             EnableWindowsLongPath: true,
             EnableLargeFileSupport: true,
+            DryRun: false,
             ExtraExifToolArgs: []),
         Watch: new WatchOptions(
             HotFolder: @"D:\hot",

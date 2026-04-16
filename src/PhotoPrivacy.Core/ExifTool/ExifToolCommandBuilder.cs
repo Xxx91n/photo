@@ -24,7 +24,11 @@ public static class ExifToolCommandBuilder
             args.AddRange(["-API", "LargeFileSupport=1"]);
         }
 
-        args.AddRange(config.ExifTool.ExtraExifToolArgs);
+        if (config.ExifTool.ExtraExifToolArgs is { Length: > 0 })
+        {
+            args.AddRange(config.ExifTool.ExtraExifToolArgs);
+        }
+
         return args.ToArray();
     }
 

@@ -48,4 +48,20 @@ public sealed class AppConfigValidatorTests
             Directory.Delete(tempDir, recursive: true);
         }
     }
+
+    [Fact]
+    public void Validate_Should_Not_Throw_When_DryRun_Enabled_And_ExifTool_Path_Missing()
+    {
+        var cfg = AppConfig.Default with
+        {
+            ExifTool = AppConfig.Default.ExifTool with
+            {
+                DryRun = true,
+                Path = @"D:\not-exist\ExifTool.exe"
+            }
+        };
+
+        var ex = Record.Exception(() => AppConfigValidator.Validate(cfg));
+        Assert.Null(ex);
+    }
 }
