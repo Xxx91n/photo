@@ -77,9 +77,7 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
         {
             if (_stdin is not null)
             {
-                await _stdin.WriteLineAsync("-stay_open");
-                await _stdin.WriteLineAsync("False");
-                await _stdin.WriteLineAsync("-execute");
+                await _stdin.WriteAsync("-stay_open\nFalse\n-execute\n");
                 await _stdin.FlushAsync(cancellationToken);
             }
         }
