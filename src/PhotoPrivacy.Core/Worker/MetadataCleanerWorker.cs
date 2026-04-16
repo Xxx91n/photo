@@ -39,6 +39,15 @@ public sealed class MetadataCleanerWorker : BackgroundService
         var config = LoadEffectiveConfig();
         AppConfigValidator.Validate(config);
 
+        // Fast-fail when ExifTool path is invalid in live mode.
+        // This avoids hanging the CLI host when the bridge cannot even start.
+        if (!config.ExifTool.DryRun && !File.Exists(config.ExifTool.Path))
+        {
+            _logger.LogError("exiftool.path not found: {Path}", config.ExifTool.Path);
+            _applicationLifetime.StopApplication();
+            return;
+        }
+
         _audit = new JsonLineAuditLogger(config.Audit.LogDirectory, config.Audit.RetainDays, config.Audit.DiagnosticMode);
         _bridge = CreateBridge(config, _audit);
         _pipeline = new FileTaskPipeline(config, new RuleEngine(config), _bridge, new LocalFileOperations(), _audit);
