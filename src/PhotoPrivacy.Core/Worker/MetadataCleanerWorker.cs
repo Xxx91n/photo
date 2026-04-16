@@ -100,22 +100,48 @@ public sealed class MetadataCleanerWorker : BackgroundService
     {
         _watcher?.Stop();
 
+        // IMPORTANT: the host-provided cancellationToken here is already cancelled
+        // (or has a very short timeout) by the time StopAsync is called after
+        // StopApplication(). Using it directly causes bridge.StopAsync and
+        // audit.WriteAsync to be skipped immediately, leaving the process
+        // hanging until the host forces a timeout. Use independent tokens instead.
+
         if (_bridge is not null)
         {
-            await _bridge.StopAsync(cancellationToken);
+            using var bridgeCts = new CancellationTokenSource(TimeSpan.FromSeconds(4));
+            try
+            {
+                await _bridge.StopAsync(bridgeCts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogWarning("Bridge stop timed out after 4 s, continuing shutdown.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Bridge stop threw unexpectedly, continuing shutdown.");
+            }
         }
 
         if (_audit is not null)
         {
-            await _audit.WriteAsync(
-                new AuditEvent(
-                    EventType: "service_stopped",
-                    TimestampUtc: DateTimeOffset.UtcNow,
-                    TaskId: Guid.NewGuid().ToString("N"),
-                    SourcePath: string.Empty,
-                    Message: "worker stopped",
-                    Data: null),
-                cancellationToken);
+            using var auditCts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            try
+            {
+                await _audit.WriteAsync(
+                    new AuditEvent(
+                        EventType: "service_stopped",
+                        TimestampUtc: DateTimeOffset.UtcNow,
+                        TaskId: Guid.NewGuid().ToString("N"),
+                        SourcePath: string.Empty,
+                        Message: "worker stopped",
+                        Data: null),
+                    auditCts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogWarning("Audit write timed out on shutdown, entry may be missing.");
+            }
         }
 
         await base.StopAsync(cancellationToken);

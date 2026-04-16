@@ -100,10 +100,18 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
             // ignore — process may already be dead
         }
 
-        // 2. Give it up to 2 s to exit on its own, then force-kill.
-        if (!_process.WaitForExit(2000))
+        // 2. Wait up to 3 s asynchronously, then force-kill.
+        //    Use a linked token so either the caller's timeout or our own fires first.
+        using var exitCts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(exitCts.Token, cancellationToken);
+        try
         {
-            _process.Kill(entireProcessTree: true);
+            await _process.WaitForExitAsync(linked.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // Timed out or caller cancelled — force-kill the process.
+            try { _process.Kill(entireProcessTree: true); } catch { /* already gone */ }
         }
 
         // 3. Cancel the pump loop and wait with a short hard timeout.
