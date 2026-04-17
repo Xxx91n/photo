@@ -6,6 +6,7 @@ using PhotoPrivacy.Core.Configuration;
 using PhotoPrivacy.Core.ExifTool;
 using PhotoPrivacy.Core.Pipeline;
 using PhotoPrivacy.Core.Queue;
+using PhotoPrivacy.Core.Runtime;
 using PhotoPrivacy.Core.Rules;
 using PhotoPrivacy.Core.Watcher;
 
@@ -16,6 +17,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
     private readonly IConfiguration _configuration;
     private readonly ILogger<MetadataCleanerWorker> _logger;
     private readonly IHostApplicationLifetime _applicationLifetime;
+    private readonly IRuntimeControl _runtimeControl;
 
     private JsonLineAuditLogger? _audit;
     private IExifToolBridge? _bridge;
@@ -27,11 +29,13 @@ public sealed class MetadataCleanerWorker : BackgroundService
     public MetadataCleanerWorker(
         IConfiguration configuration,
         ILogger<MetadataCleanerWorker> logger,
-        IHostApplicationLifetime applicationLifetime)
+        IHostApplicationLifetime applicationLifetime,
+        IRuntimeControl runtimeControl)
     {
         _configuration = configuration;
         _logger = logger;
         _applicationLifetime = applicationLifetime;
+        _runtimeControl = runtimeControl;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -119,6 +123,12 @@ public sealed class MetadataCleanerWorker : BackgroundService
         {
             while (!stoppingToken.IsCancellationRequested)
             {
+                if (_runtimeControl.IsPaused)
+                {
+                    await Task.Delay(200, stoppingToken);
+                    continue;
+                }
+
                 await DrainReadyItemsAsync(stoppingToken);
                 await Task.Delay(200, stoppingToken);
             }

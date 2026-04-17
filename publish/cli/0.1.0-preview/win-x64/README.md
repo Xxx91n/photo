@@ -41,6 +41,22 @@ dotnet test PhotoPrivacy.sln
 powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1 -HotFolder D:\hot -AuditFolder D:\hot\_audit
 ```
 
+## Build EXE
+
+1) 生成单文件 EXE（含 zip 包）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/publish-cli-exe.ps1 -Version 0.1.0-preview -Runtime win-x64 -SelfContained true -Zip true
+```
+
+2) 发行前一键检查（测试 + smoke + 打包）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/release-readiness.ps1 -Version 0.1.0-preview -Runtime win-x64
+```
+
+3) 成熟版发布时间规划见：`release-roadmap-2026-04-17.md`
+
 ### 允许你验证程序功能的方法
 
 1) **最安全流程验证（推荐）**：dry-run + 固定输出目录

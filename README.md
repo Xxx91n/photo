@@ -3,31 +3,71 @@
 ## Quick start
 1. 复制 `config/config.sample.json` 为 `config/config.json` 并按实际环境修改。
 2. 确认 `D:\tools\A_system\ExifToolGUI\ExifTool\ExifTool.exe` 和同级 `exiftool_files` 存在。
-3. 运行 CLI（前台常驻）：
+3. 本地调试（CLI 模式，前台输出日志）：
 
 ```bash
-dotnet run --project src/PhotoPrivacy.Cli/PhotoPrivacy.Cli.csproj
+dotnet run --project src/PhotoPrivacy.Cli/PhotoPrivacy.Cli.csproj -- --mode cli
 ```
 
 4. 仅运行一次（适合测试）：
 
 ```bash
-dotnet run --project src/PhotoPrivacy.Cli/PhotoPrivacy.Cli.csproj -- --once true
+dotnet run --project src/PhotoPrivacy.Cli/PhotoPrivacy.Cli.csproj -- --mode cli --once true
 ```
 
-7. 输出“最终生效配置”（不进入监听/处理流程）：
+5. 输出“最终生效配置”（不进入监听/处理流程）：
 
 ```bash
-dotnet run --project src/PhotoPrivacy.Cli/PhotoPrivacy.Cli.csproj -- --config .\config\config.json --print-effective-config true
+dotnet run --project src/PhotoPrivacy.Cli/PhotoPrivacy.Cli.csproj -- --mode cli --config .\config\config.json --print-effective-config true
 ```
 
-5. 启用 dry-run（不实际调用 ExifTool，仅走流程并写审计）：
+6. 启用 dry-run（不实际调用 ExifTool，仅走流程并写审计）：
 
 ```bash
-dotnet run --project src/PhotoPrivacy.Cli/PhotoPrivacy.Cli.csproj -- --once true --dry-run true
+dotnet run --project src/PhotoPrivacy.Cli/PhotoPrivacy.Cli.csproj -- --mode cli --once true --dry-run true
 ```
 
-6. 运行 Windows Service（管理员 PowerShell）：
+## 运行模式（同一个 EXE）
+
+发布后主程序名为 `PhotoPrivacy.exe`，支持三种模式：
+
+1) 后台模式（默认）
+- 双击 `PhotoPrivacy.exe` 即进入后台模式（托盘图标）
+- 等价参数：
+
+```powershell
+PhotoPrivacy.exe --mode background
+```
+
+- 托盘右键菜单：`暂停` / `继续` / `退出`
+
+2) 服务模式
+- 直接运行：
+
+```powershell
+PhotoPrivacy.exe --mode service
+```
+
+- 推荐安装脚本（管理员 PowerShell）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\install-service.ps1 -ExePath .\publish\cli\0.1.0-preview\win-x64\PhotoPrivacy.exe -ConfigPath .\config\config.json
+```
+
+- 或手工 `sc.exe`：
+
+```powershell
+sc.exe create PhotoPrivacyCleaner binPath= "\"C:\path\PhotoPrivacy.exe\" --mode service --config \"C:\path\config.json\"" start= auto
+sc.exe start PhotoPrivacyCleaner
+```
+
+3) CLI 模式（仅调试/脚本）
+
+```powershell
+PhotoPrivacy.exe --mode cli --once true
+```
+
+## 旧服务宿主（独立项目，兼容保留）
 
 ```powershell
 dotnet publish src/PhotoPrivacy.Service/PhotoPrivacy.Service.csproj -c Release -o .\publish\service
@@ -80,7 +120,7 @@ powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1 -HotFolder D:\hot -Au
 - 准备测试文件后执行：
 
 ```bash
-dotnet run --project src/PhotoPrivacy.Cli/PhotoPrivacy.Cli.csproj -- --config .\config\config.json --once true
+dotnet run --project src/PhotoPrivacy.Cli/PhotoPrivacy.Cli.csproj -- --mode cli --config .\config\config.json --once true
 ```
 
 - 期望结果（在 ExifTool 路径可用时）：
@@ -97,7 +137,7 @@ dotnet run --project src/PhotoPrivacy.Cli/PhotoPrivacy.Cli.csproj -- --config .\
 - 前台常驻运行：
 
 ```bash
-dotnet run --project src/PhotoPrivacy.Cli/PhotoPrivacy.Cli.csproj -- --config .\config\config.json
+dotnet run --project src/PhotoPrivacy.Cli/PhotoPrivacy.Cli.csproj -- --mode cli --config .\config\config.json
 ```
 
 - 向热文件夹持续投放文件，观察：

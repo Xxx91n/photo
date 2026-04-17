@@ -9,7 +9,7 @@ Write-Host "Smoke test start"
 
 $dryRunEnabled = $DryRun -match '^(1|true|yes|on)$'
 
-$args = @("--hot-folder", "$HotFolder", "--audit-folder", "$AuditFolder", "--once", "true", "--dry-run", $dryRunEnabled.ToString())
+$args = @("--mode", "cli", "--hot-folder", "$HotFolder", "--audit-folder", "$AuditFolder", "--once", "true", "--dry-run", $dryRunEnabled.ToString())
 if (-not [string]::IsNullOrWhiteSpace($ConfigPath)) {
   $args += @("--config", "$ConfigPath")
 }

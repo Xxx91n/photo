@@ -15,6 +15,9 @@
   - stay_open 单进程桥接、FSW 事件驱动、恢复扫描、审计日志。
   - ExifTool 生命周期审计：`exiftool_started` / `exiftool_restarted` / `exiftool_version_warning`。
   - 生效配置导出：`--print-effective-config true`。
+  - 单 EXE 多模式：`--mode background`（默认托盘后台）、`--mode service`、`--mode cli`。
+  - 托盘右键控制：暂停 / 继续 / 退出。
+  - 服务安装脚本：`scripts/install-service.ps1`。
   - 预发布脚本：`scripts/release-readiness.ps1`（test + smoke + publish）。
   - 打包脚本：`scripts/publish-cli-exe.ps1`。
 - 已验证：`dotnet test PhotoPrivacy.sln` 全绿；预发布脚本全流程可跑通。
@@ -25,9 +28,11 @@
 - 时间：2026-04-18 ~ 2026-04-24（1 周）
 - 交付：`v0.9.0-rc` ZIP 包
 - 退出条件：
-  1. 连续 3 天，每天执行 `scripts/release-readiness.ps1` 成功；
-  2. 在真实热文件夹场景下完成 1000 小文件 + 100 大文件压测；
-  3. 修复 RC 阶段发现的 P1/P2 问题。
+  1. 背景模式托盘交互（暂停/继续/退出）在 Windows 10/11 实机验证通过；
+  2. 服务模式安装/启动/停止/开机自启验证通过；
+  3. 连续 3 天，每天执行 `scripts/release-readiness.ps1` 成功；
+  4. 在真实热文件夹场景下完成 1000 小文件 + 100 大文件压测；
+  5. 修复 RC 阶段发现的 P1/P2 问题。
 
 ### 阶段 B：稳定化与回归收口
 - 时间：2026-04-25 ~ 2026-05-01（1 周）
@@ -48,9 +53,9 @@
 
 ## 发布产物规范（v1.0.0）
 
-- 文件：`PhotoPrivacy.Cli-1.0.0-win-x64.zip`
+- 文件：`PhotoPrivacy-1.0.0-win-x64.zip`
 - 解压后包含：
-  - `PhotoPrivacy.Cli.exe`
+  - `PhotoPrivacy.exe`
   - `config.sample.json`
   - `README.md`
 

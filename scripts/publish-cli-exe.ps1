@@ -41,7 +41,7 @@ Copy-Item "$repoRoot\config\config.sample.json" (Join-Path $targetDir "config.sa
 Copy-Item "$repoRoot\README.md" (Join-Path $targetDir "README.md") -Force
 
 if ($zipEnabled) {
-  $zipPath = Join-Path $publishRoot ("PhotoPrivacy.Cli-{0}-{1}.zip" -f $Version, $Runtime)
+  $zipPath = Join-Path $publishRoot ("PhotoPrivacy-{0}-{1}.zip" -f $Version, $Runtime)
   if (Test-Path $zipPath) {
     Remove-Item $zipPath -Force
   }
