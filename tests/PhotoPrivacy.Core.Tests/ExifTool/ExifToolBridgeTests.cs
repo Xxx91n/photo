@@ -66,6 +66,23 @@ public sealed class ExifToolBridgeTests
     }
 
     [Fact]
+    public async Task EnsureStartedAsync_Should_Not_Restart_When_Health_Response_Arrives_In_300ms()
+    {
+        var process = new FakeExifToolProcess
+        {
+            HealthResponseDelayMs = 300
+        };
+
+        var bridge = new ExifToolBridge(process, AppConfig.Default);
+
+        await bridge.EnsureStartedAsync(CancellationToken.None);
+        await bridge.EnsureStartedAsync(CancellationToken.None);
+
+        Assert.Equal(1, process.StartCalls);
+        Assert.Equal(0, process.StopCalls);
+    }
+
+    [Fact]
     public async Task EnsureStartedAsync_Should_Probe_ExifTool_Version_On_First_Start()
     {
         var process = new FakeExifToolProcess();
@@ -123,6 +140,35 @@ public sealed class ExifToolBridgeTests
     }
 
     [Fact]
+    public async Task EnsureStartedAsync_Should_Include_Timeout_Reason_In_ExifToolRestarted_Data()
+    {
+        var process = new FakeExifToolProcess
+        {
+            SuppressHealthReady = true,
+            LastStderrLine = "stderr: timeout"
+        };
+
+        var lifecycleEvents = new List<ExifToolLifecycleEvent>();
+        var bridge = new ExifToolBridge(
+            process,
+            AppConfig.Default,
+            logger: null,
+            lifecycleSink: (ev, _) =>
+            {
+                lifecycleEvents.Add(ev);
+                return ValueTask.CompletedTask;
+            });
+
+        await bridge.EnsureStartedAsync(CancellationToken.None);
+        await bridge.EnsureStartedAsync(CancellationToken.None);
+
+        var restarted = lifecycleEvents.Last(x => x.EventType == "exiftool_restarted");
+        Assert.NotNull(restarted.Data);
+        Assert.Equal("timeout", restarted.Data!["reason"]);
+        Assert.Equal("stderr: timeout", restarted.Data!["stderr_last_line"]);
+    }
+
+    [Fact]
     public async Task EnsureStartedAsync_Should_Log_Warning_When_WindowsLongPath_Known_Issue_Version_Detected()
     {
         var process = new FakeExifToolProcess
@@ -139,6 +185,25 @@ public sealed class ExifToolBridgeTests
             x => x.Level == LogLevel.Warning
                 && x.Message.Contains("WindowsLongPath", StringComparison.OrdinalIgnoreCase)
                 && x.Message.Contains("known stay_open", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task EnsureStartedAsync_Should_Allow_Version_Probe_Delay_Above_2Seconds()
+    {
+        var process = new FakeExifToolProcess
+        {
+            VersionResponseDelayMs = 2200
+        };
+
+        var logger = new ListLogger<ExifToolBridge>();
+        var bridge = new ExifToolBridge(process, AppConfig.Default, logger: logger);
+
+        await bridge.EnsureStartedAsync(CancellationToken.None);
+
+        Assert.DoesNotContain(
+            logger.Entries,
+            x => x.Level == LogLevel.Warning
+                && x.Message.Contains("version probe timed out", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -176,12 +241,16 @@ public sealed class ExifToolBridgeTests
         public string ExePath { get; private set; } = string.Empty;
         public IReadOnlyList<string> Args => _args;
         public List<string> Writes { get; } = [];
+        public bool IsRunning { get; private set; }
+        public string? LastStderrLine { get; set; }
 
         public int StartCalls { get; private set; }
         public int StopCalls { get; private set; }
         public bool SuppressHealthReady { get; set; }
         public bool AutoEmitTaskDone { get; set; } = true;
         public string VersionText { get; set; } = "13.20";
+        public int HealthResponseDelayMs { get; set; }
+        public int VersionResponseDelayMs { get; set; }
 
         private readonly List<string> _args = [];
 
@@ -191,6 +260,7 @@ public sealed class ExifToolBridgeTests
             ExePath = exePath;
             _args.Clear();
             _args.AddRange(args);
+            IsRunning = true;
             return Task.CompletedTask;
         }
 
@@ -208,7 +278,7 @@ public sealed class ExifToolBridgeTests
             {
                 if (marker.Contains("HEALTH_", StringComparison.Ordinal) && !SuppressHealthReady)
                 {
-                    EmitStdout(marker);
+                    EmitHealthReady(marker);
                 }
 
                 if (marker.Contains("TASK_DONE_", StringComparison.Ordinal) && AutoEmitTaskDone)
@@ -218,8 +288,7 @@ public sealed class ExifToolBridgeTests
 
                 if (marker.Contains("VERSION_DONE_", StringComparison.Ordinal))
                 {
-                    EmitStdout(VersionText);
-                    EmitStdout(marker);
+                    EmitVersionReady(marker);
                 }
             }
 
@@ -229,7 +298,40 @@ public sealed class ExifToolBridgeTests
         public Task StopAsync(CancellationToken cancellationToken)
         {
             StopCalls++;
+            IsRunning = false;
             return Task.CompletedTask;
+        }
+
+        private void EmitHealthReady(string marker)
+        {
+            if (HealthResponseDelayMs <= 0)
+            {
+                EmitStdout(marker);
+                return;
+            }
+
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(HealthResponseDelayMs);
+                EmitStdout(marker);
+            });
+        }
+
+        private void EmitVersionReady(string marker)
+        {
+            if (VersionResponseDelayMs <= 0)
+            {
+                EmitStdout(VersionText);
+                EmitStdout(marker);
+                return;
+            }
+
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(VersionResponseDelayMs);
+                EmitStdout(VersionText);
+                EmitStdout(marker);
+            });
         }
 
         public void EmitStdout(string line)

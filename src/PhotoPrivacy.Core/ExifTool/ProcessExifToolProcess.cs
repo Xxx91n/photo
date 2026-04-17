@@ -7,9 +7,15 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
     private Process? _process;
     private StreamWriter? _stdin;
     private Task? _stdoutPumpTask;
+    private Task? _stderrPumpTask;
     private CancellationTokenSource? _pumpCts;
+    private string? _lastStderrLine;
 
     public event Action<string>? StdoutLine;
+
+    public bool IsRunning => _process is { HasExited: false };
+
+    public string? LastStderrLine => Volatile.Read(ref _lastStderrLine);
 
     public Task StartAsync(string exePath, string[] args, CancellationToken cancellationToken)
     {
@@ -70,6 +76,27 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
             }
         }, pumpToken);
 
+        _stderrPumpTask = Task.Run(async () =>
+        {
+            try
+            {
+                while (!pumpToken.IsCancellationRequested)
+                {
+                    var line = await _process.StandardError.ReadLineAsync(pumpToken);
+                    if (line is null)
+                    {
+                        break;
+                    }
+
+                    Volatile.Write(ref _lastStderrLine, line);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // normal shutdown path
+            }
+        }, pumpToken);
+
         return Task.CompletedTask;
     }
 
@@ -119,7 +146,7 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
             try { _process.Kill(entireProcessTree: true); } catch { /* already gone */ }
         }
 
-        // 3. Cancel the pump loop and wait with a short hard timeout.
+        // 3. Cancel the pump loops and wait with a short hard timeout.
         if (_pumpCts is not null)
         {
             await _pumpCts.CancelAsync();
@@ -137,6 +164,18 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
             }
         }
 
+        if (_stderrPumpTask is not null)
+        {
+            try
+            {
+                await _stderrPumpTask.WaitAsync(TimeSpan.FromSeconds(1));
+            }
+            catch
+            {
+                // timeout or cancellation — acceptable
+            }
+        }
+
         // 4. Clean up.
         _stdin?.Dispose();
         _pumpCts?.Dispose();
@@ -146,5 +185,7 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
         _pumpCts = null;
         _process = null;
         _stdoutPumpTask = null;
+        _stderrPumpTask = null;
+        _lastStderrLine = null;
     }
 }

@@ -14,8 +14,8 @@ public sealed class ExifToolBridge : IExifToolBridge
     private readonly Func<ExifToolLifecycleEvent, CancellationToken, ValueTask>? _lifecycleSink;
     private readonly ConcurrentDictionary<string, TaskCompletionSource<bool>> _pending = new();
     private readonly object _lifecycleGate = new();
-    private readonly TimeSpan _healthTimeout;
-    private static readonly TimeSpan VersionProbeTimeout = TimeSpan.FromSeconds(2);
+    private readonly TimeSpan _startupTimeout;
+    private static readonly TimeSpan RunningHealthTimeout = TimeSpan.FromMilliseconds(500);
 
     private bool _started;
     private int _taskId;
@@ -36,7 +36,7 @@ public sealed class ExifToolBridge : IExifToolBridge
         _config = config;
         _logger = logger ?? NullLogger<ExifToolBridge>.Instance;
         _lifecycleSink = lifecycleSink;
-        _healthTimeout = healthTimeout ?? TimeSpan.FromMilliseconds(200);
+        _startupTimeout = healthTimeout ?? TimeSpan.FromSeconds(3);
         _process.StdoutLine += OnStdoutLine;
     }
 
@@ -97,10 +97,10 @@ public sealed class ExifToolBridge : IExifToolBridge
             return;
         }
 
-        var healthy = await TryHealthCheckAsync(cancellationToken);
-        if (!healthy)
+        var health = await TryHealthCheckAsync(cancellationToken, RunningHealthTimeout);
+        if (!health.IsHealthy)
         {
-            await RestartAsync(cancellationToken);
+            await RestartAsync(cancellationToken, health);
         }
     }
 
@@ -125,14 +125,14 @@ public sealed class ExifToolBridge : IExifToolBridge
         }
     }
 
-    private async Task<bool> TryHealthCheckAsync(CancellationToken cancellationToken)
+    private async Task<HealthCheckResult> TryHealthCheckAsync(CancellationToken cancellationToken, TimeSpan timeout)
     {
         var marker = $"HEALTH_{Interlocked.Increment(ref _taskId)}";
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         _pending[marker] = tcs;
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutCts.CancelAfter(_healthTimeout);
+        timeoutCts.CancelAfter(timeout);
 
         try
         {
@@ -142,11 +142,31 @@ public sealed class ExifToolBridge : IExifToolBridge
 
             await _process.WriteStdinAsync(cmd, cancellationToken);
             await tcs.Task.WaitAsync(timeoutCts.Token);
-            return true;
+            return HealthCheckResult.Success;
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            return false;
+            var data = BuildHealthFailureData(
+                reason: "timeout",
+                detail: $"health check timed out after {timeout.TotalMilliseconds:F0} ms");
+
+            return new HealthCheckResult(
+                IsHealthy: false,
+                Reason: "timeout",
+                Message: "health check timeout",
+                Data: data);
+        }
+        catch (Exception ex)
+        {
+            var data = BuildHealthFailureData(
+                reason: "exception",
+                detail: ex.Message);
+
+            return new HealthCheckResult(
+                IsHealthy: false,
+                Reason: "exception",
+                Message: ex.Message,
+                Data: data);
         }
         finally
         {
@@ -154,7 +174,7 @@ public sealed class ExifToolBridge : IExifToolBridge
         }
     }
 
-    private async Task RestartAsync(CancellationToken cancellationToken)
+    private async Task RestartAsync(CancellationToken cancellationToken, HealthCheckResult healthResult)
     {
         try
         {
@@ -179,7 +199,8 @@ public sealed class ExifToolBridge : IExifToolBridge
             new ExifToolLifecycleEvent(
                 EventType: "exiftool_restarted",
                 SourcePath: _config.ExifTool.Path,
-                Message: "ExifTool process restarted after failed health check."),
+                Message: $"ExifTool process restarted after failed health check: {healthResult.Reason} ({healthResult.Message})",
+                Data: healthResult.Data),
             cancellationToken);
     }
 
@@ -214,7 +235,7 @@ public sealed class ExifToolBridge : IExifToolBridge
         try
         {
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeoutCts.CancelAfter(VersionProbeTimeout);
+            timeoutCts.CancelAfter(_startupTimeout);
 
             var cmd = $"-ver\n-echo1 {marker}\n-execute\n";
             await _process.WriteStdinAsync(cmd, cancellationToken);
@@ -305,6 +326,36 @@ public sealed class ExifToolBridge : IExifToolBridge
         {
             // lifecycle auditing must never break bridge flow
         }
+    }
+
+    private Dictionary<string, string> BuildHealthFailureData(string reason, string detail)
+    {
+        var data = new Dictionary<string, string>
+        {
+            ["reason"] = reason,
+            ["detail"] = detail,
+            ["process_running"] = _process.IsRunning.ToString()
+        };
+
+        if (!string.IsNullOrWhiteSpace(_process.LastStderrLine))
+        {
+            data["stderr_last_line"] = _process.LastStderrLine!;
+        }
+
+        return data;
+    }
+
+    private sealed record HealthCheckResult(
+        bool IsHealthy,
+        string Reason,
+        string Message,
+        Dictionary<string, string>? Data)
+    {
+        public static readonly HealthCheckResult Success = new(
+            IsHealthy: true,
+            Reason: string.Empty,
+            Message: string.Empty,
+            Data: null);
     }
 
     private void OnStdoutLine(string line)

@@ -18,6 +18,7 @@
   - 单 EXE 多模式：`--mode background`（默认托盘后台）、`--mode service`、`--mode cli`。
   - 托盘右键控制：暂停 / 继续 / 退出。
   - 服务安装脚本：`scripts/install-service.ps1`。
+  - ExifTool 健康检查修复：首次启动探测 3s、运行中心跳 500ms，失败原因写入 `exiftool_restarted` 审计 `data`。
   - 预发布脚本：`scripts/release-readiness.ps1`（test + smoke + publish）。
   - 打包脚本：`scripts/publish-cli-exe.ps1`。
 - 已验证：`dotnet test PhotoPrivacy.sln` 全绿；预发布脚本全流程可跑通。

@@ -147,4 +147,5 @@ dotnet run --project src/PhotoPrivacy.Cli/PhotoPrivacy.Cli.csproj -- --mode cli 
 ## Notes
 - 当前实现严格采用 `FileSystemWatcher` 事件驱动，不轮询。
 - ExifTool 采用 `stay_open` 单进程桥接；支持 `dry_run` 方便无损联调。
+- ExifTool 健康检查采用双阈值：首次启动探测 3s、运行中心跳 500ms；重启事件会记录失败原因到审计 `data` 字段。
 - 请勿修改 ExifToolGUI 目录内容，本项目仅调用指定路径的 ExifTool 可执行文件。

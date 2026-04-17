@@ -13,6 +13,10 @@ public interface IExifToolProcess
 {
     event Action<string>? StdoutLine;
 
+    bool IsRunning { get; }
+
+    string? LastStderrLine { get; }
+
     Task StartAsync(string exePath, string[] args, CancellationToken cancellationToken);
 
     Task WriteStdinAsync(string text, CancellationToken cancellationToken);
