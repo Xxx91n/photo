@@ -39,6 +39,16 @@ public sealed class FileTaskPipeline
 
         try
         {
+            await _audit.WriteAsync(
+                new AuditEvent(
+                    "file_detected",
+                    DateTimeOffset.UtcNow,
+                    Guid.NewGuid().ToString("N"),
+                    sourcePath,
+                    "debounced file entered pipeline",
+                    null),
+                cancellationToken);
+
             var decision = _ruleEngine.Decide(sourcePath);
             if (!decision.ShouldProcess || decision.OutputPath is null)
             {
@@ -69,6 +79,16 @@ public sealed class FileTaskPipeline
             {
                 try
                 {
+                    await _audit.WriteAsync(
+                        new AuditEvent(
+                            "file_processing_started",
+                            DateTimeOffset.UtcNow,
+                            Guid.NewGuid().ToString("N"),
+                            sourcePath,
+                            $"attempt={attempt}",
+                            null),
+                        cancellationToken);
+
                     await _bridge.WipeMetadataAsync(target, cancellationToken);
                     await _audit.WriteAsync(
                         new AuditEvent("file_processing_succeeded", DateTimeOffset.UtcNow, Guid.NewGuid().ToString("N"), sourcePath, $"attempt={attempt}", null),
@@ -85,6 +105,17 @@ public sealed class FileTaskPipeline
                     {
                         var delaySeconds = _config.Retry.BackoffSeconds[
                             Math.Min(attempt - 1, _config.Retry.BackoffSeconds.Length - 1)];
+
+                        await _audit.WriteAsync(
+                            new AuditEvent(
+                                "file_retry_scheduled",
+                                DateTimeOffset.UtcNow,
+                                Guid.NewGuid().ToString("N"),
+                                sourcePath,
+                                $"next_attempt={attempt + 1};delay_seconds={delaySeconds}",
+                                null),
+                            cancellationToken);
+
                         await Task.Delay(TimeSpan.FromSeconds(delaySeconds), cancellationToken);
                     }
                 }

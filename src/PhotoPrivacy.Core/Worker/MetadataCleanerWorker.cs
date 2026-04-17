@@ -36,14 +36,25 @@ public sealed class MetadataCleanerWorker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var config = LoadEffectiveConfig();
-        AppConfigValidator.Validate(config);
-
-        // Fast-fail when ExifTool path is invalid in live mode.
-        // This avoids hanging the CLI host when the bridge cannot even start.
-        if (!config.ExifTool.DryRun && !File.Exists(config.ExifTool.Path))
+        AppConfig config;
+        try
         {
-            _logger.LogError("exiftool.path not found: {Path}", config.ExifTool.Path);
+            config = LoadEffectiveConfig();
+            AppConfigValidator.Validate(config);
+        }
+        catch (AppConfigValidationException ex)
+        {
+            _logger.LogError(ex, "Configuration validation failed: {Message}", ex.Message);
+            Environment.ExitCode = 1;
+            _applicationLifetime.StopApplication();
+            return;
+        }
+
+        var printEffectiveConfig = ParseBool(GetValue("print-effective-config", "print_effective_config"));
+        if (printEffectiveConfig)
+        {
+            var json = AppConfigJson.ToIndentedJson(config);
+            Console.WriteLine(json);
             _applicationLifetime.StopApplication();
             return;
         }
@@ -55,6 +66,19 @@ public sealed class MetadataCleanerWorker : BackgroundService
         _recentFingerprintCache = new RecentFingerprintCache(() => DateTimeOffset.UtcNow);
 
         await _bridge.StartAsync(stoppingToken);
+
+        if (config.ExifTool.DryRun)
+        {
+            await _audit.WriteAsync(
+                new AuditEvent(
+                    EventType: "exiftool_started",
+                    TimestampUtc: DateTimeOffset.UtcNow,
+                    TaskId: Guid.NewGuid().ToString("N"),
+                    SourcePath: config.ExifTool.Path,
+                    Message: "dry-run bridge started",
+                    Data: null),
+                stoppingToken);
+        }
 
         await _audit.WriteAsync(
             new AuditEvent(
@@ -204,7 +228,22 @@ public sealed class MetadataCleanerWorker : BackgroundService
             return new DryRunExifToolBridge(audit);
         }
 
-        return new ExifToolBridge(new ProcessExifToolProcess(), config);
+        return new ExifToolBridge(
+            process: new ProcessExifToolProcess(),
+            config: config,
+            logger: null,
+            lifecycleSink: async (lifecycleEvent, cancellationToken) =>
+            {
+                await audit.WriteAsync(
+                    new AuditEvent(
+                        EventType: lifecycleEvent.EventType,
+                        TimestampUtc: DateTimeOffset.UtcNow,
+                        TaskId: Guid.NewGuid().ToString("N"),
+                        SourcePath: lifecycleEvent.SourcePath,
+                        Message: lifecycleEvent.Message,
+                        Data: lifecycleEvent.Data),
+                    cancellationToken);
+            });
     }
 
     private void EnqueueIfNeeded(string path)

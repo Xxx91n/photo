@@ -1,8 +1,12 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using PhotoPrivacy.Core.Worker;
 
 var builder = Host.CreateApplicationBuilder(args);
+
+builder.Logging.ClearProviders();
+builder.Logging.AddSimpleConsole();
 
 // Extend shutdown timeout so StopAsync has time to flush the audit log
 // and drain the ExifTool bridge cleanly before the host force-kills the app.
@@ -11,6 +15,7 @@ var builder = Host.CreateApplicationBuilder(args);
 builder.Services.Configure<HostOptions>(options =>
 {
     options.ShutdownTimeout = TimeSpan.FromSeconds(10);
+    options.BackgroundServiceExceptionBehavior = BackgroundServiceExceptionBehavior.StopHost;
 });
 
 builder.Services.AddHostedService<MetadataCleanerWorker>();

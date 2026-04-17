@@ -73,6 +73,34 @@ public sealed class FileTaskPipelineTests
     }
 
     [Fact]
+    public async Task HandleAsync_Should_Write_FileDetected_And_FileProcessingStarted_Before_Success()
+    {
+        var cfg = AppConfig.Default with
+        {
+            Retry = AppConfig.Default.Retry with { MaxAttempts = 1, BackoffSeconds = [0] }
+        };
+
+        var ruleEngine = new RuleEngine(cfg);
+        var bridge = new CaptureTargetBridge();
+        var fileOps = new InMemoryFileOperations();
+        var audit = new InMemoryAuditLogger();
+        var pipeline = new FileTaskPipeline(cfg, ruleEngine, bridge, fileOps, audit);
+
+        await pipeline.HandleAsync(@"D:\hot\a.jpg", CancellationToken.None);
+
+        var eventTypes = audit.Events.Select(x => x.EventType).ToList();
+        var detectedIndex = eventTypes.IndexOf("file_detected");
+        var startedIndex = eventTypes.IndexOf("file_processing_started");
+        var succeededIndex = eventTypes.IndexOf("file_processing_succeeded");
+
+        Assert.True(detectedIndex >= 0, "missing file_detected");
+        Assert.True(startedIndex >= 0, "missing file_processing_started");
+        Assert.True(succeededIndex >= 0, "missing file_processing_succeeded");
+        Assert.True(detectedIndex < startedIndex, "file_detected should appear before file_processing_started");
+        Assert.True(startedIndex < succeededIndex, "file_processing_started should appear before file_processing_succeeded");
+    }
+
+    [Fact]
     public async Task HandleAsync_Should_Move_Output_File_To_Quarantine_When_Retry_Exhausted_And_Output_Is_Fixed()
     {
         var cfg = AppConfig.Default with
@@ -97,6 +125,29 @@ public sealed class FileTaskPipelineTests
 
         Assert.Contains(fileOps.Moves, m => m.Source == @"D:\clean\album\a.jpg" && m.Destination == @"D:\quarantine\a.jpg");
         Assert.Contains(audit.Events, e => e.EventType == "file_quarantined");
+    }
+
+    [Fact]
+    public async Task HandleAsync_Should_Write_FileRetryScheduled_Before_Second_Attempt()
+    {
+        var cfg = AppConfig.Default with
+        {
+            Retry = AppConfig.Default.Retry with { MaxAttempts = 2, BackoffSeconds = [0, 0] },
+            Quarantine = AppConfig.Default.Quarantine with { Directory = @"D:\hot\_quarantine" }
+        };
+
+        var ruleEngine = new RuleEngine(cfg);
+        var bridge = new AlwaysFailBridge();
+        var fileOps = new InMemoryFileOperations();
+        var audit = new InMemoryAuditLogger();
+        var pipeline = new FileTaskPipeline(cfg, ruleEngine, bridge, fileOps, audit);
+
+        await pipeline.HandleAsync(@"D:\hot\a.jpg", CancellationToken.None);
+
+        Assert.Contains(
+            audit.Events,
+            e => e.EventType == "file_retry_scheduled"
+                && e.Message.Contains("next_attempt=2", StringComparison.OrdinalIgnoreCase));
     }
 
     private sealed class InMemoryFileOperations : IFileOperations

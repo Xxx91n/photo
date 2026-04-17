@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using PhotoPrivacy.Core.Configuration;
 using PhotoPrivacy.Core.ExifTool;
 
@@ -64,6 +65,110 @@ public sealed class ExifToolBridgeTests
         Assert.True(process.StopCalls >= 1);
     }
 
+    [Fact]
+    public async Task EnsureStartedAsync_Should_Probe_ExifTool_Version_On_First_Start()
+    {
+        var process = new FakeExifToolProcess();
+        var bridge = new ExifToolBridge(process, AppConfig.Default);
+
+        await bridge.EnsureStartedAsync(CancellationToken.None);
+
+        Assert.Contains(process.Writes, w => w.Contains("-ver", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task EnsureStartedAsync_Should_Emit_ExifToolStarted_Lifecycle_Event_On_First_Start()
+    {
+        var process = new FakeExifToolProcess();
+        var lifecycleEvents = new List<ExifToolLifecycleEvent>();
+        var bridge = new ExifToolBridge(
+            process,
+            AppConfig.Default,
+            logger: null,
+            lifecycleSink: (ev, _) =>
+            {
+                lifecycleEvents.Add(ev);
+                return ValueTask.CompletedTask;
+            });
+
+        await bridge.EnsureStartedAsync(CancellationToken.None);
+
+        Assert.Contains(lifecycleEvents, ev => ev.EventType == "exiftool_started");
+    }
+
+    [Fact]
+    public async Task EnsureStartedAsync_Should_Emit_ExifToolRestarted_Lifecycle_Event_When_HealthCheck_Times_Out()
+    {
+        var process = new FakeExifToolProcess
+        {
+            SuppressHealthReady = true
+        };
+
+        var lifecycleEvents = new List<ExifToolLifecycleEvent>();
+        var bridge = new ExifToolBridge(
+            process,
+            AppConfig.Default,
+            logger: null,
+            lifecycleSink: (ev, _) =>
+            {
+                lifecycleEvents.Add(ev);
+                return ValueTask.CompletedTask;
+            },
+            healthTimeout: TimeSpan.FromMilliseconds(100));
+
+        await bridge.EnsureStartedAsync(CancellationToken.None);
+        await bridge.EnsureStartedAsync(CancellationToken.None);
+
+        Assert.Contains(lifecycleEvents, ev => ev.EventType == "exiftool_restarted");
+    }
+
+    [Fact]
+    public async Task EnsureStartedAsync_Should_Log_Warning_When_WindowsLongPath_Known_Issue_Version_Detected()
+    {
+        var process = new FakeExifToolProcess
+        {
+            VersionText = "13.05"
+        };
+        var logger = new ListLogger<ExifToolBridge>();
+        var bridge = new ExifToolBridge(process, AppConfig.Default, logger, healthTimeout: TimeSpan.FromMilliseconds(200));
+
+        await bridge.EnsureStartedAsync(CancellationToken.None);
+
+        Assert.Contains(
+            logger.Entries,
+            x => x.Level == LogLevel.Warning
+                && x.Message.Contains("WindowsLongPath", StringComparison.OrdinalIgnoreCase)
+                && x.Message.Contains("known stay_open", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task EnsureStartedAsync_Should_Emit_VersionWarning_Lifecycle_Event_When_Known_Issue_Version_Detected()
+    {
+        var process = new FakeExifToolProcess
+        {
+            VersionText = "13.05"
+        };
+
+        var lifecycleEvents = new List<ExifToolLifecycleEvent>();
+        var bridge = new ExifToolBridge(
+            process,
+            AppConfig.Default,
+            logger: null,
+            lifecycleSink: (ev, _) =>
+            {
+                lifecycleEvents.Add(ev);
+                return ValueTask.CompletedTask;
+            },
+            healthTimeout: TimeSpan.FromMilliseconds(200));
+
+        await bridge.EnsureStartedAsync(CancellationToken.None);
+
+        Assert.Contains(
+            lifecycleEvents,
+            ev => ev.EventType == "exiftool_version_warning"
+                && ev.Message.Contains("WindowsLongPath", StringComparison.OrdinalIgnoreCase));
+    }
+
     private sealed class FakeExifToolProcess : IExifToolProcess
     {
         public event Action<string>? StdoutLine;
@@ -76,6 +181,7 @@ public sealed class ExifToolBridgeTests
         public int StopCalls { get; private set; }
         public bool SuppressHealthReady { get; set; }
         public bool AutoEmitTaskDone { get; set; } = true;
+        public string VersionText { get; set; } = "13.20";
 
         private readonly List<string> _args = [];
 
@@ -109,6 +215,12 @@ public sealed class ExifToolBridgeTests
                 {
                     EmitStdout(marker);
                 }
+
+                if (marker.Contains("VERSION_DONE_", StringComparison.Ordinal))
+                {
+                    EmitStdout(VersionText);
+                    EmitStdout(marker);
+                }
             }
 
             return Task.CompletedTask;
@@ -125,4 +237,25 @@ public sealed class ExifToolBridgeTests
             StdoutLine?.Invoke(line);
         }
     }
+
+    private sealed class ListLogger<T> : ILogger<T>
+    {
+        public List<LogEntry> Entries { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            Entries.Add(new LogEntry(logLevel, formatter(state, exception)));
+        }
+    }
+
+    private sealed record LogEntry(LogLevel Level, string Message);
 }

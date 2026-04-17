@@ -2,12 +2,14 @@ param(
   [Parameter(Mandatory = $true)][string]$HotFolder,
   [Parameter(Mandatory = $true)][string]$AuditFolder,
   [string]$ConfigPath = "",
-  [bool]$DryRun = $true
+  [string]$DryRun = "true"
 )
 
 Write-Host "Smoke test start"
 
-$args = @("--hot-folder", "$HotFolder", "--audit-folder", "$AuditFolder", "--once", "true", "--dry-run", $DryRun.ToString())
+$dryRunEnabled = $DryRun -match '^(1|true|yes|on)$'
+
+$args = @("--hot-folder", "$HotFolder", "--audit-folder", "$AuditFolder", "--once", "true", "--dry-run", $dryRunEnabled.ToString())
 if (-not [string]::IsNullOrWhiteSpace($ConfigPath)) {
   $args += @("--config", "$ConfigPath")
 }

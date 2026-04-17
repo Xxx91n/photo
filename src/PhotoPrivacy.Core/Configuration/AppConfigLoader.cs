@@ -13,6 +13,8 @@ public static class AppConfigLoader
         }
 
         var json = File.ReadAllText(configPath);
+        var (legacyExifToolPath, hasNestedExifToolPath) = ReadLegacyHints(json);
+
         var dto = JsonSerializer.Deserialize<AppConfigDto>(json, new JsonSerializerOptions
         {
             PropertyNameCaseInsensitive = true
@@ -24,9 +26,9 @@ public static class AppConfigLoader
         }
 
         return new AppConfig(
-            SchemaVersion: dto.SchemaVersion,
+            SchemaVersion: Math.Max(1, dto.SchemaVersion),
             ExifTool: new ExifToolOptions(
-                Path: dto.ExifTool.Path,
+                Path: ResolveExifToolPath(dto.ExifTool.Path, legacyExifToolPath, hasNestedExifToolPath),
                 EnableWindowsLongPath: dto.ExifTool.EnableWindowsLongPath,
                 EnableLargeFileSupport: dto.ExifTool.EnableLargeFileSupport,
                 DryRun: dto.ExifTool.DryRun,
@@ -55,6 +57,44 @@ public static class AppConfigLoader
                 LogDirectory: dto.Audit.LogDirectory,
                 RetainDays: dto.Audit.RetainDays,
                 DiagnosticMode: dto.Audit.DiagnosticMode));
+    }
+
+    private static string ResolveExifToolPath(string nestedPath, string? legacyPath, bool hasNestedExifToolPath)
+    {
+        if (hasNestedExifToolPath)
+        {
+            return nestedPath;
+        }
+
+        return !string.IsNullOrWhiteSpace(legacyPath)
+            ? legacyPath
+            : nestedPath;
+    }
+
+    private static (string? LegacyExifToolPath, bool HasNestedExifToolPath) ReadLegacyHints(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+
+        string? legacyExifToolPath = null;
+        var hasNestedExifToolPath = false;
+
+        if (root.TryGetProperty("exiftool_path", out var legacyPathElement)
+            && legacyPathElement.ValueKind == JsonValueKind.String)
+        {
+            legacyExifToolPath = legacyPathElement.GetString();
+        }
+
+        if (root.TryGetProperty("exiftool", out var exiftoolElement)
+            && exiftoolElement.ValueKind == JsonValueKind.Object
+            && exiftoolElement.TryGetProperty("path", out var nestedPathElement)
+            && nestedPathElement.ValueKind == JsonValueKind.String
+            && !string.IsNullOrWhiteSpace(nestedPathElement.GetString()))
+        {
+            hasNestedExifToolPath = true;
+        }
+
+        return (legacyExifToolPath, hasNestedExifToolPath);
     }
 
     private sealed class AppConfigDto

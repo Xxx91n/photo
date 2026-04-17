@@ -15,6 +15,12 @@ dotnet run --project src/PhotoPrivacy.Cli/PhotoPrivacy.Cli.csproj
 dotnet run --project src/PhotoPrivacy.Cli/PhotoPrivacy.Cli.csproj -- --once true
 ```
 
+7. 输出“最终生效配置”（不进入监听/处理流程）：
+
+```bash
+dotnet run --project src/PhotoPrivacy.Cli/PhotoPrivacy.Cli.csproj -- --config .\config\config.json --print-effective-config true
+```
+
 5. 启用 dry-run（不实际调用 ExifTool，仅走流程并写审计）：
 
 ```bash
@@ -35,6 +41,22 @@ dotnet test PhotoPrivacy.sln
 powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1 -HotFolder D:\hot -AuditFolder D:\hot\_audit
 ```
 
+## Build EXE
+
+1) 生成单文件 EXE（含 zip 包）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/publish-cli-exe.ps1 -Version 0.1.0-preview -Runtime win-x64 -SelfContained true -Zip true
+```
+
+2) 发行前一键检查（测试 + smoke + 打包）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/release-readiness.ps1 -Version 0.1.0-preview -Runtime win-x64
+```
+
+3) 成熟版发布时间规划见：`release-roadmap-2026-04-17.md`
+
 ### 允许你验证程序功能的方法
 
 1) **最安全流程验证（推荐）**：dry-run + 固定输出目录
@@ -50,7 +72,7 @@ powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1 -HotFolder D:\hot -Au
 
 - 期望结果：
   - 输出目录出现复制后的文件
-  - 审计日志出现 `dry_run_wipe_skipped` 和 `file_processing_succeeded`
+  - 审计日志出现 `exiftool_started`、`dry_run_wipe_skipped` 和 `file_processing_succeeded`
 
 2) **真实清理验证（会调用 ExifTool）**
 - 在 `config/config.json` 中设置 `exiftool.dry_run = false`
@@ -64,11 +86,12 @@ dotnet run --project src/PhotoPrivacy.Cli/PhotoPrivacy.Cli.csproj -- --config .\
 - 期望结果（在 ExifTool 路径可用时）：
   - 成功文件被清理元数据（按你的输出策略落地）
   - 失败文件按重试后进入隔离目录
-  - 审计日志含 `file_processing_succeeded`/`file_processing_failed`/`file_quarantined`
+  - 审计日志含 `exiftool_started`/`file_detected`/`file_processing_started`/`file_retry_scheduled`/`file_processing_succeeded`/`file_processing_failed`/`file_quarantined`
 
 - 期望结果（在 ExifTool 路径不可用时）：
   - 进程直接报错退出（`exiftool.path not found`）
   - 不会生成清理成功审计
+  - 退出码非 0
 
 3) **持续监听验证**
 - 前台常驻运行：

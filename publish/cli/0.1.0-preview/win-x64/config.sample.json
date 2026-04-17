@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "exiftool": {
+    "path": "D:\\tools\\A_system\\ExifToolGUI\\ExifTool\\ExifTool.exe",
+    "enable_windows_long_path": true,
+    "enable_large_file_support": true,
+    "dry_run": false,
+    "extra_exiftool_args": []
+  },
+  "watch": {
+    "hot_folder": "D:\\hot",
+    "include_subdirectories": true,
+    "debounce_ms": 800,
+    "internal_buffer_size": 65536
+  },
+  "rules": {
+    "allowed_extensions": [
+      ".jpg",
+      ".jpeg",
+      ".png",
+      ".heic",
+      ".mp4",
+      ".pdf",
+      ".docx"
+    ],
+    "excluded_patterns": [
+      "~$*",
+      "*.tmp"
+    ],
+    "output_mode": "same_as_source",
+    "output_directory": ""
+  },
+  "retry": {
+    "max_attempts": 3,
+    "backoff_seconds": [
+      1,
+      3,
+      10
+    ]
+  },
+  "backup": {
+    "enabled": false,
+    "suffix": ".bak",
+    "retention": "keep"
+  },
+  "quarantine": {
+    "enabled": true,
+    "directory": "D:\\hot\\_quarantine"
+  },
+  "audit": {
+    "log_directory": "D:\\hot\\_audit",
+    "retain_days": 30,
+    "diagnostic_mode": false
+  }
+}
