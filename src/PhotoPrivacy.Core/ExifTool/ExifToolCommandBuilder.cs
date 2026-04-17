@@ -9,7 +9,7 @@ public static class ExifToolCommandBuilder
     {
         var args = new List<string>
         {
-            "-stay_open", "true",
+            "-stay_open", "True",
             "-@", "-",
             "-q", "-q"
         };
@@ -38,7 +38,8 @@ public static class ExifToolCommandBuilder
         sb.Append("-all=\n");
         sb.Append("-overwrite_original\n");
         sb.Append(targetPath + "\n");
-        sb.Append($"-echo1 TASK_DONE_{taskId}\n");
+        sb.Append("-echo1\n");
+        sb.Append($"TASK_DONE_{taskId}\n");
         sb.Append("-execute\n");
         return sb.ToString();
     }

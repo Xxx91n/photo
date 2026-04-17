@@ -75,9 +75,11 @@ public sealed class ExifToolBridge : IExifToolBridge
 
         if (shouldStart)
         {
+            var startArgs = ExifToolCommandBuilder.BuildStartArguments(_config);
+
             await _process.StartAsync(
                 _config.ExifTool.Path,
-                ExifToolCommandBuilder.BuildStartArguments(_config),
+                startArgs,
                 cancellationToken);
 
             lock (_lifecycleGate)
@@ -89,7 +91,12 @@ public sealed class ExifToolBridge : IExifToolBridge
                 new ExifToolLifecycleEvent(
                     EventType: "exiftool_started",
                     SourcePath: _config.ExifTool.Path,
-                    Message: "ExifTool stay_open process started."),
+                    Message: "ExifTool stay_open process started.",
+                    Data: new Dictionary<string, string>
+                    {
+                        ["exe_path"] = _config.ExifTool.Path,
+                        ["arguments"] = string.Join(" ", startArgs)
+                    }),
                 cancellationToken);
 
             await ProbeVersionAndWarnIfNeededAsync(cancellationToken);
@@ -138,7 +145,7 @@ public sealed class ExifToolBridge : IExifToolBridge
         {
             // Use explicit \n (not AppendLine/\r\n) — ExifTool stay_open protocol
             // requires LF-only line endings; \r\n breaks argument parsing.
-            var cmd = $"-echo1 {marker}\n-execute\n";
+            var cmd = $"-fast\n-echo1\n{marker}\n{_config.ExifTool.Path}\n-execute\n";
 
             await _process.WriteStdinAsync(cmd, cancellationToken);
             await tcs.Task.WaitAsync(timeoutCts.Token);
@@ -237,7 +244,7 @@ public sealed class ExifToolBridge : IExifToolBridge
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeoutCts.CancelAfter(_startupTimeout);
 
-            var cmd = $"-ver\n-echo1 {marker}\n-execute\n";
+            var cmd = $"-ver\n-echo1\n{marker}\n-execute\n";
             await _process.WriteStdinAsync(cmd, cancellationToken);
 
             var versionRaw = await tcs.Task.WaitAsync(timeoutCts.Token);

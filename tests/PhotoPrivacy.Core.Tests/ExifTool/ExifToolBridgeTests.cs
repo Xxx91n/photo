@@ -16,7 +16,7 @@ public sealed class ExifToolBridgeTests
         await bridge.WipeMetadataAsync(@"D:\hot\a.jpg", CancellationToken.None);
 
         Assert.True(process.Writes.Count >= 1);
-        Assert.Contains(process.Writes, w => w.Contains("-echo1 TASK_DONE_", StringComparison.Ordinal));
+        Assert.Contains(process.Writes, w => w.Contains("-echo1\nTASK_DONE_", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -114,6 +114,29 @@ public sealed class ExifToolBridgeTests
     }
 
     [Fact]
+    public async Task EnsureStartedAsync_Should_Include_Start_CommandLine_In_ExifToolStarted_Data()
+    {
+        var process = new FakeExifToolProcess();
+        var lifecycleEvents = new List<ExifToolLifecycleEvent>();
+        var bridge = new ExifToolBridge(
+            process,
+            AppConfig.Default,
+            logger: null,
+            lifecycleSink: (ev, _) =>
+            {
+                lifecycleEvents.Add(ev);
+                return ValueTask.CompletedTask;
+            });
+
+        await bridge.EnsureStartedAsync(CancellationToken.None);
+
+        var started = lifecycleEvents.Last(x => x.EventType == "exiftool_started");
+        Assert.NotNull(started.Data);
+        Assert.Contains("-stay_open", started.Data!["arguments"], StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("-@", started.Data!["arguments"], StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task EnsureStartedAsync_Should_Emit_ExifToolRestarted_Lifecycle_Event_When_HealthCheck_Times_Out()
     {
         var process = new FakeExifToolProcess
@@ -166,6 +189,22 @@ public sealed class ExifToolBridgeTests
         Assert.NotNull(restarted.Data);
         Assert.Equal("timeout", restarted.Data!["reason"]);
         Assert.Equal("stderr: timeout", restarted.Data!["stderr_last_line"]);
+    }
+
+    [Fact]
+    public async Task EnsureStartedAsync_HealthCheck_Should_Use_Fast_Path_Probe_With_Marker()
+    {
+        var process = new FakeExifToolProcess();
+        var bridge = new ExifToolBridge(process, AppConfig.Default);
+
+        await bridge.EnsureStartedAsync(CancellationToken.None);
+        await bridge.EnsureStartedAsync(CancellationToken.None);
+
+        var healthCommand = process.Writes.Last(x => x.Contains("HEALTH_", StringComparison.Ordinal));
+        Assert.Contains("-fast", healthCommand, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("-execute", healthCommand, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(AppConfig.Default.ExifTool.Path, healthCommand, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("-ver", healthCommand, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -268,11 +307,7 @@ public sealed class ExifToolBridgeTests
         {
             Writes.Add(text);
 
-            var markerLines = text
-                .Split('\n', StringSplitOptions.RemoveEmptyEntries)
-                .Where(l => l.Contains("-echo1", StringComparison.Ordinal))
-                .Select(l => l.Replace("-echo1", string.Empty, StringComparison.Ordinal).Trim())
-                .ToArray();
+            var markerLines = ParseEchoMarkers(text);
 
             foreach (var marker in markerLines)
             {
@@ -292,7 +327,46 @@ public sealed class ExifToolBridgeTests
                 }
             }
 
+            var hasVersionProbe = text.Contains("-ver", StringComparison.OrdinalIgnoreCase);
+            var hasVersionDoneMarker = markerLines.Any(x => x.Contains("VERSION_DONE_", StringComparison.Ordinal));
+            if (hasVersionProbe && !hasVersionDoneMarker)
+            {
+                EmitHealthVersion();
+            }
+
             return Task.CompletedTask;
+        }
+
+        private static string[] ParseEchoMarkers(string text)
+        {
+            var lines = text
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                .Select(l => l.Trim())
+                .ToArray();
+
+            var markers = new List<string>();
+            for (var i = 0; i < lines.Length; i++)
+            {
+                var line = lines[i];
+                if (!line.StartsWith("-echo1", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                var suffix = line["-echo1".Length..].Trim();
+                if (!string.IsNullOrWhiteSpace(suffix))
+                {
+                    markers.Add(suffix);
+                    continue;
+                }
+
+                if (i + 1 < lines.Length && !lines[i + 1].StartsWith("-", StringComparison.Ordinal))
+                {
+                    markers.Add(lines[i + 1]);
+                }
+            }
+
+            return markers.ToArray();
         }
 
         public Task StopAsync(CancellationToken cancellationToken)
@@ -331,6 +405,26 @@ public sealed class ExifToolBridgeTests
                 await Task.Delay(VersionResponseDelayMs);
                 EmitStdout(VersionText);
                 EmitStdout(marker);
+            });
+        }
+
+        private void EmitHealthVersion()
+        {
+            if (SuppressHealthReady)
+            {
+                return;
+            }
+
+            if (HealthResponseDelayMs <= 0)
+            {
+                EmitStdout(VersionText);
+                return;
+            }
+
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(HealthResponseDelayMs);
+                EmitStdout(VersionText);
             });
         }
 
