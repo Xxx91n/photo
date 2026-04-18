@@ -67,12 +67,30 @@ sc.exe start PhotoPrivacyCleaner
 PhotoPrivacy.exe --mode cli --once true
 ```
 
-## 旧服务宿主（独立项目，兼容保留）
+## Linux 部署（systemd）
+
+1) 发布 linux-x64 单文件：
 
 ```powershell
-dotnet publish src/PhotoPrivacy.Service/PhotoPrivacy.Service.csproj -c Release -o .\publish\service
-sc.exe create PhotoPrivacyCleaner binPath= "$(Resolve-Path .\publish\service\PhotoPrivacy.Service.exe)"
-sc.exe start PhotoPrivacyCleaner
+powershell -ExecutionPolicy Bypass -File scripts/publish-cli-exe.ps1 -Version 0.1.0-preview -Runtime linux-x64 -SelfContained true -Zip true
+```
+
+2) 上传并解压 `publish/PhotoPrivacy-<version>-linux-x64.tar.gz` 到 Linux 主机（推荐 `/opt/photoprivacy`）。
+
+3) 安装并启动 systemd 服务（root）：
+
+```bash
+sudo bash scripts/install-systemd-service.sh --install-dir /opt/photoprivacy --config /opt/photoprivacy/config/config.json
+```
+
+脚本会生成并启用 `photoprivacy.service`（`systemctl enable --now photoprivacy`）。
+
+4) 建议调整 inotify 上限（避免大目录监听丢事件）：
+
+```bash
+echo "fs.inotify.max_user_watches=524288" | sudo tee /etc/sysctl.d/99-photoprivacy.conf
+echo "fs.inotify.max_user_instances=1024" | sudo tee -a /etc/sysctl.d/99-photoprivacy.conf
+sudo sysctl --system
 ```
 
 ## Verification
@@ -148,6 +166,7 @@ dotnet run --project src/PhotoPrivacy.Cli/PhotoPrivacy.Cli.csproj -- --mode cli 
 - 当前实现严格采用 `FileSystemWatcher` 事件驱动，不轮询。
 - ExifTool 采用 `stay_open` 单进程桥接；支持 `dry_run` 方便无损联调。
 - ExifTool 健康检查采用双阈值：首次启动探测 3s、运行中心跳 500ms；重启事件会记录失败原因到审计 `data` 字段。
+- 程序采用全局 Mutex 单实例保护：重复启动会被拒绝，并写入 `instance_conflict` 审计事件。
 - 当 `audit.log_directory` 或 `quarantine.directory` 位于 `watch.hot_folder` 子目录（例如默认的 `D:\hot\_audit` / `D:\hot\_quarantine`）时，程序会自动从 FSW 监听流中排除这些目录，无需手工写入 `rules.excluded_patterns`。
 - 启动时会在 `service_started` 事件的 `data["已自动排除的子目录列表"]` 中输出实际自动排除的目录，便于确认。
 - 请勿修改 ExifToolGUI 目录内容，本项目仅调用指定路径的 ExifTool 可执行文件。

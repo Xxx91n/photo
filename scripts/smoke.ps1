@@ -14,7 +14,7 @@ if (-not [string]::IsNullOrWhiteSpace($ConfigPath)) {
   $args += @("--config", "$ConfigPath")
 }
 
-dotnet run --project src/PhotoPrivacy.Cli/PhotoPrivacy.Cli.csproj -- @args
+dotnet run --project src/PhotoPrivacy.Cli/PhotoPrivacy.Cli.csproj --framework net10.0-windows -- @args
 if ($LASTEXITCODE -ne 0) {
   throw "CLI failed"
 }

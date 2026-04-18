@@ -318,13 +318,13 @@ public sealed class DryRunOutputFlowTests
         }
     }
 
-    private static async Task<CliRunResult> RunCliAsync(string configPath, TimeSpan timeout, string extraArgs = "")
+    private static async Task<CliRunResult> RunCliAsync(string configPath, TimeSpan timeout, string extraArgs = "", string framework = "net10.0-windows")
     {
         var repoRoot = FindRepoRoot();
         var mergedArgs = string.IsNullOrWhiteSpace(extraArgs) ? string.Empty : " " + extraArgs.Trim();
         var psi = new ProcessStartInfo(
             "dotnet",
-            $"run --project src/PhotoPrivacy.Cli/PhotoPrivacy.Cli.csproj -- --mode cli --config \"{configPath}\" --once true{mergedArgs}")
+            $"run --project src/PhotoPrivacy.Cli/PhotoPrivacy.Cli.csproj --framework {framework} -- --mode cli --config \"{configPath}\" --once true{mergedArgs}")
         {
             WorkingDirectory = repoRoot,
             RedirectStandardOutput = true,

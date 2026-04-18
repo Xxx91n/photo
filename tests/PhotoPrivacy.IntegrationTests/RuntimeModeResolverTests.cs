@@ -40,4 +40,36 @@ public sealed class RuntimeModeResolverTests
 
         Assert.Equal(RuntimeMode.Cli, mode);
     }
+
+    [Fact]
+    public void ResolveFromArgs_Should_Return_Background_Mode()
+    {
+        var mode = RuntimeModeResolver.ResolveFromArgs(["--mode", "background"]);
+
+        Assert.Equal(RuntimeMode.Background, mode);
+    }
+
+    [Fact]
+    public void ResolveFromArgs_Should_Return_Service_Mode()
+    {
+        var mode = RuntimeModeResolver.ResolveFromArgs(["--mode", "service"]);
+
+        Assert.Equal(RuntimeMode.Service, mode);
+    }
+
+    [Fact]
+    public void ResolveFromArgs_Should_Return_Cli_Mode_With_Inline_Assignment()
+    {
+        var mode = RuntimeModeResolver.ResolveFromArgs(["--mode=cli"]);
+
+        Assert.Equal(RuntimeMode.Cli, mode);
+    }
+
+    [Fact]
+    public void ResolveRaw_Should_Default_To_Background_When_Unknown_Mode()
+    {
+        var mode = RuntimeModeResolver.ResolveRaw("unknown");
+
+        Assert.Equal(RuntimeMode.Background, mode);
+    }
 }
