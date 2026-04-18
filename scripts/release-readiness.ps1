@@ -34,7 +34,8 @@ finally {
 }
 
 Write-Host "[3/3] publish cli exe"
-powershell -ExecutionPolicy Bypass -File "$repoRoot\scripts\publish-cli-exe.ps1" -Version $Version -Runtime $Runtime -SelfContained true -Zip true
+$framework = if ($Runtime -like "win-*") { "net10.0-windows" } else { "net10.0" }
+powershell -ExecutionPolicy Bypass -File "$repoRoot\scripts\publish-cli-exe.ps1" -Version $Version -Runtime $Runtime -Framework $framework -SelfContained true -Zip true
 if ($LASTEXITCODE -ne 0) {
   throw "Publish failed"
 }

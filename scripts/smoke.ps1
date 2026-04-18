@@ -18,4 +18,6 @@ dotnet run --project src/PhotoPrivacy.Cli/PhotoPrivacy.Cli.csproj --framework ne
 if ($LASTEXITCODE -ne 0) {
   throw "CLI failed"
 }
+
+Write-Host "Smoke framework: net10.0-windows (matches win-x64 publish target)"
 Write-Host "Smoke test done"

@@ -1,6 +1,7 @@
 param(
   [string]$Version = "0.1.0-preview",
   [string]$Runtime = "win-x64",
+  [string]$Framework = "",
   [string]$SelfContained = "true",
   [string]$Zip = "true"
 )
@@ -22,12 +23,22 @@ $zipEnabled = $Zip -match '^(1|true|yes|on)$'
 
 $selfContainedValue = if ($selfContainedEnabled) { "true" } else { "false" }
 $isLinuxRuntime = $Runtime -like "linux-*"
-$framework = if ($Runtime -like "win-*") { "net10.0-windows" } else { "net10.0" }
+$defaultFramework = if ($Runtime -like "win-*") { "net10.0-windows" } else { "net10.0" }
+$resolvedFramework = if ([string]::IsNullOrWhiteSpace($Framework)) { $defaultFramework } else { $Framework.Trim() }
+
+if ($Runtime -like "win-*" -and $resolvedFramework -ne "net10.0-windows") {
+  throw "Runtime '$Runtime' must use framework 'net10.0-windows'"
+}
+
+if ($Runtime -like "linux-*" -and $resolvedFramework -ne "net10.0") {
+  throw "Runtime '$Runtime' must use framework 'net10.0'"
+}
 
 Write-Host "Publishing PhotoPrivacy.Cli ..."
+Write-Host "Runtime: $Runtime | Framework: $resolvedFramework"
 dotnet publish "$repoRoot\src\PhotoPrivacy.Cli\PhotoPrivacy.Cli.csproj" `
   -c Release `
-  -f $framework `
+  -f $resolvedFramework `
   -r $Runtime `
   --self-contained $selfContainedValue `
   /p:PublishSingleFile=true `
