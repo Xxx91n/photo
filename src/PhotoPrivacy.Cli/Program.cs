@@ -39,8 +39,8 @@ if (!isNewInstance)
 #endif
     {
         Console.Error.WriteLine("[PhotoPrivacy] 另一个实例已在运行，退出。");
+        Console.Error.WriteLine("[PhotoPrivacy] another instance is already in use.");
     }
-    Console.Error.WriteLine("[PhotoPrivacy] another instance is already in use.");
 
     await InstanceConflictAudit.TryWriteAsync(args, requestedMode, MutexName);
     return 1;
@@ -96,6 +96,12 @@ if (mode == RuntimeMode.Background)
     ApplicationConfiguration.Initialize();
     var runtimeControl = app.Services.GetRequiredService<IRuntimeControl>();
     Application.Run(new TrayApplicationContext(app, runtimeControl));
+    UnregisterBestEffortShutdown(cancelKeyHandler, processExitHandler
+#if WINDOWS
+        , nativeHandler
+#endif
+    );
+    posixHooks.Dispose();
     return Environment.ExitCode;
 #else
     Console.Error.WriteLine("[PhotoPrivacy] background 模式仅支持 Windows。请改用 --mode cli。");

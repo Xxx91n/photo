@@ -4,12 +4,33 @@ namespace PhotoPrivacy.Core.ExifTool;
 
 public sealed class ProcessExifToolProcess : IExifToolProcess
 {
+    private readonly IProcessJobObject _jobObject;
     private Process? _process;
     private StreamWriter? _stdin;
     private Task? _stdoutPumpTask;
     private Task? _stderrPumpTask;
     private CancellationTokenSource? _pumpCts;
     private string? _lastStderrLine;
+
+    public ProcessExifToolProcess()
+        : this(CreateDefaultProcessJobObject())
+    {
+    }
+
+    public ProcessExifToolProcess(IProcessJobObject jobObject)
+    {
+        _jobObject = jobObject;
+    }
+
+    public static IProcessJobObject CreateDefaultProcessJobObject()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return new NoopProcessJobObject();
+        }
+
+        return new ProcessJobObject();
+    }
 
     public event Action<string>? StdoutLine;
 
@@ -46,6 +67,7 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
 
         _process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
         _process.Start();
+        _jobObject.Assign(_process);
 
         _stdin = _process.StandardInput;
         _stdin.AutoFlush = true;
@@ -113,6 +135,8 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
+        _jobObject.Dispose();
+
         if (_process is null)
         {
             return;
