@@ -148,4 +148,6 @@ dotnet run --project src/PhotoPrivacy.Cli/PhotoPrivacy.Cli.csproj -- --mode cli 
 - 当前实现严格采用 `FileSystemWatcher` 事件驱动，不轮询。
 - ExifTool 采用 `stay_open` 单进程桥接；支持 `dry_run` 方便无损联调。
 - ExifTool 健康检查采用双阈值：首次启动探测 3s、运行中心跳 500ms；重启事件会记录失败原因到审计 `data` 字段。
+- 当 `audit.log_directory` 或 `quarantine.directory` 位于 `watch.hot_folder` 子目录（例如默认的 `D:\hot\_audit` / `D:\hot\_quarantine`）时，程序会自动从 FSW 监听流中排除这些目录，无需手工写入 `rules.excluded_patterns`。
+- 启动时会在 `service_started` 事件的 `data["已自动排除的子目录列表"]` 中输出实际自动排除的目录，便于确认。
 - 请勿修改 ExifToolGUI 目录内容，本项目仅调用指定路径的 ExifTool 可执行文件。

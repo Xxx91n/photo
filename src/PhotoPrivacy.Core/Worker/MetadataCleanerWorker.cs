@@ -84,16 +84,6 @@ public sealed class MetadataCleanerWorker : BackgroundService
                 stoppingToken);
         }
 
-        await _audit.WriteAsync(
-            new AuditEvent(
-                EventType: "service_started",
-                TimestampUtc: DateTimeOffset.UtcNow,
-                TaskId: Guid.NewGuid().ToString("N"),
-                SourcePath: config.Watch.HotFolder,
-                Message: $"mode={(config.ExifTool.DryRun ? "dry-run" : "live")}",
-                Data: null),
-            stoppingToken);
-
         _watcher = new FswFolderWatcher(
             config,
             new DirectoryRecoveryScanner(config),
@@ -103,6 +93,17 @@ public sealed class MetadataCleanerWorker : BackgroundService
                 EnqueueIfNeeded(path);
                 return Task.CompletedTask;
             });
+
+        var autoExcluded = _watcher.GetAutoExcludedSubdirectories();
+        await _audit.WriteAsync(
+            new AuditEvent(
+                EventType: "service_started",
+                TimestampUtc: DateTimeOffset.UtcNow,
+                TaskId: Guid.NewGuid().ToString("N"),
+                SourcePath: config.Watch.HotFolder,
+                Message: $"mode={(config.ExifTool.DryRun ? "dry-run" : "live")}",
+                Data: BuildServiceStartedData(autoExcluded)),
+            stoppingToken);
 
         foreach (var file in Directory.EnumerateFiles(config.Watch.HotFolder, "*", SearchOption.AllDirectories))
         {
@@ -338,6 +339,19 @@ public sealed class MetadataCleanerWorker : BackgroundService
         return string.Equals(value, "1", StringComparison.OrdinalIgnoreCase)
             || string.Equals(value, "yes", StringComparison.OrdinalIgnoreCase)
             || string.Equals(value, "on", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static IReadOnlyDictionary<string, string>? BuildServiceStartedData(IReadOnlyList<string> autoExcludedSubdirectories)
+    {
+        if (autoExcludedSubdirectories.Count == 0)
+        {
+            return null;
+        }
+
+        return new Dictionary<string, string>
+        {
+            [WatchPathFilter.ServiceStartedDataKey] = string.Join(";", autoExcludedSubdirectories)
+        };
     }
 
     private sealed class DirectoryRecoveryScanner : IRecoveryScanner

@@ -10,6 +10,7 @@ public sealed class FswFolderWatcher : IFolderWatcher
     private readonly IAuditLogger _audit;
     private readonly Func<string, Task> _onPath;
     private readonly IFileSystemWatcherFactory _factory;
+    private readonly IReadOnlyList<string> _autoExcludedSubdirectories;
 
     private FileSystemWatcher? _fsw;
 
@@ -25,6 +26,7 @@ public sealed class FswFolderWatcher : IFolderWatcher
         _audit = audit;
         _onPath = onPath;
         _factory = factory ?? (IFileSystemWatcherFactory)new DefaultFileSystemWatcherFactory();
+        _autoExcludedSubdirectories = WatchPathFilter.ResolveAutoExcludedSubdirectories(config);
     }
 
     public void Start()
@@ -56,9 +58,9 @@ public sealed class FswFolderWatcher : IFolderWatcher
         watcher.InternalBufferSize = _config.Watch.InternalBufferSize;
         watcher.NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.DirectoryName;
 
-        watcher.Created += (_, e) => _ = _onPath(e.FullPath);
-        watcher.Changed += (_, e) => _ = _onPath(e.FullPath);
-        watcher.Renamed += (_, e) => _ = _onPath(e.FullPath);
+        watcher.Created += (_, e) => _ = OnFsEventAsync(e.FullPath);
+        watcher.Changed += (_, e) => _ = OnFsEventAsync(e.FullPath);
+        watcher.Renamed += (_, e) => _ = OnFsEventAsync(e.FullPath);
         watcher.Error += (_, e) => _ = RecoverAsync(e.GetException() ?? new IOException("FileSystemWatcher error"));
 
         return watcher;
@@ -75,12 +77,32 @@ public sealed class FswFolderWatcher : IFolderWatcher
 
         foreach (var path in _scanner.ScanAll(_config.Watch.HotFolder))
         {
+            if (WatchPathFilter.ShouldSkipPath(path, _autoExcludedSubdirectories))
+            {
+                continue;
+            }
+
             await _onPath(path);
         }
 
         await _audit.WriteAsync(
             new AuditEvent("fsw_recovered", DateTimeOffset.UtcNow, Guid.NewGuid().ToString("N"), _config.Watch.HotFolder, "recreated_watcher", null),
             CancellationToken.None);
+    }
+
+    public IReadOnlyList<string> GetAutoExcludedSubdirectories()
+    {
+        return _autoExcludedSubdirectories;
+    }
+
+    private Task OnFsEventAsync(string fullPath)
+    {
+        if (WatchPathFilter.ShouldSkipPath(fullPath, _autoExcludedSubdirectories))
+        {
+            return Task.CompletedTask;
+        }
+
+        return _onPath(fullPath);
     }
 
     private sealed class DefaultFileSystemWatcherFactory : IFileSystemWatcherFactory

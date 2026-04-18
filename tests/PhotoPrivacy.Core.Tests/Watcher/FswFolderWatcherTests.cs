@@ -57,6 +57,52 @@ public sealed class FswFolderWatcherTests
         }
     }
 
+    [Fact]
+    public async Task Recover_Should_Skip_Audit_And_Quarantine_Subdirectories_Under_HotFolder()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+
+        var audit = Path.Combine(tempRoot, "_audit");
+        var quarantine = Path.Combine(tempRoot, "_quarantine");
+        Directory.CreateDirectory(audit);
+        Directory.CreateDirectory(quarantine);
+
+        var keep = Path.Combine(tempRoot, "keep.jpg");
+        var fromAudit = Path.Combine(audit, "audit-2026-04-18.jsonl");
+        var fromQuarantine = Path.Combine(quarantine, "bad.jpg");
+
+        var cfg = AppConfig.Default with
+        {
+            Watch = AppConfig.Default.Watch with { HotFolder = tempRoot },
+            Audit = AppConfig.Default.Audit with { LogDirectory = audit },
+            Quarantine = AppConfig.Default.Quarantine with { Directory = quarantine }
+        };
+
+        var scanner = new FakeRecoveryScanner([keep, fromAudit, fromQuarantine]);
+        var auditLogger = new InMemoryAuditLogger();
+        var collected = new List<string>();
+        var watcher = new FswFolderWatcher(cfg, scanner, auditLogger, path =>
+        {
+            collected.Add(path);
+            return Task.CompletedTask;
+        });
+
+        try
+        {
+            await watcher.RecoverFromErrorAsync(new IOException("boom"));
+
+            Assert.Contains(keep, collected);
+            Assert.DoesNotContain(fromAudit, collected);
+            Assert.DoesNotContain(fromQuarantine, collected);
+        }
+        finally
+        {
+            watcher.Stop();
+            Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
     private sealed class FakeRecoveryScanner(IReadOnlyList<string> paths) : IRecoveryScanner
     {
         public IReadOnlyList<string> ScanAll(string rootPath)

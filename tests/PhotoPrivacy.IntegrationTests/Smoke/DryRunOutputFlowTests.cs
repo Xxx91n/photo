@@ -241,6 +241,83 @@ public sealed class DryRunOutputFlowTests
         }
     }
 
+    [Fact]
+    public async Task CliHost_Should_Report_AutoExcluded_Subdirectories_In_ServiceStarted_Data()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "photo-autox-" + Guid.NewGuid().ToString("N"));
+        var hot = Path.Combine(root, "hot");
+        var audit = Path.Combine(hot, "_audit");
+        var quarantine = Path.Combine(hot, "_quarantine");
+        Directory.CreateDirectory(hot);
+        Directory.CreateDirectory(audit);
+        Directory.CreateDirectory(quarantine);
+
+        try
+        {
+            var sourceFile = Path.Combine(hot, "a.jpg");
+            File.WriteAllText(sourceFile, "dummy");
+
+            var configPath = Path.Combine(root, "config.json");
+            File.WriteAllText(configPath, $$"""
+            {
+              "schema_version": 1,
+              "exiftool": {
+                "path": "D:\\tools\\A_system\\ExifToolGUI\\ExifTool\\ExifTool.exe",
+                "enable_windows_long_path": true,
+                "enable_large_file_support": true,
+                "dry_run": true,
+                "extra_exiftool_args": []
+              },
+              "watch": {
+                "hot_folder": "{{EscapePath(hot)}}",
+                "include_subdirectories": true,
+                "debounce_ms": 100,
+                "internal_buffer_size": 65536
+              },
+              "rules": {
+                "allowed_extensions": [".jpg"],
+                "excluded_patterns": [],
+                "output_mode": "same_as_source",
+                "output_directory": ""
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff_seconds": [0]
+              },
+              "backup": {
+                "enabled": false,
+                "suffix": ".bak",
+                "retention": "keep"
+              },
+              "quarantine": {
+                "enabled": true,
+                "directory": "{{EscapePath(quarantine)}}"
+              },
+              "audit": {
+                "log_directory": "{{EscapePath(audit)}}",
+                "retain_days": 7,
+                "diagnostic_mode": false
+              }
+            }
+            """);
+
+            var result = await RunCliAsync(configPath, CliRunTimeout);
+            Assert.Equal(0, result.ExitCode);
+
+            var auditFile = Directory.GetFiles(audit, "audit-*.jsonl").Single();
+            var content = File.ReadAllText(auditFile);
+
+            Assert.Contains("\"event_type\":\"service_started\"", content, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("\"已自动排除的子目录列表\"", content, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("_audit", content, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("_quarantine", content, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static async Task<CliRunResult> RunCliAsync(string configPath, TimeSpan timeout, string extraArgs = "")
     {
         var repoRoot = FindRepoRoot();
