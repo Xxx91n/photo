@@ -72,4 +72,28 @@ public sealed class RuntimeModeResolverTests
 
         Assert.Equal(RuntimeMode.Background, mode);
     }
+
+    [Fact]
+    public void HasModeOption_Should_Return_False_When_Mode_Missing()
+    {
+        var hasMode = RuntimeModeResolver.HasModeOption(["--once", "true"]);
+
+        Assert.False(hasMode);
+    }
+
+    [Fact]
+    public void HasModeOption_Should_Return_True_For_Split_Mode_Argument()
+    {
+        var hasMode = RuntimeModeResolver.HasModeOption(["--mode", "service"]);
+
+        Assert.True(hasMode);
+    }
+
+    [Fact]
+    public void HasModeOption_Should_Return_True_For_Inline_Mode_Argument()
+    {
+        var hasMode = RuntimeModeResolver.HasModeOption(["--mode=cli"]);
+
+        Assert.True(hasMode);
+    }
 }

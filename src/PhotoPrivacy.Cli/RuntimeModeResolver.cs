@@ -38,6 +38,30 @@ public static class RuntimeModeResolver
         return RuntimeMode.Background;
     }
 
+    public static bool HasModeOption(string[] args)
+    {
+        if (args is null || args.Length == 0)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < args.Length; i++)
+        {
+            var arg = args[i];
+            if (arg.StartsWith("--mode=", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            if (string.Equals(arg, "--mode", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public static RuntimeMode ResolveRaw(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw))

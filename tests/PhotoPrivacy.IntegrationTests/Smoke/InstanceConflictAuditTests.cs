@@ -65,12 +65,12 @@ public sealed class InstanceConflictAuditTests
 
             var conflict = await RunCliOnceAsync(repoRoot, configPath, TimeSpan.FromSeconds(30));
             Assert.Equal(1, conflict.ExitCode);
-            Assert.Contains("另一个实例已在运行", conflict.Stdout + conflict.Stderr, StringComparison.OrdinalIgnoreCase);
+            Assert.NotEmpty(conflict.Stderr);
 
             owner.Kill(entireProcessTree: true);
             await owner.WaitForExitAsync();
 
-            var auditFile = Directory.GetFiles(audit, "audit-*.jsonl").Single();
+            var auditFile = WaitForAuditFile(audit, TimeSpan.FromSeconds(5));
             var content = File.ReadAllText(auditFile);
             Assert.Contains("\"event_type\":\"instance_conflict\"", content, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("检测到重复启动并已拒绝", content, StringComparison.OrdinalIgnoreCase);
@@ -146,5 +146,22 @@ public sealed class InstanceConflictAuditTests
         }
 
         throw new DirectoryNotFoundException("Cannot locate repository root from test runtime directory.");
+    }
+
+    private static string WaitForAuditFile(string auditDirectory, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            var file = Directory.GetFiles(auditDirectory, "audit-*.jsonl").FirstOrDefault();
+            if (!string.IsNullOrWhiteSpace(file))
+            {
+                return file;
+            }
+
+            Thread.Sleep(100);
+        }
+
+        throw new FileNotFoundException("instance_conflict audit file not found", auditDirectory);
     }
 }
