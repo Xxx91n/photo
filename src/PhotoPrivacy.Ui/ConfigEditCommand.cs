@@ -1,0 +1,8 @@
+namespace PhotoPrivacy.Ui;
+
+public sealed record ConfigEditCommand(
+    string ExifToolPath,
+    bool BackupEnabled,
+    bool LogEnabled,
+    string HotFolderPath,
+    bool HideMainWindowOnStartup);

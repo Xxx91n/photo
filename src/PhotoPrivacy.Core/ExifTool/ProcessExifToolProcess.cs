@@ -4,7 +4,7 @@ namespace PhotoPrivacy.Core.ExifTool;
 
 public sealed class ProcessExifToolProcess : IExifToolProcess
 {
-    private readonly IProcessJobObject _jobObject;
+    private IProcessJobObject? _jobObject;
     private Process? _process;
     private StreamWriter? _stdin;
     private Task? _stdoutPumpTask;
@@ -49,6 +49,8 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
         {
             throw new FileNotFoundException("ExifTool executable not found.", exePath);
         }
+
+        _jobObject ??= CreateDefaultProcessJobObject();
 
         var startInfo = new ProcessStartInfo
         {
@@ -135,10 +137,10 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        _jobObject.Dispose();
-
         if (_process is null)
         {
+            _jobObject?.Dispose();
+            _jobObject = null;
             return;
         }
 
@@ -200,7 +202,11 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
             }
         }
 
-        // 4. Clean up.
+        // 4. Dispose job object only after process has been stopped.
+        _jobObject?.Dispose();
+        _jobObject = null;
+
+        // 5. Clean up remaining resources.
         _stdin?.Dispose();
         _pumpCts?.Dispose();
         _process.Dispose();

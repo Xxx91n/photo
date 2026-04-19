@@ -27,6 +27,11 @@ public partial class App : Application
             if (desktop.MainWindow is MainWindow window)
             {
                 window.InitializeRuntime(RuntimeOptions);
+
+                if (RuntimeOptions.HideMainWindowOnStartup)
+                {
+                    window.Hide();
+                }
             }
         }
 

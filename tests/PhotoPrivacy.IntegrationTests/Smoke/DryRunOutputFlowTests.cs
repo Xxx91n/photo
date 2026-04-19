@@ -61,7 +61,7 @@ public sealed class DryRunOutputFlowTests
               "audit": {
                 "log_directory": "{{EscapePath(audit)}}",
                 "retain_days": 7,
-                "diagnostic_mode": false
+                "diagnostic_mode": true
               }
             }
             """);
@@ -138,7 +138,7 @@ public sealed class DryRunOutputFlowTests
               "audit": {
                 "log_directory": "{{EscapePath(audit)}}",
                 "retain_days": 7,
-                "diagnostic_mode": false
+                "diagnostic_mode": true
               }
             }
             """);
@@ -224,7 +224,7 @@ public sealed class DryRunOutputFlowTests
               "audit": {
                 "log_directory": "{{EscapePath(audit)}}",
                 "retain_days": 7,
-                "diagnostic_mode": false
+                "diagnostic_mode": true
               }
             }
             """);
@@ -296,7 +296,7 @@ public sealed class DryRunOutputFlowTests
               "audit": {
                 "log_directory": "{{EscapePath(audit)}}",
                 "retain_days": 7,
-                "diagnostic_mode": false
+                "diagnostic_mode": true
               }
             }
             """);

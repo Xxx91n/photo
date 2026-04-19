@@ -53,6 +53,10 @@ public static class AppConfigJson
                 LogDirectory = config.Audit.LogDirectory,
                 RetainDays = config.Audit.RetainDays,
                 DiagnosticMode = config.Audit.DiagnosticMode
+            },
+            Ui = new UiDto
+            {
+                HideMainWindowOnStartup = config.Ui.HideMainWindowOnStartup
             }
         };
 
@@ -87,6 +91,9 @@ public static class AppConfigJson
 
         [JsonPropertyName("audit")]
         public AuditDto Audit { get; init; } = new();
+
+        [JsonPropertyName("ui")]
+        public UiDto Ui { get; init; } = new();
     }
 
     private sealed class ExifToolDto
@@ -177,5 +184,11 @@ public static class AppConfigJson
 
         [JsonPropertyName("diagnostic_mode")]
         public bool DiagnosticMode { get; init; }
+    }
+
+    private sealed class UiDto
+    {
+        [JsonPropertyName("hide_main_window_on_startup")]
+        public bool HideMainWindowOnStartup { get; init; }
     }
 }

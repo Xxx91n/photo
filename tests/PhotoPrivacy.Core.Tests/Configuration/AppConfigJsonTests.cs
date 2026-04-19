@@ -17,6 +17,10 @@ public sealed class AppConfigJsonTests
             Watch = AppConfig.Default.Watch with
             {
                 HotFolder = @"D:\override\hot"
+            },
+            Ui = AppConfig.Default.Ui with
+            {
+                HideMainWindowOnStartup = true
             }
         };
 
@@ -26,5 +30,7 @@ public sealed class AppConfigJsonTests
         Assert.Contains("\"dry_run\": true", json, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("\"hot_folder\": \"D:\\\\override\\\\hot\"", json, StringComparison.Ordinal);
         Assert.Contains("\"extra_exiftool_args\": [", json, StringComparison.Ordinal);
+        Assert.Contains("\"ui\":", json, StringComparison.Ordinal);
+        Assert.Contains("\"hide_main_window_on_startup\": true", json, StringComparison.OrdinalIgnoreCase);
     }
 }

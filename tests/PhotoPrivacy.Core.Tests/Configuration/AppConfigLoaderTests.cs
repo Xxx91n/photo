@@ -52,6 +52,9 @@ public sealed class AppConfigLoaderTests
                 "log_directory": "D:\\hot\\_audit",
                 "retain_days": 30,
                 "diagnostic_mode": true
+              },
+              "ui": {
+                "hide_main_window_on_startup": true
               }
             }
             """);
@@ -64,6 +67,7 @@ public sealed class AppConfigLoaderTests
             Assert.Equal(2, cfg.ExifTool.ExtraExifToolArgs.Length);
             Assert.Equal(900, cfg.Watch.DebounceMs);
             Assert.True(cfg.Audit.DiagnosticMode);
+            Assert.True(cfg.Ui.HideMainWindowOnStartup);
         }
         finally
         {
@@ -113,6 +117,9 @@ public sealed class AppConfigLoaderTests
                 "log_directory": "D:\\hot\\_audit",
                 "retain_days": 30,
                 "diagnostic_mode": false
+              },
+              "ui": {
+                "hide_main_window_on_startup": false
               }
             }
             """);
@@ -121,6 +128,7 @@ public sealed class AppConfigLoaderTests
 
             Assert.Equal(@"D:\legacy\ExifTool.exe", cfg.ExifTool.Path);
             Assert.Equal(1, cfg.SchemaVersion);
+            Assert.False(cfg.Ui.HideMainWindowOnStartup);
         }
         finally
         {

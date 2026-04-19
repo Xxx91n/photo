@@ -22,6 +22,33 @@ public sealed class ServiceManagerTests
         }
     }
 
+    private sealed class MutableStateProbe : IServiceStateProbe
+    {
+        private readonly Queue<ServiceRuntimeState> _states;
+        private ServiceRuntimeState _last;
+
+        public MutableStateProbe(params ServiceRuntimeState[] states)
+        {
+            _states = new Queue<ServiceRuntimeState>(states);
+            _last = states.Length > 0 ? states[^1] : ServiceRuntimeState.NotInstalled;
+        }
+
+        public ServiceRuntimeState GetState(string serviceName)
+        {
+            if (_states.Count > 0)
+            {
+                _last = _states.Dequeue();
+            }
+
+            return _last;
+        }
+
+        public bool ServiceExists(string serviceName)
+        {
+            return GetState(serviceName) != ServiceRuntimeState.NotInstalled;
+        }
+    }
+
     private sealed class FakeExecutor : IScCommandExecutor
     {
         private readonly ServiceCommandResult _result;
@@ -136,14 +163,22 @@ public sealed class ServiceManagerTests
     [Fact]
     public void Start_Should_Request_Runas_When_Forced_And_Not_Admin()
     {
-        var fakeExecutor = new FakeExecutor(ServiceCommandResult.Success());
-        var manager = new ServiceManager(fakeExecutor, new FakeStateProbe());
+        var fakeExecutor = new FakeExecutorWithQueue(new Queue<ServiceCommandResult>(new[]
+        {
+            ServiceCommandResult.Success(),
+            ServiceCommandResult.Success()
+        }));
+        var manager = new ServiceManager(fakeExecutor, new FakeStateProbe
+        {
+            Exists = true,
+            State = ServiceRuntimeState.Stopped
+        });
 
-        _ = manager.Start(forceElevation: true);
+        _ = manager.Start(@"C:\app\PhotoPrivacy.exe", @"D:\cfg\config.json", forceElevation: true);
 
-        Assert.NotNull(fakeExecutor.LastStartInfo);
-        Assert.Equal("runas", fakeExecutor.LastStartInfo!.Verb);
-        Assert.Equal("start PhotoPrivacyCleaner", fakeExecutor.LastStartInfo.Arguments);
+        Assert.Equal(2, fakeExecutor.Calls.Count);
+        Assert.Contains(fakeExecutor.Calls, x => x.StartsWith("config PhotoPrivacyCleaner", StringComparison.Ordinal));
+        Assert.Contains(fakeExecutor.Calls, x => x.Equals("start PhotoPrivacyCleaner", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -170,11 +205,64 @@ public sealed class ServiceManagerTests
     public void Stop_Should_Return_ElevationCancelled_When_User_Rejects_Uac()
     {
         var fakeExecutor = new FakeExecutor(new System.ComponentModel.Win32Exception(1223));
-        var manager = new ServiceManager(fakeExecutor, new FakeStateProbe());
+        var manager = new ServiceManager(fakeExecutor, new FakeStateProbe
+        {
+            Exists = true,
+            State = ServiceRuntimeState.Stopped
+        });
 
         var result = manager.Stop(forceElevation: true);
 
         Assert.Equal(ServiceCommandStatus.ElevationCancelled, result.Status);
+    }
+
+    [Fact]
+    public void Start_Should_Fail_When_Service_Not_Installed()
+    {
+        var fakeExecutor = new FakeExecutor(ServiceCommandResult.Success());
+        var manager = new ServiceManager(fakeExecutor, new FakeStateProbe
+        {
+            Exists = false,
+            State = ServiceRuntimeState.NotInstalled
+        });
+
+        var result = manager.Start(@"C:\app\PhotoPrivacy.exe", @"D:\cfg\config.json", forceElevation: false);
+
+        Assert.Equal(ServiceCommandStatus.Failed, result.Status);
+        Assert.Equal(1060, result.ExitCode);
+    }
+
+    [Fact]
+    public void Uninstall_Should_Stop_Running_Service_Before_Delete()
+    {
+        var fakeExecutor = new FakeExecutorWithQueue(new Queue<ServiceCommandResult>(new[]
+        {
+            ServiceCommandResult.Success(),
+            ServiceCommandResult.Success()
+        }));
+
+        var manager = new ServiceManager(fakeExecutor, new MutableStateProbe(ServiceRuntimeState.Running));
+
+        var result = manager.Uninstall(forceElevation: false);
+
+        Assert.Equal(ServiceCommandStatus.Success, result.Status);
+        Assert.Equal(2, fakeExecutor.Calls.Count);
+        Assert.Equal("stop PhotoPrivacyCleaner", fakeExecutor.Calls[0]);
+        Assert.Equal("delete PhotoPrivacyCleaner", fakeExecutor.Calls[1]);
+    }
+
+    [Fact]
+    public void GetRuntimeState_Should_Return_Current_State()
+    {
+        var manager = new ServiceManager(new FakeExecutor(ServiceCommandResult.Success()), new FakeStateProbe
+        {
+            Exists = true,
+            State = ServiceRuntimeState.Running
+        });
+
+        var state = manager.GetRuntimeState();
+
+        Assert.Equal(ServiceRuntimeState.Running, state);
     }
 
     [Fact]
@@ -215,6 +303,18 @@ public sealed class ServiceManagerTests
         Assert.True(startInfo.CreateNoWindow);
         Assert.True(startInfo.RedirectStandardOutput);
         Assert.True(startInfo.RedirectStandardError);
+    }
+
+    [Fact]
+    public void BuildReconfigArguments_Should_Quote_Executable_And_Config_Path()
+    {
+        var args = ServiceManager.BuildReconfigArguments(
+            @"C:\Program Files\PhotoPrivacy\PhotoPrivacy.exe",
+            @"D:\cfg path\config.json");
+
+        Assert.Equal(
+            "config PhotoPrivacyCleaner binPath= \"\"C:\\Program Files\\PhotoPrivacy\\PhotoPrivacy.exe\" --mode service --config \"D:\\cfg path\\config.json\"\" start= auto",
+            args);
     }
 
     [Fact]

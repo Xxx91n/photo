@@ -40,6 +40,28 @@ public sealed class ProcessExifToolProcessTests
         Assert.True(job.Disposed);
     }
 
+    [Fact]
+    public async Task StopAsync_Then_StartAsync_Should_Not_Throw()
+    {
+        var exePath = Environment.GetEnvironmentVariable("ComSpec");
+        if (string.IsNullOrWhiteSpace(exePath) || !File.Exists(exePath))
+        {
+            return;
+        }
+
+        var job = new ThrowOnDisposedJobObject();
+        var process = new ProcessExifToolProcess(job);
+
+        await process.StartAsync(exePath, ["/c", "exit 0"], CancellationToken.None);
+        await process.StopAsync(CancellationToken.None);
+
+        var exception = await Record.ExceptionAsync(
+            () => process.StartAsync(exePath, ["/c", "exit 0"], CancellationToken.None));
+
+        Assert.Null(exception);
+        await process.StopAsync(CancellationToken.None);
+    }
+
     private sealed class SpyJobObject : IProcessJobObject
     {
         public bool Disposed { get; private set; }
@@ -51,6 +73,24 @@ public sealed class ProcessExifToolProcessTests
         public void Dispose()
         {
             Disposed = true;
+        }
+    }
+
+    private sealed class ThrowOnDisposedJobObject : IProcessJobObject
+    {
+        private bool _disposed;
+
+        public void Assign(System.Diagnostics.Process process)
+        {
+            if (_disposed)
+            {
+                throw new ObjectDisposedException(nameof(ThrowOnDisposedJobObject));
+            }
+        }
+
+        public void Dispose()
+        {
+            _disposed = true;
         }
     }
 }

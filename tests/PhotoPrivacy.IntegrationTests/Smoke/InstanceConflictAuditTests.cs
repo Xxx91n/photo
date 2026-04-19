@@ -54,7 +54,7 @@ public sealed class InstanceConflictAuditTests
               "audit": {
                 "log_directory": "{{EscapePath(audit)}}",
                 "retain_days": 7,
-                "diagnostic_mode": false
+                "diagnostic_mode": true
               }
             }
             """);

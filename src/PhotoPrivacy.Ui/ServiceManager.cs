@@ -163,6 +163,26 @@ public sealed class ServiceManager
 
     public bool IsAvailable => OperatingSystem.IsWindows();
 
+    public bool IsInstalled()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return false;
+        }
+
+        return _stateProbe.ServiceExists(ServiceName);
+    }
+
+    public ServiceRuntimeState GetRuntimeState()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return ServiceRuntimeState.NotInstalled;
+        }
+
+        return _stateProbe.GetState(ServiceName);
+    }
+
     public string GetStatusText()
     {
         if (!OperatingSystem.IsWindows())
@@ -218,6 +238,11 @@ public sealed class ServiceManager
         return $"create {ServiceName} binPath= \"\"{exePath}\" --mode service --config \"{configPath}\"\" start= auto";
     }
 
+    public static string BuildReconfigArguments(string exePath, string configPath)
+    {
+        return $"config {ServiceName} binPath= \"\"{exePath}\" --mode service --config \"{configPath}\"\" start= auto";
+    }
+
     public ServiceCommandResult Uninstall()
     {
         return UninstallCore(forceElevation: null);
@@ -230,22 +255,66 @@ public sealed class ServiceManager
 
     private ServiceCommandResult UninstallCore(bool? forceElevation)
     {
+        if (!OperatingSystem.IsWindows())
+        {
+            return ServiceCommandResult.Skipped("Linux/macOS 请使用 systemd 管理服务");
+        }
+
+        var state = _stateProbe.GetState(ServiceName);
+        if (state is ServiceRuntimeState.Running
+            or ServiceRuntimeState.StartPending
+            or ServiceRuntimeState.PausePending
+            or ServiceRuntimeState.Paused
+            or ServiceRuntimeState.ContinuePending)
+        {
+            var stopResult = RunSc($"stop {ServiceName}", requireAdmin: true, forceElevation: forceElevation);
+            if (stopResult is { Status: ServiceCommandStatus.Failed } && stopResult.ExitCode != 1062)
+            {
+                return WithFriendlyMessage(stopResult);
+            }
+        }
+
         var result = RunSc($"delete {ServiceName}", requireAdmin: true, forceElevation: forceElevation);
         return WithFriendlyMessage(result);
     }
 
     public ServiceCommandResult Start()
     {
-        return StartCore(forceElevation: null);
+        var exe = Environment.ProcessPath;
+        var configPath = Path.Combine(AppContext.BaseDirectory, "config", "config.json");
+        return Start(exe, configPath, forceElevation: null);
     }
 
     public ServiceCommandResult Start(bool forceElevation)
     {
-        return StartCore(forceElevation: forceElevation);
+        var exe = Environment.ProcessPath;
+        var configPath = Path.Combine(AppContext.BaseDirectory, "config", "config.json");
+        return Start(exe, configPath, forceElevation: forceElevation);
     }
 
-    private ServiceCommandResult StartCore(bool? forceElevation)
+    public ServiceCommandResult Start(string? exePath, string? configPath)
     {
+        return Start(exePath, configPath, forceElevation: null);
+    }
+
+    public ServiceCommandResult Start(string? exePath, string? configPath, bool? forceElevation)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return ServiceCommandResult.Skipped("Linux/macOS 请使用 systemd 管理服务");
+        }
+
+        if (!_stateProbe.ServiceExists(ServiceName))
+        {
+            return ServiceCommandResult.Failed(TranslateExitCode(1060), 1060);
+        }
+
+        var ensureConfig = EnsureInstalledConfigSynced(exePath, configPath, forceElevation);
+        if (ensureConfig is { Status: ServiceCommandStatus.Failed })
+        {
+            return ensureConfig;
+        }
+
         var result = RunSc($"start {ServiceName}", requireAdmin: true, forceElevation: forceElevation);
         return WithFriendlyMessage(result);
     }
@@ -343,6 +412,18 @@ public sealed class ServiceManager
         }
 
         return ServiceCommandResult.Success(message: "service removed before install");
+    }
+
+    private ServiceCommandResult EnsureInstalledConfigSynced(string? exePath, string? configPath, bool? forceElevation)
+    {
+        if (string.IsNullOrWhiteSpace(exePath) || string.IsNullOrWhiteSpace(configPath))
+        {
+            return ServiceCommandResult.Success(message: "skip reconfig");
+        }
+
+        var args = BuildReconfigArguments(exePath, configPath);
+        var result = RunSc(args, requireAdmin: true, forceElevation: forceElevation);
+        return WithFriendlyMessage(result);
     }
 
     private ServiceCommandResult RunSc(string args, bool requireAdmin, bool? forceElevation)

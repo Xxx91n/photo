@@ -22,4 +22,10 @@
     <ProjectReference Include="..\PhotoPrivacy.Core\PhotoPrivacy.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="Assets\*.base64">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

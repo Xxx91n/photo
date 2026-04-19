@@ -56,7 +56,9 @@ public static class AppConfigLoader
             Audit: new AuditOptions(
                 LogDirectory: dto.Audit.LogDirectory,
                 RetainDays: dto.Audit.RetainDays,
-                DiagnosticMode: dto.Audit.DiagnosticMode));
+                DiagnosticMode: dto.Audit.DiagnosticMode),
+            Ui: new UiOptions(
+                HideMainWindowOnStartup: dto.Ui.HideMainWindowOnStartup));
     }
 
     private static string ResolveExifToolPath(string nestedPath, string? legacyPath, bool hasNestedExifToolPath)
@@ -122,6 +124,9 @@ public static class AppConfigLoader
 
         [JsonPropertyName("audit")]
         public AuditDto Audit { get; init; } = new();
+
+        [JsonPropertyName("ui")]
+        public UiDto Ui { get; init; } = new();
     }
 
     private sealed class ExifToolDto
@@ -212,5 +217,11 @@ public static class AppConfigLoader
 
         [JsonPropertyName("diagnostic_mode")]
         public bool DiagnosticMode { get; init; } = AppConfig.Default.Audit.DiagnosticMode;
+    }
+
+    private sealed class UiDto
+    {
+        [JsonPropertyName("hide_main_window_on_startup")]
+        public bool HideMainWindowOnStartup { get; init; } = AppConfig.Default.Ui.HideMainWindowOnStartup;
     }
 }

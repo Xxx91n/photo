@@ -13,6 +13,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private string _serviceStatus = "N/A";
     private bool _showServiceManagerTab;
     private bool _showDetailedEvents;
+    private string _exifToolPath = string.Empty;
+    private bool _backupEnabled;
+    private bool _logEnabled;
+    private string _hotFolderPath = string.Empty;
+    private bool _hideGuiOnStartup = true;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -52,14 +57,44 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         set => SetField(ref _showDetailedEvents, value);
     }
 
+    public string ExifToolPath
+    {
+        get => _exifToolPath;
+        set => SetField(ref _exifToolPath, value);
+    }
+
+    public bool BackupEnabled
+    {
+        get => _backupEnabled;
+        set => SetField(ref _backupEnabled, value);
+    }
+
+    public bool LogEnabled
+    {
+        get => _logEnabled;
+        set => SetField(ref _logEnabled, value);
+    }
+
+    public string HotFolderPath
+    {
+        get => _hotFolderPath;
+        set => SetField(ref _hotFolderPath, value);
+    }
+
+    public bool HideGuiOnStartup
+    {
+        get => _hideGuiOnStartup;
+        set => SetField(ref _hideGuiOnStartup, value);
+    }
+
     public ObservableCollection<AuditLogEntry> LogEntries { get; } = [];
 
     public void AppendLog(AuditLogEntry entry)
     {
-        LogEntries.Add(entry);
+        LogEntries.Insert(0, entry);
         while (LogEntries.Count > 500)
         {
-            LogEntries.RemoveAt(0);
+            LogEntries.RemoveAt(LogEntries.Count - 1);
         }
     }
 

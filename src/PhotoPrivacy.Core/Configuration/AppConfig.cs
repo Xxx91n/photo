@@ -29,6 +29,8 @@ public sealed record QuarantineOptions(bool Enabled, string Directory);
 
 public sealed record AuditOptions(string LogDirectory, int RetainDays, bool DiagnosticMode);
 
+public sealed record UiOptions(bool HideMainWindowOnStartup);
+
 public sealed record AppConfig(
     int SchemaVersion,
     ExifToolOptions ExifTool,
@@ -37,7 +39,8 @@ public sealed record AppConfig(
     RetryOptions Retry,
     BackupOptions Backup,
     QuarantineOptions Quarantine,
-    AuditOptions Audit)
+    AuditOptions Audit,
+    UiOptions Ui)
 {
     public static AppConfig Default => new(
         SchemaVersion: 1,
@@ -70,5 +73,7 @@ public sealed record AppConfig(
         Audit: new AuditOptions(
             LogDirectory: @"D:\hot\_audit",
             RetainDays: 30,
-            DiagnosticMode: false));
+            DiagnosticMode: true),
+        Ui: new UiOptions(
+            HideMainWindowOnStartup: true));
 }

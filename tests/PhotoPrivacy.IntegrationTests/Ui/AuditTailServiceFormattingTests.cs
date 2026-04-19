@@ -47,4 +47,26 @@ public sealed class AuditTailServiceFormattingTests
 
         Assert.Equal(@"D:\hot\_audit\audit-2026-04-19.jsonl", path);
     }
+
+    [Fact]
+    public void ParseAuditLine_Should_Extract_ExifTool_ExePath()
+    {
+        const string line = "{\"event_type\":\"exiftool_started\",\"timestamp_utc\":\"2026-04-19T04:00:00.0000000+00:00\",\"source_path_masked\":\"D:/hot/***/a.jpg\",\"message\":\"ok\",\"data\":{\"exe_path\":\"D:/tools/ExifTool.exe\"}}";
+
+        var exePath = AuditTailService.TryExtractExifToolExePath(line);
+
+        Assert.Equal("D:/tools/ExifTool.exe", exePath);
+    }
+
+    [Fact]
+    public void ParseAuditLine_Should_Not_Throw_On_Invalid_Json_Line()
+    {
+        const string invalid = "{\"event_type\":\"file_detected\"";
+
+        AuditLogEntry? entry = null;
+        var exception = Record.Exception(() => entry = AuditTailService.ParseAuditLine(invalid, includeDetailedEvents: true));
+
+        Assert.Null(exception);
+        Assert.Null(entry);
+    }
 }

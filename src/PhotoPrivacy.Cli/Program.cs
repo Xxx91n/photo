@@ -1,8 +1,10 @@
 using System.Threading;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using PhotoPrivacy.Cli;
+using PhotoPrivacy.Core.Configuration;
 using PhotoPrivacy.Core.Runtime;
 using PhotoPrivacy.Core.Worker;
 using UiHostProgram = PhotoPrivacy.Ui.UiProgram;
@@ -12,21 +14,53 @@ ConsoleCancelEventHandler? cancelKeyHandler = null;
 EventHandler? processExitHandler = null;
 PosixSignalHooks? posixHooks = null;
 
-const string MutexName = @"Global\PhotoPrivacyCleaner_SingleInstance";
-using var mutex = new Mutex(initiallyOwned: true, MutexName, out var isNewInstance);
+var requestedMode = RuntimeModeResolver.ResolveFromArgs(args);
+var hasModeOption = RuntimeModeResolver.HasModeOption(args);
+if (!hasModeOption && Environment.UserInteractive)
+{
+    requestedMode = RuntimeMode.Background;
+}
+
+var argsConfig = new ConfigurationBuilder().AddCommandLine(args).Build();
+var probeConfigPath = argsConfig["config"] ?? Path.Combine(AppContext.BaseDirectory, "config", "config.json");
+var probeConfig = TryLoadConfig(probeConfigPath);
+var serviceInstalledProbe = OperatingSystem.IsWindows() && new PhotoPrivacy.Ui.ServiceManager().IsInstalled();
+var runUiControlOnly = requestedMode == RuntimeMode.Background && serviceInstalledProbe && !hasModeOption;
+
+var mutexName = requestedMode == RuntimeMode.Service
+    ? @"Global\PhotoPrivacyCleaner_ServiceInstance"
+    : runUiControlOnly
+        ? @"Global\PhotoPrivacyCleaner_UiInstance"
+        : @"Global\PhotoPrivacyCleaner_BackgroundInstance";
+
+using var mutex = new Mutex(initiallyOwned: true, mutexName, out var isNewInstance);
 if (!isNewInstance)
 {
-    var requestedMode = RuntimeModeResolver.ResolveFromArgs(args);
-    if (!RuntimeModeResolver.HasModeOption(args) && Environment.UserInteractive)
-    {
-        requestedMode = RuntimeMode.Background;
-    }
-
     Console.Error.WriteLine("[PhotoPrivacy] 另一个实例已在运行，退出。");
     Console.Error.WriteLine("[PhotoPrivacy] another instance is already in use.");
 
-    await InstanceConflictAudit.TryWriteAsync(args, requestedMode, MutexName);
+    await InstanceConflictAudit.TryWriteAsync(args, requestedMode, mutexName);
     return 1;
+}
+
+if (runUiControlOnly)
+{
+    UiHostProgram.Options = new BackgroundUiOptions
+    {
+        IsBackgroundMode = false,
+        HideMainWindowOnStartup = false,
+        IsServiceInstalled = true,
+        IsPaused = static () => false,
+        Pause = static () => { },
+        Resume = static () => { },
+        ExitAsync = static () => Task.CompletedTask,
+        GetExifToolVersion = static () => "service_mode",
+        ConfigPath = probeConfigPath,
+        AuditDirectory = probeConfig?.Audit.LogDirectory ?? AppContext.BaseDirectory,
+        SelfExecutablePath = Environment.ProcessPath
+    };
+
+    return UiHostProgram.Start(args);
 }
 
 var builder = Host.CreateApplicationBuilder(args);
@@ -87,8 +121,15 @@ if (mode == RuntimeMode.Background)
         ?? builder.Configuration["audit:log_directory"]
         ?? AppContext.BaseDirectory;
 
+    var loadedConfig = TryLoadConfig(configPath);
+    var hideMainWindowOnStartup = loadedConfig?.Ui.HideMainWindowOnStartup ?? true;
+    var serviceInstalled = new PhotoPrivacy.Ui.ServiceManager().IsInstalled();
+
     UiHostProgram.Options = new BackgroundUiOptions
     {
+        IsBackgroundMode = true,
+        HideMainWindowOnStartup = hideMainWindowOnStartup,
+        IsServiceInstalled = serviceInstalled,
         IsPaused = () => runtimeControl.IsPaused,
         Pause = runtimeControl.Pause,
         Resume = runtimeControl.Resume,
@@ -145,5 +186,19 @@ static void UnregisterBestEffortShutdown(
     if (processExitHandler is not null)
     {
         AppDomain.CurrentDomain.ProcessExit -= processExitHandler;
+    }
+}
+
+static AppConfig? TryLoadConfig(string configPath)
+{
+    try
+    {
+        return File.Exists(configPath)
+            ? AppConfigLoader.Load(configPath)
+            : AppConfig.Default;
+    }
+    catch
+    {
+        return null;
     }
 }

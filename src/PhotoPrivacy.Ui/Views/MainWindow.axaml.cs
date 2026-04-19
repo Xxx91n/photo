@@ -1,6 +1,8 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
+using Avalonia;
+using Avalonia.Controls.ApplicationLifetimes;
 using PhotoPrivacy.Core.Configuration;
 using PhotoPrivacy.Ui.ViewModels;
 
@@ -27,16 +29,28 @@ public partial class MainWindow : Window
         var effectiveConfig = LoadConfigOrDefault(options.ConfigPath);
         var hotFolder = effectiveConfig?.Watch.HotFolder;
         var exifToolPathFromConfig = effectiveConfig?.ExifTool.Path;
+        var viewModel = DataContext as MainWindowViewModel;
 
-        if (DataContext is MainWindowViewModel vm)
+        if (viewModel is not null)
         {
-            vm.CurrentMode = "background";
+            viewModel.CurrentMode = options.IsServiceInstalled ? "service" : "background";
             _versionSnapshot = new ExifToolVersionSnapshot(options.GetExifToolVersion);
-            vm.ExifToolVersion = NormalizeExifToolStatus(_versionSnapshot.ReadInitial());
-            vm.ShowDetailedEvents = false;
-            vm.RuntimeStatus = options.IsPaused() ? "已暂停" : "运行中";
-            vm.ShowServiceManagerTab = OperatingSystem.IsWindows();
-            vm.ServiceStatus = _serviceManager.GetStatusText();
+            viewModel.ExifToolVersion = NormalizeExifToolStatus(_versionSnapshot.ReadInitial());
+            viewModel.ShowDetailedEvents = false;
+            viewModel.RuntimeStatus = options.IsPaused() ? "已暂停" : "运行中";
+            viewModel.ShowServiceManagerTab = OperatingSystem.IsWindows();
+            viewModel.ServiceStatus = _serviceManager.GetStatusText();
+
+            if (effectiveConfig is not null)
+            {
+                viewModel.ExifToolPath = effectiveConfig.ExifTool.Path;
+                viewModel.BackupEnabled = effectiveConfig.Backup.Enabled;
+                viewModel.LogEnabled = effectiveConfig.Audit.DiagnosticMode;
+                viewModel.HotFolderPath = effectiveConfig.Watch.HotFolder;
+                viewModel.HideGuiOnStartup = effectiveConfig.Ui.HideMainWindowOnStartup;
+            }
+
+            UpdateServiceButtons(viewModel);
         }
 
         ServiceManagerTab.IsVisible = OperatingSystem.IsWindows();
@@ -50,6 +64,10 @@ public partial class MainWindow : Window
         UninstallServiceButton.Click += OnUninstallServiceClick;
         StartServiceButton.Click += OnStartServiceClick;
         StopServiceButton.Click += OnStopServiceClick;
+        if (this.FindControl<Button>("SaveConfigButton") is { } saveConfigButton)
+        {
+            saveConfigButton.Click += OnSaveConfigClick;
+        }
 
         _auditTail = new AuditTailService(
             hotFolder: hotFolder ?? Path.GetDirectoryName(options.AuditDirectory) ?? AppContext.BaseDirectory,
@@ -57,13 +75,13 @@ public partial class MainWindow : Window
             {
                 Dispatcher.UIThread.Post(() =>
                 {
-                    if (DataContext is MainWindowViewModel innerVm)
+                    if (viewModel is not null)
                     {
-                        innerVm.AppendLog(entry);
+                        viewModel.AppendLog(entry);
                     }
                 });
             },
-            includeDetailedEvents: () => (DataContext as MainWindowViewModel)?.ShowDetailedEvents ?? false,
+            includeDetailedEvents: () => viewModel?.ShowDetailedEvents ?? false,
             onExifToolExePathDetected: exePath => _ = ResolveExifToolVersionAsync(exePath ?? exifToolPathFromConfig));
 
         _auditTail.Start();
@@ -73,6 +91,14 @@ public partial class MainWindow : Window
         _versionPollTask = Task.Run(() => PollVersionAsync(_versionPollCts.Token), _versionPollCts.Token);
 
         _trayHost = new TrayHost(this, options, ExitApplicationAsync);
+        _trayHost.IsVisible = TrayPolicy.ShouldShowTrayIcon(
+            isBackgroundMode: options.IsBackgroundMode,
+            isServiceInstalled: options.IsServiceInstalled);
+
+        if (options.HideMainWindowOnStartup)
+        {
+            Hide();
+        }
     }
 
     private static AppConfig? LoadConfigOrDefault(string configPath)
@@ -178,6 +204,7 @@ public partial class MainWindow : Window
         if (DataContext is MainWindowViewModel vm)
         {
             vm.ServiceStatus = _serviceManager.GetStatusText();
+            UpdateServiceButtons(vm);
         }
     }
 
@@ -190,24 +217,46 @@ public partial class MainWindow : Window
 
         var result = _serviceManager.Install(_options.SelfExecutablePath, _options.ConfigPath);
         ApplyServiceResult(result);
+
+        if (DataContext is MainWindowViewModel vm)
+        {
+            vm.CurrentMode = _serviceManager.IsInstalled() ? "service" : "background";
+        }
     }
 
     private void OnUninstallServiceClick(object? sender, RoutedEventArgs e)
     {
         var result = _serviceManager.Uninstall();
         ApplyServiceResult(result);
+
+        if (DataContext is MainWindowViewModel vm)
+        {
+            vm.CurrentMode = _serviceManager.IsInstalled() ? "service" : "background";
+        }
     }
 
     private void OnStartServiceClick(object? sender, RoutedEventArgs e)
     {
-        var result = _serviceManager.Start();
+        var configPath = _options?.ConfigPath;
+        var exePath = _options?.SelfExecutablePath;
+        var result = _serviceManager.Start(exePath, configPath);
         ApplyServiceResult(result);
+
+        if (DataContext is MainWindowViewModel vm)
+        {
+            vm.CurrentMode = _serviceManager.IsInstalled() ? "service" : "background";
+        }
     }
 
     private void OnStopServiceClick(object? sender, RoutedEventArgs e)
     {
         var result = _serviceManager.Stop();
         ApplyServiceResult(result);
+
+        if (DataContext is MainWindowViewModel vm)
+        {
+            vm.CurrentMode = _serviceManager.IsInstalled() ? "service" : "background";
+        }
     }
 
     private void ApplyServiceResult(ServiceCommandResult result)
@@ -226,6 +275,8 @@ public partial class MainWindow : Window
             ServiceCommandStatus.Failed => $"{status} | 失败：{result.Message}",
             _ => status
         };
+
+        UpdateServiceButtons(vm);
     }
 
     private async Task ExitApplicationAsync()
@@ -236,7 +287,69 @@ public partial class MainWindow : Window
         }
 
         _trayHost?.AllowWindowClose();
-        Close();
+        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            desktop.Shutdown(0);
+        }
+        else
+        {
+            Close();
+        }
+    }
+
+    private void UpdateServiceButtons(MainWindowViewModel vm)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            InstallServiceButton.IsEnabled = false;
+            UninstallServiceButton.IsEnabled = false;
+            StartServiceButton.IsEnabled = false;
+            StopServiceButton.IsEnabled = false;
+            return;
+        }
+
+        var state = _serviceManager.GetRuntimeState();
+        var installed = state != ServiceRuntimeState.NotInstalled;
+        var running = state is ServiceRuntimeState.Running or ServiceRuntimeState.StartPending or ServiceRuntimeState.ContinuePending;
+
+        InstallServiceButton.IsEnabled = !installed;
+        UninstallServiceButton.IsEnabled = installed;
+        StartServiceButton.IsEnabled = installed && !running;
+        StopServiceButton.IsEnabled = installed && running;
+
+        vm.ServiceStatus = _serviceManager.GetStatusText();
+    }
+
+    private void OnSaveConfigClick(object? sender, RoutedEventArgs e)
+    {
+        if (_options is null || DataContext is not MainWindowViewModel vm)
+        {
+            return;
+        }
+
+        try
+        {
+            var command = new ConfigEditCommand(
+                ExifToolPath: vm.ExifToolPath,
+                BackupEnabled: vm.BackupEnabled,
+                LogEnabled: vm.LogEnabled,
+                HotFolderPath: vm.HotFolderPath,
+                HideMainWindowOnStartup: vm.HideGuiOnStartup);
+
+            ConfigEditor.UpdateConfig(_options.ConfigPath, command);
+            vm.RuntimeStatus = "配置已保存";
+        }
+        catch (Exception ex)
+        {
+            vm.RuntimeStatus = "配置保存失败";
+            vm.AppendLog(new AuditLogEntry(
+                TimeText: DateTime.Now.ToString("HH:mm:ss"),
+                EventType: "config_save_failed",
+                DisplayEvent: "❌ 配置保存失败",
+                SourcePathMasked: _options.ConfigPath,
+                Message: ex.Message,
+                ColorHex: "#C62828"));
+        }
     }
 
     private async Task PollVersionAsync(CancellationToken token)

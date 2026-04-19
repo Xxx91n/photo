@@ -65,9 +65,12 @@ public sealed class MetadataCleanerWorker : BackgroundService
             return;
         }
 
-        _audit = new JsonLineAuditLogger(config.Audit.LogDirectory, config.Audit.RetainDays, config.Audit.DiagnosticMode);
-        _bridge = CreateBridge(config, _audit);
-        _pipeline = new FileTaskPipeline(config, new RuleEngine(config), _bridge, new LocalFileOperations(), _audit);
+        _audit = config.Audit.DiagnosticMode
+            ? new JsonLineAuditLogger(config.Audit.LogDirectory, config.Audit.RetainDays, config.Audit.DiagnosticMode)
+            : null;
+        IAuditLogger auditLogger = _audit is not null ? _audit : new NoopAuditLogger();
+        _bridge = CreateBridge(config, auditLogger);
+        _pipeline = new FileTaskPipeline(config, new RuleEngine(config), _bridge, new LocalFileOperations(), auditLogger);
         _debounceQueue = new DebounceQueue(TimeSpan.FromMilliseconds(config.Watch.DebounceMs), () => DateTimeOffset.UtcNow);
         _recentFingerprintCache = new RecentFingerprintCache(() => DateTimeOffset.UtcNow);
 
@@ -75,21 +78,24 @@ public sealed class MetadataCleanerWorker : BackgroundService
 
         if (config.ExifTool.DryRun)
         {
-            await _audit.WriteAsync(
-                new AuditEvent(
-                    EventType: "exiftool_started",
-                    TimestampUtc: DateTimeOffset.UtcNow,
-                    TaskId: Guid.NewGuid().ToString("N"),
-                    SourcePath: config.ExifTool.Path,
-                    Message: "dry-run bridge started",
-                    Data: null),
-                stoppingToken);
+            if (_audit is not null)
+            {
+                await _audit.WriteAsync(
+                    new AuditEvent(
+                        EventType: "exiftool_started",
+                        TimestampUtc: DateTimeOffset.UtcNow,
+                        TaskId: Guid.NewGuid().ToString("N"),
+                        SourcePath: config.ExifTool.Path,
+                        Message: "dry-run bridge started",
+                        Data: null),
+                    stoppingToken);
+            }
         }
 
         _watcher = new FswFolderWatcher(
             config,
             new DirectoryRecoveryScanner(config),
-            _audit,
+            auditLogger,
             path =>
             {
                 EnqueueIfNeeded(path);
@@ -97,15 +103,18 @@ public sealed class MetadataCleanerWorker : BackgroundService
             });
 
         var autoExcluded = _watcher.GetAutoExcludedSubdirectories();
-        await _audit.WriteAsync(
-            new AuditEvent(
-                EventType: "service_started",
-                TimestampUtc: DateTimeOffset.UtcNow,
-                TaskId: Guid.NewGuid().ToString("N"),
-                SourcePath: config.Watch.HotFolder,
-                Message: $"mode={(config.ExifTool.DryRun ? "dry-run" : "live")}",
-                Data: BuildServiceStartedData(autoExcluded)),
-            stoppingToken);
+        if (_audit is not null)
+        {
+            await _audit.WriteAsync(
+                new AuditEvent(
+                    EventType: "service_started",
+                    TimestampUtc: DateTimeOffset.UtcNow,
+                    TaskId: Guid.NewGuid().ToString("N"),
+                    SourcePath: config.Watch.HotFolder,
+                    Message: $"mode={(config.ExifTool.DryRun ? "dry-run" : "live")}",
+                    Data: BuildServiceStartedData(autoExcluded)),
+                stoppingToken);
+        }
 
         foreach (var file in Directory.EnumerateFiles(config.Watch.HotFolder, "*", SearchOption.AllDirectories))
         {

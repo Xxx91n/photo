@@ -50,6 +50,9 @@
   "audit": {
     "log_directory": "D:\\hot\\_audit",
     "retain_days": 30,
-    "diagnostic_mode": false
+    "diagnostic_mode": true
+  },
+  "ui": {
+    "hide_main_window_on_startup": true
   }
 }

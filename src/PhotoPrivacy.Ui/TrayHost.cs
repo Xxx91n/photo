@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Media.Imaging;
 
 namespace PhotoPrivacy.Ui;
 
@@ -41,8 +42,10 @@ public sealed class TrayHost : IDisposable
         {
             ToolTipText = "PhotoPrivacy",
             Menu = menu,
-            IsVisible = true
+            Icon = CreateDefaultIcon(),
+            IsVisible = false
         };
+        _trayIcon.Clicked += OnTrayClicked;
 
         _window.Closing += OnWindowClosing;
         UpdateMenu();
@@ -51,12 +54,19 @@ public sealed class TrayHost : IDisposable
     public void Dispose()
     {
         _window.Closing -= OnWindowClosing;
+        _trayIcon.Clicked -= OnTrayClicked;
         _trayIcon.IsVisible = false;
     }
 
     public void Refresh()
     {
         UpdateMenu();
+    }
+
+    public bool IsVisible
+    {
+        get => _trayIcon.IsVisible;
+        set => _trayIcon.IsVisible = value;
     }
 
     public void AllowWindowClose()
@@ -66,7 +76,7 @@ public sealed class TrayHost : IDisposable
 
     private void OnWindowClosing(object? sender, WindowClosingEventArgs e)
     {
-        if (_allowWindowClose)
+        if (_allowWindowClose || !_trayIcon.IsVisible)
         {
             return;
         }
@@ -95,8 +105,35 @@ public sealed class TrayHost : IDisposable
         _window.Activate();
     }
 
+    private void OnTrayClicked(object? sender, EventArgs e)
+    {
+        ShowMainWindow();
+    }
+
     private void UpdateMenu()
     {
         _pauseResumeItem.Header = _options.IsPaused() ? "恢复" : "暂停";
+    }
+
+    private static WindowIcon? CreateDefaultIcon()
+    {
+        try
+        {
+            var assetPath = Path.Combine(AppContext.BaseDirectory, "Assets", "tray-dot-16.png.base64");
+            if (!File.Exists(assetPath))
+            {
+                return null;
+            }
+
+            var base64 = File.ReadAllText(assetPath).Trim();
+            var bytes = Convert.FromBase64String(base64);
+            using var stream = new MemoryStream(bytes);
+            var bitmap = new Bitmap(stream);
+            return new WindowIcon(bitmap);
+        }
+        catch
+        {
+            return null;
+        }
     }
 }

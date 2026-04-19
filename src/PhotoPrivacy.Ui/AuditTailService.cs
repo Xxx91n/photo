@@ -86,41 +86,48 @@ public sealed class AuditTailService
             return null;
         }
 
-        using var doc = JsonDocument.Parse(line);
-        var root = doc.RootElement;
+        try
+        {
+            using var doc = JsonDocument.Parse(line);
+            var root = doc.RootElement;
 
-        var eventType = root.TryGetProperty("event_type", out var eventTypeEl)
-            ? eventTypeEl.GetString() ?? "unknown"
-            : "unknown";
+            var eventType = root.TryGetProperty("event_type", out var eventTypeEl)
+                ? eventTypeEl.GetString() ?? "unknown"
+                : "unknown";
 
-        if (!includeDetailedEvents && string.Equals(eventType, "file_detected", StringComparison.OrdinalIgnoreCase))
+            if (!includeDetailedEvents && string.Equals(eventType, "file_detected", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            var timestampUtc = root.TryGetProperty("timestamp_utc", out var tsEl)
+                ? tsEl.GetString()
+                : null;
+            var localTime = DateTimeOffset.TryParse(timestampUtc, out var parsedTs)
+                ? parsedTs.ToLocalTime().ToString("HH:mm:ss")
+                : DateTime.Now.ToString("HH:mm:ss");
+
+            var sourcePathMasked = root.TryGetProperty("source_path_masked", out var srcEl)
+                ? srcEl.GetString() ?? string.Empty
+                : string.Empty;
+
+            var message = root.TryGetProperty("message", out var msgEl)
+                ? msgEl.GetString() ?? string.Empty
+                : string.Empty;
+
+            var (displayEvent, colorHex) = MapEventStyle(eventType);
+            return new AuditLogEntry(
+                TimeText: localTime,
+                EventType: eventType,
+                DisplayEvent: displayEvent,
+                SourcePathMasked: sourcePathMasked,
+                Message: message,
+                ColorHex: colorHex);
+        }
+        catch
         {
             return null;
         }
-
-        var timestampUtc = root.TryGetProperty("timestamp_utc", out var tsEl)
-            ? tsEl.GetString()
-            : null;
-        var localTime = DateTimeOffset.TryParse(timestampUtc, out var parsedTs)
-            ? parsedTs.ToLocalTime().ToString("HH:mm:ss")
-            : DateTime.Now.ToString("HH:mm:ss");
-
-        var sourcePathMasked = root.TryGetProperty("source_path_masked", out var srcEl)
-            ? srcEl.GetString() ?? string.Empty
-            : string.Empty;
-
-        var message = root.TryGetProperty("message", out var msgEl)
-            ? msgEl.GetString() ?? string.Empty
-            : string.Empty;
-
-        var (displayEvent, colorHex) = MapEventStyle(eventType);
-        return new AuditLogEntry(
-            TimeText: localTime,
-            EventType: eventType,
-            DisplayEvent: displayEvent,
-            SourcePathMasked: sourcePathMasked,
-            Message: message,
-            ColorHex: colorHex);
     }
 
     private async Task LoopAsync(CancellationToken token)
@@ -191,6 +198,21 @@ public sealed class AuditTailService
 
     private void EmitIfAny(string line)
     {
+        var exePath = TryExtractExifToolExePath(line);
+        if (!string.IsNullOrWhiteSpace(exePath))
+        {
+            _onExifToolExePathDetected(exePath);
+        }
+
+        var entry = ParseAuditLine(line, _includeDetailedEvents());
+        if (entry is not null)
+        {
+            _onEntry(entry);
+        }
+    }
+
+    public static string? TryExtractExifToolExePath(string line)
+    {
         try
         {
             using var doc = JsonDocument.Parse(line);
@@ -199,24 +221,26 @@ public sealed class AuditTailService
                 ? eventTypeEl.GetString() ?? "unknown"
                 : "unknown";
 
-            if (string.Equals(eventType, "exiftool_started", StringComparison.OrdinalIgnoreCase)
-                && root.TryGetProperty("data", out var dataEl)
-                && dataEl.ValueKind == JsonValueKind.Object
-                && dataEl.TryGetProperty("exe_path", out var exePathEl)
-                && exePathEl.ValueKind == JsonValueKind.String)
+            if (!string.Equals(eventType, "exiftool_started", StringComparison.OrdinalIgnoreCase))
             {
-                _onExifToolExePathDetected(exePathEl.GetString());
+                return null;
             }
+
+            if (!root.TryGetProperty("data", out var dataEl) || dataEl.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+
+            if (!dataEl.TryGetProperty("exe_path", out var exePathEl) || exePathEl.ValueKind != JsonValueKind.String)
+            {
+                return null;
+            }
+
+            return exePathEl.GetString();
         }
         catch
         {
-            // ignore parse exception for detector path
-        }
-
-        var entry = ParseAuditLine(line, _includeDetailedEvents());
-        if (entry is not null)
-        {
-            _onEntry(entry);
+            return null;
         }
     }
 

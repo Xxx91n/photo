@@ -104,4 +104,12 @@ public sealed class RuntimeModeResolverTests
 
         Assert.Equal(RuntimeMode.Background, mode);
     }
+
+    [Fact]
+    public void ResolveFromArgs_Should_Return_Service_When_Mode_Service_Provided()
+    {
+        var mode = RuntimeModeResolver.ResolveFromArgs(["--mode", "service", "--config", "config/config.json"]);
+
+        Assert.Equal(RuntimeMode.Service, mode);
+    }
 }

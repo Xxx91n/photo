@@ -27,6 +27,30 @@
     </StackPanel>
 
     <TabControl Grid.Row="2">
+      <TabItem Header="配置">
+        <Border BorderBrush="#4D5D6B" BorderThickness="1" CornerRadius="6" Padding="10">
+          <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnDefinitions="140,*">
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="ExifTool 路径" VerticalAlignment="Center" />
+            <TextBox Grid.Row="0" Grid.Column="1" Margin="0,0,0,8" Text="{Binding ExifToolPath}" />
+
+            <TextBlock Grid.Row="1" Grid.Column="0" Margin="0,0,0,8" Text="热目录路径" VerticalAlignment="Center" />
+            <TextBox Grid.Row="1" Grid.Column="1" Margin="0,0,0,8" Text="{Binding HotFolderPath}" />
+
+            <TextBlock Grid.Row="2" Grid.Column="0" Margin="0,0,0,8" Text="启用备份" VerticalAlignment="Center" />
+            <CheckBox Grid.Row="2" Grid.Column="1" Margin="0,0,0,8" IsChecked="{Binding BackupEnabled}" VerticalAlignment="Center" />
+
+            <TextBlock Grid.Row="3" Grid.Column="0" Margin="0,0,0,8" Text="启用日志诊断" VerticalAlignment="Center" />
+            <CheckBox Grid.Row="3" Grid.Column="1" Margin="0,0,0,8" IsChecked="{Binding LogEnabled}" VerticalAlignment="Center" />
+
+            <TextBlock Grid.Row="4" Grid.Column="0" Margin="0,0,0,8" Text="启动隐藏主窗口" VerticalAlignment="Center" />
+            <CheckBox Grid.Row="4" Grid.Column="1" Margin="0,0,0,8" IsChecked="{Binding HideGuiOnStartup}" VerticalAlignment="Center" />
+
+            <Button Grid.Row="5" Grid.Column="1" x:Name="SaveConfigButton" Margin="0,0,0,8" Content="保存配置" Width="120" HorizontalAlignment="Left" />
+            <TextBlock Grid.Row="6" Grid.ColumnSpan="2" Text="保存后将在下次启动生效（服务模式可点击 Start 前自动 reconfig）。" Opacity="0.75" />
+          </Grid>
+        </Border>
+      </TabItem>
+
       <TabItem Header="日志">
         <Border BorderBrush="#4D5D6B" BorderThickness="1" CornerRadius="6" Padding="8">
           <ListBox x:Name="LogsList" ItemsSource="{Binding LogEntries}">
