@@ -26,6 +26,8 @@ public sealed class MetadataCleanerWorker : BackgroundService
     private RecentFingerprintCache? _recentFingerprintCache;
     private FswFolderWatcher? _watcher;
 
+    public string CurrentExifToolVersion => _bridge?.VersionText ?? "unknown";
+
     public MetadataCleanerWorker(
         IConfiguration configuration,
         ILogger<MetadataCleanerWorker> logger,

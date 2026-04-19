@@ -6,6 +6,8 @@ public sealed class DryRunExifToolBridge : IExifToolBridge
 {
     private readonly IAuditLogger _audit;
 
+    public string VersionText => "dry-run";
+
     public DryRunExifToolBridge(IAuditLogger audit)
     {
         _audit = audit;

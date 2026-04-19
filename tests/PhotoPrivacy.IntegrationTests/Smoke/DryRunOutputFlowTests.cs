@@ -318,7 +318,7 @@ public sealed class DryRunOutputFlowTests
         }
     }
 
-    private static async Task<CliRunResult> RunCliAsync(string configPath, TimeSpan timeout, string extraArgs = "", string framework = "net10.0-windows")
+    private static async Task<CliRunResult> RunCliAsync(string configPath, TimeSpan timeout, string extraArgs = "", string framework = "net10.0")
     {
         var repoRoot = FindRepoRoot();
         var mergedArgs = string.IsNullOrWhiteSpace(extraArgs) ? string.Empty : " " + extraArgs.Trim();

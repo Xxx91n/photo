@@ -1,0 +1,50 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="PhotoPrivacy.Ui.Views.MainWindow"
+        Width="960"
+        Height="640"
+        MinWidth="720"
+        MinHeight="480"
+        Title="PhotoPrivacy">
+  <Grid RowDefinitions="Auto,Auto,*" Margin="12">
+    <Border Grid.Row="0" BorderBrush="#4D5D6B" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,8">
+      <Grid ColumnDefinitions="Auto,*,Auto,*,Auto,*">
+        <TextBlock Text="模式" VerticalAlignment="Center" Margin="0,0,6,0" />
+        <TextBlock Grid.Column="1" Text="{Binding CurrentMode}" VerticalAlignment="Center" />
+        <TextBlock Grid.Column="2" Text="运行状态" VerticalAlignment="Center" Margin="10,0,6,0" />
+        <TextBlock Grid.Column="3" Text="{Binding RuntimeStatus}" VerticalAlignment="Center" />
+        <TextBlock Grid.Column="4" Text="ExifTool" VerticalAlignment="Center" Margin="10,0,6,0" />
+        <TextBlock Grid.Column="5" Text="{Binding ExifToolVersion}" VerticalAlignment="Center" />
+      </Grid>
+    </Border>
+
+    <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+      <Button x:Name="PauseResumeButton" Content="暂停" Width="88" />
+      <Button x:Name="ClearLogsButton" Content="清空日志" Width="88" />
+      <Button x:Name="OpenConfigDirButton" Content="打开配置目录" Width="116" />
+      <Button x:Name="RefreshServiceStatusButton" Content="刷新服务状态" Width="116" />
+    </StackPanel>
+
+    <TabControl Grid.Row="2">
+      <TabItem Header="日志">
+        <Border BorderBrush="#4D5D6B" BorderThickness="1" CornerRadius="6" Padding="8">
+          <ListBox x:Name="LogsList" ItemsSource="{Binding LogLines}" />
+        </Border>
+      </TabItem>
+
+      <TabItem x:Name="ServiceManagerTab" Header="服务管理器">
+        <StackPanel Spacing="8" Margin="6">
+          <TextBlock Text="服务状态" />
+          <TextBlock Text="{Binding ServiceStatus}" FontWeight="Bold" />
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button x:Name="InstallServiceButton" Content="Install Service" Width="120" />
+            <Button x:Name="UninstallServiceButton" Content="Uninstall Service" Width="120" />
+            <Button x:Name="StartServiceButton" Content="Start" Width="90" />
+            <Button x:Name="StopServiceButton" Content="Stop" Width="90" />
+          </StackPanel>
+          <TextBlock Text="Linux 下该页签自动隐藏（systemd 管理）。" Opacity="0.7" />
+        </StackPanel>
+      </TabItem>
+    </TabControl>
+  </Grid>
+</Window>

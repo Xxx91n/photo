@@ -96,4 +96,12 @@ public sealed class RuntimeModeResolverTests
 
         Assert.True(hasMode);
     }
+
+    [Fact]
+    public void ResolveFromArgs_Should_Return_Background_When_No_Mode_Provided()
+    {
+        var mode = RuntimeModeResolver.ResolveFromArgs(["--config", "config/config.json"]);
+
+        Assert.Equal(RuntimeMode.Background, mode);
+    }
 }

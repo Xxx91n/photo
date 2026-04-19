@@ -19,6 +19,9 @@ public sealed class ExifToolBridge : IExifToolBridge
 
     private bool _started;
     private int _taskId;
+    private string _versionText = "unknown";
+
+    public string VersionText => _versionText;
 
     public ExifToolBridge(IExifToolProcess process, AppConfig config, TimeSpan? healthTimeout = null)
         : this(process, config, NullLogger<ExifToolBridge>.Instance, lifecycleSink: null, healthTimeout)
@@ -255,6 +258,7 @@ public sealed class ExifToolBridge : IExifToolBridge
             }
 
             _logger.LogInformation("Detected ExifTool version: {VersionText}", versionRaw);
+            _versionText = versionRaw;
 
             var parsed = TryParseExifToolVersion(versionRaw);
             if (parsed is null)

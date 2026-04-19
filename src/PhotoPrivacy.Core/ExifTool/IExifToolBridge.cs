@@ -2,6 +2,8 @@ namespace PhotoPrivacy.Core.ExifTool;
 
 public interface IExifToolBridge
 {
+    string VersionText { get; }
+
     Task StartAsync(CancellationToken cancellationToken);
 
     Task StopAsync(CancellationToken cancellationToken);

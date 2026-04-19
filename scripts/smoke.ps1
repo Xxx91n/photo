@@ -14,10 +14,10 @@ if (-not [string]::IsNullOrWhiteSpace($ConfigPath)) {
   $args += @("--config", "$ConfigPath")
 }
 
-dotnet run --project src/PhotoPrivacy.Cli/PhotoPrivacy.Cli.csproj --framework net10.0-windows -- @args
+dotnet run --project src/PhotoPrivacy.Cli/PhotoPrivacy.Cli.csproj --framework net10.0 -- @args
 if ($LASTEXITCODE -ne 0) {
   throw "CLI failed"
 }
 
-Write-Host "Smoke framework: net10.0-windows (matches win-x64 publish target)"
+Write-Host "Smoke framework: net10.0"
 Write-Host "Smoke test done"

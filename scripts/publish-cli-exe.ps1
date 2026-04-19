@@ -23,14 +23,15 @@ $zipEnabled = $Zip -match '^(1|true|yes|on)$'
 
 $selfContainedValue = if ($selfContainedEnabled) { "true" } else { "false" }
 $isLinuxRuntime = $Runtime -like "linux-*"
-$defaultFramework = if ($Runtime -like "win-*") { "net10.0-windows" } else { "net10.0" }
-$resolvedFramework = if ([string]::IsNullOrWhiteSpace($Framework)) { $defaultFramework } else { $Framework.Trim() }
 
-if ($Runtime -like "win-*" -and $resolvedFramework -ne "net10.0-windows") {
-  throw "Runtime '$Runtime' must use framework 'net10.0-windows'"
+if ($Runtime -match '^(all|any)$') {
+  throw "Runtime '$Runtime' is not valid. Use a concrete RID like win-x64 or linux-x64."
 }
 
-if ($Runtime -like "linux-*" -and $resolvedFramework -ne "net10.0") {
+$defaultFramework = "net10.0"
+$resolvedFramework = if ([string]::IsNullOrWhiteSpace($Framework)) { $defaultFramework } else { $Framework.Trim() }
+
+if ($resolvedFramework -ne "net10.0") {
   throw "Runtime '$Runtime' must use framework 'net10.0'"
 }
 

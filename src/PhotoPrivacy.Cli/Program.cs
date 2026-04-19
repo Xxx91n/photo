@@ -1,20 +1,16 @@
 using System.Threading;
 using Microsoft.Extensions.DependencyInjection;
-#if WINDOWS
-using System.Windows.Forms;
-#endif
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using PhotoPrivacy.Cli;
 using PhotoPrivacy.Core.Runtime;
 using PhotoPrivacy.Core.Worker;
+using UiHostProgram = PhotoPrivacy.Ui.UiProgram;
+using BackgroundUiOptions = PhotoPrivacy.Ui.BackgroundUiOptions;
 
 ConsoleCancelEventHandler? cancelKeyHandler = null;
 EventHandler? processExitHandler = null;
 PosixSignalHooks? posixHooks = null;
-#if WINDOWS
-NativeConsoleControlHandler? nativeHandler = null;
-#endif
 
 const string MutexName = @"Global\PhotoPrivacyCleaner_SingleInstance";
 using var mutex = new Mutex(initiallyOwned: true, MutexName, out var isNewInstance);
@@ -26,21 +22,8 @@ if (!isNewInstance)
         requestedMode = RuntimeMode.Background;
     }
 
-#if WINDOWS
-    if (InstanceConflictUiPolicy.ShouldShowInteractivePrompt(requestedMode, Environment.UserInteractive))
-    {
-        MessageBox.Show(
-            "另一个实例已在运行，已拒绝重复启动。",
-            "PhotoPrivacy",
-            MessageBoxButtons.OK,
-            MessageBoxIcon.Information);
-    }
-    else
-#endif
-    {
-        Console.Error.WriteLine("[PhotoPrivacy] 另一个实例已在运行，退出。");
-        Console.Error.WriteLine("[PhotoPrivacy] another instance is already in use.");
-    }
+    Console.Error.WriteLine("[PhotoPrivacy] 另一个实例已在运行，退出。");
+    Console.Error.WriteLine("[PhotoPrivacy] another instance is already in use.");
 
     await InstanceConflictAudit.TryWriteAsync(args, requestedMode, MutexName);
     return 1;
@@ -54,15 +37,16 @@ builder.Logging.AddSimpleConsole();
 
 if (mode == RuntimeMode.Service)
 {
-#if WINDOWS
+    if (!OperatingSystem.IsWindows())
+    {
+        Console.Error.WriteLine("[PhotoPrivacy] service 模式仅支持 Windows。请改用 --mode cli。");
+        return 1;
+    }
+
     builder.Services.AddWindowsService(options =>
     {
         options.ServiceName = "PhotoPrivacyCleaner";
     });
-#else
-    Console.Error.WriteLine("[PhotoPrivacy] service 模式仅支持 Windows。请改用 --mode cli。");
-    return 1;
-#endif
 }
 
 // Extend shutdown timeout so StopAsync has time to flush the audit log
@@ -76,7 +60,8 @@ builder.Services.Configure<HostOptions>(options =>
 });
 
 builder.Services.AddSingleton<IRuntimeControl, RuntimeControl>();
-builder.Services.AddHostedService<MetadataCleanerWorker>();
+builder.Services.AddSingleton<MetadataCleanerWorker>();
+builder.Services.AddHostedService(static services => services.GetRequiredService<MetadataCleanerWorker>());
 
 var app = builder.Build();
 
@@ -84,48 +69,53 @@ var shutdownCoordinator = new ShutdownCoordinator(
     stopToken => app.StopAsync(stopToken),
     stopTimeout: TimeSpan.FromSeconds(4));
 posixHooks = PosixSignalHooks.Register(() => shutdownCoordinator.RequestStop());
-RegisterBestEffortShutdown(shutdownCoordinator, ref cancelKeyHandler, ref processExitHandler
-#if WINDOWS
-    , ref nativeHandler
-#endif
-);
+RegisterBestEffortShutdown(shutdownCoordinator, ref cancelKeyHandler, ref processExitHandler);
 
 if (mode == RuntimeMode.Background)
 {
-#if WINDOWS
-    ApplicationConfiguration.Initialize();
+    await app.StartAsync();
+
     var runtimeControl = app.Services.GetRequiredService<IRuntimeControl>();
-    Application.Run(new TrayApplicationContext(app, runtimeControl));
-    UnregisterBestEffortShutdown(cancelKeyHandler, processExitHandler
-#if WINDOWS
-        , nativeHandler
-#endif
-    );
+    var configPath = builder.Configuration["config"]
+        ?? Path.Combine(AppContext.BaseDirectory, "config", "config.json");
+    var auditDirectory = builder.Configuration["audit-folder"]
+        ?? builder.Configuration["audit:log_directory"]
+        ?? AppContext.BaseDirectory;
+
+    UiHostProgram.Options = new BackgroundUiOptions
+    {
+        IsPaused = () => runtimeControl.IsPaused,
+        Pause = runtimeControl.Pause,
+        Resume = runtimeControl.Resume,
+        ExitAsync = () => app.StopAsync(CancellationToken.None),
+        GetExifToolVersion = () => app.Services.GetRequiredService<MetadataCleanerWorker>().CurrentExifToolVersion,
+        ConfigPath = configPath,
+        AuditDirectory = auditDirectory,
+        SelfExecutablePath = Environment.ProcessPath
+    };
+
+    UnregisterBestEffortShutdown(cancelKeyHandler, processExitHandler);
     posixHooks.Dispose();
-    return Environment.ExitCode;
-#else
-    Console.Error.WriteLine("[PhotoPrivacy] background 模式仅支持 Windows。请改用 --mode cli。");
-    return 1;
-#endif
+
+    try
+    {
+        return UiHostProgram.Start(args);
+    }
+    finally
+    {
+        await app.StopAsync(CancellationToken.None);
+    }
 }
 
 await app.RunAsync();
-UnregisterBestEffortShutdown(cancelKeyHandler, processExitHandler
-#if WINDOWS
-    , nativeHandler
-#endif
-);
+UnregisterBestEffortShutdown(cancelKeyHandler, processExitHandler);
 posixHooks.Dispose();
 return Environment.ExitCode;
 
 static void RegisterBestEffortShutdown(
     ShutdownCoordinator coordinator,
     ref ConsoleCancelEventHandler? cancelKeyHandler,
-    ref EventHandler? processExitHandler
-#if WINDOWS
-    , ref NativeConsoleControlHandler? nativeHandler
-#endif
-    )
+    ref EventHandler? processExitHandler)
 {
     cancelKeyHandler = (_, e) =>
     {
@@ -136,32 +126,11 @@ static void RegisterBestEffortShutdown(
 
     processExitHandler = (_, _) => coordinator.RequestStop();
     AppDomain.CurrentDomain.ProcessExit += processExitHandler;
-
-#if WINDOWS
-    nativeHandler = controlType =>
-    {
-        if (controlType is NativeConsoleControlType.CtrlCloseEvent
-            or NativeConsoleControlType.CtrlLogoffEvent
-            or NativeConsoleControlType.CtrlShutdownEvent)
-        {
-            coordinator.RequestStop();
-            return true;
-        }
-
-        return false;
-    };
-
-    NativeConsole.SetConsoleCtrlHandler(nativeHandler, add: true);
-#endif
 }
 
 static void UnregisterBestEffortShutdown(
     ConsoleCancelEventHandler? cancelKeyHandler,
-    EventHandler? processExitHandler
-#if WINDOWS
-    , NativeConsoleControlHandler? nativeHandler
-#endif
-    )
+    EventHandler? processExitHandler)
 {
     if (cancelKeyHandler is not null)
     {
@@ -172,31 +141,4 @@ static void UnregisterBestEffortShutdown(
     {
         AppDomain.CurrentDomain.ProcessExit -= processExitHandler;
     }
-
-#if WINDOWS
-    if (nativeHandler is not null)
-    {
-        NativeConsole.SetConsoleCtrlHandler(nativeHandler, add: false);
-    }
-#endif
 }
-
-#if WINDOWS
-internal enum NativeConsoleControlType : uint
-{
-    CtrlCEvent = 0,
-    CtrlBreakEvent = 1,
-    CtrlCloseEvent = 2,
-    CtrlLogoffEvent = 5,
-    CtrlShutdownEvent = 6
-}
-
-internal delegate bool NativeConsoleControlHandler(NativeConsoleControlType controlType);
-
-internal static partial class NativeConsole
-{
-    [System.Runtime.InteropServices.DllImport("Kernel32")]
-    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
-    internal static extern bool SetConsoleCtrlHandler(NativeConsoleControlHandler handler, [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)] bool add);
-}
-#endif

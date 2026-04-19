@@ -61,7 +61,7 @@ public sealed class InstanceConflictAuditTests
 
             var repoRoot = FindRepoRoot();
             using var owner = StartCli(repoRoot, configPath);
-            await Task.Delay(1500);
+            WaitForAuditEvent(audit, "service_started", TimeSpan.FromSeconds(15));
 
             var conflict = await RunCliOnceAsync(repoRoot, configPath, TimeSpan.FromSeconds(30));
             Assert.Equal(1, conflict.ExitCode);
@@ -163,5 +163,26 @@ public sealed class InstanceConflictAuditTests
         }
 
         throw new FileNotFoundException("instance_conflict audit file not found", auditDirectory);
+    }
+
+    private static void WaitForAuditEvent(string auditDirectory, string eventType, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            var file = Directory.GetFiles(auditDirectory, "audit-*.jsonl").FirstOrDefault();
+            if (!string.IsNullOrWhiteSpace(file))
+            {
+                var content = File.ReadAllText(file);
+                if (content.Contains($"\"event_type\":\"{eventType}\"", StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+            }
+
+            Thread.Sleep(100);
+        }
+
+        throw new TimeoutException($"audit event '{eventType}' not found within timeout.");
     }
 }

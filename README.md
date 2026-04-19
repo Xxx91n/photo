@@ -93,6 +93,14 @@ echo "fs.inotify.max_user_instances=1024" | sudo tee -a /etc/sysctl.d/99-photopr
 sudo sysctl --system
 ```
 
+## UI 重构进度（Avalonia）
+
+- 已进入 Phase-1：新增 `src/PhotoPrivacy.Ui`（Avalonia，`net10.0`）项目骨架。
+- `--mode background` 已切换到 Avalonia 入口（Windows/Linux 共享一套路由）。
+- 旧 WinForms 托盘实现已移除，CLI 已收敛到单目标 `net10.0`。
+- 下一阶段将补齐托盘菜单、主窗口日志面板和 Windows 服务管理器 Tab。
+- 服务管理器动作已补失败语义：成功 / 跳过 / UAC 取消 / 失败，并在 UI 状态栏回显。
+
 ## Verification
 ```bash
 dotnet test PhotoPrivacy.sln
@@ -101,19 +109,39 @@ powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1 -HotFolder D:\hot -Au
 
 ## Build EXE
 
-1) 生成单文件 EXE（含 zip 包）：
+1) Windows 打包（win-x64，framework 固定为 net10.0，产出 zip）：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/publish-cli-exe.ps1 -Version 0.1.0-preview -Runtime win-x64 -SelfContained true -Zip true
+powershell -ExecutionPolicy Bypass -File scripts/publish-cli-exe.ps1 -Version 0.1.0-preview -Runtime win-x64 -Framework net10.0 -SelfContained true -Zip true
 ```
 
-2) 发行前一键检查（测试 + smoke + 打包）：
+2) Linux 打包（linux-x64，framework 固定为 net10.0，产出 tar.gz）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/publish-cli-exe.ps1 -Version 0.1.0-preview -Runtime linux-x64 -Framework net10.0 -SelfContained true -Zip true
+```
+
+3) 发行前一键检查（测试 + smoke + 打包）：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/release-readiness.ps1 -Version 0.1.0-preview -Runtime win-x64
 ```
 
-3) 成熟版发布时间规划见：`release-roadmap-2026-04-17.md`
+4) 发布门禁（含强杀验收，可选第 4 步）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/release-readiness.ps1 -Version 0.1.0-preview -Runtime win-x64 -IncludeForceKillCheck true
+```
+
+5) 单独执行强杀回归验收（验证父进程被强杀后，ExifTool 子进程不会残留）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/verify-force-kill-cleanup.ps1 -Version 0.1.0-preview
+```
+
+6) 成熟版发布时间规划见：`docs/release-roadmap-2026-04-17.md`
+
+7) `-Runtime all` / `-Runtime any` 为无效参数，脚本会快速失败并提示使用具体 RID（如 `win-x64`、`linux-x64`）。
 
 ### 允许你验证程序功能的方法
 

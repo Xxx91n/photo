@@ -185,6 +185,8 @@ public sealed class FileTaskPipelineTests
 
     private sealed class AlwaysFailBridge : IExifToolBridge
     {
+        public string VersionText => "test";
+
         public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
         public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
@@ -197,6 +199,8 @@ public sealed class FileTaskPipelineTests
 
     private sealed class CaptureTargetBridge : IExifToolBridge
     {
+        public string VersionText => "test";
+
         public string LastTargetPath { get; private set; } = string.Empty;
 
         public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
@@ -212,6 +216,8 @@ public sealed class FileTaskPipelineTests
 
     private sealed class SlowSuccessBridge : IExifToolBridge
     {
+        public string VersionText => "test";
+
         public int Calls { get; private set; }
 
         public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
