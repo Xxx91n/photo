@@ -34,6 +34,11 @@ var mode = RuntimeModeResolver.Resolve(builder.Configuration);
 
 builder.Logging.ClearProviders();
 builder.Logging.AddSimpleConsole();
+if (mode != RuntimeMode.Cli)
+{
+    builder.Logging.AddFilter("Microsoft.Hosting.Lifetime", LogLevel.None);
+    builder.Logging.AddFilter("Microsoft.Extensions.Hosting", LogLevel.Warning);
+}
 
 if (mode == RuntimeMode.Service)
 {

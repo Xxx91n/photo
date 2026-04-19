@@ -23,12 +23,24 @@
       <Button x:Name="ClearLogsButton" Content="清空日志" Width="88" />
       <Button x:Name="OpenConfigDirButton" Content="打开配置目录" Width="116" />
       <Button x:Name="RefreshServiceStatusButton" Content="刷新服务状态" Width="116" />
+      <CheckBox x:Name="ShowDetailedEventsCheckBox" Content="显示详细事件" IsChecked="{Binding ShowDetailedEvents}" VerticalAlignment="Center" />
     </StackPanel>
 
     <TabControl Grid.Row="2">
       <TabItem Header="日志">
         <Border BorderBrush="#4D5D6B" BorderThickness="1" CornerRadius="6" Padding="8">
-          <ListBox x:Name="LogsList" ItemsSource="{Binding LogLines}" />
+          <ListBox x:Name="LogsList" ItemsSource="{Binding LogEntries}">
+            <ListBox.ItemTemplate>
+              <DataTemplate>
+                <Grid ColumnDefinitions="Auto,Auto,*,2*" Margin="0,2">
+                  <TextBlock Text="{Binding TimeText}" Foreground="#B0BEC5" Margin="0,0,8,0" />
+                  <TextBlock Grid.Column="1" Text="{Binding DisplayEvent}" Foreground="{Binding ColorHex}" Margin="0,0,8,0" />
+                  <TextBlock Grid.Column="2" Text="{Binding SourcePathMasked}" Margin="0,0,8,0" />
+                  <TextBlock Grid.Column="3" Text="{Binding Message}" TextTrimming="CharacterEllipsis" />
+                </Grid>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
         </Border>
       </TabItem>
 

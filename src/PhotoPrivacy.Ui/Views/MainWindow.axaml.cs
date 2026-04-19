@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
+using PhotoPrivacy.Core.Configuration;
 using PhotoPrivacy.Ui.ViewModels;
 
 namespace PhotoPrivacy.Ui.Views;
@@ -23,12 +24,16 @@ public partial class MainWindow : Window
     public void InitializeRuntime(BackgroundUiOptions options)
     {
         _options = options;
+        var effectiveConfig = LoadConfigOrDefault(options.ConfigPath);
+        var hotFolder = effectiveConfig?.Watch.HotFolder;
+        var exifToolPathFromConfig = effectiveConfig?.ExifTool.Path;
 
         if (DataContext is MainWindowViewModel vm)
         {
             vm.CurrentMode = "background";
             _versionSnapshot = new ExifToolVersionSnapshot(options.GetExifToolVersion);
-            vm.ExifToolVersion = _versionSnapshot.ReadInitial();
+            vm.ExifToolVersion = NormalizeExifToolStatus(_versionSnapshot.ReadInitial());
+            vm.ShowDetailedEvents = false;
             vm.RuntimeStatus = options.IsPaused() ? "已暂停" : "运行中";
             vm.ShowServiceManagerTab = OperatingSystem.IsWindows();
             vm.ServiceStatus = _serviceManager.GetStatusText();
@@ -46,22 +51,45 @@ public partial class MainWindow : Window
         StartServiceButton.Click += OnStartServiceClick;
         StopServiceButton.Click += OnStopServiceClick;
 
-        _auditTail = new AuditTailService(options.AuditDirectory, line =>
-        {
-            Dispatcher.UIThread.Post(() =>
+        _auditTail = new AuditTailService(
+            hotFolder: hotFolder ?? Path.GetDirectoryName(options.AuditDirectory) ?? AppContext.BaseDirectory,
+            onEntry: entry =>
             {
-                if (DataContext is MainWindowViewModel innerVm)
+                Dispatcher.UIThread.Post(() =>
                 {
-                    innerVm.AppendLog(line);
-                }
-            });
-        });
+                    if (DataContext is MainWindowViewModel innerVm)
+                    {
+                        innerVm.AppendLog(entry);
+                    }
+                });
+            },
+            includeDetailedEvents: () => (DataContext as MainWindowViewModel)?.ShowDetailedEvents ?? false,
+            onExifToolExePathDetected: exePath => _ = ResolveExifToolVersionAsync(exePath ?? exifToolPathFromConfig));
+
         _auditTail.Start();
+        _ = ResolveExifToolVersionAsync(exifToolPathFromConfig);
 
         _versionPollCts = new CancellationTokenSource();
         _versionPollTask = Task.Run(() => PollVersionAsync(_versionPollCts.Token), _versionPollCts.Token);
 
         _trayHost = new TrayHost(this, options, ExitApplicationAsync);
+    }
+
+    private static AppConfig? LoadConfigOrDefault(string configPath)
+    {
+        try
+        {
+            if (!File.Exists(configPath))
+            {
+                return AppConfig.Default;
+            }
+
+            return AppConfigLoader.Load(configPath);
+        }
+        catch
+        {
+            return AppConfig.Default;
+        }
     }
 
     protected override async void OnClosed(EventArgs e)
@@ -192,10 +220,10 @@ public partial class MainWindow : Window
         var status = _serviceManager.GetStatusText();
         vm.ServiceStatus = result.Status switch
         {
-            ServiceCommandStatus.Success => status,
-            ServiceCommandStatus.Skipped => $"{status} | skipped: {result.Message}",
-            ServiceCommandStatus.ElevationCancelled => $"{status} | cancelled: {result.Message}",
-            ServiceCommandStatus.Failed => $"{status} | failed: {result.Message}",
+            ServiceCommandStatus.Success => $"{status} | {result.Message}",
+            ServiceCommandStatus.Skipped => $"{status} | 跳过：{result.Message}",
+            ServiceCommandStatus.ElevationCancelled => $"{status} | 已取消：{result.Message}",
+            ServiceCommandStatus.Failed => $"{status} | 失败：{result.Message}",
             _ => status
         };
     }
@@ -231,7 +259,79 @@ public partial class MainWindow : Window
             {
                 if (DataContext is MainWindowViewModel vm)
                 {
-                    vm.ExifToolVersion = changed;
+                    vm.ExifToolVersion = NormalizeExifToolStatus(changed);
+                }
+            });
+        }
+    }
+
+    private static string NormalizeExifToolStatus(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)
+            || string.Equals(raw, "unknown", StringComparison.OrdinalIgnoreCase))
+        {
+            return "未找到 ExifTool";
+        }
+
+        var text = raw.Trim();
+        return text.StartsWith("ExifTool", StringComparison.OrdinalIgnoreCase)
+            ? text
+            : $"ExifTool v{text} ✓";
+    }
+
+    private async Task ResolveExifToolVersionAsync(string? exePath)
+    {
+        if (string.IsNullOrWhiteSpace(exePath) || !File.Exists(exePath))
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (DataContext is MainWindowViewModel vm)
+                {
+                    vm.ExifToolVersion = "未找到 ExifTool";
+                }
+            });
+            return;
+        }
+
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = exePath,
+                Arguments = "-ver",
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = System.Diagnostics.Process.Start(psi);
+            if (process is null)
+            {
+                throw new InvalidOperationException("failed to start exiftool");
+            }
+
+            var version = await process.StandardOutput.ReadToEndAsync();
+            await process.WaitForExitAsync();
+
+            var text = string.IsNullOrWhiteSpace(version)
+                ? "未找到 ExifTool"
+                : $"ExifTool v{version.Trim()} ✓";
+
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (DataContext is MainWindowViewModel vm)
+                {
+                    vm.ExifToolVersion = text;
+                }
+            });
+        }
+        catch
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (DataContext is MainWindowViewModel vm)
+                {
+                    vm.ExifToolVersion = "未找到 ExifTool";
                 }
             });
         }

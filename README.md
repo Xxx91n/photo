@@ -98,7 +98,9 @@ sudo sysctl --system
 - 已进入 Phase-1：新增 `src/PhotoPrivacy.Ui`（Avalonia，`net10.0`）项目骨架。
 - `--mode background` 已切换到 Avalonia 入口（Windows/Linux 共享一套路由）。
 - 旧 WinForms 托盘实现已移除，CLI 已收敛到单目标 `net10.0`。
-- 下一阶段将补齐托盘菜单、主窗口日志面板和 Windows 服务管理器 Tab。
+- 主窗口日志面板已改为直接尾随 `_audit/audit-*.jsonl`（支持事件中文标签、颜色、详细事件开关）。
+- ExifTool 状态优先从 audit `exiftool_started` 事件解析并主动 `-ver` 校验；失败回退配置路径检测。
+- 服务管理器已接入错误码友好提示与安装前自动清理（避免 1073）。
 - 服务管理器动作已补失败语义：成功 / 跳过 / UAC 取消 / 失败，并在 UI 状态栏回显。
 
 ## Verification

@@ -9,9 +9,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public string Title { get; } = "PhotoPrivacy";
     private string _currentMode = "background";
     private string _runtimeStatus = "运行中";
-    private string _exifToolVersion = "unknown";
+    private string _exifToolVersion = "未找到 ExifTool";
     private string _serviceStatus = "N/A";
     private bool _showServiceManagerTab;
+    private bool _showDetailedEvents;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -45,20 +46,26 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         set => SetField(ref _showServiceManagerTab, value);
     }
 
-    public ObservableCollection<string> LogLines { get; } = [];
-
-    public void AppendLog(string line)
+    public bool ShowDetailedEvents
     {
-        LogLines.Add(line);
-        while (LogLines.Count > 500)
+        get => _showDetailedEvents;
+        set => SetField(ref _showDetailedEvents, value);
+    }
+
+    public ObservableCollection<AuditLogEntry> LogEntries { get; } = [];
+
+    public void AppendLog(AuditLogEntry entry)
+    {
+        LogEntries.Add(entry);
+        while (LogEntries.Count > 500)
         {
-            LogLines.RemoveAt(0);
+            LogEntries.RemoveAt(0);
         }
     }
 
     public void ClearLogs()
     {
-        LogLines.Clear();
+        LogEntries.Clear();
     }
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
