@@ -1,6 +1,8 @@
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Avalonia.Threading;
 using PhotoPrivacy.Ui.ViewModels;
 using PhotoPrivacy.Ui.Views;
 
@@ -27,6 +29,15 @@ public partial class App : Application
             if (desktop.MainWindow is MainWindow window)
             {
                 window.InitializeRuntime(RuntimeOptions);
+                RuntimeOptions.ShowMainWindow = () =>
+                {
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        window.Show();
+                        window.WindowState = WindowState.Normal;
+                        window.Activate();
+                    });
+                };
 
                 if (RuntimeOptions.HideMainWindowOnStartup)
                 {

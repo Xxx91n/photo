@@ -17,6 +17,9 @@ public partial class MainWindow : Window
     private Task? _versionPollTask;
     private BackgroundUiOptions? _options;
     private readonly ServiceManager _serviceManager = new();
+    private CancellationTokenSource? _serviceModePollCts;
+    private Task? _serviceModePollTask;
+    private bool _isSwitchingMode;
 
     public MainWindow()
     {
@@ -33,11 +36,11 @@ public partial class MainWindow : Window
 
         if (viewModel is not null)
         {
-            viewModel.CurrentMode = options.IsServiceInstalled ? "service" : "background";
+            viewModel.CurrentMode = MapModeLabel(options.RuntimeKind);
             _versionSnapshot = new ExifToolVersionSnapshot(options.GetExifToolVersion);
             viewModel.ExifToolVersion = NormalizeExifToolStatus(_versionSnapshot.ReadInitial());
             viewModel.ShowDetailedEvents = false;
-            viewModel.RuntimeStatus = options.IsPaused() ? "已暂停" : "运行中";
+            viewModel.RuntimeStatus = BuildRuntimeStatusText(options.RuntimeKind, options.GetServiceRuntimeState(), options.IsPaused());
             viewModel.ShowServiceManagerTab = OperatingSystem.IsWindows();
             viewModel.ServiceStatus = _serviceManager.GetStatusText();
 
@@ -59,6 +62,10 @@ public partial class MainWindow : Window
         ClearLogsButton.Click += OnClearLogsClick;
         OpenConfigDirButton.Click += OnOpenConfigDirClick;
         RefreshServiceStatusButton.Click += OnRefreshServiceStatusClick;
+        if (this.FindControl<Button>("OpenServiceManagerTabButton") is { } openServiceManagerTabButton)
+        {
+            openServiceManagerTabButton.Click += OnOpenServiceManagerTabClick;
+        }
 
         InstallServiceButton.Click += OnInstallServiceClick;
         UninstallServiceButton.Click += OnUninstallServiceClick;
@@ -90,15 +97,21 @@ public partial class MainWindow : Window
         _versionPollCts = new CancellationTokenSource();
         _versionPollTask = Task.Run(() => PollVersionAsync(_versionPollCts.Token), _versionPollCts.Token);
 
-        _trayHost = new TrayHost(this, options, ExitApplicationAsync);
-        _trayHost.IsVisible = TrayPolicy.ShouldShowTrayIcon(
-            isBackgroundMode: options.IsBackgroundMode,
-            isServiceInstalled: options.IsServiceInstalled);
+        if (options.UseTrayIcon)
+        {
+            _trayHost = new TrayHost(this, options, ExitApplicationAsync);
+            _trayHost.IsVisible = true;
+        }
 
-        if (options.HideMainWindowOnStartup)
+        if (options.HideMainWindowOnStartup && options.UseTrayIcon)
         {
             Hide();
         }
+
+        _serviceModePollCts = new CancellationTokenSource();
+        _serviceModePollTask = Task.Run(
+            () => PollServiceModeTransitionAsync(_serviceModePollCts.Token),
+            _serviceModePollCts.Token);
     }
 
     private static AppConfig? LoadConfigOrDefault(string configPath)
@@ -146,6 +159,27 @@ public partial class MainWindow : Window
             await _auditTail.StopAsync();
         }
 
+        if (_serviceModePollCts is not null)
+        {
+            await _serviceModePollCts.CancelAsync();
+            _serviceModePollCts.Dispose();
+            _serviceModePollCts = null;
+        }
+
+        if (_serviceModePollTask is not null)
+        {
+            try
+            {
+                await _serviceModePollTask;
+            }
+            catch (OperationCanceledException)
+            {
+                // expected on close
+            }
+
+            _serviceModePollTask = null;
+        }
+
         _trayHost?.Dispose();
         base.OnClosed(e);
     }
@@ -168,7 +202,7 @@ public partial class MainWindow : Window
 
         if (DataContext is MainWindowViewModel vm)
         {
-            vm.RuntimeStatus = _options.IsPaused() ? "已暂停" : "运行中";
+            vm.RuntimeStatus = BuildRuntimeStatusText(_options.RuntimeKind, _options.GetServiceRuntimeState(), _options.IsPaused());
         }
 
         PauseResumeButton.Content = _options.IsPaused() ? "恢复" : "暂停";
@@ -208,6 +242,14 @@ public partial class MainWindow : Window
         }
     }
 
+    private void OnOpenServiceManagerTabClick(object? sender, RoutedEventArgs e)
+    {
+        if (this.FindControl<TabControl>("MainTabControl") is { } mainTab)
+        {
+            mainTab.SelectedItem = ServiceManagerTab;
+        }
+    }
+
     private void OnInstallServiceClick(object? sender, RoutedEventArgs e)
     {
         if (_options is null || string.IsNullOrWhiteSpace(_options.SelfExecutablePath))
@@ -220,7 +262,12 @@ public partial class MainWindow : Window
 
         if (DataContext is MainWindowViewModel vm)
         {
-            vm.CurrentMode = _serviceManager.IsInstalled() ? "service" : "background";
+            vm.CurrentMode = MapModeLabel(_options?.RuntimeKind ?? "tray");
+        }
+
+        if (ImmediateModeSwitchPolicy.ShouldRestartAfterInstall(result))
+        {
+            _ = SwitchToDefaultModeAsync(CancellationToken.None);
         }
     }
 
@@ -231,7 +278,12 @@ public partial class MainWindow : Window
 
         if (DataContext is MainWindowViewModel vm)
         {
-            vm.CurrentMode = _serviceManager.IsInstalled() ? "service" : "background";
+            vm.CurrentMode = MapModeLabel(_options?.RuntimeKind ?? "tray");
+        }
+
+        if (ImmediateModeSwitchPolicy.ShouldRestartAfterUninstall(result))
+        {
+            _ = SwitchToDefaultModeAsync(CancellationToken.None);
         }
     }
 
@@ -244,7 +296,7 @@ public partial class MainWindow : Window
 
         if (DataContext is MainWindowViewModel vm)
         {
-            vm.CurrentMode = _serviceManager.IsInstalled() ? "service" : "background";
+            vm.CurrentMode = MapModeLabel(_options?.RuntimeKind ?? "tray");
         }
     }
 
@@ -255,7 +307,7 @@ public partial class MainWindow : Window
 
         if (DataContext is MainWindowViewModel vm)
         {
-            vm.CurrentMode = _serviceManager.IsInstalled() ? "service" : "background";
+            vm.CurrentMode = MapModeLabel(_options?.RuntimeKind ?? "tray");
         }
     }
 
@@ -309,15 +361,74 @@ public partial class MainWindow : Window
         }
 
         var state = _serviceManager.GetRuntimeState();
-        var installed = state != ServiceRuntimeState.NotInstalled;
-        var running = state is ServiceRuntimeState.Running or ServiceRuntimeState.StartPending or ServiceRuntimeState.ContinuePending;
-
-        InstallServiceButton.IsEnabled = !installed;
-        UninstallServiceButton.IsEnabled = installed;
-        StartServiceButton.IsEnabled = installed && !running;
-        StopServiceButton.IsEnabled = installed && running;
+        var buttonState = ServiceUiPolicy.BuildButtonState(state);
+        InstallServiceButton.IsEnabled = buttonState.InstallEnabled;
+        UninstallServiceButton.IsEnabled = buttonState.UninstallEnabled;
+        StartServiceButton.IsEnabled = buttonState.StartEnabled;
+        StopServiceButton.IsEnabled = buttonState.StopEnabled;
 
         vm.ServiceStatus = _serviceManager.GetStatusText();
+        if (_options is not null)
+        {
+            vm.RuntimeStatus = BuildRuntimeStatusText(_options.RuntimeKind, state, _options.IsPaused());
+        }
+    }
+
+    private async Task PollServiceModeTransitionAsync(CancellationToken token)
+    {
+        while (!token.IsCancellationRequested)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(3), token);
+
+            if (_options is null || _isSwitchingMode)
+            {
+                continue;
+            }
+
+            var state = _options.GetServiceRuntimeState();
+
+            if (string.Equals(_options.RuntimeKind, "service", StringComparison.OrdinalIgnoreCase)
+                && ServiceUiPolicy.ShouldSwitchFromServiceShellToTray(state))
+            {
+                await SwitchToDefaultModeAsync(token);
+                return;
+            }
+
+            if (string.Equals(_options.RuntimeKind, "tray", StringComparison.OrdinalIgnoreCase)
+                && ServiceUiPolicy.ShouldSwitchFromTrayToServiceShell(state))
+            {
+                await SwitchToDefaultModeAsync(token);
+                return;
+            }
+
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (DataContext is MainWindowViewModel vm)
+                {
+                    UpdateServiceButtons(vm);
+                }
+            });
+        }
+    }
+
+    private async Task SwitchToDefaultModeAsync(CancellationToken token)
+    {
+        if (_options is null || _isSwitchingMode)
+        {
+            return;
+        }
+
+        _isSwitchingMode = true;
+        _trayHost?.AllowWindowClose();
+
+        try
+        {
+            await _options.RestartToDefaultModeAsync(token);
+        }
+        catch
+        {
+            // best effort mode switch
+        }
     }
 
     private void OnSaveConfigClick(object? sender, RoutedEventArgs e)
@@ -483,5 +594,32 @@ public partial class MainWindow : Window
                 UseShellExecute = true
             });
         }
+    }
+
+    private static string MapModeLabel(string runtimeKind)
+    {
+        if (string.Equals(runtimeKind, "service", StringComparison.OrdinalIgnoreCase))
+        {
+            return "🔵 服务模式";
+        }
+
+        if (string.Equals(runtimeKind, "tray", StringComparison.OrdinalIgnoreCase))
+        {
+            return "🟢 托盘模式";
+        }
+
+        return runtimeKind;
+    }
+
+    private static string BuildRuntimeStatusText(string runtimeKind, ServiceRuntimeState state, bool isPaused)
+    {
+        if (string.Equals(runtimeKind, "service", StringComparison.OrdinalIgnoreCase))
+        {
+            return state is ServiceRuntimeState.Running or ServiceRuntimeState.StartPending or ServiceRuntimeState.ContinuePending
+                ? "服务运行中"
+                : "服务已停止";
+        }
+
+        return isPaused ? "托盘已暂停" : "托盘运行中";
     }
 }

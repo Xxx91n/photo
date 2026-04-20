@@ -23,10 +23,11 @@
       <Button x:Name="ClearLogsButton" Content="清空日志" Width="88" />
       <Button x:Name="OpenConfigDirButton" Content="打开配置目录" Width="116" />
       <Button x:Name="RefreshServiceStatusButton" Content="刷新服务状态" Width="116" />
+      <Button x:Name="OpenServiceManagerTabButton" Content="服务管理器" Width="100" />
       <CheckBox x:Name="ShowDetailedEventsCheckBox" Content="显示详细事件" IsChecked="{Binding ShowDetailedEvents}" VerticalAlignment="Center" />
     </StackPanel>
 
-    <TabControl Grid.Row="2">
+    <TabControl x:Name="MainTabControl" Grid.Row="2">
       <TabItem Header="配置">
         <Border BorderBrush="#4D5D6B" BorderThickness="1" CornerRadius="6" Padding="10">
           <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnDefinitions="140,*">

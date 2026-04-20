@@ -16,26 +16,37 @@ PosixSignalHooks? posixHooks = null;
 
 var requestedMode = RuntimeModeResolver.ResolveFromArgs(args);
 var hasModeOption = RuntimeModeResolver.HasModeOption(args);
-if (!hasModeOption && Environment.UserInteractive)
-{
-    requestedMode = RuntimeMode.Background;
-}
 
 var argsConfig = new ConfigurationBuilder().AddCommandLine(args).Build();
 var probeConfigPath = argsConfig["config"] ?? Path.Combine(AppContext.BaseDirectory, "config", "config.json");
 var probeConfig = TryLoadConfig(probeConfigPath);
-var serviceInstalledProbe = OperatingSystem.IsWindows() && new PhotoPrivacy.Ui.ServiceManager().IsInstalled();
-var runUiControlOnly = requestedMode == RuntimeMode.Background && serviceInstalledProbe && !hasModeOption;
+var serviceManager = new PhotoPrivacy.Ui.ServiceManager();
+var serviceInstalledProbe = OperatingSystem.IsWindows() && serviceManager.IsInstalled();
+var bootstrapDecision = RuntimeBootstrapPolicy.Decide(
+    requestedMode: requestedMode,
+    hasModeOption: hasModeOption,
+    isUserInteractive: Environment.UserInteractive,
+    isServiceInstalled: serviceInstalledProbe);
+requestedMode = bootstrapDecision.EffectiveMode;
 
 var mutexName = requestedMode == RuntimeMode.Service
-    ? @"Global\PhotoPrivacyCleaner_ServiceInstance"
-    : runUiControlOnly
-        ? @"Global\PhotoPrivacyCleaner_UiInstance"
-        : @"Global\PhotoPrivacyCleaner_BackgroundInstance";
+    ? AppInstanceMutexNames.ServiceHost
+    : AppInstanceMutexNames.Unified;
 
 using var mutex = new Mutex(initiallyOwned: true, mutexName, out var isNewInstance);
 if (!isNewInstance)
 {
+    if (requestedMode == RuntimeMode.Service)
+    {
+        return 1;
+    }
+
+    var sent = await SingleInstanceIpc.TryNotifyRunningInstanceToShowWindowAsync();
+    if (sent)
+    {
+        return 0;
+    }
+
     Console.Error.WriteLine("[PhotoPrivacy] 另一个实例已在运行，退出。");
     Console.Error.WriteLine("[PhotoPrivacy] another instance is already in use.");
 
@@ -43,28 +54,60 @@ if (!isNewInstance)
     return 1;
 }
 
-if (runUiControlOnly)
+if (bootstrapDecision.RunUiControlShell)
 {
+    using var showWindowPipeCts = new CancellationTokenSource();
+
     UiHostProgram.Options = new BackgroundUiOptions
     {
+        RuntimeKind = "service",
         IsBackgroundMode = false,
         HideMainWindowOnStartup = false,
         IsServiceInstalled = true,
+        UseTrayIcon = false,
         IsPaused = static () => false,
         Pause = static () => { },
         Resume = static () => { },
-        ExitAsync = static () => Task.CompletedTask,
+        ExitAsync = static () =>
+        {
+            Environment.Exit(0);
+            return Task.CompletedTask;
+        },
         GetExifToolVersion = static () => "service_mode",
+        GetServiceRuntimeState = serviceManager.GetRuntimeState,
+        RestartToDefaultModeAsync = _ => RestartToDefaultModeAsync(Environment.ProcessPath),
         ConfigPath = probeConfigPath,
         AuditDirectory = probeConfig?.Audit.LogDirectory ?? AppContext.BaseDirectory,
         SelfExecutablePath = Environment.ProcessPath
     };
 
-    return UiHostProgram.Start(args);
+    UiHostProgram.Options.ShowMainWindow = () => { };
+
+    var pipeTask = SingleInstanceIpc.RunShowWindowServerAsync(
+        onShowWindowRequested: () => UiHostProgram.Options.ShowMainWindow(),
+        cancellationToken: showWindowPipeCts.Token);
+
+    try
+    {
+        return UiHostProgram.Start(args);
+    }
+    finally
+    {
+        await showWindowPipeCts.CancelAsync();
+        try
+        {
+            await pipeTask;
+        }
+        catch (OperationCanceledException)
+        {
+            // expected
+        }
+    }
 }
 
 var builder = Host.CreateApplicationBuilder(args);
 var mode = RuntimeModeResolver.Resolve(builder.Configuration);
+mode = requestedMode;
 
 builder.Logging.ClearProviders();
 builder.Logging.AddSimpleConsole();
@@ -113,6 +156,7 @@ RegisterBestEffortShutdown(shutdownCoordinator, ref cancelKeyHandler, ref proces
 if (mode == RuntimeMode.Background)
 {
     await app.StartAsync();
+    using var showWindowPipeCts = new CancellationTokenSource();
 
     var runtimeControl = app.Services.GetRequiredService<IRuntimeControl>();
     var configPath = builder.Configuration["config"]
@@ -123,22 +167,32 @@ if (mode == RuntimeMode.Background)
 
     var loadedConfig = TryLoadConfig(configPath);
     var hideMainWindowOnStartup = loadedConfig?.Ui.HideMainWindowOnStartup ?? true;
-    var serviceInstalled = new PhotoPrivacy.Ui.ServiceManager().IsInstalled();
+    var serviceInstalled = serviceManager.IsInstalled();
 
     UiHostProgram.Options = new BackgroundUiOptions
     {
+        RuntimeKind = bootstrapDecision.RuntimeKind,
         IsBackgroundMode = true,
         HideMainWindowOnStartup = hideMainWindowOnStartup,
         IsServiceInstalled = serviceInstalled,
+        UseTrayIcon = bootstrapDecision.UseTrayIcon,
         IsPaused = () => runtimeControl.IsPaused,
         Pause = runtimeControl.Pause,
         Resume = runtimeControl.Resume,
-        ExitAsync = () => app.StopAsync(CancellationToken.None),
+        ExitAsync = () => ExitBackgroundAsync(app),
         GetExifToolVersion = () => app.Services.GetRequiredService<MetadataCleanerWorker>().CurrentExifToolVersion,
+        GetServiceRuntimeState = serviceManager.GetRuntimeState,
+        RestartToDefaultModeAsync = token => RestartToDefaultModeAsync(Environment.ProcessPath, () => app.StopAsync(token), token),
         ConfigPath = configPath,
         AuditDirectory = auditDirectory,
         SelfExecutablePath = Environment.ProcessPath
     };
+
+    UiHostProgram.Options.ShowMainWindow = () => { };
+
+    var pipeTask = SingleInstanceIpc.RunShowWindowServerAsync(
+        onShowWindowRequested: () => UiHostProgram.Options.ShowMainWindow(),
+        cancellationToken: showWindowPipeCts.Token);
 
     UnregisterBestEffortShutdown(cancelKeyHandler, processExitHandler);
     posixHooks.Dispose();
@@ -149,6 +203,16 @@ if (mode == RuntimeMode.Background)
     }
     finally
     {
+        await showWindowPipeCts.CancelAsync();
+        try
+        {
+            await pipeTask;
+        }
+        catch (OperationCanceledException)
+        {
+            // expected
+        }
+
         await app.StopAsync(CancellationToken.None);
     }
 }
@@ -201,4 +265,46 @@ static AppConfig? TryLoadConfig(string configPath)
     {
         return null;
     }
+}
+
+static async Task ExitBackgroundAsync(IHost app)
+{
+    await app.StopAsync(CancellationToken.None);
+    Environment.Exit(0);
+}
+
+static async Task RestartToDefaultModeAsync(
+    string? executablePath,
+    Func<Task>? stopBeforeRestart = null,
+    CancellationToken cancellationToken = default)
+{
+    try
+    {
+        if (stopBeforeRestart is not null)
+        {
+            await stopBeforeRestart();
+        }
+    }
+    catch
+    {
+        // best effort
+    }
+
+    try
+    {
+        if (!string.IsNullOrWhiteSpace(executablePath) && File.Exists(executablePath))
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = executablePath,
+                UseShellExecute = true
+            });
+        }
+    }
+    catch
+    {
+        // best effort
+    }
+
+    Environment.Exit(0);
 }
