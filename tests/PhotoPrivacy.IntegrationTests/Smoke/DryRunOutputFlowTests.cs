@@ -31,7 +31,9 @@ public sealed class DryRunOutputFlowTests
                 "enable_windows_long_path": true,
                 "enable_large_file_support": true,
                 "dry_run": true,
-                "extra_exiftool_args": []
+                "extra_exiftool_args": [],
+                "stay_open_pool_size": 1,
+                "max_parallel_drain": 1
               },
               "watch": {
                 "hot_folder": "{{EscapePath(hot)}}",
@@ -108,7 +110,9 @@ public sealed class DryRunOutputFlowTests
                 "enable_windows_long_path": true,
                 "enable_large_file_support": true,
                 "dry_run": false,
-                "extra_exiftool_args": []
+                "extra_exiftool_args": [],
+                "stay_open_pool_size": 1,
+                "max_parallel_drain": 1
               },
               "watch": {
                 "hot_folder": "{{EscapePath(hot)}}",
@@ -194,7 +198,9 @@ public sealed class DryRunOutputFlowTests
                 "enable_windows_long_path": true,
                 "enable_large_file_support": true,
                 "dry_run": true,
-                "extra_exiftool_args": []
+                "extra_exiftool_args": [],
+                "stay_open_pool_size": 1,
+                "max_parallel_drain": 1
               },
               "watch": {
                 "hot_folder": "{{EscapePath(hot)}}",
@@ -266,7 +272,9 @@ public sealed class DryRunOutputFlowTests
                 "enable_windows_long_path": true,
                 "enable_large_file_support": true,
                 "dry_run": true,
-                "extra_exiftool_args": []
+                "extra_exiftool_args": [],
+                "stay_open_pool_size": 1,
+                "max_parallel_drain": 1
               },
               "watch": {
                 "hot_folder": "{{EscapePath(hot)}}",
@@ -311,6 +319,77 @@ public sealed class DryRunOutputFlowTests
             Assert.Contains("\"已自动排除的子目录列表\"", content, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("_audit", content, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("_quarantine", content, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task CliHost_Should_Print_Effective_Config_With_Concurrency_Overrides()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "photo-printcfg-concurrency-" + Guid.NewGuid().ToString("N"));
+        var hot = Path.Combine(root, "hot");
+        var audit = Path.Combine(root, "audit");
+        Directory.CreateDirectory(hot);
+        Directory.CreateDirectory(audit);
+
+        try
+        {
+            var configPath = Path.Combine(root, "config.json");
+            File.WriteAllText(configPath, $$"""
+            {
+              "schema_version": 1,
+              "exiftool": {
+                "path": "D:\\tools\\A_system\\ExifToolGUI\\ExifTool\\ExifTool.exe",
+                "enable_windows_long_path": true,
+                "enable_large_file_support": true,
+                "dry_run": true,
+                "extra_exiftool_args": [],
+                "stay_open_pool_size": 1,
+                "max_parallel_drain": 1
+              },
+              "watch": {
+                "hot_folder": "{{EscapePath(hot)}}",
+                "include_subdirectories": true,
+                "debounce_ms": 100,
+                "internal_buffer_size": 65536
+              },
+              "rules": {
+                "allowed_extensions": [".jpg"],
+                "excluded_patterns": [],
+                "output_mode": "fixed_directory",
+                "output_directory": "{{EscapePath(Path.Combine(root, "clean"))}}"
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff_seconds": [0]
+              },
+              "backup": {
+                "enabled": false,
+                "suffix": ".bak",
+                "retention": "keep"
+              },
+              "quarantine": {
+                "enabled": true,
+                "directory": "{{EscapePath(Path.Combine(root, "quarantine"))}}"
+              },
+              "audit": {
+                "log_directory": "{{EscapePath(audit)}}",
+                "retain_days": 7,
+                "diagnostic_mode": true
+              }
+            }
+            """);
+
+            var result = await RunCliAsync(
+                configPath,
+                CliRunTimeout,
+                "--print-effective-config true --stay-open-pool-size 4 --max-parallel-drain 6");
+            Assert.Equal(0, result.ExitCode);
+            Assert.Contains("\"stay_open_pool_size\": 4", result.Stdout, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("\"max_parallel_drain\": 6", result.Stdout, StringComparison.OrdinalIgnoreCase);
         }
         finally
         {

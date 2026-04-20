@@ -10,7 +10,8 @@ public sealed class MainWindowRuntimePolicyTests
         var hide = MainWindowRuntimePolicy.ShouldHideOnStartup(
             hideMainWindowOnStartup: true,
             useTrayIcon: false,
-            hideTrayIcon: false);
+            hideTrayIcon: false,
+            trayIconReady: false);
 
         Assert.False(hide);
     }
@@ -21,8 +22,21 @@ public sealed class MainWindowRuntimePolicyTests
         var hide = MainWindowRuntimePolicy.ShouldHideOnStartup(
             hideMainWindowOnStartup: true,
             useTrayIcon: true,
-            hideTrayIcon: false);
+            hideTrayIcon: false,
+            trayIconReady: true);
 
         Assert.True(hide);
+    }
+
+    [Fact]
+    public void ShouldHideOnStartup_Should_Return_False_When_Tray_Icon_Not_Ready()
+    {
+        var hide = MainWindowRuntimePolicy.ShouldHideOnStartup(
+            hideMainWindowOnStartup: true,
+            useTrayIcon: true,
+            hideTrayIcon: false,
+            trayIconReady: false);
+
+        Assert.False(hide);
     }
 }

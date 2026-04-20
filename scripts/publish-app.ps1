@@ -91,6 +91,11 @@ if (-not (Test-Path $workerAppHostPath)) {
 Copy-Item $uiAppHostPath (Join-Path $targetDir $appExeName) -Force
 Copy-Item $workerAppHostPath (Join-Path $targetDir $workerExeName) -Force
 
+$uiAssetsDir = Join-Path $uiPublishDir "Assets"
+if (Test-Path $uiAssetsDir) {
+  Copy-Item $uiAssetsDir (Join-Path $targetDir "Assets") -Recurse -Force
+}
+
 $configDir = Join-Path $targetDir "config"
 New-Item -ItemType Directory -Force -Path $configDir | Out-Null
 Copy-Item "$repoRoot\config\config.sample.json" (Join-Path $configDir "config.sample.json") -Force

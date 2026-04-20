@@ -16,9 +16,11 @@ public static class UiProgram
 
     public static int Start(string[] args)
     {
+        UiDiagnosticLog.Write("UiProgram.Start entered");
         using var single = new UiSingleInstance();
         if (!single.IsOwner)
         {
+            UiDiagnosticLog.Write("UiProgram.Start detected non-owner instance; notifying existing instance");
             _ = UiSingleInstance.NotifyExistingInstanceAsync();
             return 0;
         }
@@ -26,10 +28,16 @@ public static class UiProgram
         var argsConfig = new ConfigurationBuilder().AddCommandLine(args).Build();
         var configPath = argsConfig["config"] ?? Path.Combine(AppContext.BaseDirectory, "config", "config.json");
         var config = LoadConfigOrDefault(configPath);
+        UiDiagnosticLog.Write($"Config resolved. path={configPath}, hide_main_window_on_startup={config.Ui.HideMainWindowOnStartup}, hide_tray_icon={config.Ui.HideTrayIcon}");
 
         var workerPath = ResolveWorkerExecutablePath();
         var workerManager = new WorkerProcessManager(new WorkerIpcClient());
-        var connectResult = workerManager.ConnectOrLaunchAsync(workerPath, CancellationToken.None).GetAwaiter().GetResult();
+        var serviceManager = new ServiceManager();
+        var connectResult = workerManager.ConnectOrLaunchAsync(
+            workerPath,
+            CancellationToken.None,
+            getServiceRuntimeState: serviceManager.GetRuntimeState).GetAwaiter().GetResult();
+        UiDiagnosticLog.Write($"Worker connect result. runtime={connectResult.RuntimeKind}, endpoint={connectResult.EndpointName}, showTray={connectResult.ShouldShowTrayIcon}, workerPath={workerPath}");
 
         var endpointName = connectResult.EndpointName;
         var modeKind = connectResult.RuntimeKind;
@@ -42,13 +50,17 @@ public static class UiProgram
             workerPath: workerPath,
             configPath: configPath,
             config: config,
-            workerManager: workerManager);
+            workerManager: workerManager,
+            serviceManager: serviceManager);
 
         var showPipeTask = UiSingleInstance.RunShowWindowServerAsync(
             onShowWindowRequested: () => App.RuntimeOptions.ShowMainWindow(),
             cancellationToken: showPipeCts.Token);
+        UiDiagnosticLog.Write("Show-window IPC server started");
 
+        UiDiagnosticLog.Write("Avalonia StartWithClassicDesktopLifetime starting");
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+        UiDiagnosticLog.Write("Avalonia lifetime exited");
 
         showPipeCts.Cancel();
         try
@@ -106,7 +118,8 @@ public static class UiProgram
         string? workerPath,
         string configPath,
         AppConfig config,
-        WorkerProcessManager workerManager)
+        WorkerProcessManager workerManager,
+        ServiceManager serviceManager)
     {
         options.RuntimeKind = modeKind;
         options.WorkerEndpointName = endpointName;
@@ -116,35 +129,38 @@ public static class UiProgram
         options.UseTrayIcon = modeKind == "tray" && !config.Ui.HideTrayIcon;
         options.ConfigPath = configPath;
         options.AuditDirectory = config.Audit.LogDirectory;
-        options.GetServiceRuntimeState = () => new ServiceManager().GetRuntimeState();
+        options.GetServiceRuntimeState = serviceManager.GetRuntimeState;
         options.IsWorkerAliveAsync = token => new WorkerIpcClient().IsAliveAsync(options.WorkerEndpointName, token);
         options.IsPausedAsync = async token =>
         {
-            var res = await workerManager.GetStatusAsync(options.WorkerEndpointName, token);
+            var res = await workerManager.GetStatusAsync(options.WorkerEndpointName, token).ConfigureAwait(false);
             return res?.Data?.IsPaused ?? false;
         };
-        options.PauseAsync = async token => { await workerManager.PauseAsync(options.WorkerEndpointName, token); };
-        options.ResumeAsync = async token => { await workerManager.ResumeAsync(options.WorkerEndpointName, token); };
+        options.PauseAsync = async token => { await workerManager.PauseAsync(options.WorkerEndpointName, token).ConfigureAwait(false); };
+        options.ResumeAsync = async token => { await workerManager.ResumeAsync(options.WorkerEndpointName, token).ConfigureAwait(false); };
         options.ShutdownWorkerAsync = async token =>
         {
             if (string.Equals(options.RuntimeKind, "tray", StringComparison.OrdinalIgnoreCase))
             {
-                await workerManager.ShutdownAsync(options.WorkerEndpointName, token);
+                await workerManager.ShutdownAsync(options.WorkerEndpointName, token).ConfigureAwait(false);
             }
         };
         options.ExitApplicationAsync = async token =>
         {
             if (string.Equals(options.RuntimeKind, "tray", StringComparison.OrdinalIgnoreCase))
             {
-                await workerManager.ShutdownAsync(options.WorkerEndpointName, token);
+                await workerManager.ShutdownAsync(options.WorkerEndpointName, token).ConfigureAwait(false);
             }
         };
         options.GetExifToolVersionAsync = async token =>
         {
-            var res = await workerManager.GetStatusAsync(options.WorkerEndpointName, token);
+            var res = await workerManager.GetStatusAsync(options.WorkerEndpointName, token).ConfigureAwait(false);
             return res?.Data?.ExifToolVersion ?? "unknown";
         };
-        options.ConnectOrLaunchWorkerAsync = token => workerManager.ConnectOrLaunchAsync(workerPath, token);
+        options.ConnectOrLaunchWorkerAsync = token => workerManager.ConnectOrLaunchAsync(
+            workerPath,
+            token,
+            getServiceRuntimeState: serviceManager.GetRuntimeState);
         return options;
     }
 

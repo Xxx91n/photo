@@ -32,7 +32,9 @@ public static class AppConfigLoader
                 EnableWindowsLongPath: dto.ExifTool.EnableWindowsLongPath,
                 EnableLargeFileSupport: dto.ExifTool.EnableLargeFileSupport,
                 DryRun: dto.ExifTool.DryRun,
-                ExtraExifToolArgs: dto.ExifTool.ExtraExifToolArgs ?? []),
+                ExtraExifToolArgs: dto.ExifTool.ExtraExifToolArgs ?? [],
+                StayOpenPoolSize: dto.ExifTool.StayOpenPoolSize,
+                MaxParallelDrain: dto.ExifTool.MaxParallelDrain),
             Watch: new WatchOptions(
                 HotFolder: dto.Watch.HotFolder,
                 IncludeSubdirectories: dto.Watch.IncludeSubdirectories,
@@ -146,6 +148,12 @@ public static class AppConfigLoader
 
         [JsonPropertyName("extra_exiftool_args")]
         public string[]? ExtraExifToolArgs { get; init; } = [];
+
+        [JsonPropertyName("stay_open_pool_size")]
+        public int StayOpenPoolSize { get; init; } = AppConfig.Default.ExifTool.StayOpenPoolSize;
+
+        [JsonPropertyName("max_parallel_drain")]
+        public int MaxParallelDrain { get; init; } = AppConfig.Default.ExifTool.MaxParallelDrain;
     }
 
     private sealed class WatchDto

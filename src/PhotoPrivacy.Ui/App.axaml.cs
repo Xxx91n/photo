@@ -21,6 +21,7 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
+            UiDiagnosticLog.Write("App.OnFrameworkInitializationCompleted entered with desktop lifetime");
             desktop.MainWindow = new MainWindow
             {
                 DataContext = new MainWindowViewModel()
@@ -28,11 +29,18 @@ public partial class App : Application
 
             if (desktop.MainWindow is MainWindow window)
             {
+                UiDiagnosticLog.Write("MainWindow created; InitializeRuntime starting");
                 window.InitializeRuntime(RuntimeOptions);
+                UiDiagnosticLog.Write($"MainWindow.InitializeRuntime done. RuntimeKind={RuntimeOptions.RuntimeKind}, UseTrayIcon={RuntimeOptions.UseTrayIcon}, HideTrayIcon={RuntimeOptions.HideTrayIcon}, HideMainWindowOnStartup={RuntimeOptions.HideMainWindowOnStartup}");
+                window.Show();
+                window.WindowState = WindowState.Normal;
+                window.Activate();
+                UiDiagnosticLog.Write("App forced initial MainWindow Show/Activate");
                 RuntimeOptions.ShowMainWindow = () =>
                 {
                     Dispatcher.UIThread.Post(() =>
                     {
+                        UiDiagnosticLog.Write("RuntimeOptions.ShowMainWindow invoked");
                         window.Show();
                         window.WindowState = WindowState.Normal;
                         window.Activate();

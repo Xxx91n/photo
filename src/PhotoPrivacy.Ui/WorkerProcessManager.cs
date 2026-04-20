@@ -12,7 +12,10 @@ public sealed class WorkerProcessManager
         _ipcClient = ipcClient;
     }
 
-    public async Task<WorkerConnectionResult> ConnectOrLaunchAsync(string? workerExecutablePath, CancellationToken cancellationToken)
+    public async Task<WorkerConnectionResult> ConnectOrLaunchAsync(
+        string? workerExecutablePath,
+        CancellationToken cancellationToken,
+        Func<ServiceRuntimeState>? getServiceRuntimeState = null)
     {
         if (await _ipcClient.IsAliveAsync(WorkerIpcEndpointNames.ServicePipe, cancellationToken))
         {
@@ -26,6 +29,16 @@ public sealed class WorkerProcessManager
                 EndpointName: WorkerIpcEndpointNames.ServicePipe,
                 ShouldShowTrayIcon: false,
                 Status: serviceStatus?.Data);
+        }
+
+        var serviceState = getServiceRuntimeState?.Invoke() ?? ServiceRuntimeState.NotInstalled;
+        if (serviceState != ServiceRuntimeState.NotInstalled)
+        {
+            return new WorkerConnectionResult(
+                RuntimeKind: "service",
+                EndpointName: WorkerIpcEndpointNames.ServicePipe,
+                ShouldShowTrayIcon: false,
+                Status: null);
         }
 
         if (await _ipcClient.IsAliveAsync(WorkerIpcEndpointNames.BackgroundPipe, cancellationToken))

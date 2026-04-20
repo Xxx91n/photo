@@ -29,6 +29,7 @@ public partial class MainWindow : Window
 
     public void InitializeRuntime(BackgroundUiOptions options)
     {
+        UiDiagnosticLog.Write($"MainWindow.InitializeRuntime begin. RuntimeKind={options.RuntimeKind}, UseTrayIcon={options.UseTrayIcon}, HideTrayIcon={options.HideTrayIcon}, HideMainWindowOnStartup={options.HideMainWindowOnStartup}");
         _options = options;
         var effectiveConfig = LoadConfigOrDefault(options.ConfigPath);
         var hotFolder = effectiveConfig?.Watch.HotFolder;
@@ -62,6 +63,7 @@ public partial class MainWindow : Window
                 viewModel.LogEnabled = effectiveConfig.Audit.DiagnosticMode;
                 viewModel.HotFolderPath = effectiveConfig.Watch.HotFolder;
                 viewModel.HideGuiOnStartup = effectiveConfig.Ui.HideMainWindowOnStartup;
+                viewModel.HideTrayIcon = effectiveConfig.Ui.HideTrayIcon;
             }
 
             UpdateServiceButtons(viewModel);
@@ -108,21 +110,66 @@ public partial class MainWindow : Window
         _versionPollCts = new CancellationTokenSource();
         _versionPollTask = Task.Run(() => PollVersionAsync(_versionPollCts.Token), _versionPollCts.Token);
 
+        var trayReady = false;
         if (options.UseTrayIcon && !options.HideTrayIcon)
         {
             _trayHost = new TrayHost(this, options, ExitApplicationAsync);
             _trayHost.IsVisible = true;
+            UiDiagnosticLog.Write("Tray icon host created and set visible");
+            trayReady = _trayHost.IconLoaded;
+            UiDiagnosticLog.Write($"Tray icon ready state: {trayReady}");
         }
 
-        if (MainWindowRuntimePolicy.ShouldHideOnStartup(options.HideMainWindowOnStartup, options.UseTrayIcon, options.HideTrayIcon))
+        if (MainWindowRuntimePolicy.ShouldHideOnStartup(
+                options.HideMainWindowOnStartup,
+                options.UseTrayIcon,
+                options.HideTrayIcon,
+                trayReady))
         {
+            UiDiagnosticLog.Write("MainWindow.Hide() due to startup hide policy");
             Hide();
+        }
+        else
+        {
+            UiDiagnosticLog.Write("MainWindow startup policy keeps window visible");
         }
 
         _serviceModePollCts = new CancellationTokenSource();
         _serviceModePollTask = Task.Run(
             () => PollServiceModeTransitionAsync(_serviceModePollCts.Token),
             _serviceModePollCts.Token);
+        UiDiagnosticLog.Write("MainWindow.InitializeRuntime end");
+
+        EnsureWindowVisibleFallback(options);
+    }
+
+    private void EnsureWindowVisibleFallback(BackgroundUiOptions options)
+    {
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                if (MainWindowRuntimePolicy.ShouldHideOnStartup(
+                        options.HideMainWindowOnStartup,
+                        options.UseTrayIcon,
+                        options.HideTrayIcon,
+                        _trayHost?.IconLoaded ?? false))
+                {
+                    UiDiagnosticLog.Write("EnsureWindowVisibleFallback skipped due to startup hide policy");
+                    return;
+                }
+
+                if (!IsVisible)
+                {
+                    UiDiagnosticLog.Write("EnsureWindowVisibleFallback forcing Show/Activate");
+                    Show();
+                }
+
+                WindowState = WindowState.Normal;
+                Activate();
+            });
+        });
     }
 
     private static AppConfig? LoadConfigOrDefault(string configPath)
@@ -288,13 +335,28 @@ public partial class MainWindow : Window
 
         if (ImmediateModeSwitchPolicy.ShouldSwitchAfterInstall(result))
         {
-            _ = SwitchToDefaultModeAsync(CancellationToken.None);
+            _ = SwitchToServiceModeAfterInstallAsync(CancellationToken.None);
         }
     }
 
-    private void OnUninstallServiceClick(object? sender, RoutedEventArgs e)
+    private async void OnUninstallServiceClick(object? sender, RoutedEventArgs e)
     {
-        var result = _serviceManager.Uninstall();
+        SetServiceButtonsBusy(isBusy: true);
+        if (DataContext is MainWindowViewModel vmBusy)
+        {
+            vmBusy.ServiceStatus = $"{_serviceManager.GetStatusText()} | 正在卸载服务...";
+        }
+
+        ServiceCommandResult result;
+        try
+        {
+            result = await Task.Run(() => _serviceManager.Uninstall(), CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            result = ServiceCommandResult.Failed(ex.Message);
+        }
+
         ApplyServiceResult(result);
 
         if (DataContext is MainWindowViewModel vm)
@@ -304,8 +366,10 @@ public partial class MainWindow : Window
 
         if (ImmediateModeSwitchPolicy.ShouldSwitchAfterUninstall(result))
         {
-            _ = SwitchToDefaultModeAsync(CancellationToken.None);
+            _ = EnsureTrayWorkerAfterServiceUninstallAsync(CancellationToken.None);
         }
+
+        SetServiceButtonsBusy(isBusy: false);
     }
 
     private void OnStartServiceClick(object? sender, RoutedEventArgs e)
@@ -325,6 +389,11 @@ public partial class MainWindow : Window
         {
             vm.CurrentMode = MapModeLabel(_options?.RuntimeKind ?? "tray");
         }
+
+        if (result.Status == ServiceCommandStatus.Success)
+        {
+            _ = SwitchToServiceModeAfterInstallAsync(CancellationToken.None);
+        }
     }
 
     private void OnStopServiceClick(object? sender, RoutedEventArgs e)
@@ -332,9 +401,19 @@ public partial class MainWindow : Window
         var result = _serviceManager.Stop();
         ApplyServiceResult(result);
 
+        if (_options is not null)
+        {
+            var state = _serviceManager.GetRuntimeState();
+            if (state != ServiceRuntimeState.NotInstalled)
+            {
+                _options.RuntimeKind = "service";
+                _options.UseTrayIcon = false;
+            }
+        }
+
         if (DataContext is MainWindowViewModel vm)
         {
-            vm.CurrentMode = MapModeLabel(_options?.RuntimeKind ?? "tray");
+            vm.CurrentMode = MapModeLabel(_options?.RuntimeKind ?? "service");
         }
     }
 
@@ -397,7 +476,16 @@ public partial class MainWindow : Window
         vm.ServiceStatus = _serviceManager.GetStatusText();
         if (_options is not null)
         {
-            var paused = _options.IsPausedAsync(CancellationToken.None).GetAwaiter().GetResult();
+            var paused = false;
+            try
+            {
+                paused = _options.IsPausedAsync(CancellationToken.None).GetAwaiter().GetResult();
+            }
+            catch
+            {
+                paused = false;
+            }
+
             vm.RuntimeStatus = BuildRuntimeStatusText(_options.RuntimeKind, state, paused);
         }
     }
@@ -446,28 +534,23 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task SwitchToDefaultModeAsync(CancellationToken token)
+    private async Task SwitchToDefaultModeAsync(CancellationToken token, Func<ServiceRuntimeState>? getServiceRuntimeStateOverride = null)
     {
         if (_options is null || _isSwitchingMode)
         {
             return;
         }
 
-        var previousRuntimeKind = _options.RuntimeKind;
-        var previousEndpoint = _options.WorkerEndpointName;
-
         _isSwitchingMode = true;
-        _trayHost?.AllowWindowClose();
 
         try
         {
-            if (string.Equals(previousRuntimeKind, "tray", StringComparison.OrdinalIgnoreCase)
-                && !string.IsNullOrWhiteSpace(previousEndpoint))
-            {
-                await _workerManager.ShutdownAsync(previousEndpoint, token);
-            }
-
-            var next = await _options.ConnectOrLaunchWorkerAsync(token);
+            var next = getServiceRuntimeStateOverride is null
+                ? await _options.ConnectOrLaunchWorkerAsync(token)
+                : await _workerManager.ConnectOrLaunchAsync(
+                    ResolveServiceWorkerExecutablePath(_options),
+                    token,
+                    getServiceRuntimeState: getServiceRuntimeStateOverride);
             _options.RuntimeKind = next.RuntimeKind;
             _options.WorkerEndpointName = next.EndpointName;
             _options.UseTrayIcon = next.ShouldShowTrayIcon && !_options.HideTrayIcon;
@@ -500,6 +583,97 @@ public partial class MainWindow : Window
         }
     }
 
+    private async Task SwitchToServiceModeAfterInstallAsync(CancellationToken token)
+    {
+        if (_options is null)
+        {
+            return;
+        }
+
+        await SwitchToDefaultModeAsync(token);
+
+        _options.RuntimeKind = "service";
+        _options.WorkerEndpointName = PhotoPrivacy.Ipc.WorkerIpcEndpointNames.ServicePipe;
+        _options.UseTrayIcon = false;
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (DataContext is MainWindowViewModel vm)
+            {
+                vm.CurrentMode = MapModeLabel(_options.RuntimeKind);
+                vm.RuntimeStatus = BuildRuntimeStatusText(_options.RuntimeKind, _options.GetServiceRuntimeState(), false);
+            }
+
+            _trayHost?.Dispose();
+            _trayHost = null;
+            Show();
+            WindowState = WindowState.Normal;
+            Activate();
+        });
+    }
+
+    private async Task EnsureTrayWorkerAfterServiceUninstallAsync(CancellationToken token)
+    {
+        await SwitchToDefaultModeAsync(token, getServiceRuntimeStateOverride: () => ServiceRuntimeState.NotInstalled);
+
+        if (_options is null)
+        {
+            return;
+        }
+
+        _options.RuntimeKind = "tray";
+        _options.WorkerEndpointName = PhotoPrivacy.Ipc.WorkerIpcEndpointNames.BackgroundPipe;
+        _options.UseTrayIcon = !_options.HideTrayIcon;
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            try
+            {
+                if (DataContext is MainWindowViewModel vm)
+                {
+                    vm.CurrentMode = MapModeLabel(_options.RuntimeKind);
+                    vm.RuntimeStatus = BuildRuntimeStatusText(_options.RuntimeKind, _options.GetServiceRuntimeState(), false);
+                }
+
+                if (_options.UseTrayIcon)
+                {
+                    _trayHost ??= new TrayHost(this, _options, ExitApplicationAsync);
+                    _trayHost.IsVisible = true;
+                }
+
+                Show();
+                WindowState = WindowState.Normal;
+                Activate();
+            }
+            catch (Exception ex)
+            {
+                UiDiagnosticLog.Write($"EnsureTrayWorkerAfterServiceUninstallAsync UI post failed: {ex.Message}");
+            }
+        });
+    }
+
+    private void SetServiceButtonsBusy(bool isBusy)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        if (isBusy)
+        {
+            InstallServiceButton.IsEnabled = false;
+            UninstallServiceButton.IsEnabled = false;
+            StartServiceButton.IsEnabled = false;
+            StopServiceButton.IsEnabled = false;
+            return;
+        }
+
+        if (DataContext is MainWindowViewModel vm)
+        {
+            UpdateServiceButtons(vm);
+        }
+    }
+
     private void OnSaveConfigClick(object? sender, RoutedEventArgs e)
     {
         if (_options is null || DataContext is not MainWindowViewModel vm)
@@ -515,7 +689,7 @@ public partial class MainWindow : Window
                 LogEnabled: vm.LogEnabled,
                 HotFolderPath: vm.HotFolderPath,
                 HideMainWindowOnStartup: vm.HideGuiOnStartup,
-                HideTrayIcon: _options.HideTrayIcon);
+                HideTrayIcon: vm.HideTrayIcon);
 
             ConfigEditor.UpdateConfig(_options.ConfigPath, command);
             vm.RuntimeStatus = "配置已保存";

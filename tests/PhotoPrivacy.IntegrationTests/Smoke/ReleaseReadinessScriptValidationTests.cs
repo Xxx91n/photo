@@ -41,6 +41,60 @@ public sealed class ReleaseReadinessScriptValidationTests
         Assert.DoesNotContain("PhotoPrivacy.Cli", readme, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task PublishApp_Should_Copy_Tray_Assets_To_Publish_Root()
+    {
+        var repoRoot = FindRepoRoot();
+        foreach (var proc in Process.GetProcessesByName("PhotoPrivacy"))
+        {
+            try
+            {
+                proc.Kill(entireProcessTree: true);
+                proc.WaitForExit(2000);
+            }
+            catch
+            {
+                // best effort for test isolation
+            }
+        }
+
+        foreach (var proc in Process.GetProcessesByName("PhotoPrivacyWorker"))
+        {
+            try
+            {
+                proc.Kill(entireProcessTree: true);
+                proc.WaitForExit(2000);
+            }
+            catch
+            {
+                // best effort for test isolation
+            }
+        }
+
+        var psi = new ProcessStartInfo(
+            "powershell",
+            "-ExecutionPolicy Bypass -File scripts/publish-app.ps1 -Version 0.1.0-preview -Runtime win-x64 -Framework net10.0 -SelfContained true -Zip false")
+        {
+            WorkingDirectory = repoRoot,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+
+        using var process = Process.Start(psi)!;
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+
+        var stdout = await stdoutTask;
+        var stderr = await stderrTask;
+        var merged = stdout + Environment.NewLine + stderr;
+
+        Assert.Equal(0, process.ExitCode);
+
+        var assetPath = Path.Combine(repoRoot, "publish", "app", "0.1.0-preview", "win-x64", "Assets", "tray-dot-16.png.base64");
+        Assert.True(File.Exists(assetPath), $"missing tray asset: {assetPath}\n{merged}");
+    }
+
     private static string FindRepoRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);

@@ -18,6 +18,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private bool _logEnabled;
     private string _hotFolderPath = string.Empty;
     private bool _hideGuiOnStartup = true;
+    private bool _hideTrayIcon;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -85,6 +86,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     {
         get => _hideGuiOnStartup;
         set => SetField(ref _hideGuiOnStartup, value);
+    }
+
+    public bool HideTrayIcon
+    {
+        get => _hideTrayIcon;
+        set => SetField(ref _hideTrayIcon, value);
     }
 
     public ObservableCollection<AuditLogEntry> LogEntries { get; } = [];

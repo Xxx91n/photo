@@ -30,7 +30,7 @@
     <TabControl x:Name="MainTabControl" Grid.Row="2">
       <TabItem Header="配置">
         <Border BorderBrush="#4D5D6B" BorderThickness="1" CornerRadius="6" Padding="10">
-          <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnDefinitions="140,*">
+          <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnDefinitions="140,*">
             <TextBlock Grid.Row="0" Grid.Column="0" Text="ExifTool 路径" VerticalAlignment="Center" />
             <TextBox Grid.Row="0" Grid.Column="1" Margin="0,0,0,8" Text="{Binding ExifToolPath}" />
 
@@ -46,8 +46,11 @@
             <TextBlock Grid.Row="4" Grid.Column="0" Margin="0,0,0,8" Text="启动隐藏主窗口" VerticalAlignment="Center" />
             <CheckBox Grid.Row="4" Grid.Column="1" Margin="0,0,0,8" IsChecked="{Binding HideGuiOnStartup}" VerticalAlignment="Center" />
 
-            <Button Grid.Row="5" Grid.Column="1" x:Name="SaveConfigButton" Margin="0,0,0,8" Content="保存配置" Width="120" HorizontalAlignment="Left" />
-            <TextBlock Grid.Row="6" Grid.ColumnSpan="2" Text="保存后将在下次启动生效（服务模式可在启动前自动重配置）。" Opacity="0.75" />
+            <TextBlock Grid.Row="5" Grid.Column="0" Margin="0,0,0,8" Text="隐藏托盘图标" VerticalAlignment="Center" />
+            <CheckBox Grid.Row="5" Grid.Column="1" Margin="0,0,0,8" IsChecked="{Binding HideTrayIcon}" VerticalAlignment="Center" />
+
+            <Button Grid.Row="6" Grid.Column="1" x:Name="SaveConfigButton" Margin="0,0,0,8" Content="保存配置" Width="120" HorizontalAlignment="Left" />
+            <TextBlock Grid.Row="7" Grid.ColumnSpan="2" Text="保存后将在下次启动生效（服务模式可在启动前自动重配置）。" Opacity="0.75" />
           </Grid>
         </Border>
       </TabItem>

@@ -12,6 +12,16 @@ public static class AppConfigValidator
 
     public static void Validate(AppConfig config)
     {
+        if (config.ExifTool.StayOpenPoolSize < 1)
+        {
+            throw new AppConfigValidationException("exiftool.stay_open_pool_size must be >= 1");
+        }
+
+        if (config.ExifTool.MaxParallelDrain < 1)
+        {
+            throw new AppConfigValidationException("exiftool.max_parallel_drain must be >= 1");
+        }
+
         if (config.ExifTool.DryRun)
         {
             return;

@@ -25,6 +25,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
     private DebounceQueue? _debounceQueue;
     private RecentFingerprintCache? _recentFingerprintCache;
     private FswFolderWatcher? _watcher;
+    private int _maxParallelDrain = 1;
 
     public string CurrentExifToolVersion => _bridge?.VersionText ?? "unknown";
 
@@ -71,6 +72,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
         IAuditLogger auditLogger = _audit is not null ? _audit : new NoopAuditLogger();
         _bridge = CreateBridge(config, auditLogger);
         _pipeline = new FileTaskPipeline(config, new RuleEngine(config), _bridge, new LocalFileOperations(), auditLogger);
+        _maxParallelDrain = Math.Max(1, Math.Min(config.ExifTool.MaxParallelDrain, config.ExifTool.StayOpenPoolSize));
         _debounceQueue = new DebounceQueue(TimeSpan.FromMilliseconds(config.Watch.DebounceMs), () => DateTimeOffset.UtcNow);
         _recentFingerprintCache = new RecentFingerprintCache(() => DateTimeOffset.UtcNow);
 
@@ -220,6 +222,8 @@ public sealed class MetadataCleanerWorker : BackgroundService
         var hotFolder = GetValue("hot-folder", "hot_folder");
         var auditFolder = GetValue("audit-folder", "audit_folder");
         var dryRunArg = GetValue("dry-run", "dry_run");
+        var stayOpenPoolSizeArg = GetValue("stay-open-pool-size", "stay_open_pool_size");
+        var maxParallelDrainArg = GetValue("max-parallel-drain", "max_parallel_drain");
 
         if (!string.IsNullOrWhiteSpace(hotFolder))
         {
@@ -236,6 +240,28 @@ public sealed class MetadataCleanerWorker : BackgroundService
             config = config with { ExifTool = config.ExifTool with { DryRun = ParseBool(dryRunArg) } };
         }
 
+        if (!string.IsNullOrWhiteSpace(stayOpenPoolSizeArg))
+        {
+            config = config with
+            {
+                ExifTool = config.ExifTool with
+                {
+                    StayOpenPoolSize = ParseInt(stayOpenPoolSizeArg, "stay_open_pool_size")
+                }
+            };
+        }
+
+        if (!string.IsNullOrWhiteSpace(maxParallelDrainArg))
+        {
+            config = config with
+            {
+                ExifTool = config.ExifTool with
+                {
+                    MaxParallelDrain = ParseInt(maxParallelDrainArg, "max_parallel_drain")
+                }
+            };
+        }
+
         Directory.CreateDirectory(config.Watch.HotFolder);
         Directory.CreateDirectory(config.Audit.LogDirectory);
         Directory.CreateDirectory(config.Quarantine.Directory);
@@ -245,27 +271,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
 
     private IExifToolBridge CreateBridge(AppConfig config, IAuditLogger audit)
     {
-        if (config.ExifTool.DryRun)
-        {
-            return new DryRunExifToolBridge(audit);
-        }
-
-        return new ExifToolBridge(
-            process: new ProcessExifToolProcess(),
-            config: config,
-            logger: null,
-            lifecycleSink: async (lifecycleEvent, cancellationToken) =>
-            {
-                await audit.WriteAsync(
-                    new AuditEvent(
-                        EventType: lifecycleEvent.EventType,
-                        TimestampUtc: DateTimeOffset.UtcNow,
-                        TaskId: Guid.NewGuid().ToString("N"),
-                        SourcePath: lifecycleEvent.SourcePath,
-                        Message: lifecycleEvent.Message,
-                        Data: lifecycleEvent.Data),
-                    cancellationToken);
-            });
+        return PooledExifToolBridgeFactory.BuildFromConfig(config, audit);
     }
 
     private void EnqueueIfNeeded(string path)
@@ -307,18 +313,59 @@ public sealed class MetadataCleanerWorker : BackgroundService
         }
 
         var ready = _debounceQueue.PopReady();
-        foreach (var path in ready)
+
+        if (_maxParallelDrain <= 1)
         {
-            if (!File.Exists(path))
+            foreach (var path in ready)
             {
-                continue;
+                await ProcessReadyPathAsync(path, cancellationToken);
             }
 
-            await _pipeline.HandleAsync(path, cancellationToken);
-
-            var info = new FileInfo(path);
-            _recentFingerprintCache.Remember(path, new FileFingerprint(info.Length, info.LastWriteTimeUtc));
+            return;
         }
+
+        using var gate = new SemaphoreSlim(_maxParallelDrain);
+        var tasks = new List<Task>(ready.Count);
+        foreach (var path in ready)
+        {
+            await gate.WaitAsync(cancellationToken);
+            tasks.Add(Task.Run(async () =>
+            {
+                try
+                {
+                    await ProcessReadyPathAsync(path, cancellationToken);
+                }
+                finally
+                {
+                    gate.Release();
+                }
+            }, cancellationToken));
+        }
+
+        await Task.WhenAll(tasks);
+    }
+
+    private async Task ProcessReadyPathAsync(string path, CancellationToken cancellationToken)
+    {
+        if (_pipeline is null || _recentFingerprintCache is null)
+        {
+            return;
+        }
+
+        if (!File.Exists(path))
+        {
+            return;
+        }
+
+        await _pipeline.HandleAsync(path, cancellationToken);
+
+        if (!File.Exists(path))
+        {
+            return;
+        }
+
+        var info = new FileInfo(path);
+        _recentFingerprintCache.Remember(path, new FileFingerprint(info.Length, info.LastWriteTimeUtc));
     }
 
     private string? GetValue(params string[] keys)
@@ -350,6 +397,16 @@ public sealed class MetadataCleanerWorker : BackgroundService
         return string.Equals(value, "1", StringComparison.OrdinalIgnoreCase)
             || string.Equals(value, "yes", StringComparison.OrdinalIgnoreCase)
             || string.Equals(value, "on", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static int ParseInt(string value, string optionName)
+    {
+        if (!int.TryParse(value, out var parsed))
+        {
+            throw new AppConfigValidationException($"{optionName} must be an integer");
+        }
+
+        return parsed;
     }
 
     private static IReadOnlyDictionary<string, string>? BuildServiceStartedData(IReadOnlyList<string> autoExcludedSubdirectories)

@@ -46,6 +46,7 @@ public sealed class TrayHost : IDisposable
             IsVisible = false
         };
         _trayIcon.Clicked += OnTrayClicked;
+        UiDiagnosticLog.Write($"TrayHost created. IconLoaded={_trayIcon.Icon is not null}");
 
         _window.Closing += OnWindowClosing;
         UpdateMenu();
@@ -66,8 +67,14 @@ public sealed class TrayHost : IDisposable
     public bool IsVisible
     {
         get => _trayIcon.IsVisible;
-        set => _trayIcon.IsVisible = value;
+        set
+        {
+            _trayIcon.IsVisible = value;
+            UiDiagnosticLog.Write($"TrayHost.IsVisible set to {value}");
+        }
     }
+
+    public bool IconLoaded => _trayIcon.Icon is not null;
 
     public void AllowWindowClose()
     {
@@ -87,17 +94,25 @@ public sealed class TrayHost : IDisposable
 
     private void TogglePauseResume()
     {
-        var paused = _options.IsPausedAsync(CancellationToken.None).GetAwaiter().GetResult();
-        if (paused)
+        try
         {
-            _options.ResumeAsync(CancellationToken.None).GetAwaiter().GetResult();
-        }
-        else
-        {
-            _options.PauseAsync(CancellationToken.None).GetAwaiter().GetResult();
-        }
+            var paused = _options.IsPausedAsync(CancellationToken.None).GetAwaiter().GetResult();
+            if (paused)
+            {
+                _options.ResumeAsync(CancellationToken.None).GetAwaiter().GetResult();
+            }
+            else
+            {
+                _options.PauseAsync(CancellationToken.None).GetAwaiter().GetResult();
+            }
 
-        UpdateMenu();
+            UpdateMenu();
+        }
+        catch (Exception ex)
+        {
+            UiDiagnosticLog.Write($"TrayHost.TogglePauseResume failed: {ex.Message}");
+            _pauseResumeItem.Header = "暂停";
+        }
     }
 
     private void ShowMainWindow()
@@ -113,8 +128,16 @@ public sealed class TrayHost : IDisposable
 
     private void UpdateMenu()
     {
-        var paused = _options.IsPausedAsync(CancellationToken.None).GetAwaiter().GetResult();
-        _pauseResumeItem.Header = paused ? "恢复" : "暂停";
+        try
+        {
+            var paused = _options.IsPausedAsync(CancellationToken.None).GetAwaiter().GetResult();
+            _pauseResumeItem.Header = paused ? "恢复" : "暂停";
+        }
+        catch (Exception ex)
+        {
+            UiDiagnosticLog.Write($"TrayHost.UpdateMenu failed: {ex.Message}");
+            _pauseResumeItem.Header = "暂停";
+        }
     }
 
     private static WindowIcon? CreateDefaultIcon()
@@ -124,6 +147,7 @@ public sealed class TrayHost : IDisposable
             var assetPath = Path.Combine(AppContext.BaseDirectory, "Assets", "tray-dot-16.png.base64");
             if (!File.Exists(assetPath))
             {
+                UiDiagnosticLog.Write($"Tray icon asset missing: {assetPath}");
                 return null;
             }
 
@@ -135,6 +159,7 @@ public sealed class TrayHost : IDisposable
         }
         catch
         {
+            UiDiagnosticLog.Write("Tray icon load failed");
             return null;
         }
     }

@@ -16,7 +16,9 @@ public static class AppConfigJson
                 EnableWindowsLongPath = config.ExifTool.EnableWindowsLongPath,
                 EnableLargeFileSupport = config.ExifTool.EnableLargeFileSupport,
                 DryRun = config.ExifTool.DryRun,
-                ExtraExifToolArgs = config.ExifTool.ExtraExifToolArgs ?? []
+                ExtraExifToolArgs = config.ExifTool.ExtraExifToolArgs ?? [],
+                StayOpenPoolSize = config.ExifTool.StayOpenPoolSize,
+                MaxParallelDrain = config.ExifTool.MaxParallelDrain
             },
             Watch = new WatchDto
             {
@@ -113,6 +115,12 @@ public static class AppConfigJson
 
         [JsonPropertyName("extra_exiftool_args")]
         public string[] ExtraExifToolArgs { get; init; } = [];
+
+        [JsonPropertyName("stay_open_pool_size")]
+        public int StayOpenPoolSize { get; init; }
+
+        [JsonPropertyName("max_parallel_drain")]
+        public int MaxParallelDrain { get; init; }
     }
 
     private sealed class WatchDto

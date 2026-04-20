@@ -7,7 +7,9 @@ public sealed record ExifToolOptions(
     bool EnableWindowsLongPath,
     bool EnableLargeFileSupport,
     bool DryRun,
-    string[] ExtraExifToolArgs);
+    string[] ExtraExifToolArgs,
+    int StayOpenPoolSize,
+    int MaxParallelDrain);
 
 public sealed record WatchOptions(
     string HotFolder,
@@ -49,7 +51,9 @@ public sealed record AppConfig(
             EnableWindowsLongPath: true,
             EnableLargeFileSupport: true,
             DryRun: false,
-            ExtraExifToolArgs: []),
+            ExtraExifToolArgs: [],
+            StayOpenPoolSize: 1,
+            MaxParallelDrain: 1),
         Watch: new WatchOptions(
             HotFolder: @"D:\hot",
             IncludeSubdirectories: true,

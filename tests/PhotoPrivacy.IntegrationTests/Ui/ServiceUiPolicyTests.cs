@@ -46,6 +46,14 @@ public sealed class ServiceUiPolicyTests
     }
 
     [Fact]
+    public void ShouldSwitchFromTrayToServiceShell_Should_Return_True_When_Service_Installed_But_Stopped()
+    {
+        var shouldSwitch = ServiceUiPolicy.ShouldSwitchFromTrayToServiceShell(ServiceRuntimeState.Stopped);
+
+        Assert.True(shouldSwitch);
+    }
+
+    [Fact]
     public void ShouldSwitchFromServiceShellToTray_Should_Return_True_When_Service_Uninstalled()
     {
         var shouldSwitch = ServiceUiPolicy.ShouldSwitchFromServiceShellToTray(ServiceRuntimeState.NotInstalled);

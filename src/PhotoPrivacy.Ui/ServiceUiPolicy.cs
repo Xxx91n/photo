@@ -45,7 +45,7 @@ public static class ServiceUiPolicy
 
     public static bool ShouldSwitchFromTrayToServiceShell(ServiceRuntimeState state)
     {
-        return IsServiceRunningLike(state);
+        return state != ServiceRuntimeState.NotInstalled;
     }
 
     private static bool IsServiceRunningLike(ServiceRuntimeState state)

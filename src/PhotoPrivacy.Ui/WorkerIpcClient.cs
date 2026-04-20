@@ -16,15 +16,15 @@ public sealed class WorkerIpcClient
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(TimeSpan.FromMilliseconds(700));
-        await client.ConnectAsync(timeoutCts.Token);
+        await client.ConnectAsync(timeoutCts.Token).ConfigureAwait(false);
 
         using var reader = new StreamReader(client);
         using var writer = new StreamWriter(client) { AutoFlush = true };
 
         var payload = JsonSerializer.Serialize(request, WorkerIpcJsonContext.Default.WorkerIpcRequest);
-        await writer.WriteLineAsync(payload.AsMemory(), timeoutCts.Token);
+        await writer.WriteLineAsync(payload.AsMemory(), timeoutCts.Token).ConfigureAwait(false);
 
-        var line = await reader.ReadLineAsync(timeoutCts.Token);
+        var line = await reader.ReadLineAsync(timeoutCts.Token).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(line))
         {
             return null;

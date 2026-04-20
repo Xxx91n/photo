@@ -86,11 +86,13 @@ public sealed class MainWindowViewModelTests
         vm.HotFolderPath = @"D:\hot";
         vm.HideGuiOnStartup = false;
         vm.HideGuiOnStartup = true;
+        vm.HideTrayIcon = true;
 
         Assert.Contains(nameof(MainWindowViewModel.ExifToolPath), raised);
         Assert.Contains(nameof(MainWindowViewModel.BackupEnabled), raised);
         Assert.Contains(nameof(MainWindowViewModel.LogEnabled), raised);
         Assert.Contains(nameof(MainWindowViewModel.HotFolderPath), raised);
         Assert.Contains(nameof(MainWindowViewModel.HideGuiOnStartup), raised);
+        Assert.Contains(nameof(MainWindowViewModel.HideTrayIcon), raised);
     }
 }
