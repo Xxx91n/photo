@@ -135,4 +135,66 @@ public sealed class AppConfigLoaderTests
             Directory.Delete(dir, recursive: true);
         }
     }
+
+    [Fact]
+    public void Load_Should_Default_HideMainWindowOnStartup_To_False_When_Ui_Section_Missing()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+
+        try
+        {
+            var configPath = Path.Combine(dir, "config.json");
+            File.WriteAllText(configPath, """
+            {
+              "schema_version": 1,
+              "exiftool": {
+                "path": "D:\\tools\\A_system\\ExifToolGUI\\ExifTool\\ExifTool.exe",
+                "enable_windows_long_path": true,
+                "enable_large_file_support": true,
+                "dry_run": false,
+                "extra_exiftool_args": []
+              },
+              "watch": {
+                "hot_folder": "D:\\hot",
+                "include_subdirectories": true,
+                "debounce_ms": 800,
+                "internal_buffer_size": 65536
+              },
+              "rules": {
+                "allowed_extensions": [".jpg"],
+                "excluded_patterns": [],
+                "output_mode": "same_as_source",
+                "output_directory": ""
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff_seconds": [0]
+              },
+              "backup": {
+                "enabled": false,
+                "suffix": ".bak",
+                "retention": "keep"
+              },
+              "quarantine": {
+                "enabled": true,
+                "directory": "D:\\hot\\_quarantine"
+              },
+              "audit": {
+                "log_directory": "D:\\hot\\_audit",
+                "retain_days": 30,
+                "diagnostic_mode": false
+              }
+            }
+            """);
+
+            var cfg = AppConfigLoader.Load(configPath);
+
+            Assert.False(cfg.Ui.HideMainWindowOnStartup);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
 }

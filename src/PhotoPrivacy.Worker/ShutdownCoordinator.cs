@@ -1,6 +1,4 @@
-using System.Threading;
-
-namespace PhotoPrivacy.Cli;
+namespace PhotoPrivacy.Worker;
 
 public sealed class ShutdownCoordinator
 {

@@ -87,13 +87,14 @@ public sealed class TrayHost : IDisposable
 
     private void TogglePauseResume()
     {
-        if (_options.IsPaused())
+        var paused = _options.IsPausedAsync(CancellationToken.None).GetAwaiter().GetResult();
+        if (paused)
         {
-            _options.Resume();
+            _options.ResumeAsync(CancellationToken.None).GetAwaiter().GetResult();
         }
         else
         {
-            _options.Pause();
+            _options.PauseAsync(CancellationToken.None).GetAwaiter().GetResult();
         }
 
         UpdateMenu();
@@ -112,7 +113,8 @@ public sealed class TrayHost : IDisposable
 
     private void UpdateMenu()
     {
-        _pauseResumeItem.Header = _options.IsPaused() ? "恢复" : "暂停";
+        var paused = _options.IsPausedAsync(CancellationToken.None).GetAwaiter().GetResult();
+        _pauseResumeItem.Header = paused ? "恢复" : "暂停";
     }
 
     private static WindowIcon? CreateDefaultIcon()

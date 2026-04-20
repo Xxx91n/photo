@@ -107,13 +107,13 @@ public sealed class ServiceManagerTests
     [Fact]
     public void BuildInstallArguments_Should_Quote_Executable_And_Config_Path()
     {
-        var exePath = @"C:\Program Files\Photo Privacy\PhotoPrivacy.exe";
+        var exePath = @"C:\Program Files\Photo Privacy\PhotoPrivacyWorker.exe";
         var configPath = @"D:\cfg path\config.json";
 
         var args = ServiceManager.BuildInstallArguments(exePath, configPath);
 
         Assert.Equal(
-            "create PhotoPrivacyCleaner binPath= \"\"C:\\Program Files\\Photo Privacy\\PhotoPrivacy.exe\" --mode service --config \"D:\\cfg path\\config.json\"\" start= auto",
+            "create PhotoPrivacyCleaner binPath= \"\"C:\\Program Files\\Photo Privacy\\PhotoPrivacyWorker.exe\" --mode service --config \"D:\\cfg path\\config.json\"\" start= auto",
             args);
     }
 
@@ -151,13 +151,26 @@ public sealed class ServiceManagerTests
         var fakeExecutor = new FakeExecutor(expected);
         var manager = new ServiceManager(fakeExecutor, new FakeStateProbe());
 
-        var result = manager.Install(@"C:\Program Files\PhotoPrivacy\PhotoPrivacy.exe", @"D:\cfg\config.json", forceElevation: false);
+        var result = manager.Install(@"C:\Program Files\PhotoPrivacy\PhotoPrivacyWorker.exe", @"D:\cfg\config.json", forceElevation: false);
 
         Assert.Equal(ServiceCommandStatus.Success, result.Status);
         Assert.NotNull(fakeExecutor.LastStartInfo);
         Assert.Equal("sc.exe", fakeExecutor.LastStartInfo!.FileName);
         Assert.Equal(string.Empty, fakeExecutor.LastStartInfo.Verb);
         Assert.Contains("create PhotoPrivacyCleaner", fakeExecutor.LastStartInfo.Arguments);
+    }
+
+    [Fact]
+    public void Install_Should_Fail_When_Path_Is_Not_Worker_Executable()
+    {
+        var fakeExecutor = new FakeExecutor(ServiceCommandResult.Success());
+        var manager = new ServiceManager(fakeExecutor, new FakeStateProbe());
+
+        var result = manager.Install(@"C:\Program Files\PhotoPrivacy\PhotoPrivacy.exe", @"D:\cfg\config.json", forceElevation: false);
+
+        Assert.Equal(ServiceCommandStatus.Failed, result.Status);
+        Assert.Contains("PhotoPrivacyWorker.exe", result.Message, StringComparison.Ordinal);
+        Assert.Null(fakeExecutor.LastStartInfo);
     }
 
     [Fact]
@@ -174,7 +187,7 @@ public sealed class ServiceManagerTests
             State = ServiceRuntimeState.Stopped
         });
 
-        _ = manager.Start(@"C:\app\PhotoPrivacy.exe", @"D:\cfg\config.json", forceElevation: true);
+        _ = manager.Start(@"C:\app\PhotoPrivacyWorker.exe", @"D:\cfg\config.json", forceElevation: true);
 
         Assert.Equal(2, fakeExecutor.Calls.Count);
         Assert.Contains(fakeExecutor.Calls, x => x.StartsWith("config PhotoPrivacyCleaner", StringComparison.Ordinal));
@@ -195,7 +208,7 @@ public sealed class ServiceManagerTests
         var fakeExecutor = new FakeExecutor(ServiceCommandResult.Failed("sc failure", exitCode: 5));
         var manager = new ServiceManager(fakeExecutor, new FakeStateProbe());
 
-        var result = manager.Install(@"C:\app\PhotoPrivacy.exe", @"D:\cfg\config.json", forceElevation: false);
+        var result = manager.Install(@"C:\app\PhotoPrivacyWorker.exe", @"D:\cfg\config.json", forceElevation: false);
 
         Assert.Equal(ServiceCommandStatus.Failed, result.Status);
         Assert.Equal(5, result.ExitCode);
@@ -226,10 +239,27 @@ public sealed class ServiceManagerTests
             State = ServiceRuntimeState.NotInstalled
         });
 
-        var result = manager.Start(@"C:\app\PhotoPrivacy.exe", @"D:\cfg\config.json", forceElevation: false);
+        var result = manager.Start(@"C:\app\PhotoPrivacyWorker.exe", @"D:\cfg\config.json", forceElevation: false);
 
         Assert.Equal(ServiceCommandStatus.Failed, result.Status);
         Assert.Equal(1060, result.ExitCode);
+    }
+
+    [Fact]
+    public void Start_Should_Fail_When_Path_Is_Not_Worker_Executable()
+    {
+        var fakeExecutor = new FakeExecutor(ServiceCommandResult.Success());
+        var manager = new ServiceManager(fakeExecutor, new FakeStateProbe
+        {
+            Exists = true,
+            State = ServiceRuntimeState.Stopped
+        });
+
+        var result = manager.Start(@"C:\app\PhotoPrivacy.exe", @"D:\cfg\config.json", forceElevation: false);
+
+        Assert.Equal(ServiceCommandStatus.Failed, result.Status);
+        Assert.Contains("PhotoPrivacyWorker.exe", result.Message, StringComparison.Ordinal);
+        Assert.Null(fakeExecutor.LastStartInfo);
     }
 
     [Fact]
@@ -275,6 +305,20 @@ public sealed class ServiceManagerTests
         Assert.False(string.IsNullOrWhiteSpace(status));
     }
 
+    [Fact]
+    public void GetStatusText_Should_Return_Localized_Text_For_Common_States()
+    {
+        var manager = new ServiceManager(new FakeExecutor(ServiceCommandResult.Success()), new FakeStateProbe
+        {
+            Exists = true,
+            State = ServiceRuntimeState.Running
+        });
+
+        var status = manager.GetStatusText();
+
+        Assert.Equal("运行中", status);
+    }
+
     [Theory]
     [InlineData(0, "操作成功")]
     [InlineData(5, "权限不足")]
@@ -309,11 +353,11 @@ public sealed class ServiceManagerTests
     public void BuildReconfigArguments_Should_Quote_Executable_And_Config_Path()
     {
         var args = ServiceManager.BuildReconfigArguments(
-            @"C:\Program Files\PhotoPrivacy\PhotoPrivacy.exe",
+            @"C:\Program Files\PhotoPrivacy\PhotoPrivacyWorker.exe",
             @"D:\cfg path\config.json");
 
         Assert.Equal(
-            "config PhotoPrivacyCleaner binPath= \"\"C:\\Program Files\\PhotoPrivacy\\PhotoPrivacy.exe\" --mode service --config \"D:\\cfg path\\config.json\"\" start= auto",
+            "config PhotoPrivacyCleaner binPath= \"\"C:\\Program Files\\PhotoPrivacy\\PhotoPrivacyWorker.exe\" --mode service --config \"D:\\cfg path\\config.json\"\" start= auto",
             args);
     }
 
@@ -338,7 +382,7 @@ public sealed class ServiceManagerTests
         };
         var manager = new ServiceManager(fakeExecutor, fakeProbe);
 
-        var result = manager.Install(@"C:\app\PhotoPrivacy.exe", @"D:\cfg\config.json", forceElevation: false);
+        var result = manager.Install(@"C:\app\PhotoPrivacyWorker.exe", @"D:\cfg\config.json", forceElevation: false);
 
         Assert.Equal(ServiceCommandStatus.Success, result.Status);
         Assert.Equal(6, fakeExecutor.Calls.Count);

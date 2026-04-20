@@ -1,7 +1,7 @@
 using PhotoPrivacy.Core.Audit;
 using PhotoPrivacy.Core.Configuration;
 
-namespace PhotoPrivacy.Cli;
+namespace PhotoPrivacy.Worker;
 
 internal static class InstanceConflictAudit
 {

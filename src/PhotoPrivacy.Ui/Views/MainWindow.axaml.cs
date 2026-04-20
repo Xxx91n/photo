@@ -17,6 +17,7 @@ public partial class MainWindow : Window
     private Task? _versionPollTask;
     private BackgroundUiOptions? _options;
     private readonly ServiceManager _serviceManager = new();
+    private readonly WorkerProcessManager _workerManager = new(new WorkerIpcClient());
     private CancellationTokenSource? _serviceModePollCts;
     private Task? _serviceModePollTask;
     private bool _isSwitchingMode;
@@ -37,10 +38,20 @@ public partial class MainWindow : Window
         if (viewModel is not null)
         {
             viewModel.CurrentMode = MapModeLabel(options.RuntimeKind);
-            _versionSnapshot = new ExifToolVersionSnapshot(options.GetExifToolVersion);
+            _versionSnapshot = new ExifToolVersionSnapshot(() =>
+            {
+                try
+                {
+                    return options.GetExifToolVersionAsync(CancellationToken.None).GetAwaiter().GetResult();
+                }
+                catch
+                {
+                    return "unknown";
+                }
+            });
             viewModel.ExifToolVersion = NormalizeExifToolStatus(_versionSnapshot.ReadInitial());
             viewModel.ShowDetailedEvents = false;
-            viewModel.RuntimeStatus = BuildRuntimeStatusText(options.RuntimeKind, options.GetServiceRuntimeState(), options.IsPaused());
+            viewModel.RuntimeStatus = BuildRuntimeStatusText(options.RuntimeKind, options.GetServiceRuntimeState(), false);
             viewModel.ShowServiceManagerTab = OperatingSystem.IsWindows();
             viewModel.ServiceStatus = _serviceManager.GetStatusText();
 
@@ -97,13 +108,13 @@ public partial class MainWindow : Window
         _versionPollCts = new CancellationTokenSource();
         _versionPollTask = Task.Run(() => PollVersionAsync(_versionPollCts.Token), _versionPollCts.Token);
 
-        if (options.UseTrayIcon)
+        if (options.UseTrayIcon && !options.HideTrayIcon)
         {
             _trayHost = new TrayHost(this, options, ExitApplicationAsync);
             _trayHost.IsVisible = true;
         }
 
-        if (options.HideMainWindowOnStartup && options.UseTrayIcon)
+        if (MainWindowRuntimePolicy.ShouldHideOnStartup(options.HideMainWindowOnStartup, options.UseTrayIcon, options.HideTrayIcon))
         {
             Hide();
         }
@@ -191,21 +202,24 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (_options.IsPaused())
+        var isPaused = _options.IsPausedAsync(CancellationToken.None).GetAwaiter().GetResult();
+        if (isPaused)
         {
-            _options.Resume();
+            _options.ResumeAsync(CancellationToken.None).GetAwaiter().GetResult();
         }
         else
         {
-            _options.Pause();
+            _options.PauseAsync(CancellationToken.None).GetAwaiter().GetResult();
         }
 
         if (DataContext is MainWindowViewModel vm)
         {
-            vm.RuntimeStatus = BuildRuntimeStatusText(_options.RuntimeKind, _options.GetServiceRuntimeState(), _options.IsPaused());
+            var latestPaused = _options.IsPausedAsync(CancellationToken.None).GetAwaiter().GetResult();
+            vm.RuntimeStatus = BuildRuntimeStatusText(_options.RuntimeKind, _options.GetServiceRuntimeState(), latestPaused);
         }
 
-        PauseResumeButton.Content = _options.IsPaused() ? "恢复" : "暂停";
+        var pausedAfter = _options.IsPausedAsync(CancellationToken.None).GetAwaiter().GetResult();
+        PauseResumeButton.Content = pausedAfter ? "恢复" : "暂停";
         _trayHost?.Refresh();
     }
 
@@ -252,12 +266,19 @@ public partial class MainWindow : Window
 
     private void OnInstallServiceClick(object? sender, RoutedEventArgs e)
     {
-        if (_options is null || string.IsNullOrWhiteSpace(_options.SelfExecutablePath))
+        var workerExecutablePath = ResolveServiceWorkerExecutablePath(_options);
+        if (_options is null || string.IsNullOrWhiteSpace(workerExecutablePath))
         {
+            if (DataContext is MainWindowViewModel vmMissingWorker)
+            {
+                vmMissingWorker.ServiceStatus = "未找到 Worker 可执行文件（PhotoPrivacyWorker）";
+                UpdateServiceButtons(vmMissingWorker);
+            }
+
             return;
         }
 
-        var result = _serviceManager.Install(_options.SelfExecutablePath, _options.ConfigPath);
+        var result = _serviceManager.Install(workerExecutablePath, _options.ConfigPath);
         ApplyServiceResult(result);
 
         if (DataContext is MainWindowViewModel vm)
@@ -265,7 +286,7 @@ public partial class MainWindow : Window
             vm.CurrentMode = MapModeLabel(_options?.RuntimeKind ?? "tray");
         }
 
-        if (ImmediateModeSwitchPolicy.ShouldRestartAfterInstall(result))
+        if (ImmediateModeSwitchPolicy.ShouldSwitchAfterInstall(result))
         {
             _ = SwitchToDefaultModeAsync(CancellationToken.None);
         }
@@ -281,7 +302,7 @@ public partial class MainWindow : Window
             vm.CurrentMode = MapModeLabel(_options?.RuntimeKind ?? "tray");
         }
 
-        if (ImmediateModeSwitchPolicy.ShouldRestartAfterUninstall(result))
+        if (ImmediateModeSwitchPolicy.ShouldSwitchAfterUninstall(result))
         {
             _ = SwitchToDefaultModeAsync(CancellationToken.None);
         }
@@ -290,8 +311,14 @@ public partial class MainWindow : Window
     private void OnStartServiceClick(object? sender, RoutedEventArgs e)
     {
         var configPath = _options?.ConfigPath;
-        var exePath = _options?.SelfExecutablePath;
-        var result = _serviceManager.Start(exePath, configPath);
+        var workerExecutablePath = ResolveServiceWorkerExecutablePath(_options);
+        if (string.IsNullOrWhiteSpace(workerExecutablePath))
+        {
+            ApplyServiceResult(ServiceCommandResult.Failed("未找到 Worker 可执行文件（PhotoPrivacyWorker）"));
+            return;
+        }
+
+        var result = _serviceManager.Start(workerExecutablePath, configPath);
         ApplyServiceResult(result);
 
         if (DataContext is MainWindowViewModel vm)
@@ -335,7 +362,7 @@ public partial class MainWindow : Window
     {
         if (_options is not null)
         {
-            await _options.ExitAsync();
+            await _options.ExitApplicationAsync(CancellationToken.None);
         }
 
         _trayHost?.AllowWindowClose();
@@ -370,7 +397,8 @@ public partial class MainWindow : Window
         vm.ServiceStatus = _serviceManager.GetStatusText();
         if (_options is not null)
         {
-            vm.RuntimeStatus = BuildRuntimeStatusText(_options.RuntimeKind, state, _options.IsPaused());
+            var paused = _options.IsPausedAsync(CancellationToken.None).GetAwaiter().GetResult();
+            vm.RuntimeStatus = BuildRuntimeStatusText(_options.RuntimeKind, state, paused);
         }
     }
 
@@ -386,6 +414,13 @@ public partial class MainWindow : Window
             }
 
             var state = _options.GetServiceRuntimeState();
+
+            if (string.Equals(_options.RuntimeKind, "tray", StringComparison.OrdinalIgnoreCase)
+                && !await _options.IsWorkerAliveAsync(token))
+            {
+                await SwitchToDefaultModeAsync(token);
+                return;
+            }
 
             if (string.Equals(_options.RuntimeKind, "service", StringComparison.OrdinalIgnoreCase)
                 && ServiceUiPolicy.ShouldSwitchFromServiceShellToTray(state))
@@ -418,16 +453,50 @@ public partial class MainWindow : Window
             return;
         }
 
+        var previousRuntimeKind = _options.RuntimeKind;
+        var previousEndpoint = _options.WorkerEndpointName;
+
         _isSwitchingMode = true;
         _trayHost?.AllowWindowClose();
 
         try
         {
-            await _options.RestartToDefaultModeAsync(token);
+            if (string.Equals(previousRuntimeKind, "tray", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(previousEndpoint))
+            {
+                await _workerManager.ShutdownAsync(previousEndpoint, token);
+            }
+
+            var next = await _options.ConnectOrLaunchWorkerAsync(token);
+            _options.RuntimeKind = next.RuntimeKind;
+            _options.WorkerEndpointName = next.EndpointName;
+            _options.UseTrayIcon = next.ShouldShowTrayIcon && !_options.HideTrayIcon;
+
+            if (DataContext is MainWindowViewModel vm)
+            {
+                vm.CurrentMode = MapModeLabel(_options.RuntimeKind);
+                vm.RuntimeStatus = BuildRuntimeStatusText(_options.RuntimeKind, _options.GetServiceRuntimeState(), next.Status?.IsPaused ?? false);
+                vm.ExifToolVersion = NormalizeExifToolStatus(next.Status?.ExifToolVersion);
+            }
+
+            if (_options.UseTrayIcon)
+            {
+                _trayHost ??= new TrayHost(this, _options, ExitApplicationAsync);
+                _trayHost.IsVisible = true;
+            }
+            else
+            {
+                _trayHost?.Dispose();
+                _trayHost = null;
+            }
         }
         catch
         {
             // best effort mode switch
+        }
+        finally
+        {
+            _isSwitchingMode = false;
         }
     }
 
@@ -445,7 +514,8 @@ public partial class MainWindow : Window
                 BackupEnabled: vm.BackupEnabled,
                 LogEnabled: vm.LogEnabled,
                 HotFolderPath: vm.HotFolderPath,
-                HideMainWindowOnStartup: vm.HideGuiOnStartup);
+                HideMainWindowOnStartup: vm.HideGuiOnStartup,
+                HideTrayIcon: _options.HideTrayIcon);
 
             ConfigEditor.UpdateConfig(_options.ConfigPath, command);
             vm.RuntimeStatus = "配置已保存";
@@ -621,5 +691,22 @@ public partial class MainWindow : Window
         }
 
         return isPaused ? "托盘已暂停" : "托盘运行中";
+    }
+
+    private static string? ResolveServiceWorkerExecutablePath(BackgroundUiOptions? options)
+    {
+        if (options is null)
+        {
+            return null;
+        }
+
+        if (!string.IsNullOrWhiteSpace(options.WorkerExecutablePath) && File.Exists(options.WorkerExecutablePath))
+        {
+            return options.WorkerExecutablePath;
+        }
+
+        var workerName = OperatingSystem.IsWindows() ? "PhotoPrivacyWorker.exe" : "PhotoPrivacyWorker";
+        var candidate = Path.Combine(AppContext.BaseDirectory, workerName);
+        return File.Exists(candidate) ? candidate : null;
     }
 }

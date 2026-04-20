@@ -53,6 +53,7 @@
     "diagnostic_mode": true
   },
   "ui": {
-    "hide_main_window_on_startup": true
+    "hide_main_window_on_startup": false,
+    "hide_tray_icon": false
   }
 }

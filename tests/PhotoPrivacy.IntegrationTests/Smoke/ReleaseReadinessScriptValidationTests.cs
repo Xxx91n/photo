@@ -30,6 +30,17 @@ public sealed class ReleaseReadinessScriptValidationTests
         Assert.Contains("Runtime 'all' is not valid", merged, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void Readme_Should_Not_Reference_Legacy_Cli_Project()
+    {
+        var repoRoot = FindRepoRoot();
+        var readmePath = Path.Combine(repoRoot, "README.md");
+        var readme = File.ReadAllText(readmePath);
+
+        Assert.DoesNotContain("src/PhotoPrivacy.Cli", readme, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("PhotoPrivacy.Cli", readme, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static string FindRepoRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);

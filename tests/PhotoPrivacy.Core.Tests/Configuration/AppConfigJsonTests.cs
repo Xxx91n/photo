@@ -33,4 +33,20 @@ public sealed class AppConfigJsonTests
         Assert.Contains("\"ui\":", json, StringComparison.Ordinal);
         Assert.Contains("\"hide_main_window_on_startup\": true", json, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public void ToIndentedJson_Should_Emit_HideMainWindowOnStartup_False_When_Config_Requests_Show_Window()
+    {
+        var cfg = AppConfig.Default with
+        {
+            Ui = AppConfig.Default.Ui with
+            {
+                HideMainWindowOnStartup = false
+            }
+        };
+
+        var json = AppConfigJson.ToIndentedJson(cfg);
+
+        Assert.Contains("\"hide_main_window_on_startup\": false", json, StringComparison.OrdinalIgnoreCase);
+    }
 }

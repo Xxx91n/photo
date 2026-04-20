@@ -14,12 +14,14 @@
     <PackageReference Include="Avalonia.Desktop" Version="11.1.3" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.1.3" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="11.1.3" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.CommandLine" Version="10.0.6" />
     <PackageReference Include="Tmds.DBus.Protocol" Version="0.92.0" />
     <PackageReference Include="System.ServiceProcess.ServiceController" Version="10.0.6" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\PhotoPrivacy.Core\PhotoPrivacy.Core.csproj" />
+    <ProjectReference Include="..\PhotoPrivacy.Ipc\PhotoPrivacy.Ipc.csproj" />
   </ItemGroup>
 
   <ItemGroup>

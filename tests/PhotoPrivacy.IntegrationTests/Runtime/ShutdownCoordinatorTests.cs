@@ -1,4 +1,4 @@
-using PhotoPrivacy.Cli;
+using PhotoPrivacy.Worker;
 
 namespace PhotoPrivacy.IntegrationTests.Runtime;
 
@@ -24,27 +24,4 @@ public sealed class ShutdownCoordinatorTests
         Assert.Equal(1, calls);
     }
 
-    [Fact]
-    public void ShouldShowInteractivePrompt_Should_Be_True_For_Service_Mode_When_UserInteractive()
-    {
-        var shouldShow = InstanceConflictUiPolicy.ShouldShowInteractivePrompt(RuntimeMode.Service, isUserInteractive: true);
-
-        Assert.True(shouldShow);
-    }
-
-    [Fact]
-    public void ShouldShowInteractivePrompt_Should_Be_False_For_Cli_Mode()
-    {
-        var shouldShow = InstanceConflictUiPolicy.ShouldShowInteractivePrompt(RuntimeMode.Cli, isUserInteractive: true);
-
-        Assert.False(shouldShow);
-    }
-
-    [Fact]
-    public void ShouldShowInteractivePrompt_Should_Be_False_When_Not_UserInteractive()
-    {
-        var shouldShow = InstanceConflictUiPolicy.ShouldShowInteractivePrompt(RuntimeMode.Service, isUserInteractive: false);
-
-        Assert.False(shouldShow);
-    }
 }

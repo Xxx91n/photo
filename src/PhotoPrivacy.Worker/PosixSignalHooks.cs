@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace PhotoPrivacy.Cli;
+namespace PhotoPrivacy.Worker;
 
 internal sealed class PosixSignalHooks : IDisposable
 {

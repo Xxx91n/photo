@@ -5,27 +5,27 @@ namespace PhotoPrivacy.IntegrationTests.Ui;
 public sealed class ImmediateModeSwitchPolicyTests
 {
     [Fact]
-    public void ShouldRestartAfterInstallSuccess_Should_Return_True()
+    public void ShouldSwitchAfterInstallSuccess_Should_Return_True()
     {
-        var should = ImmediateModeSwitchPolicy.ShouldRestartAfterInstall(
+        var should = ImmediateModeSwitchPolicy.ShouldSwitchAfterInstall(
             new ServiceCommandResult(ServiceCommandStatus.Success, "ok", 0));
 
         Assert.True(should);
     }
 
     [Fact]
-    public void ShouldRestartAfterUninstallSuccess_Should_Return_True()
+    public void ShouldSwitchAfterUninstallSuccess_Should_Return_True()
     {
-        var should = ImmediateModeSwitchPolicy.ShouldRestartAfterUninstall(
+        var should = ImmediateModeSwitchPolicy.ShouldSwitchAfterUninstall(
             new ServiceCommandResult(ServiceCommandStatus.Success, "ok", 0));
 
         Assert.True(should);
     }
 
     [Fact]
-    public void ShouldRestartAfterInstallFailure_Should_Return_False()
+    public void ShouldSwitchAfterInstallFailure_Should_Return_False()
     {
-        var should = ImmediateModeSwitchPolicy.ShouldRestartAfterInstall(
+        var should = ImmediateModeSwitchPolicy.ShouldSwitchAfterInstall(
             new ServiceCommandResult(ServiceCommandStatus.Failed, "no", 5));
 
         Assert.False(should);

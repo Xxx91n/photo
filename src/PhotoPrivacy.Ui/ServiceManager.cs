@@ -187,11 +187,22 @@ public sealed class ServiceManager
     {
         if (!OperatingSystem.IsWindows())
         {
-            return "Linux/macOS: use systemd service management";
+            return "Linux/macOS：请使用 systemd 管理服务";
         }
 
         var state = _stateProbe.GetState(ServiceName);
-        return state == ServiceRuntimeState.NotInstalled ? "NotInstalled" : state.ToString();
+        return state switch
+        {
+            ServiceRuntimeState.NotInstalled => "未安装",
+            ServiceRuntimeState.Running => "运行中",
+            ServiceRuntimeState.StartPending => "启动中",
+            ServiceRuntimeState.PausePending => "暂停中",
+            ServiceRuntimeState.Paused => "已暂停",
+            ServiceRuntimeState.ContinuePending => "恢复中",
+            ServiceRuntimeState.Stopped => "已停止",
+            ServiceRuntimeState.StopPending => "停止中",
+            _ => "未知"
+        };
     }
 
     public ServiceCommandResult Install(string exePath, string configPath)
@@ -209,6 +220,11 @@ public sealed class ServiceManager
         if (!OperatingSystem.IsWindows())
         {
             return ServiceCommandResult.Skipped("Linux/macOS 请使用 systemd 管理服务");
+        }
+
+        if (!IsWorkerExecutablePath(exePath))
+        {
+            return ServiceCommandResult.Failed("安装服务必须使用 PhotoPrivacyWorker.exe");
         }
 
         var precheck = EnsureRemovedBeforeInstall(forceElevation);
@@ -280,14 +296,14 @@ public sealed class ServiceManager
 
     public ServiceCommandResult Start()
     {
-        var exe = Environment.ProcessPath;
+        var exe = ResolveDefaultWorkerExecutablePath();
         var configPath = Path.Combine(AppContext.BaseDirectory, "config", "config.json");
         return Start(exe, configPath, forceElevation: null);
     }
 
     public ServiceCommandResult Start(bool forceElevation)
     {
-        var exe = Environment.ProcessPath;
+        var exe = ResolveDefaultWorkerExecutablePath();
         var configPath = Path.Combine(AppContext.BaseDirectory, "config", "config.json");
         return Start(exe, configPath, forceElevation: forceElevation);
     }
@@ -307,6 +323,11 @@ public sealed class ServiceManager
         if (!_stateProbe.ServiceExists(ServiceName))
         {
             return ServiceCommandResult.Failed(TranslateExitCode(1060), 1060);
+        }
+
+        if (!string.IsNullOrWhiteSpace(exePath) && !IsWorkerExecutablePath(exePath))
+        {
+            return ServiceCommandResult.Failed("服务运行目标必须是 PhotoPrivacyWorker.exe");
         }
 
         var ensureConfig = EnsureInstalledConfigSynced(exePath, configPath, forceElevation);
@@ -467,6 +488,42 @@ public sealed class ServiceManager
         }
 
         return IsAdministratorWindows();
+    }
+
+    private static string? ResolveDefaultWorkerExecutablePath()
+    {
+        var processPath = Environment.ProcessPath;
+        if (string.IsNullOrWhiteSpace(processPath))
+        {
+            return null;
+        }
+
+        if (IsWorkerExecutablePath(processPath))
+        {
+            return processPath;
+        }
+
+        var dir = Path.GetDirectoryName(processPath);
+        if (string.IsNullOrWhiteSpace(dir))
+        {
+            return null;
+        }
+
+        var workerPath = Path.Combine(dir, "PhotoPrivacyWorker.exe");
+        return File.Exists(workerPath) ? workerPath : null;
+    }
+
+    private static bool IsWorkerExecutablePath(string? exePath)
+    {
+        if (string.IsNullOrWhiteSpace(exePath))
+        {
+            return false;
+        }
+
+        return string.Equals(
+            Path.GetFileName(exePath),
+            "PhotoPrivacyWorker.exe",
+            StringComparison.OrdinalIgnoreCase);
     }
 
     [SupportedOSPlatform("windows")]

@@ -56,7 +56,8 @@ public static class AppConfigJson
             },
             Ui = new UiDto
             {
-                HideMainWindowOnStartup = config.Ui.HideMainWindowOnStartup
+                HideMainWindowOnStartup = config.Ui.HideMainWindowOnStartup,
+                HideTrayIcon = config.Ui.HideTrayIcon
             }
         };
 
@@ -190,5 +191,8 @@ public static class AppConfigJson
     {
         [JsonPropertyName("hide_main_window_on_startup")]
         public bool HideMainWindowOnStartup { get; init; }
+
+        [JsonPropertyName("hide_tray_icon")]
+        public bool HideTrayIcon { get; init; }
     }
 }

@@ -23,7 +23,7 @@ try {
   $configDir = Join-Path $workDir "config"
   New-Item -ItemType Directory -Force -Path $configDir | Out-Null
   $configPath = Join-Path $configDir "config.json"
-  Copy-Item (Join-Path $repoRoot "config\config.sample.json") $configPath -Force
+  Copy-Item (Join-Path $workDir "config\config.sample.json") $configPath -Force
 
   $hot = Join-Path $workDir "hot"
   $audit = Join-Path $hot "_audit"
@@ -39,7 +39,7 @@ try {
   $cfg.exiftool.dry_run = $false
   $cfg | ConvertTo-Json -Depth 8 | Set-Content $configPath
 
-  $exe = Join-Path $workDir "PhotoPrivacy.exe"
+  $exe = Join-Path $workDir "PhotoPrivacyWorker.exe"
   if (-not (Test-Path $exe)) {
     throw "Executable not found: $exe"
   }

@@ -1,19 +1,37 @@
 using System.IO.Pipes;
 
-namespace PhotoPrivacy.Cli;
+namespace PhotoPrivacy.Ui;
 
-public static class SingleInstanceIpc
+public sealed class UiSingleInstance : IDisposable
 {
-    public const string PipeName = "PhotoPrivacyCleaner_ShowWindow";
-    public const string ShowWindowMessage = "SHOW_WINDOW";
+    public const string MutexName = @"Global\PhotoPrivacyUi_Instance";
+    internal const string DefaultPipeName = "PhotoPrivacyUi_ShowWindow";
+    private const string Message = "SHOW_WINDOW";
 
-    public static async Task<bool> TryNotifyRunningInstanceToShowWindowAsync(CancellationToken cancellationToken = default)
+    private readonly Mutex _mutex;
+    private readonly bool _isOwner;
+
+    public UiSingleInstance()
+    {
+        _mutex = new Mutex(initiallyOwned: true, MutexName, out var isOwner);
+        _isOwner = isOwner;
+    }
+
+    public bool IsOwner => _isOwner;
+
+    public void Dispose()
+    {
+        _mutex.Dispose();
+    }
+
+    public static async Task<bool> NotifyExistingInstanceAsync(CancellationToken cancellationToken = default, string? pipeName = null)
     {
         try
         {
+            var targetPipe = string.IsNullOrWhiteSpace(pipeName) ? DefaultPipeName : pipeName;
             using var client = new NamedPipeClientStream(
                 serverName: ".",
-                pipeName: PipeName,
+                pipeName: targetPipe,
                 direction: PipeDirection.Out,
                 options: PipeOptions.Asynchronous);
 
@@ -22,7 +40,7 @@ public static class SingleInstanceIpc
             await client.ConnectAsync(timeoutCts.Token);
 
             using var writer = new StreamWriter(client) { AutoFlush = true };
-            await writer.WriteLineAsync(ShowWindowMessage.AsMemory(), timeoutCts.Token);
+            await writer.WriteLineAsync(Message.AsMemory(), timeoutCts.Token);
             return true;
         }
         catch
@@ -31,21 +49,20 @@ public static class SingleInstanceIpc
         }
     }
 
-    public static Task RunShowWindowServerAsync(Action onShowWindowRequested, CancellationToken cancellationToken)
+    public static Task RunShowWindowServerAsync(
+        Action onShowWindowRequested,
+        CancellationToken cancellationToken,
+        string? pipeName = null)
     {
-        if (onShowWindowRequested is null)
-        {
-            throw new ArgumentNullException(nameof(onShowWindowRequested));
-        }
-
         return Task.Run(async () =>
         {
+            var listenPipe = string.IsNullOrWhiteSpace(pipeName) ? DefaultPipeName : pipeName;
             while (!cancellationToken.IsCancellationRequested)
             {
                 try
                 {
                     using var server = new NamedPipeServerStream(
-                        pipeName: PipeName,
+                        pipeName: listenPipe,
                         direction: PipeDirection.In,
                         maxNumberOfServerInstances: 1,
                         transmissionMode: PipeTransmissionMode.Byte,
@@ -54,7 +71,7 @@ public static class SingleInstanceIpc
                     await server.WaitForConnectionAsync(cancellationToken);
                     using var reader = new StreamReader(server);
                     var line = await reader.ReadLineAsync(cancellationToken);
-                    if (string.Equals(line, ShowWindowMessage, StringComparison.Ordinal))
+                    if (string.Equals(line, Message, StringComparison.Ordinal))
                     {
                         onShowWindowRequested();
                     }

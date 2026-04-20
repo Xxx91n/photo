@@ -324,7 +324,7 @@ public sealed class DryRunOutputFlowTests
         var mergedArgs = string.IsNullOrWhiteSpace(extraArgs) ? string.Empty : " " + extraArgs.Trim();
         var psi = new ProcessStartInfo(
             "dotnet",
-            $"run --project src/PhotoPrivacy.Cli/PhotoPrivacy.Cli.csproj --framework {framework} -- --mode cli --config \"{configPath}\" --once true{mergedArgs}")
+            $"run --project src/PhotoPrivacy.Worker/PhotoPrivacy.Worker.csproj --framework {framework} -- --mode cli --config \"{configPath}\" --once true{mergedArgs}")
         {
             WorkingDirectory = repoRoot,
             RedirectStandardOutput = true,

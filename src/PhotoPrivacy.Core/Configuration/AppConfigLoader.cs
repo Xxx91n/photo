@@ -58,7 +58,8 @@ public static class AppConfigLoader
                 RetainDays: dto.Audit.RetainDays,
                 DiagnosticMode: dto.Audit.DiagnosticMode),
             Ui: new UiOptions(
-                HideMainWindowOnStartup: dto.Ui.HideMainWindowOnStartup));
+                HideMainWindowOnStartup: dto.Ui.HideMainWindowOnStartup,
+                HideTrayIcon: dto.Ui.HideTrayIcon));
     }
 
     private static string ResolveExifToolPath(string nestedPath, string? legacyPath, bool hasNestedExifToolPath)
@@ -223,5 +224,8 @@ public static class AppConfigLoader
     {
         [JsonPropertyName("hide_main_window_on_startup")]
         public bool HideMainWindowOnStartup { get; init; } = AppConfig.Default.Ui.HideMainWindowOnStartup;
+
+        [JsonPropertyName("hide_tray_icon")]
+        public bool HideTrayIcon { get; init; } = AppConfig.Default.Ui.HideTrayIcon;
     }
 }

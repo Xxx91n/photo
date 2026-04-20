@@ -47,7 +47,7 @@
             <CheckBox Grid.Row="4" Grid.Column="1" Margin="0,0,0,8" IsChecked="{Binding HideGuiOnStartup}" VerticalAlignment="Center" />
 
             <Button Grid.Row="5" Grid.Column="1" x:Name="SaveConfigButton" Margin="0,0,0,8" Content="保存配置" Width="120" HorizontalAlignment="Left" />
-            <TextBlock Grid.Row="6" Grid.ColumnSpan="2" Text="保存后将在下次启动生效（服务模式可点击 Start 前自动 reconfig）。" Opacity="0.75" />
+            <TextBlock Grid.Row="6" Grid.ColumnSpan="2" Text="保存后将在下次启动生效（服务模式可在启动前自动重配置）。" Opacity="0.75" />
           </Grid>
         </Border>
       </TabItem>
@@ -74,10 +74,10 @@
           <TextBlock Text="服务状态" />
           <TextBlock Text="{Binding ServiceStatus}" FontWeight="Bold" />
           <StackPanel Orientation="Horizontal" Spacing="8">
-            <Button x:Name="InstallServiceButton" Content="Install Service" Width="120" />
-            <Button x:Name="UninstallServiceButton" Content="Uninstall Service" Width="120" />
-            <Button x:Name="StartServiceButton" Content="Start" Width="90" />
-            <Button x:Name="StopServiceButton" Content="Stop" Width="90" />
+            <Button x:Name="InstallServiceButton" Content="安装服务" Width="120" />
+            <Button x:Name="UninstallServiceButton" Content="卸载服务" Width="120" />
+            <Button x:Name="StartServiceButton" Content="启动服务" Width="100" />
+            <Button x:Name="StopServiceButton" Content="停止服务" Width="100" />
           </StackPanel>
           <TextBlock Text="Linux 下该页签自动隐藏（systemd 管理）。" Opacity="0.7" />
         </StackPanel>

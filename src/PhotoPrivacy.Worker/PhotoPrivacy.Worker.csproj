@@ -2,7 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\PhotoPrivacy.Core\PhotoPrivacy.Core.csproj" />
-    <ProjectReference Include="..\PhotoPrivacy.Ui\PhotoPrivacy.Ui.csproj" />
+    <ProjectReference Include="..\PhotoPrivacy.Ipc\PhotoPrivacy.Ipc.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -12,10 +12,10 @@
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <AssemblyName>PhotoPrivacy</AssemblyName>
+    <AssemblyName>PhotoPrivacyWorker</AssemblyName>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <OutputType Condition="$([MSBuild]::IsOSPlatform('Windows'))">WinExe</OutputType>
+    <OutputType Condition="$([MSBuild]::IsOSPlatform('Windows'))">Exe</OutputType>
     <OutputType Condition="!$([MSBuild]::IsOSPlatform('Windows'))">Exe</OutputType>
   </PropertyGroup>
 

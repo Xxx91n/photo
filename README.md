@@ -1,81 +1,83 @@
-# PhotoPrivacy Cleaner (MVP-1)
+# PhotoPrivacy Cleaner
+
+`PhotoPrivacy` 采用三进程拆分架构：
+
+- `PhotoPrivacy.exe`：纯 GUI 入口（用户双击启动）
+- `PhotoPrivacyWorker.exe --mode background`：后台 Worker（托盘/用户态）
+- `PhotoPrivacyWorker.exe --mode service`：服务 Worker（Windows Service / Linux systemd）
 
 ## Quick start
-1. 复制 `config/config.sample.json` 为 `config/config.json` 并按实际环境修改。
-2. 确认 `D:\tools\A_system\ExifToolGUI\ExifTool\ExifTool.exe` 和同级 `exiftool_files` 存在。
-3. 本地调试（CLI 模式，前台输出日志）：
+
+1. 复制 `config/config.sample.json` 为 `config/config.json` 并按环境修改。
+2. 确认 ExifTool 路径可用：
+   `D:\tools\A_system\ExifToolGUI\ExifTool\ExifTool.exe`
+   且同级存在 `exiftool_files`。
+3. 本地一次性验证（命令行单次执行）：
 
 ```bash
-dotnet run --project src/PhotoPrivacy.Cli/PhotoPrivacy.Cli.csproj -- --mode cli
+dotnet run --project src/PhotoPrivacy.Worker/PhotoPrivacy.Worker.csproj -- --mode cli --once true
 ```
 
-4. 仅运行一次（适合测试）：
+4. 输出“最终生效配置”（不进入监听处理）：
 
 ```bash
-dotnet run --project src/PhotoPrivacy.Cli/PhotoPrivacy.Cli.csproj -- --mode cli --once true
+dotnet run --project src/PhotoPrivacy.Worker/PhotoPrivacy.Worker.csproj -- --mode cli --config .\config\config.json --print-effective-config true
 ```
 
-5. 输出“最终生效配置”（不进入监听/处理流程）：
+5. dry-run（不实际调用 ExifTool，只走流程并写审计）：
 
 ```bash
-dotnet run --project src/PhotoPrivacy.Cli/PhotoPrivacy.Cli.csproj -- --mode cli --config .\config\config.json --print-effective-config true
+dotnet run --project src/PhotoPrivacy.Worker/PhotoPrivacy.Worker.csproj -- --mode cli --once true --dry-run true
 ```
 
-6. 启用 dry-run（不实际调用 ExifTool，仅走流程并写审计）：
+## 运行模式（面向用户）
 
-```bash
-dotnet run --project src/PhotoPrivacy.Cli/PhotoPrivacy.Cli.csproj -- --mode cli --once true --dry-run true
-```
+### 1) GUI 模式（推荐用户入口）
 
-## 运行模式（同一个 EXE）
+- 直接启动 `PhotoPrivacy.exe`
+- GUI 通过 IPC 连接 Worker：
+  - 若 Service Worker 在运行，GUI 进入“服务管理”状态
+  - 否则连接/启动 Background Worker（托盘态）
+- 默认会显示主窗口；如需静默启动可在 `config/config.json` 中设置 `ui.hide_main_window_on_startup=true`。
 
-发布后主程序名为 `PhotoPrivacy.exe`，支持三种模式：
-
-1) 后台模式（默认）
-- 双击 `PhotoPrivacy.exe` 即进入后台模式（托盘图标）
-- 等价参数：
+### 2) Background Worker
 
 ```powershell
-PhotoPrivacy.exe --mode background
+PhotoPrivacyWorker.exe --mode background --config .\config\config.json
 ```
 
-- 托盘右键菜单：`暂停` / `继续` / `退出`
+注意：`PhotoPrivacyWorker.exe` 是后台 Worker，不提供 GUI。请使用 `PhotoPrivacy.exe` 作为桌面入口。
 
-2) 服务模式
-- 直接运行：
+### 3) Service Worker
 
 ```powershell
-PhotoPrivacy.exe --mode service
+PhotoPrivacyWorker.exe --mode service --config .\config\config.json
 ```
 
-- 推荐安装脚本（管理员 PowerShell）：
+## Windows 服务安装
+
+推荐使用脚本（管理员 PowerShell）：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\install-service.ps1 -ExePath .\publish\cli\0.1.0-preview\win-x64\PhotoPrivacy.exe -ConfigPath .\config\config.json
+powershell -ExecutionPolicy Bypass -File .\scripts\install-service.ps1 -ExePath .\publish\app\0.1.0-preview\win-x64\PhotoPrivacyWorker.exe -ConfigPath .\config\config.json
 ```
 
-- 或手工 `sc.exe`：
+手工 `sc.exe` 示例：
 
 ```powershell
-sc.exe create PhotoPrivacyCleaner binPath= "\"C:\path\PhotoPrivacy.exe\" --mode service --config \"C:\path\config.json\"" start= auto
+sc.exe create PhotoPrivacyCleaner binPath= "\"C:\path\PhotoPrivacyWorker.exe\" --mode service --config \"C:\path\config.json\"" start= auto
 sc.exe start PhotoPrivacyCleaner
-```
-
-3) CLI 模式（仅调试/脚本）
-
-```powershell
-PhotoPrivacy.exe --mode cli --once true
 ```
 
 ## Linux 部署（systemd）
 
-1) 发布 linux-x64 单文件：
+1) 打包 Linux 发布物：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/publish-cli-exe.ps1 -Version 0.1.0-preview -Runtime linux-x64 -SelfContained true -Zip true
+powershell -ExecutionPolicy Bypass -File scripts/publish-app.ps1 -Version 0.1.0-preview -Runtime linux-x64 -SelfContained true -Zip true
 ```
 
-2) 上传并解压 `publish/PhotoPrivacy-<version>-linux-x64.tar.gz` 到 Linux 主机（推荐 `/opt/photoprivacy`）。
+2) 上传并解压 `publish/PhotoPrivacy-<version>-linux-x64.tar.gz` 到主机（推荐 `/opt/photoprivacy`）。
 
 3) 安装并启动 systemd 服务（root）：
 
@@ -83,120 +85,51 @@ powershell -ExecutionPolicy Bypass -File scripts/publish-cli-exe.ps1 -Version 0.
 sudo bash scripts/install-systemd-service.sh --install-dir /opt/photoprivacy --config /opt/photoprivacy/config/config.json
 ```
 
-脚本会生成并启用 `photoprivacy.service`（`systemctl enable --now photoprivacy`）。
-
-4) 建议调整 inotify 上限（避免大目录监听丢事件）：
-
-```bash
-echo "fs.inotify.max_user_watches=524288" | sudo tee /etc/sysctl.d/99-photoprivacy.conf
-echo "fs.inotify.max_user_instances=1024" | sudo tee -a /etc/sysctl.d/99-photoprivacy.conf
-sudo sysctl --system
-```
-
-## UI 重构进度（Avalonia）
-
-- 已进入 Phase-1：新增 `src/PhotoPrivacy.Ui`（Avalonia，`net10.0`）项目骨架。
-- `--mode background` 已切换到 Avalonia 入口（Windows/Linux 共享一套路由）。
-- 旧 WinForms 托盘实现已移除，CLI 已收敛到单目标 `net10.0`。
-- 主窗口日志面板已改为直接尾随 `_audit/audit-*.jsonl`（支持事件中文标签、颜色、详细事件开关）。
-- ExifTool 状态优先从 audit `exiftool_started` 事件解析并主动 `-ver` 校验；失败回退配置路径检测。
-- 服务管理器已接入错误码友好提示与安装前自动清理（避免 1073）。
-- 服务管理器动作已补失败语义：成功 / 跳过 / UAC 取消 / 失败，并在 UI 状态栏回显。
-
 ## Verification
+
 ```bash
 dotnet test PhotoPrivacy.sln
 powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1 -HotFolder D:\hot -AuditFolder D:\hot\_audit
 ```
 
-## Build EXE
+## 开发者附录（调试与诊断）
 
-1) Windows 打包（win-x64，framework 固定为 net10.0，产出 zip）：
+以下命令用于开发调试，普通用户可忽略：
 
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/publish-cli-exe.ps1 -Version 0.1.0-preview -Runtime win-x64 -Framework net10.0 -SelfContained true -Zip true
+```bash
+dotnet run --project src/PhotoPrivacy.Worker/PhotoPrivacy.Worker.csproj -- --mode cli --once true
+dotnet run --project src/PhotoPrivacy.Worker/PhotoPrivacy.Worker.csproj -- --mode cli --config .\config\config.json --print-effective-config true
+dotnet run --project src/PhotoPrivacy.Worker/PhotoPrivacy.Worker.csproj -- --mode cli --once true --dry-run true
 ```
 
-2) Linux 打包（linux-x64，framework 固定为 net10.0，产出 tar.gz）：
+## Build EXE / Package
+
+Windows:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/publish-cli-exe.ps1 -Version 0.1.0-preview -Runtime linux-x64 -Framework net10.0 -SelfContained true -Zip true
+powershell -ExecutionPolicy Bypass -File scripts/publish-app.ps1 -Version 0.1.0-preview -Runtime win-x64 -Framework net10.0 -SelfContained true -Zip true
 ```
 
-3) 发行前一键检查（测试 + smoke + 打包）：
+Linux:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/publish-app.ps1 -Version 0.1.0-preview -Runtime linux-x64 -Framework net10.0 -SelfContained true -Zip true
+```
+
+发行前检查（测试 + smoke + 打包）：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/release-readiness.ps1 -Version 0.1.0-preview -Runtime win-x64
 ```
 
-4) 发布门禁（含强杀验收，可选第 4 步）：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/release-readiness.ps1 -Version 0.1.0-preview -Runtime win-x64 -IncludeForceKillCheck true
-```
-
-5) 单独执行强杀回归验收（验证父进程被强杀后，ExifTool 子进程不会残留）：
+强杀回归（可选，验证父进程被强杀后 ExifTool 子进程不会残留）：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/verify-force-kill-cleanup.ps1 -Version 0.1.0-preview
 ```
 
-6) 成熟版发布时间规划见：`docs/release-roadmap-2026-04-17.md`
-
-7) `-Runtime all` / `-Runtime any` 为无效参数，脚本会快速失败并提示使用具体 RID（如 `win-x64`、`linux-x64`）。
-
-### 允许你验证程序功能的方法
-
-1) **最安全流程验证（推荐）**：dry-run + 固定输出目录
-- 在 `config/config.json` 中设置：
-  - `exiftool.dry_run = true`
-  - `rules.output_mode = "fixed_directory"`
-  - `rules.output_directory = "<你的输出目录>"`
-- 执行：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/smoke.ps1 -HotFolder D:\hot -AuditFolder D:\hot\_audit -ConfigPath .\config\config.json
-```
-
-- 期望结果：
-  - 输出目录出现复制后的文件
-  - 审计日志出现 `exiftool_started`、`dry_run_wipe_skipped` 和 `file_processing_succeeded`
-
-2) **真实清理验证（会调用 ExifTool）**
-- 在 `config/config.json` 中设置 `exiftool.dry_run = false`
-- 并确认 `exiftool.path` 指向真实可执行文件，否则程序会快速失败退出（不会进入清理流程）
-- 准备测试文件后执行：
-
-```bash
-dotnet run --project src/PhotoPrivacy.Cli/PhotoPrivacy.Cli.csproj -- --mode cli --config .\config\config.json --once true
-```
-
-- 期望结果（在 ExifTool 路径可用时）：
-  - 成功文件被清理元数据（按你的输出策略落地）
-  - 失败文件按重试后进入隔离目录
-  - 审计日志含 `exiftool_started`/`file_detected`/`file_processing_started`/`file_retry_scheduled`/`file_processing_succeeded`/`file_processing_failed`/`file_quarantined`
-
-- 期望结果（在 ExifTool 路径不可用时）：
-  - 进程直接报错退出（`exiftool.path not found`）
-  - 不会生成清理成功审计
-  - 退出码非 0
-
-3) **持续监听验证**
-- 前台常驻运行：
-
-```bash
-dotnet run --project src/PhotoPrivacy.Cli/PhotoPrivacy.Cli.csproj -- --mode cli --config .\config\config.json
-```
-
-- 向热文件夹持续投放文件，观察：
-  - 防抖是否生效（不会重复风暴处理）
-  - `fsw_error` 后是否出现 `fsw_recovered`
-
 ## Notes
-- 当前实现严格采用 `FileSystemWatcher` 事件驱动，不轮询。
-- ExifTool 采用 `stay_open` 单进程桥接；支持 `dry_run` 方便无损联调。
-- ExifTool 健康检查采用双阈值：首次启动探测 3s、运行中心跳 500ms；重启事件会记录失败原因到审计 `data` 字段。
-- 程序采用全局 Mutex 单实例保护：重复启动会被拒绝，并写入 `instance_conflict` 审计事件。
-- 当 `audit.log_directory` 或 `quarantine.directory` 位于 `watch.hot_folder` 子目录（例如默认的 `D:\hot\_audit` / `D:\hot\_quarantine`）时，程序会自动从 FSW 监听流中排除这些目录，无需手工写入 `rules.excluded_patterns`。
-- 启动时会在 `service_started` 事件的 `data["已自动排除的子目录列表"]` 中输出实际自动排除的目录，便于确认。
-- 请勿修改 ExifToolGUI 目录内容，本项目仅调用指定路径的 ExifTool 可执行文件。
+
+- 监听实现严格使用事件驱动（`FileSystemWatcher`/inotify），不使用轮询。
+- ExifTool 使用 `stay_open` 单进程桥接。
+- 不要修改 `ExifToolGUI` 目录任何文件，本项目仅读取并执行指定 ExifTool 路径。

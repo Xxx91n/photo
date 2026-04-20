@@ -1,4 +1,4 @@
-namespace PhotoPrivacy.Cli;
+namespace PhotoPrivacy.Worker;
 
 public enum RuntimeMode
 {

@@ -39,10 +39,6 @@ public partial class App : Application
                     });
                 };
 
-                if (RuntimeOptions.HideMainWindowOnStartup)
-                {
-                    window.Hide();
-                }
             }
         }
 

@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Configuration;
 
-namespace PhotoPrivacy.Cli;
+namespace PhotoPrivacy.Worker;
 
 public static class RuntimeModeResolver
 {

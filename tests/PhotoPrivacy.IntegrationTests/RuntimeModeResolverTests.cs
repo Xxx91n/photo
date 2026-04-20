@@ -1,5 +1,5 @@
 using Microsoft.Extensions.Configuration;
-using PhotoPrivacy.Cli;
+using PhotoPrivacy.Worker;
 
 namespace PhotoPrivacy.IntegrationTests;
 

@@ -21,7 +21,8 @@ public sealed class ConfigEditorRoundTripTests
                 BackupEnabled: true,
                 LogEnabled: true,
                 HotFolderPath: @"D:\hot",
-                HideMainWindowOnStartup: true);
+                HideMainWindowOnStartup: true,
+                HideTrayIcon: false);
 
             ConfigEditor.UpdateConfig(configPath, command);
 

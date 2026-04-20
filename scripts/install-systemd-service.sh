@@ -17,8 +17,8 @@ Usage: sudo ./scripts/install-systemd-service.sh [options]
 Options:
   --install-dir <path>     Install directory (default: ${INSTALL_DIR})
   --config <path>          Config file path (default: ${CONFIG_PATH})
-  --hot-folder <path>      Hot folder override passed to CLI
-  --audit-folder <path>    Audit folder override passed to CLI
+  --hot-folder <path>      Hot folder override passed to Worker
+  --audit-folder <path>    Audit folder override passed to Worker
   --quarantine <path>      Quarantine folder for setup hints
   --user <name>            Service user (default: ${USER_NAME})
   --group <name>           Service group (default: ${GROUP_NAME})
@@ -73,7 +73,7 @@ if [[ $EUID -ne 0 ]]; then
   exit 1
 fi
 
-EXE_PATH="${INSTALL_DIR}/PhotoPrivacy"
+EXE_PATH="${INSTALL_DIR}/PhotoPrivacyWorker"
 if [[ ! -x "$EXE_PATH" ]]; then
   echo "Missing executable: ${EXE_PATH}" >&2
   echo "Please extract linux-x64 package to ${INSTALL_DIR} first." >&2
@@ -102,7 +102,7 @@ Type=simple
 User=${USER_NAME}
 Group=${GROUP_NAME}
 WorkingDirectory=${INSTALL_DIR}
-ExecStart=${EXE_PATH} --mode cli --config ${CONFIG_PATH} --hot-folder ${HOT_FOLDER} --audit-folder ${AUDIT_FOLDER}
+ExecStart=${EXE_PATH} --mode service --config ${CONFIG_PATH} --hot-folder ${HOT_FOLDER} --audit-folder ${AUDIT_FOLDER}
 Restart=always
 RestartSec=3
 NoNewPrivileges=true

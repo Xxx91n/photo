@@ -20,7 +20,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\PhotoPrivacy.Core\PhotoPrivacy.Core.csproj" />
-    <ProjectReference Include="..\..\src\PhotoPrivacy.Cli\PhotoPrivacy.Cli.csproj" />
+    <ProjectReference Include="..\..\src\PhotoPrivacy.Ui\PhotoPrivacy.Ui.csproj" />
+    <ProjectReference Include="..\..\src\PhotoPrivacy.Worker\PhotoPrivacy.Worker.csproj" />
+    <ProjectReference Include="..\..\src\PhotoPrivacy.Ipc\PhotoPrivacy.Ipc.csproj" />
   </ItemGroup>
 
 </Project>

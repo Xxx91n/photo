@@ -2,44 +2,35 @@ namespace PhotoPrivacy.Ui;
 
 public sealed class BackgroundUiOptions
 {
-    public required string RuntimeKind { get; init; }
-    public required bool IsBackgroundMode { get; init; }
-    public required bool HideMainWindowOnStartup { get; init; }
-    public required bool IsServiceInstalled { get; init; }
-    public required bool UseTrayIcon { get; init; }
+    public string RuntimeKind { get; set; } = "tray";
+    public bool HideMainWindowOnStartup { get; set; } = true;
+    public bool UseTrayIcon { get; set; } = true;
+    public bool HideTrayIcon { get; set; }
+    public string WorkerEndpointName { get; set; } = string.Empty;
+    public string WorkerExecutablePath { get; set; } = string.Empty;
 
-    public required Func<bool> IsPaused { get; init; }
-    public required Action Pause { get; init; }
-    public required Action Resume { get; init; }
-    public required Func<Task> ExitAsync { get; init; }
-    public required Func<string> GetExifToolVersion { get; init; }
-    public required Func<ServiceRuntimeState> GetServiceRuntimeState { get; init; }
-    public required Func<CancellationToken, Task> RestartToDefaultModeAsync { get; init; }
+    public Func<CancellationToken, Task<bool>> IsWorkerAliveAsync { get; set; } = static _ => Task.FromResult(false);
+    public Func<CancellationToken, Task<bool>> IsPausedAsync { get; set; } = static _ => Task.FromResult(false);
+    public Func<CancellationToken, Task> PauseAsync { get; set; } = static _ => Task.CompletedTask;
+    public Func<CancellationToken, Task> ResumeAsync { get; set; } = static _ => Task.CompletedTask;
+    public Func<CancellationToken, Task> ShutdownWorkerAsync { get; set; } = static _ => Task.CompletedTask;
+    public Func<CancellationToken, Task> ExitApplicationAsync { get; set; } = static _ => Task.CompletedTask;
+    public Func<CancellationToken, Task<string>> GetExifToolVersionAsync { get; set; } = static _ => Task.FromResult("unknown");
+    public Func<ServiceRuntimeState> GetServiceRuntimeState { get; set; } = static () => ServiceRuntimeState.NotInstalled;
+    public Func<CancellationToken, Task<WorkerConnectionResult>> ConnectOrLaunchWorkerAsync { get; set; } = static _ =>
+        Task.FromResult(new WorkerConnectionResult(
+            RuntimeKind: "tray",
+            EndpointName: string.Empty,
+            ShouldShowTrayIcon: true,
+            Status: null));
+
     public Action ShowMainWindow { get; set; } = static () => { };
 
-    public required string ConfigPath { get; init; }
-    public required string AuditDirectory { get; init; }
-    public string? SelfExecutablePath { get; init; }
+    public string ConfigPath { get; set; } = AppContext.BaseDirectory;
+    public string AuditDirectory { get; set; } = AppContext.BaseDirectory;
 
     public static BackgroundUiOptions CreateFallback()
     {
-        return new BackgroundUiOptions
-        {
-            RuntimeKind = "tray",
-            IsBackgroundMode = true,
-            HideMainWindowOnStartup = true,
-            IsServiceInstalled = false,
-            UseTrayIcon = true,
-            IsPaused = static () => false,
-            Pause = static () => { },
-            Resume = static () => { },
-            ExitAsync = static () => Task.CompletedTask,
-            GetExifToolVersion = static () => "unknown",
-            GetServiceRuntimeState = static () => ServiceRuntimeState.NotInstalled,
-            RestartToDefaultModeAsync = static _ => Task.CompletedTask,
-            ConfigPath = AppContext.BaseDirectory,
-            AuditDirectory = AppContext.BaseDirectory,
-            SelfExecutablePath = Environment.ProcessPath
-        };
+        return new BackgroundUiOptions();
     }
 }

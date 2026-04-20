@@ -5,4 +5,5 @@ public sealed record ConfigEditCommand(
     bool BackupEnabled,
     bool LogEnabled,
     string HotFolderPath,
-    bool HideMainWindowOnStartup);
+    bool HideMainWindowOnStartup,
+    bool HideTrayIcon);

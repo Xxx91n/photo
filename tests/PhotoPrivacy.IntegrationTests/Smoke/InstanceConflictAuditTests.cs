@@ -79,7 +79,38 @@ public sealed class InstanceConflictAuditTests
         {
             if (Directory.Exists(root))
             {
-                Directory.Delete(root, recursive: true);
+                SafeDeleteDirectory(root);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task WaitForAuditEvent_Should_Retry_When_Audit_File_Is_Temporarily_Locked()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "photo-instance-conflict-lock-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var auditFile = Path.Combine(root, $"audit-{DateTime.UtcNow:yyyy-MM-dd}.jsonl");
+        await File.WriteAllTextAsync(auditFile, "{\"event_type\":\"service_started\"}" + Environment.NewLine);
+
+        FileStream? hold = null;
+        try
+        {
+            hold = new FileStream(auditFile, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            var waitTask = Task.Run(() => WaitForAuditEvent(root, "service_started", TimeSpan.FromSeconds(3)));
+
+            await Task.Delay(300);
+            hold.Dispose();
+            hold = null;
+
+            await waitTask;
+        }
+        finally
+        {
+            hold?.Dispose();
+
+            if (Directory.Exists(root))
+            {
+                SafeDeleteDirectory(root);
             }
         }
     }
@@ -88,7 +119,7 @@ public sealed class InstanceConflictAuditTests
     {
         var psi = new ProcessStartInfo(
             "dotnet",
-            $"run --project src/PhotoPrivacy.Cli/PhotoPrivacy.Cli.csproj --framework net10.0 -- --mode cli --config \"{configPath}\"")
+            $"run --project src/PhotoPrivacy.Worker/PhotoPrivacy.Worker.csproj --framework net10.0 -- --mode cli --config \"{configPath}\"")
         {
             WorkingDirectory = repoRoot,
             RedirectStandardOutput = true,
@@ -102,7 +133,7 @@ public sealed class InstanceConflictAuditTests
     {
         var psi = new ProcessStartInfo(
             "dotnet",
-            $"run --project src/PhotoPrivacy.Cli/PhotoPrivacy.Cli.csproj --framework net10.0 -- --mode cli --once true --config \"{configPath}\"")
+            $"run --project src/PhotoPrivacy.Worker/PhotoPrivacy.Worker.csproj --framework net10.0 -- --mode cli --once true --config \"{configPath}\"")
         {
             WorkingDirectory = repoRoot,
             RedirectStandardOutput = true,
@@ -165,6 +196,37 @@ public sealed class InstanceConflictAuditTests
         throw new FileNotFoundException("instance_conflict audit file not found", auditDirectory);
     }
 
+    private static void SafeDeleteDirectory(string directoryPath)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(3);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (!Directory.Exists(directoryPath))
+            {
+                return;
+            }
+
+            try
+            {
+                Directory.Delete(directoryPath, recursive: true);
+                return;
+            }
+            catch (IOException)
+            {
+                Thread.Sleep(100);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                Thread.Sleep(100);
+            }
+        }
+
+        if (Directory.Exists(directoryPath))
+        {
+            Directory.Delete(directoryPath, recursive: true);
+        }
+    }
+
     private static void WaitForAuditEvent(string auditDirectory, string eventType, TimeSpan timeout)
     {
         var deadline = DateTime.UtcNow + timeout;
@@ -173,10 +235,17 @@ public sealed class InstanceConflictAuditTests
             var file = Directory.GetFiles(auditDirectory, "audit-*.jsonl").FirstOrDefault();
             if (!string.IsNullOrWhiteSpace(file))
             {
-                var content = File.ReadAllText(file);
-                if (content.Contains($"\"event_type\":\"{eventType}\"", StringComparison.OrdinalIgnoreCase))
+                try
                 {
-                    return;
+                    var content = File.ReadAllText(file);
+                    if (content.Contains($"\"event_type\":\"{eventType}\"", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return;
+                    }
+                }
+                catch (IOException)
+                {
+                    // audit writer may hold a short lock while appending; retry until timeout
                 }
             }
 
