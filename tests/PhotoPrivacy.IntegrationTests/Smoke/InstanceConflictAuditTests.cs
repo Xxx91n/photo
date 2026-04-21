@@ -24,7 +24,9 @@ public sealed class InstanceConflictAuditTests
                 "enable_windows_long_path": true,
                 "enable_large_file_support": true,
                 "dry_run": true,
-                "extra_exiftool_args": []
+                "extra_exiftool_args": [],
+                "stay_open_pool_size": 1,
+                "max_parallel_drain": 1
               },
               "watch": {
                 "hot_folder": "{{EscapePath(hot)}}",

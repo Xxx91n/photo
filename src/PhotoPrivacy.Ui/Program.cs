@@ -22,6 +22,7 @@ public static class UiProgram
         {
             UiDiagnosticLog.Write("UiProgram.Start detected non-owner instance; notifying existing instance");
             _ = UiSingleInstance.NotifyExistingInstanceAsync();
+            Thread.Sleep(120);
             return 0;
         }
 
@@ -36,7 +37,8 @@ public static class UiProgram
         var connectResult = workerManager.ConnectOrLaunchAsync(
             workerPath,
             CancellationToken.None,
-            getServiceRuntimeState: serviceManager.GetRuntimeState).GetAwaiter().GetResult();
+            getServiceRuntimeState: serviceManager.GetRuntimeState,
+            configPath: configPath).GetAwaiter().GetResult();
         UiDiagnosticLog.Write($"Worker connect result. runtime={connectResult.RuntimeKind}, endpoint={connectResult.EndpointName}, showTray={connectResult.ShouldShowTrayIcon}, workerPath={workerPath}");
 
         var endpointName = connectResult.EndpointName;
@@ -160,7 +162,8 @@ public static class UiProgram
         options.ConnectOrLaunchWorkerAsync = token => workerManager.ConnectOrLaunchAsync(
             workerPath,
             token,
-            getServiceRuntimeState: serviceManager.GetRuntimeState);
+            getServiceRuntimeState: serviceManager.GetRuntimeState,
+            configPath: options.ConfigPath);
         return options;
     }
 

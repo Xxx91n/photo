@@ -2,6 +2,7 @@ namespace PhotoPrivacy.Worker;
 
 public static class WorkerInstanceMutexNames
 {
-    public const string Background = @"Global\PhotoPrivacyWorker_Background_Instance";
-    public const string Service = @"Global\PhotoPrivacyWorker_Service_Instance";
+    public const string Unified = @"Global\PhotoPrivacyWorker_Instance";
+    public const string Background = Unified;
+    public const string Service = Unified;
 }

@@ -13,14 +13,19 @@ PosixSignalHooks? posixHooks = null;
 
 var requestedMode = RuntimeModeResolver.ResolveFromArgs(args);
 var hasModeOption = RuntimeModeResolver.HasModeOption(args);
+if (WorkerEntryGuard.ShouldRejectDirectLaunch(args, Environment.UserInteractive, hasModeOption))
+{
+    Console.Error.WriteLine("[PhotoPrivacyWorker] 请通过 PhotoPrivacy.exe 启动，不支持直接双击 Worker。 ");
+    Console.Error.WriteLine("[PhotoPrivacyWorker] launch via PhotoPrivacy.exe only.");
+    return 2;
+}
+
 if (!hasModeOption && Environment.UserInteractive)
 {
     requestedMode = RuntimeMode.Background;
 }
 
-var mutexName = requestedMode == RuntimeMode.Service
-    ? WorkerInstanceMutexNames.Service
-    : WorkerInstanceMutexNames.Background;
+var mutexName = WorkerInstanceMutexNames.Unified;
 
 using var mutex = new Mutex(initiallyOwned: true, mutexName, out var isNewInstance);
 if (!isNewInstance)

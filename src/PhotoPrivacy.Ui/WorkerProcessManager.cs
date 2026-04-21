@@ -15,7 +15,8 @@ public sealed class WorkerProcessManager
     public async Task<WorkerConnectionResult> ConnectOrLaunchAsync(
         string? workerExecutablePath,
         CancellationToken cancellationToken,
-        Func<ServiceRuntimeState>? getServiceRuntimeState = null)
+        Func<ServiceRuntimeState>? getServiceRuntimeState = null,
+        string? configPath = null)
     {
         if (await _ipcClient.IsAliveAsync(WorkerIpcEndpointNames.ServicePipe, cancellationToken))
         {
@@ -57,7 +58,7 @@ public sealed class WorkerProcessManager
 
         if (!string.IsNullOrWhiteSpace(workerExecutablePath) && File.Exists(workerExecutablePath))
         {
-            Process.Start(BuildBackgroundLaunchStartInfo(workerExecutablePath));
+            Process.Start(BuildBackgroundLaunchStartInfo(workerExecutablePath, configPath));
         }
 
         var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
@@ -107,12 +108,16 @@ public sealed class WorkerProcessManager
         return _ipcClient.SendAsync(endpointName, new WorkerIpcRequest(WorkerIpcMethods.Shutdown), cancellationToken);
     }
 
-    public static ProcessStartInfo BuildBackgroundLaunchStartInfo(string workerExecutablePath)
+    public static ProcessStartInfo BuildBackgroundLaunchStartInfo(string workerExecutablePath, string? configPath = null)
     {
+        var args = string.IsNullOrWhiteSpace(configPath)
+            ? "--mode background"
+            : $"--mode background --config \"{configPath}\"";
+
         return new ProcessStartInfo
         {
             FileName = workerExecutablePath,
-            Arguments = "--mode background",
+            Arguments = args,
             UseShellExecute = false,
             CreateNoWindow = true,
             WindowStyle = ProcessWindowStyle.Hidden

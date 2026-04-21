@@ -12,4 +12,14 @@ public sealed class MainWindowModeSwitchSourceTests
 
         Assert.DoesNotContain("await _workerManager.ShutdownAsync(previousEndpoint, token);", source, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void MainWindow_Source_Should_Use_Explicit_Tray_Shutdown_Helper_For_Service_Switch()
+    {
+        var sourcePath = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "Views", "MainWindow.axaml.cs");
+        var source = File.ReadAllText(sourcePath, Encoding.UTF8);
+
+        Assert.Contains("private async Task<bool> ShutdownTrayWorkerForServiceSwitchAsync", source, StringComparison.Ordinal);
+        Assert.Contains("await _workerManager.ShutdownAsync(endpoint, token);", source, StringComparison.Ordinal);
+    }
 }
