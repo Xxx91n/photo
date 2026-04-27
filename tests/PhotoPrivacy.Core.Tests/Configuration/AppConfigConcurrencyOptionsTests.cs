@@ -57,6 +57,55 @@ public sealed class AppConfigConcurrencyOptionsTests
         Assert.Contains("\"max_parallel_drain\": 5", json, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Load_Should_Map_Ui_ThemeVariant_Field()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var configPath = Path.Combine(dir, "config.json");
+            File.WriteAllText(configPath, """
+            {
+              "schema_version": 1,
+              "exiftool": {
+                "path": "D:\\tools\\A_system\\ExifToolGUI\\ExifTool\\ExifTool.exe",
+                "enable_windows_long_path": true,
+                "enable_large_file_support": true,
+                "dry_run": false,
+                "extra_exiftool_args": [],
+                "stay_open_pool_size": 1,
+                "max_parallel_drain": 1
+              },
+              "ui": {
+                "hide_main_window_on_startup": false,
+                "hide_tray_icon": false,
+                "theme_variant": "dark"
+              }
+            }
+            """);
+
+            var cfg = AppConfigLoader.Load(configPath);
+            Assert.Equal("dark", cfg.Ui.ThemeVariant);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ToIndentedJson_Should_Emit_Ui_ThemeVariant_Field()
+    {
+        var cfg = AppConfig.Default with
+        {
+            Ui = AppConfig.Default.Ui with { ThemeVariant = "light" }
+        };
+
+        var json = AppConfigJson.ToIndentedJson(cfg);
+        Assert.Contains("\"theme_variant\": \"light\"", json, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Theory]
     [InlineData(0, 1)]
     [InlineData(-1, 1)]

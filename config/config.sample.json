@@ -56,6 +56,7 @@
   },
   "ui": {
     "hide_main_window_on_startup": false,
-    "hide_tray_icon": false
+    "hide_tray_icon": false,
+    "theme_variant": "system"
   }
 }

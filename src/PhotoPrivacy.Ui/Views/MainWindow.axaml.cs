@@ -3,6 +3,7 @@ using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Styling;
 using PhotoPrivacy.Core.Configuration;
 using PhotoPrivacy.Ui.ViewModels;
 
@@ -64,29 +65,50 @@ public partial class MainWindow : Window
                 viewModel.HotFolderPath = effectiveConfig.Watch.HotFolder;
                 viewModel.HideGuiOnStartup = effectiveConfig.Ui.HideMainWindowOnStartup;
                 viewModel.HideTrayIcon = effectiveConfig.Ui.HideTrayIcon;
+                viewModel.ThemeVariant = NormalizeThemeVariant(effectiveConfig.Ui.ThemeVariant);
             }
+            else
+            {
+                viewModel.ThemeVariant = "system";
+            }
+
+            ApplyThemeVariantToApplication(viewModel.ThemeVariant);
+            SyncThemeVariantComboSelection(viewModel.ThemeVariant);
+            viewModel.SaveStatus = string.Empty;
+            SetCurrentPage(viewModel.CurrentPage);
 
             UpdateServiceButtons(viewModel);
         }
 
-        ServiceManagerTab.IsVisible = OperatingSystem.IsWindows();
+        if (!OperatingSystem.IsWindows())
+        {
+            ServiceManagerTab.IsVisible = false;
+        }
 
         PauseResumeButton.Click += OnPauseResumeClick;
         ClearLogsButton.Click += OnClearLogsClick;
         OpenConfigDirButton.Click += OnOpenConfigDirClick;
         RefreshServiceStatusButton.Click += OnRefreshServiceStatusClick;
+        ConfigNavButton.Click += OnNavigateClick;
+        LogNavButton.Click += OnNavigateClick;
         if (this.FindControl<Button>("OpenServiceManagerTabButton") is { } openServiceManagerTabButton)
         {
-            openServiceManagerTabButton.Click += OnOpenServiceManagerTabClick;
+            openServiceManagerTabButton.Click += OnNavigateClick;
         }
 
         InstallServiceButton.Click += OnInstallServiceClick;
         UninstallServiceButton.Click += OnUninstallServiceClick;
         StartServiceButton.Click += OnStartServiceClick;
         StopServiceButton.Click += OnStopServiceClick;
+        ThemeVariantComboBox.SelectionChanged += OnThemeVariantSelectionChanged;
         if (this.FindControl<Button>("SaveConfigButton") is { } saveConfigButton)
         {
             saveConfigButton.Click += OnSaveConfigClick;
+        }
+
+        if (this.FindControl<Button>("ApplyConfigButton") is { } applyConfigButton)
+        {
+            applyConfigButton.Click += OnApplyConfigClick;
         }
 
         _auditTail = new AuditTailService(
@@ -265,8 +287,6 @@ public partial class MainWindow : Window
             vm.RuntimeStatus = BuildRuntimeStatusText(_options.RuntimeKind, _options.GetServiceRuntimeState(), latestPaused);
         }
 
-        var pausedAfter = _options.IsPausedAsync(CancellationToken.None).GetAwaiter().GetResult();
-        PauseResumeButton.Content = pausedAfter ? "恢复" : "暂停";
         _trayHost?.Refresh();
     }
 
@@ -303,12 +323,127 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnOpenServiceManagerTabClick(object? sender, RoutedEventArgs e)
+    private void OnNavigateClick(object? sender, RoutedEventArgs e)
     {
-        if (this.FindControl<TabControl>("MainTabControl") is { } mainTab)
+        if (sender is not Button button || button.Tag is not string pageTag)
         {
-            mainTab.SelectedItem = ServiceManagerTab;
+            return;
         }
+
+        SetCurrentPage(pageTag);
+    }
+
+    private void SetCurrentPage(string page)
+    {
+        var normalized = string.Equals(page, "log", StringComparison.OrdinalIgnoreCase)
+            ? "log"
+            : string.Equals(page, "service", StringComparison.OrdinalIgnoreCase)
+                ? "service"
+                : "config";
+
+        if (DataContext is MainWindowViewModel vm)
+        {
+            vm.CurrentPage = normalized;
+        }
+
+        var showServicePage = string.Equals(normalized, "service", StringComparison.Ordinal)
+            && OperatingSystem.IsWindows()
+            && (DataContext as MainWindowViewModel)?.ShowServiceManagerTab == true;
+
+        ConfigPage.IsVisible = string.Equals(normalized, "config", StringComparison.Ordinal);
+        LogPage.IsVisible = string.Equals(normalized, "log", StringComparison.Ordinal);
+        ServiceManagerTab.IsVisible = showServicePage;
+
+        SetNavButtonActive(ConfigNavButton, string.Equals(normalized, "config", StringComparison.Ordinal));
+        SetNavButtonActive(LogNavButton, string.Equals(normalized, "log", StringComparison.Ordinal));
+        SetNavButtonActive(OpenServiceManagerTabButton, string.Equals(normalized, "service", StringComparison.Ordinal));
+    }
+
+    private static void SetNavButtonActive(Button button, bool isActive)
+    {
+        if (isActive)
+        {
+            if (!button.Classes.Contains("active"))
+            {
+                button.Classes.Add("active");
+            }
+
+            return;
+        }
+
+        button.Classes.Remove("active");
+    }
+
+    private void OnThemeVariantSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not ComboBox combo)
+        {
+            return;
+        }
+
+        var variant = ReadThemeVariantSelection(combo.SelectedItem);
+        if (DataContext is MainWindowViewModel vm)
+        {
+            vm.ThemeVariant = variant;
+        }
+
+        ApplyThemeVariantToApplication(variant);
+    }
+
+    private void SyncThemeVariantComboSelection(string variant)
+    {
+        var normalized = NormalizeThemeVariant(variant);
+        foreach (var item in ThemeVariantComboBox.Items)
+        {
+            if (item is ComboBoxItem comboItem
+                && string.Equals(comboItem.Content?.ToString(), normalized, StringComparison.OrdinalIgnoreCase))
+            {
+                ThemeVariantComboBox.SelectedItem = comboItem;
+                return;
+            }
+        }
+
+        ThemeVariantComboBox.SelectedIndex = 0;
+    }
+
+    private static string ReadThemeVariantSelection(object? selectedItem)
+    {
+        if (selectedItem is ComboBoxItem comboItem)
+        {
+            return NormalizeThemeVariant(comboItem.Content?.ToString());
+        }
+
+        return NormalizeThemeVariant(selectedItem?.ToString());
+    }
+
+    private static string NormalizeThemeVariant(string? value)
+    {
+        if (string.Equals(value, "light", StringComparison.OrdinalIgnoreCase))
+        {
+            return "light";
+        }
+
+        if (string.Equals(value, "dark", StringComparison.OrdinalIgnoreCase))
+        {
+            return "dark";
+        }
+
+        return "system";
+    }
+
+    private static void ApplyThemeVariantToApplication(string variant)
+    {
+        if (Application.Current is null)
+        {
+            return;
+        }
+
+        Application.Current.RequestedThemeVariant = NormalizeThemeVariant(variant) switch
+        {
+            "light" => ThemeVariant.Light,
+            "dark" => ThemeVariant.Dark,
+            _ => ThemeVariant.Default
+        };
     }
 
     private async void OnInstallServiceClick(object? sender, RoutedEventArgs e)
@@ -799,16 +934,15 @@ public partial class MainWindow : Window
                 LogEnabled: vm.LogEnabled,
                 HotFolderPath: vm.HotFolderPath,
                 HideMainWindowOnStartup: vm.HideGuiOnStartup,
-                HideTrayIcon: vm.HideTrayIcon);
+                HideTrayIcon: vm.HideTrayIcon,
+                ThemeVariant: vm.ThemeVariant);
 
             ConfigEditor.UpdateConfig(_options.ConfigPath, command);
-            ApplyRuntimeConfigToUiState();
-            _ = SwitchToDefaultModeAsync(CancellationToken.None, getServiceRuntimeStateOverride: _serviceManager.GetRuntimeState);
-            vm.RuntimeStatus = "配置已保存";
+            vm.SaveStatus = "已保存，待应用";
         }
         catch (Exception ex)
         {
-            vm.RuntimeStatus = "配置保存失败";
+            vm.SaveStatus = $"保存失败：{ex.Message}";
             vm.AppendLog(new AuditLogEntry(
                 TimeText: DateTime.Now.ToString("HH:mm:ss"),
                 EventType: "config_save_failed",
@@ -816,6 +950,161 @@ public partial class MainWindow : Window
                 SourcePathMasked: _options.ConfigPath,
                 Message: ex.Message,
                 ColorHex: "#C62828"));
+        }
+    }
+
+    private async void OnApplyConfigClick(object? sender, RoutedEventArgs e)
+    {
+        if (_options is null || DataContext is not MainWindowViewModel vm)
+        {
+            return;
+        }
+
+        SetConfigButtonsBusy(isBusy: true);
+        try
+        {
+            ApplyRuntimeConfigToUiState();
+            await ApplyConfigForCurrentModeAsync(CancellationToken.None);
+            vm.SaveStatus = "配置已应用";
+        }
+        catch (Exception ex)
+        {
+            vm.SaveStatus = $"应用失败：{ex.Message}";
+            vm.AppendLog(new AuditLogEntry(
+                TimeText: DateTime.Now.ToString("HH:mm:ss"),
+                EventType: "config_apply_failed",
+                DisplayEvent: "⚠ 配置应用失败",
+                SourcePathMasked: _options.ConfigPath,
+                Message: ex.Message,
+                ColorHex: "#C62828"));
+        }
+        finally
+        {
+            SetConfigButtonsBusy(isBusy: false);
+        }
+    }
+
+    private async Task ApplyConfigForCurrentModeAsync(CancellationToken token)
+    {
+        if (_options is null)
+        {
+            return;
+        }
+
+        if (string.Equals(_options.RuntimeKind, "service", StringComparison.OrdinalIgnoreCase))
+        {
+            await ApplyConfigInServiceModeAsync(token);
+            return;
+        }
+
+        await ApplyConfigInTrayModeAsync(token);
+    }
+
+    private async Task ApplyConfigInTrayModeAsync(CancellationToken token)
+    {
+        if (_options is null)
+        {
+            return;
+        }
+
+        var endpoint = PhotoPrivacy.Ipc.WorkerIpcEndpointNames.BackgroundPipe;
+        var aliveProbe = new WorkerIpcClient();
+        if (await aliveProbe.IsAliveAsync(endpoint, token))
+        {
+            await _workerManager.ShutdownAsync(endpoint, token);
+            for (var i = 0; i < 15; i++)
+            {
+                if (!await aliveProbe.IsAliveAsync(endpoint, token))
+                {
+                    break;
+                }
+
+                await Task.Delay(200, token);
+            }
+        }
+
+        var workerExecutablePath = ResolveServiceWorkerExecutablePath(_options);
+        if (string.IsNullOrWhiteSpace(workerExecutablePath))
+        {
+            throw new InvalidOperationException("未找到 Worker 可执行文件（PhotoPrivacyWorker）");
+        }
+
+        System.Diagnostics.Process.Start(WorkerProcessManager.BuildBackgroundLaunchStartInfo(workerExecutablePath, _options.ConfigPath));
+
+        var connected = false;
+        for (var i = 0; i < 25; i++)
+        {
+            if (await aliveProbe.IsAliveAsync(endpoint, token))
+            {
+                connected = true;
+                break;
+            }
+
+            await Task.Delay(200, token);
+        }
+
+        if (!connected)
+        {
+            throw new InvalidOperationException("后台模式未能在预期时间内完成重连");
+        }
+
+        _options.RuntimeKind = "tray";
+        _options.WorkerEndpointName = endpoint;
+        _options.UseTrayIcon = !_options.HideTrayIcon;
+
+        var status = await _workerManager.GetStatusAsync(endpoint, token);
+        if (DataContext is MainWindowViewModel vm)
+        {
+            vm.CurrentMode = MapModeLabel(_options.RuntimeKind);
+            vm.RuntimeStatus = BuildRuntimeStatusText(_options.RuntimeKind, _options.GetServiceRuntimeState(), status?.Data?.IsPaused ?? false);
+            vm.ExifToolVersion = NormalizeExifToolStatus(status?.Data?.ExifToolVersion);
+        }
+
+        if (_options.UseTrayIcon)
+        {
+            _trayHost ??= new TrayHost(this, _options, ExitApplicationAsync);
+            _trayHost.IsVisible = true;
+        }
+        else
+        {
+            _trayHost?.Dispose();
+            _trayHost = null;
+        }
+    }
+
+    private async Task ApplyConfigInServiceModeAsync(CancellationToken token)
+    {
+        if (_options is null)
+        {
+            return;
+        }
+
+        var workerExecutablePath = ResolveServiceWorkerExecutablePath(_options);
+        if (string.IsNullOrWhiteSpace(workerExecutablePath))
+        {
+            throw new InvalidOperationException("未找到 Worker 可执行文件（PhotoPrivacyWorker）");
+        }
+
+        await Task.Run(() => _serviceManager.Stop(), token);
+        var startResult = await Task.Run(() => _serviceManager.Start(workerExecutablePath, _options.ConfigPath), token);
+        ApplyServiceResult(startResult);
+
+        if (startResult.Status != ServiceCommandStatus.Success)
+        {
+            throw new InvalidOperationException(startResult.Message);
+        }
+
+        _options.RuntimeKind = "service";
+        _options.WorkerEndpointName = PhotoPrivacy.Ipc.WorkerIpcEndpointNames.ServicePipe;
+        _options.UseTrayIcon = false;
+
+        _trayHost?.Dispose();
+        _trayHost = null;
+
+        if (DataContext is MainWindowViewModel vm)
+        {
+            vm.CurrentMode = MapModeLabel(_options.RuntimeKind);
+            vm.RuntimeStatus = BuildRuntimeStatusText(_options.RuntimeKind, _serviceManager.GetRuntimeState(), false);
         }
     }
 
@@ -831,6 +1120,12 @@ public partial class MainWindow : Window
             var cfg = LoadConfigOrDefault(_options.ConfigPath) ?? AppConfig.Default;
             _options.HideMainWindowOnStartup = cfg.Ui.HideMainWindowOnStartup;
             _options.HideTrayIcon = cfg.Ui.HideTrayIcon;
+            var normalizedThemeVariant = NormalizeThemeVariant(cfg.Ui.ThemeVariant);
+
+            if (string.Equals(_options.RuntimeKind, "tray", StringComparison.OrdinalIgnoreCase))
+            {
+                _options.UseTrayIcon = !_options.HideTrayIcon;
+            }
 
             if (DataContext is MainWindowViewModel vm)
             {
@@ -840,12 +1135,22 @@ public partial class MainWindow : Window
                 vm.HotFolderPath = cfg.Watch.HotFolder;
                 vm.HideGuiOnStartup = cfg.Ui.HideMainWindowOnStartup;
                 vm.HideTrayIcon = cfg.Ui.HideTrayIcon;
+                vm.ThemeVariant = normalizedThemeVariant;
+                SyncThemeVariantComboSelection(vm.ThemeVariant);
             }
+
+            ApplyThemeVariantToApplication(normalizedThemeVariant);
         }
         catch (Exception ex)
         {
             UiDiagnosticLog.Write($"ApplyRuntimeConfigToUiState failed: {ex.Message}");
         }
+    }
+
+    private void SetConfigButtonsBusy(bool isBusy)
+    {
+        SaveConfigButton.IsEnabled = !isBusy;
+        ApplyConfigButton.IsEnabled = !isBusy;
     }
 
     private async Task PollVersionAsync(CancellationToken token)
@@ -985,12 +1290,12 @@ public partial class MainWindow : Window
     {
         if (string.Equals(runtimeKind, "service", StringComparison.OrdinalIgnoreCase))
         {
-            return "🔵 服务模式";
+            return "服务模式";
         }
 
         if (string.Equals(runtimeKind, "tray", StringComparison.OrdinalIgnoreCase))
         {
-            return "🟢 托盘模式";
+            return "托盘模式";
         }
 
         return runtimeKind;

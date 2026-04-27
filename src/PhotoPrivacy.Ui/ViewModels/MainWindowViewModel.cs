@@ -19,19 +19,36 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private string _hotFolderPath = string.Empty;
     private bool _hideGuiOnStartup = true;
     private bool _hideTrayIcon;
+    private string _currentPage = "config";
+    private string _themeVariant = "system";
+    private string _saveStatus = string.Empty;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public string CurrentMode
     {
         get => _currentMode;
-        set => SetField(ref _currentMode, value);
+        set
+        {
+            if (SetField(ref _currentMode, value))
+            {
+                OnPropertyChanged(nameof(ModeColor));
+                OnPropertyChanged(nameof(ModeLabel));
+            }
+        }
     }
 
     public string RuntimeStatus
     {
         get => _runtimeStatus;
-        set => SetField(ref _runtimeStatus, value);
+        set
+        {
+            if (SetField(ref _runtimeStatus, value))
+            {
+                OnPropertyChanged(nameof(StatusDotColor));
+                OnPropertyChanged(nameof(PauseResumeLabel));
+            }
+        }
     }
 
     public string ExifToolVersion
@@ -43,7 +60,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public string ServiceStatus
     {
         get => _serviceStatus;
-        set => SetField(ref _serviceStatus, value);
+        set
+        {
+            if (SetField(ref _serviceStatus, value))
+            {
+                OnPropertyChanged(nameof(ServiceStatusDotColor));
+            }
+        }
     }
 
     public bool ShowServiceManagerTab
@@ -94,7 +117,73 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         set => SetField(ref _hideTrayIcon, value);
     }
 
+    public string CurrentPage
+    {
+        get => _currentPage;
+        set => SetField(ref _currentPage, value);
+    }
+
+    public string ThemeVariant
+    {
+        get => _themeVariant;
+        set => SetField(ref _themeVariant, value);
+    }
+
+    public string SaveStatus
+    {
+        get => _saveStatus;
+        set => SetField(ref _saveStatus, value);
+    }
+
+    public string ModeColor => IsServiceMode ? "#3B82F6" : "#22C55E";
+
+    public string ModeLabel => IsServiceMode ? "服务模式" : "托盘模式";
+
+    public string StatusDotColor => IsRuntimeRunning ? "#22C55E" : "#9CA3AF";
+
+    public string PauseResumeLabel => IsRuntimePaused ? "▶ 恢复" : "⏸ 暂停";
+
+    public string ServiceStatusDotColor
+    {
+        get
+        {
+            var text = _serviceStatus;
+            if (text.Contains("Running", StringComparison.OrdinalIgnoreCase)
+                || text.Contains("运行", StringComparison.OrdinalIgnoreCase))
+            {
+                return "#22C55E";
+            }
+
+            if (text.Contains("failed", StringComparison.OrdinalIgnoreCase)
+                || text.Contains("失败", StringComparison.OrdinalIgnoreCase))
+            {
+                return "#EF4444";
+            }
+
+            if (text.Contains("stop", StringComparison.OrdinalIgnoreCase)
+                || text.Contains("停止", StringComparison.OrdinalIgnoreCase)
+                || text.Contains("pending", StringComparison.OrdinalIgnoreCase))
+            {
+                return "#F59E0B";
+            }
+
+            return "#9CA3AF";
+        }
+    }
+
     public ObservableCollection<AuditLogEntry> LogEntries { get; } = [];
+
+    private bool IsServiceMode =>
+        _currentMode.Contains("服务", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(_currentMode, "service", StringComparison.OrdinalIgnoreCase);
+
+    private bool IsRuntimePaused =>
+        _runtimeStatus.Contains("暂停", StringComparison.OrdinalIgnoreCase)
+        || _runtimeStatus.Contains("paused", StringComparison.OrdinalIgnoreCase);
+
+    private bool IsRuntimeRunning =>
+        _runtimeStatus.Contains("运行", StringComparison.OrdinalIgnoreCase)
+        || _runtimeStatus.Contains("running", StringComparison.OrdinalIgnoreCase);
 
     public void AppendLog(AuditLogEntry entry)
     {

@@ -22,7 +22,8 @@ public sealed class ConfigEditorRoundTripTests
                 LogEnabled: true,
                 HotFolderPath: @"D:\hot",
                 HideMainWindowOnStartup: true,
-                HideTrayIcon: false);
+                HideTrayIcon: false,
+                ThemeVariant: "dark");
 
             ConfigEditor.UpdateConfig(configPath, command);
 
@@ -31,12 +32,16 @@ public sealed class ConfigEditorRoundTripTests
             Assert.Equal(command.BackupEnabled, reloaded.Backup.Enabled);
             Assert.Equal(command.HotFolderPath, reloaded.Watch.HotFolder);
             Assert.Equal(command.HideMainWindowOnStartup, reloaded.Ui.HideMainWindowOnStartup);
+            Assert.Equal(command.HideTrayIcon, reloaded.Ui.HideTrayIcon);
+            Assert.Equal(command.ThemeVariant, reloaded.Ui.ThemeVariant);
             Assert.Equal(command.LogEnabled, reloaded.Audit.DiagnosticMode);
 
             using var doc = JsonDocument.Parse(File.ReadAllText(configPath));
             var rootEl = doc.RootElement;
             Assert.True(rootEl.TryGetProperty("ui", out var uiEl));
             Assert.True(uiEl.TryGetProperty("hide_main_window_on_startup", out _));
+            Assert.True(uiEl.TryGetProperty("hide_tray_icon", out _));
+            Assert.True(uiEl.TryGetProperty("theme_variant", out _));
         }
         finally
         {

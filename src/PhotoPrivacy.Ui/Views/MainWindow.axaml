@@ -1,90 +1,321 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="PhotoPrivacy.Ui.Views.MainWindow"
-        Width="960"
-        Height="640"
-        MinWidth="720"
+        Width="920"
+        Height="600"
+        MinWidth="740"
         MinHeight="480"
-        Title="PhotoPrivacy">
-  <Grid RowDefinitions="Auto,Auto,*" Margin="12">
-    <Border Grid.Row="0" BorderBrush="#4D5D6B" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,8">
-      <Grid ColumnDefinitions="Auto,*,Auto,*,Auto,*">
-        <TextBlock Text="模式" VerticalAlignment="Center" Margin="0,0,6,0" />
-        <TextBlock Grid.Column="1" Text="{Binding CurrentMode}" VerticalAlignment="Center" />
-        <TextBlock Grid.Column="2" Text="运行状态" VerticalAlignment="Center" Margin="10,0,6,0" />
-        <TextBlock Grid.Column="3" Text="{Binding RuntimeStatus}" VerticalAlignment="Center" />
-        <TextBlock Grid.Column="4" Text="ExifTool" VerticalAlignment="Center" Margin="10,0,6,0" />
-        <TextBlock Grid.Column="5" Text="{Binding ExifToolVersion}" VerticalAlignment="Center" />
-      </Grid>
+        Title="PhotoPrivacy"
+        Background="{DynamicResource AppBgBrush}">
+  <Grid ColumnDefinitions="200,*">
+    <Border Grid.Column="0"
+            Width="200"
+            Background="{DynamicResource SidebarBgBrush}"
+            BorderBrush="{DynamicResource DividerBrush}"
+            BorderThickness="0,0,1,0">
+      <DockPanel>
+        <Border DockPanel.Dock="Top" Height="56" Padding="16,0">
+          <StackPanel VerticalAlignment="Center" Spacing="2">
+            <TextBlock Text="PhotoPrivacy" FontSize="14" FontWeight="SemiBold"/>
+            <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+              <Ellipse Width="6" Height="6" Fill="{Binding ModeColor}"/>
+              <TextBlock Text="{Binding ModeLabel}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
+            </StackPanel>
+          </StackPanel>
+        </Border>
+
+        <Border DockPanel.Dock="Top" Height="1" Background="{DynamicResource DividerBrush}"/>
+
+        <Border DockPanel.Dock="Top"
+                Margin="10,10,10,0"
+                Padding="12,10"
+                Background="{DynamicResource AppBgBrush}"
+                CornerRadius="8">
+          <StackPanel Spacing="8">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <Ellipse Width="8" Height="8" Fill="{Binding StatusDotColor}" VerticalAlignment="Center"/>
+              <TextBlock Text="{Binding RuntimeStatus}" FontSize="12" FontWeight="Medium" VerticalAlignment="Center"/>
+            </StackPanel>
+            <TextBlock Text="{Binding ExifToolVersion}" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}"/>
+            <TextBlock Text="{Binding CurrentPage}" IsVisible="False"/>
+          </StackPanel>
+        </Border>
+
+        <StackPanel DockPanel.Dock="Top" Margin="8,16,8,0" Spacing="2">
+          <Button x:Name="ConfigNavButton" Classes="nav active" Content="配置" Tag="config"/>
+          <Button x:Name="LogNavButton" Classes="nav" Content="日志" Tag="log"/>
+          <Button x:Name="OpenServiceManagerTabButton"
+                  Classes="nav"
+                  Content="服务管理器"
+                  Tag="service"
+                  IsVisible="{Binding ShowServiceManagerTab}"/>
+        </StackPanel>
+
+        <StackPanel DockPanel.Dock="Bottom" Margin="8,0,8,12" Spacing="4">
+          <Border Height="1" Background="{DynamicResource DividerBrush}" Margin="0,0,0,4"/>
+          <Button x:Name="PauseResumeButton"
+                  Classes="nav-action"
+                  Content="{Binding PauseResumeLabel}"
+                  HorizontalAlignment="Stretch"/>
+          <Button x:Name="OpenConfigDirButton"
+                  Content="打开配置目录"
+                  Classes="nav-action"
+                  HorizontalAlignment="Stretch"/>
+        </StackPanel>
+      </DockPanel>
     </Border>
 
-    <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
-      <Button x:Name="PauseResumeButton" Content="暂停" Width="88" />
-      <Button x:Name="ClearLogsButton" Content="清空日志" Width="88" />
-      <Button x:Name="OpenConfigDirButton" Content="打开配置目录" Width="116" />
-      <Button x:Name="RefreshServiceStatusButton" Content="刷新服务状态" Width="116" />
-      <Button x:Name="OpenServiceManagerTabButton" Content="服务管理器" Width="100" />
-      <CheckBox x:Name="ShowDetailedEventsCheckBox" Content="显示详细事件" IsChecked="{Binding ShowDetailedEvents}" VerticalAlignment="Center" />
-    </StackPanel>
-
-    <TabControl x:Name="MainTabControl" Grid.Row="2">
-      <TabItem Header="配置">
-        <Border BorderBrush="#4D5D6B" BorderThickness="1" CornerRadius="6" Padding="10">
-          <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnDefinitions="140,*">
-            <TextBlock Grid.Row="0" Grid.Column="0" Text="ExifTool 路径" VerticalAlignment="Center" />
-            <TextBox Grid.Row="0" Grid.Column="1" Margin="0,0,0,8" Text="{Binding ExifToolPath}" />
-
-            <TextBlock Grid.Row="1" Grid.Column="0" Margin="0,0,0,8" Text="热目录路径" VerticalAlignment="Center" />
-            <TextBox Grid.Row="1" Grid.Column="1" Margin="0,0,0,8" Text="{Binding HotFolderPath}" />
-
-            <TextBlock Grid.Row="2" Grid.Column="0" Margin="0,0,0,8" Text="启用备份" VerticalAlignment="Center" />
-            <CheckBox Grid.Row="2" Grid.Column="1" Margin="0,0,0,8" IsChecked="{Binding BackupEnabled}" VerticalAlignment="Center" />
-
-            <TextBlock Grid.Row="3" Grid.Column="0" Margin="0,0,0,8" Text="启用日志诊断" VerticalAlignment="Center" />
-            <CheckBox Grid.Row="3" Grid.Column="1" Margin="0,0,0,8" IsChecked="{Binding LogEnabled}" VerticalAlignment="Center" />
-
-            <TextBlock Grid.Row="4" Grid.Column="0" Margin="0,0,0,8" Text="启动隐藏主窗口" VerticalAlignment="Center" />
-            <CheckBox Grid.Row="4" Grid.Column="1" Margin="0,0,0,8" IsChecked="{Binding HideGuiOnStartup}" VerticalAlignment="Center" />
-
-            <TextBlock Grid.Row="5" Grid.Column="0" Margin="0,0,0,8" Text="隐藏托盘图标" VerticalAlignment="Center" />
-            <CheckBox Grid.Row="5" Grid.Column="1" Margin="0,0,0,8" IsChecked="{Binding HideTrayIcon}" VerticalAlignment="Center" />
-
-            <Button Grid.Row="6" Grid.Column="1" x:Name="SaveConfigButton" Margin="0,0,0,8" Content="保存配置" Width="120" HorizontalAlignment="Left" />
-            <TextBlock Grid.Row="7" Grid.ColumnSpan="2" Text="保存后将在下次启动生效（服务模式可在启动前自动重配置）。" Opacity="0.75" />
-          </Grid>
+    <Grid Grid.Column="1" x:Name="MainContentGrid">
+      <Grid x:Name="ConfigPage" RowDefinitions="Auto,*" IsVisible="True">
+        <Border Padding="24,20,24,16" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1">
+          <TextBlock Text="配置" FontSize="16" FontWeight="SemiBold"/>
         </Border>
-      </TabItem>
 
-      <TabItem Header="日志">
-        <Border BorderBrush="#4D5D6B" BorderThickness="1" CornerRadius="6" Padding="8">
-          <ListBox x:Name="LogsList" ItemsSource="{Binding LogEntries}">
+        <ScrollViewer Grid.Row="1" Margin="24,16,24,20" VerticalScrollBarVisibility="Auto">
+          <StackPanel Spacing="0">
+            <Border Classes="settings-card">
+              <StackPanel>
+                <TextBlock Text="路径设置" Classes="section-header"/>
+
+                <Border Classes="settings-row">
+                  <DockPanel LastChildFill="False">
+                    <StackPanel DockPanel.Dock="Left" Spacing="2" VerticalAlignment="Center">
+                      <TextBlock Text="ExifTool 路径" Classes="row-label"/>
+                      <TextBlock Text="exiftool 可执行文件的完整路径" Classes="row-desc"/>
+                    </StackPanel>
+                    <TextBox DockPanel.Dock="Right"
+                             Width="320"
+                             Text="{Binding ExifToolPath}"
+                             Classes="inline-input"
+                             VerticalAlignment="Center"/>
+                  </DockPanel>
+                </Border>
+
+                <Border Classes="row-divider"/>
+
+                <Border Classes="settings-row">
+                  <DockPanel LastChildFill="False">
+                    <StackPanel DockPanel.Dock="Left" Spacing="2" VerticalAlignment="Center">
+                      <TextBlock Text="监控目录" Classes="row-label"/>
+                      <TextBlock Text="自动清理此目录下新增文件的元数据" Classes="row-desc"/>
+                    </StackPanel>
+                    <TextBox DockPanel.Dock="Right"
+                             Width="320"
+                             Text="{Binding HotFolderPath}"
+                             Classes="inline-input"
+                             VerticalAlignment="Center"/>
+                  </DockPanel>
+                </Border>
+              </StackPanel>
+            </Border>
+
+            <Border Classes="settings-card">
+              <StackPanel>
+                <TextBlock Text="行为设置" Classes="section-header"/>
+
+                <Border Classes="settings-row">
+                  <DockPanel LastChildFill="False">
+                    <StackPanel DockPanel.Dock="Left" Spacing="2">
+                      <TextBlock Text="启用备份" Classes="row-label"/>
+                      <TextBlock Text="清理前将原文件复制到备份目录" Classes="row-desc"/>
+                    </StackPanel>
+                    <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding BackupEnabled}" VerticalAlignment="Center" OnContent="" OffContent=""/>
+                  </DockPanel>
+                </Border>
+
+                <Border Classes="row-divider"/>
+
+                <Border Classes="settings-row">
+                  <DockPanel LastChildFill="False">
+                    <StackPanel DockPanel.Dock="Left" Spacing="2">
+                      <TextBlock Text="启用诊断日志" Classes="row-label"/>
+                      <TextBlock Text="输出详细处理记录，仅调试时开启" Classes="row-desc"/>
+                    </StackPanel>
+                    <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding LogEnabled}" VerticalAlignment="Center" OnContent="" OffContent=""/>
+                  </DockPanel>
+                </Border>
+
+                <Border Classes="row-divider"/>
+
+                <Border Classes="settings-row">
+                  <DockPanel LastChildFill="False">
+                    <StackPanel DockPanel.Dock="Left" Spacing="2">
+                      <TextBlock Text="启动时隐藏主窗口" Classes="row-label"/>
+                      <TextBlock Text="启动后仅在托盘显示，不弹出主窗口" Classes="row-desc"/>
+                    </StackPanel>
+                    <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding HideGuiOnStartup}" VerticalAlignment="Center" OnContent="" OffContent=""/>
+                  </DockPanel>
+                </Border>
+
+                <Border Classes="row-divider"/>
+
+                <Border Classes="settings-row">
+                  <DockPanel LastChildFill="False">
+                    <StackPanel DockPanel.Dock="Left" Spacing="2">
+                      <TextBlock Text="隐藏托盘图标" Classes="row-label"/>
+                      <TextBlock Text="在托盘模式下隐藏图标，仅保留后台处理" Classes="row-desc"/>
+                    </StackPanel>
+                    <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding HideTrayIcon}" VerticalAlignment="Center" OnContent="" OffContent=""/>
+                  </DockPanel>
+                </Border>
+
+                <Border Classes="row-divider"/>
+
+                <Border Classes="settings-row">
+                  <DockPanel LastChildFill="False">
+                    <StackPanel DockPanel.Dock="Left" Spacing="2">
+                      <TextBlock Text="界面主题" Classes="row-label"/>
+                      <TextBlock Text="可在系统/亮色/暗色之间自由切换" Classes="row-desc"/>
+                    </StackPanel>
+                    <ComboBox x:Name="ThemeVariantComboBox"
+                              DockPanel.Dock="Right"
+                              Width="160"
+                              SelectedItem="{Binding ThemeVariant}">
+                      <ComboBoxItem Content="system"/>
+                      <ComboBoxItem Content="light"/>
+                      <ComboBoxItem Content="dark"/>
+                    </ComboBox>
+                  </DockPanel>
+                </Border>
+              </StackPanel>
+            </Border>
+
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10" Margin="0,8,0,0">
+              <TextBlock Text="{Binding SaveStatus}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+              <Button x:Name="SaveConfigButton" Content="保存更改" Classes="ghost"/>
+              <Button x:Name="ApplyConfigButton" Content="应用配置" Classes="primary"/>
+            </StackPanel>
+          </StackPanel>
+        </ScrollViewer>
+      </Grid>
+
+      <Grid x:Name="LogPage" RowDefinitions="Auto,*" IsVisible="False">
+        <Border Padding="24,20,24,16" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1">
+          <TextBlock Text="日志" FontSize="16" FontWeight="SemiBold"/>
+        </Border>
+
+        <DockPanel Grid.Row="1" Margin="24,12,24,20">
+          <Border DockPanel.Dock="Top"
+                  Padding="16,8"
+                  Background="{DynamicResource SidebarBgBrush}"
+                  BorderBrush="{DynamicResource DividerBrush}"
+                  BorderThickness="0,1,0,1">
+            <DockPanel>
+              <Button DockPanel.Dock="Right" x:Name="ClearLogsButton" Content="清空" Classes="ghost" Height="28" FontSize="12"/>
+              <CheckBox x:Name="ShowDetailedEventsCheckBox"
+                        Content="详细事件"
+                        IsChecked="{Binding ShowDetailedEvents}"
+                        FontSize="12"
+                        Foreground="{DynamicResource TextSecondaryBrush}"
+                        VerticalAlignment="Center"/>
+            </DockPanel>
+          </Border>
+
+          <ListBox x:Name="LogsList"
+                   ItemsSource="{Binding LogEntries}"
+                   Background="{DynamicResource AppBgBrush}"
+                   BorderThickness="0"
+                   Padding="4">
             <ListBox.ItemTemplate>
               <DataTemplate>
-                <Grid ColumnDefinitions="Auto,Auto,*,2*" Margin="0,2">
-                  <TextBlock Text="{Binding TimeText}" Foreground="#B0BEC5" Margin="0,0,8,0" />
-                  <TextBlock Grid.Column="1" Text="{Binding DisplayEvent}" Foreground="{Binding ColorHex}" Margin="0,0,8,0" />
-                  <TextBlock Grid.Column="2" Text="{Binding SourcePathMasked}" Margin="0,0,8,0" />
-                  <TextBlock Grid.Column="3" Text="{Binding Message}" TextTrimming="CharacterEllipsis" />
+                <Grid ColumnDefinitions="68,108,*,1.6*" Height="32" Background="Transparent">
+                  <TextBlock Text="{Binding TimeText}"
+                             FontFamily="Cascadia Code,Consolas,monospace"
+                             FontSize="11"
+                             VerticalAlignment="Center"
+                             Foreground="{DynamicResource TextTertiaryBrush}"/>
+                  <Border Grid.Column="1"
+                          CornerRadius="4"
+                          Padding="6,2"
+                          Background="{DynamicResource SidebarBgBrush}"
+                          Margin="0,0,8,0"
+                          VerticalAlignment="Center"
+                          HorizontalAlignment="Left">
+                    <TextBlock Text="{Binding DisplayEvent}" FontSize="11" Foreground="{Binding ColorHex}" FontWeight="Medium"/>
+                  </Border>
+                  <TextBlock Grid.Column="2"
+                             Text="{Binding SourcePathMasked}"
+                             FontFamily="Cascadia Code,Consolas,monospace"
+                             FontSize="11"
+                             VerticalAlignment="Center"
+                             Foreground="{DynamicResource TextSecondaryBrush}"
+                             TextTrimming="CharacterEllipsis"/>
+                  <TextBlock Grid.Column="3"
+                             Text="{Binding Message}"
+                             FontSize="12"
+                             VerticalAlignment="Center"
+                             Foreground="{DynamicResource TextPrimaryBrush}"
+                             TextTrimming="CharacterEllipsis"/>
                 </Grid>
               </DataTemplate>
             </ListBox.ItemTemplate>
           </ListBox>
-        </Border>
-      </TabItem>
+        </DockPanel>
+      </Grid>
 
-      <TabItem x:Name="ServiceManagerTab" Header="服务管理器">
-        <StackPanel Spacing="8" Margin="6">
-          <TextBlock Text="服务状态" />
-          <TextBlock Text="{Binding ServiceStatus}" FontWeight="Bold" />
-          <StackPanel Orientation="Horizontal" Spacing="8">
-            <Button x:Name="InstallServiceButton" Content="安装服务" Width="120" />
-            <Button x:Name="UninstallServiceButton" Content="卸载服务" Width="120" />
-            <Button x:Name="StartServiceButton" Content="启动服务" Width="100" />
-            <Button x:Name="StopServiceButton" Content="停止服务" Width="100" />
+      <Grid x:Name="ServiceManagerTab" RowDefinitions="Auto,*" IsVisible="False">
+        <Border Padding="24,20,24,16" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1">
+          <TextBlock Text="服务管理器" FontSize="16" FontWeight="SemiBold"/>
+        </Border>
+
+        <ScrollViewer Grid.Row="1" Margin="24,16,24,20" VerticalScrollBarVisibility="Auto">
+          <StackPanel>
+            <Border Classes="settings-card">
+              <StackPanel>
+                <TextBlock Text="CURRENT STATUS" Classes="section-header" Margin="16,12,16,8"/>
+                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="16,0,16,12">
+                  <Ellipse Width="10" Height="10" Fill="{Binding ServiceStatusDotColor}" VerticalAlignment="Center"/>
+                  <TextBlock Text="{Binding ServiceStatus}" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                </StackPanel>
+              </StackPanel>
+            </Border>
+
+            <Border Classes="settings-card">
+              <StackPanel>
+                <TextBlock Text="ACTIONS" Classes="section-header"/>
+
+                <Border Classes="settings-row">
+                  <DockPanel LastChildFill="False">
+                    <StackPanel DockPanel.Dock="Left" Spacing="2">
+                      <TextBlock Text="安装并启动服务" Classes="row-label"/>
+                      <TextBlock Text="将 PhotoPrivacyWorker 注册为 Windows 系统服务" Classes="row-desc"/>
+                    </StackPanel>
+                    <Button x:Name="InstallServiceButton" DockPanel.Dock="Right" Content="安装服务" Classes="primary" VerticalAlignment="Center"/>
+                  </DockPanel>
+                </Border>
+
+                <Border Classes="row-divider"/>
+
+                <Border Classes="settings-row">
+                  <DockPanel LastChildFill="False">
+                    <StackPanel DockPanel.Dock="Left" Spacing="2">
+                      <TextBlock Text="启动 / 停止服务" Classes="row-label"/>
+                      <TextBlock Text="手动控制已安装服务的运行状态" Classes="row-desc"/>
+                    </StackPanel>
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8">
+                      <Button x:Name="StartServiceButton" Content="启动" Classes="ghost" VerticalAlignment="Center"/>
+                      <Button x:Name="StopServiceButton" Content="停止" Classes="ghost" VerticalAlignment="Center"/>
+                      <Button x:Name="RefreshServiceStatusButton" Content="刷新" Classes="ghost" VerticalAlignment="Center"/>
+                    </StackPanel>
+                  </DockPanel>
+                </Border>
+
+                <Border Classes="row-divider"/>
+
+                <Border Classes="settings-row">
+                  <DockPanel LastChildFill="False">
+                    <StackPanel DockPanel.Dock="Left" Spacing="2">
+                      <TextBlock Text="卸载服务" Classes="row-label" Foreground="{DynamicResource AccentRedBrush}"/>
+                      <TextBlock Text="从系统移除服务，切换为托盘模式运行" Classes="row-desc"/>
+                    </StackPanel>
+                    <Button x:Name="UninstallServiceButton" DockPanel.Dock="Right" Content="卸载服务" Classes="danger" VerticalAlignment="Center"/>
+                  </DockPanel>
+                </Border>
+              </StackPanel>
+            </Border>
           </StackPanel>
-          <TextBlock Text="Linux 下该页签自动隐藏（systemd 管理）。" Opacity="0.7" />
-        </StackPanel>
-      </TabItem>
-    </TabControl>
+        </ScrollViewer>
+      </Grid>
+    </Grid>
   </Grid>
 </Window>

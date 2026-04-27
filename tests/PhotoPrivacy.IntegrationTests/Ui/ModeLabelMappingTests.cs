@@ -6,8 +6,8 @@ namespace PhotoPrivacy.IntegrationTests.Ui;
 public sealed class ModeLabelMappingTests
 {
     [Theory]
-    [InlineData("service", "🔵 服务模式")]
-    [InlineData("tray", "🟢 托盘模式")]
+    [InlineData("service", "服务模式")]
+    [InlineData("tray", "托盘模式")]
     [InlineData("other", "other")]
     public void MapModeLabel_Should_Return_Expected_Label(string input, string expected)
     {

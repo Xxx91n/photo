@@ -4,5 +4,6 @@
              RequestedThemeVariant="Default">
   <Application.Styles>
     <FluentTheme />
+    <StyleInclude Source="avares://PhotoPrivacy.Ui/Styling/AppTheme.axaml" />
   </Application.Styles>
 </Application>

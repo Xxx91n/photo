@@ -15,4 +15,15 @@ public sealed class WorkerProcessManagerTests
         Assert.True(psi.CreateNoWindow);
         Assert.Equal(System.Diagnostics.ProcessWindowStyle.Hidden, psi.WindowStyle);
     }
+
+    [Fact]
+    public void BuildBackgroundLaunchStartInfo_Should_Include_Config_Path_When_Provided()
+    {
+        var psi = WorkerProcessManager.BuildBackgroundLaunchStartInfo(
+            @"D:\app\PhotoPrivacyWorker.exe",
+            @"D:\app\config\config.json");
+
+        Assert.Contains("--mode background", psi.Arguments, StringComparison.Ordinal);
+        Assert.Contains("--config \"D:\\app\\config\\config.json\"", psi.Arguments, StringComparison.Ordinal);
+    }
 }

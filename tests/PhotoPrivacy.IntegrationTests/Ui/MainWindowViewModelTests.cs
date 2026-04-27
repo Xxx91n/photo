@@ -95,4 +95,26 @@ public sealed class MainWindowViewModelTests
         Assert.Contains(nameof(MainWindowViewModel.HideGuiOnStartup), raised);
         Assert.Contains(nameof(MainWindowViewModel.HideTrayIcon), raised);
     }
+
+    [Fact]
+    public void NewUiProperties_Should_Raise_PropertyChanged()
+    {
+        var vm = new MainWindowViewModel();
+        var raised = new List<string>();
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (!string.IsNullOrWhiteSpace(e.PropertyName))
+            {
+                raised.Add(e.PropertyName!);
+            }
+        };
+
+        vm.CurrentPage = "log";
+        vm.ThemeVariant = "dark";
+        vm.SaveStatus = "已保存，待应用";
+
+        Assert.Contains(nameof(MainWindowViewModel.CurrentPage), raised);
+        Assert.Contains(nameof(MainWindowViewModel.ThemeVariant), raised);
+        Assert.Contains(nameof(MainWindowViewModel.SaveStatus), raised);
+    }
 }

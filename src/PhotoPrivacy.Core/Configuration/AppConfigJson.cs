@@ -59,7 +59,8 @@ public static class AppConfigJson
             Ui = new UiDto
             {
                 HideMainWindowOnStartup = config.Ui.HideMainWindowOnStartup,
-                HideTrayIcon = config.Ui.HideTrayIcon
+                HideTrayIcon = config.Ui.HideTrayIcon,
+                ThemeVariant = config.Ui.ThemeVariant
             }
         };
 
@@ -202,5 +203,8 @@ public static class AppConfigJson
 
         [JsonPropertyName("hide_tray_icon")]
         public bool HideTrayIcon { get; init; }
+
+        [JsonPropertyName("theme_variant")]
+        public string ThemeVariant { get; init; } = string.Empty;
     }
 }

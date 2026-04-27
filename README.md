@@ -39,6 +39,9 @@ dotnet run --project src/PhotoPrivacy.Worker/PhotoPrivacy.Worker.csproj -- --mod
   - 若 Service Worker 在运行，GUI 进入“服务管理”状态
   - 否则连接/启动 Background Worker（托盘态）
 - 默认会显示主窗口；如需静默启动可在 `config/config.json` 中设置 `ui.hide_main_window_on_startup=true`。
+- GUI 中“保存更改”仅写入 `config/config.json`，不会立即重启运行态；点击“应用配置”后才按当前模式热生效。
+- Service 模式与托盘模式共享同一份 `config/config.json`，应用配置时会按当前模式执行重连/重启链路。
+- 主题支持 `ui.theme_variant=system|light|dark`，也可在 GUI 配置页直接切换。
 
 ### 2) Background Worker
 

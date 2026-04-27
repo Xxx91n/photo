@@ -61,7 +61,8 @@ public static class AppConfigLoader
                 DiagnosticMode: dto.Audit.DiagnosticMode),
             Ui: new UiOptions(
                 HideMainWindowOnStartup: dto.Ui.HideMainWindowOnStartup,
-                HideTrayIcon: dto.Ui.HideTrayIcon));
+                HideTrayIcon: dto.Ui.HideTrayIcon,
+                ThemeVariant: dto.Ui.ThemeVariant));
     }
 
     private static string ResolveExifToolPath(string nestedPath, string? legacyPath, bool hasNestedExifToolPath)
@@ -235,5 +236,8 @@ public static class AppConfigLoader
 
         [JsonPropertyName("hide_tray_icon")]
         public bool HideTrayIcon { get; init; } = AppConfig.Default.Ui.HideTrayIcon;
+
+        [JsonPropertyName("theme_variant")]
+        public string ThemeVariant { get; init; } = AppConfig.Default.Ui.ThemeVariant;
     }
 }

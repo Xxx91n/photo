@@ -6,4 +6,5 @@ public sealed record ConfigEditCommand(
     bool LogEnabled,
     string HotFolderPath,
     bool HideMainWindowOnStartup,
-    bool HideTrayIcon);
+    bool HideTrayIcon,
+    string ThemeVariant);

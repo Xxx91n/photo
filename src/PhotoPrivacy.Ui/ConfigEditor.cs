@@ -31,7 +31,8 @@ public static class ConfigEditor
             Ui = config.Ui with
             {
                 HideMainWindowOnStartup = command.HideMainWindowOnStartup,
-                HideTrayIcon = command.HideTrayIcon
+                HideTrayIcon = command.HideTrayIcon,
+                ThemeVariant = command.ThemeVariant
             }
         };
 

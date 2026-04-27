@@ -31,7 +31,7 @@ public sealed record QuarantineOptions(bool Enabled, string Directory);
 
 public sealed record AuditOptions(string LogDirectory, int RetainDays, bool DiagnosticMode);
 
-public sealed record UiOptions(bool HideMainWindowOnStartup, bool HideTrayIcon);
+public sealed record UiOptions(bool HideMainWindowOnStartup, bool HideTrayIcon, string ThemeVariant);
 
 public sealed record AppConfig(
     int SchemaVersion,
@@ -80,5 +80,6 @@ public sealed record AppConfig(
             DiagnosticMode: true),
         Ui: new UiOptions(
             HideMainWindowOnStartup: false,
-            HideTrayIcon: false));
+            HideTrayIcon: false,
+            ThemeVariant: "system"));
 }
