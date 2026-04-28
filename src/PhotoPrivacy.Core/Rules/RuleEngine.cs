@@ -31,7 +31,14 @@ public sealed class RuleEngine
 
         var outputPath = ResolveOutputPath(sourcePath);
         var createBackup = _config.Backup.Enabled;
-        var backupPath = createBackup ? sourcePath + _config.Backup.Suffix : null;
+        var backupPath = ResolveBackupPath(sourcePath, createBackup, _config.Backup);
+
+        if (createBackup
+            && backupPath is not null
+            && string.Equals(outputPath, backupPath, StringComparison.OrdinalIgnoreCase))
+        {
+            return new RuleDecision(true, "eligible", outputPath, false, null);
+        }
 
         return new RuleDecision(true, "eligible", outputPath, createBackup, backupPath);
     }
@@ -45,6 +52,28 @@ public sealed class RuleEngine
 
         var relative = Path.GetRelativePath(_config.Watch.HotFolder, sourcePath);
         return Path.Combine(_config.Rules.OutputDirectory, relative);
+    }
+
+    private static string? ResolveBackupPath(string sourcePath, bool createBackup, BackupOptions backup)
+    {
+        if (!createBackup)
+        {
+            return null;
+        }
+
+        var backupDir = string.IsNullOrWhiteSpace(backup.Directory)
+            ? string.Empty
+            : backup.Directory;
+
+        var fileName = Path.GetFileName(sourcePath);
+        var backupFileName = fileName + backup.Suffix;
+
+        if (string.IsNullOrWhiteSpace(backupDir))
+        {
+            return Path.Combine(Path.GetDirectoryName(sourcePath) ?? ".", backupFileName);
+        }
+
+        return Path.Combine(backupDir, backupFileName);
     }
 
     private static bool MatchesPattern(string fileName, string pattern)

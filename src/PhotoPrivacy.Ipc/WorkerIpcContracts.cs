@@ -10,6 +10,7 @@ public static class WorkerIpcMethods
     public const string Resume = "Resume";
     public const string GetExifToolVersion = "GetExifToolVersion";
     public const string Shutdown = "Shutdown";
+    public const string ReloadConfig = "ReloadConfig";
 }
 
 public sealed record WorkerIpcRequest(

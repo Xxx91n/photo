@@ -3,6 +3,7 @@ using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Platform.Storage;
 using Avalonia.Styling;
 using PhotoPrivacy.Core.Configuration;
 using PhotoPrivacy.Ui.ViewModels;
@@ -22,6 +23,19 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _serviceModePollCts;
     private Task? _serviceModePollTask;
     private bool _isSwitchingMode;
+    private string _exifToolHint = string.Empty;
+    private CancellationTokenSource? _saveStatusResetCts;
+    internal IStorageProvider? TestStorageProvider { get; set; }
+    internal Task? LastPickerTask { get; private set; }
+    private static readonly string[] WellKnownExifToolPaths =
+    [
+        Path.Combine(AppContext.BaseDirectory, "ExifTool", "exiftool.exe"),
+        Path.Combine(AppContext.BaseDirectory, "exiftool.exe"),
+        @"C:\Program Files\ExifTool\exiftool.exe",
+        @"C:\Program Files (x86)\ExifTool\exiftool.exe",
+        @"C:\Windows\exiftool.exe",
+        "exiftool.exe"
+    ];
 
     public MainWindow()
     {
@@ -66,6 +80,9 @@ public partial class MainWindow : Window
                 viewModel.HideGuiOnStartup = effectiveConfig.Ui.HideMainWindowOnStartup;
                 viewModel.HideTrayIcon = effectiveConfig.Ui.HideTrayIcon;
                 viewModel.ThemeVariant = NormalizeThemeVariant(effectiveConfig.Ui.ThemeVariant);
+                viewModel.BackupDirectory = effectiveConfig.Backup.Directory;
+                viewModel.AuditLogDirectory = effectiveConfig.Audit.LogDirectory;
+                viewModel.LogLevel = effectiveConfig.Audit.DiagnosticMode ? "debug" : "info";
             }
             else
             {
@@ -76,6 +93,24 @@ public partial class MainWindow : Window
             SyncThemeVariantComboSelection(viewModel.ThemeVariant);
             viewModel.SaveStatus = string.Empty;
             SetCurrentPage(viewModel.CurrentPage);
+
+            var autoDetected = ResolveExifToolPath(viewModel.ExifToolPath);
+            if (!string.IsNullOrWhiteSpace(autoDetected)
+                && !string.Equals(autoDetected, viewModel.ExifToolPath, StringComparison.OrdinalIgnoreCase))
+            {
+                viewModel.ExifToolPath = autoDetected;
+                _exifToolHint = "已自动检测到";
+                viewModel.ExifToolPathHint = _exifToolHint;
+            }
+            else
+            {
+                _exifToolHint = string.Empty;
+                viewModel.ExifToolPathHint = string.Empty;
+            }
+
+            var isServiceMode = string.Equals(options.RuntimeKind, "service", StringComparison.OrdinalIgnoreCase);
+            PauseResumeButton.IsEnabled = !isServiceMode;
+            PauseResumeButton.Content = isServiceMode ? "暂停（服务模式不可用）" : viewModel.PauseResumeLabel;
 
             UpdateServiceButtons(viewModel);
         }
@@ -101,10 +136,11 @@ public partial class MainWindow : Window
         StartServiceButton.Click += OnStartServiceClick;
         StopServiceButton.Click += OnStopServiceClick;
         ThemeVariantComboBox.SelectionChanged += OnThemeVariantSelectionChanged;
-        if (this.FindControl<Button>("SaveConfigButton") is { } saveConfigButton)
-        {
-            saveConfigButton.Click += OnSaveConfigClick;
-        }
+        LogLevelComboBox.SelectionChanged += OnLogLevelSelectionChanged;
+        BrowseExifToolButton.Click += OnBrowseExifToolClick;
+        BrowseHotFolderButton.Click += OnBrowseHotFolderClick;
+        BrowseBackupDirectoryButton.Click += OnBrowseBackupDirectoryClick;
+        BrowseAuditLogDirectoryButton.Click += OnBrowseAuditLogDirectoryClick;
 
         if (this.FindControl<Button>("ApplyConfigButton") is { } applyConfigButton)
         {
@@ -213,6 +249,10 @@ public partial class MainWindow : Window
 
     protected override async void OnClosed(EventArgs e)
     {
+        _saveStatusResetCts?.Cancel();
+        _saveStatusResetCts?.Dispose();
+        _saveStatusResetCts = null;
+
         if (_versionPollCts is not null)
         {
             await _versionPollCts.CancelAsync();
@@ -271,6 +311,11 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (string.Equals(_options.RuntimeKind, "service", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
         var isPaused = _options.IsPausedAsync(CancellationToken.None).GetAwaiter().GetResult();
         if (isPaused)
         {
@@ -295,6 +340,118 @@ public partial class MainWindow : Window
         if (DataContext is MainWindowViewModel vm)
         {
             vm.ClearLogs();
+        }
+    }
+
+    private async void OnBrowseExifToolClick(object? sender, RoutedEventArgs e)
+    {
+        var storageProvider = ResolveStorageProvider();
+        if (storageProvider is null)
+        {
+            return;
+        }
+
+        var task = storageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "选择 ExifTool 可执行文件",
+            AllowMultiple = false,
+            FileTypeFilter =
+            [
+                new FilePickerFileType("ExifTool")
+                {
+                    Patterns = ["exiftool.exe", "exiftool"]
+                }
+            ]
+        });
+        LastPickerTask = task;
+        var files = await task;
+        if (files.Count == 0)
+        {
+            return;
+        }
+
+        if (DataContext is MainWindowViewModel vm)
+        {
+            vm.ExifToolPath = files[0].Path.LocalPath;
+            vm.ExifToolPathHint = string.Empty;
+        }
+    }
+
+    private async void OnBrowseHotFolderClick(object? sender, RoutedEventArgs e)
+    {
+        var storageProvider = ResolveStorageProvider();
+        if (storageProvider is null)
+        {
+            return;
+        }
+
+        var task = storageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = "选择监控目录",
+            AllowMultiple = false
+        });
+        LastPickerTask = task;
+        var folders = await task;
+        if (folders.Count == 0)
+        {
+            return;
+        }
+
+        if (DataContext is MainWindowViewModel vm)
+        {
+            vm.HotFolderPath = folders[0].Path.LocalPath;
+        }
+    }
+
+    private async void OnBrowseBackupDirectoryClick(object? sender, RoutedEventArgs e)
+    {
+        var storageProvider = ResolveStorageProvider();
+        if (storageProvider is null)
+        {
+            return;
+        }
+
+        var task = storageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = "选择备份目录",
+            AllowMultiple = false
+        });
+        LastPickerTask = task;
+        var folders = await task;
+        if (folders.Count == 0)
+        {
+            return;
+        }
+
+        if (DataContext is MainWindowViewModel vm)
+        {
+            vm.BackupDirectory = folders[0].Path.LocalPath;
+        }
+    }
+
+    private async void OnBrowseAuditLogDirectoryClick(object? sender, RoutedEventArgs e)
+    {
+        var storageProvider = ResolveStorageProvider();
+        if (storageProvider is null)
+        {
+            return;
+        }
+
+        var task = storageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = "选择日志目录",
+            AllowMultiple = false
+        });
+        LastPickerTask = task;
+        var folders = await task;
+        if (folders.Count == 0)
+        {
+            return;
+        }
+
+        if (DataContext is MainWindowViewModel vm)
+        {
+            vm.AuditLogDirectory = folders[0].Path.LocalPath;
         }
     }
 
@@ -381,13 +538,37 @@ public partial class MainWindow : Window
             return;
         }
 
-        var variant = ReadThemeVariantSelection(combo.SelectedItem);
+        var variant = ReadComboItemString(combo.SelectedItem);
         if (DataContext is MainWindowViewModel vm)
         {
             vm.ThemeVariant = variant;
         }
 
         ApplyThemeVariantToApplication(variant);
+    }
+
+    private void OnLogLevelSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not ComboBox combo)
+        {
+            return;
+        }
+
+        var level = ReadComboItemString(combo.SelectedItem);
+        if (DataContext is MainWindowViewModel vm)
+        {
+            vm.LogLevel = level;
+        }
+    }
+
+    private static string ReadComboItemString(object? selectedItem)
+    {
+        if (selectedItem is ComboBoxItem comboItem)
+        {
+            return comboItem.Content?.ToString() ?? string.Empty;
+        }
+
+        return selectedItem?.ToString() ?? string.Empty;
     }
 
     private void SyncThemeVariantComboSelection(string variant)
@@ -752,21 +933,28 @@ public partial class MainWindow : Window
                     ResolveServiceWorkerExecutablePath(_options),
                     token,
                     getServiceRuntimeState: getServiceRuntimeStateOverride);
-            _options.RuntimeKind = next.RuntimeKind;
-            _options.WorkerEndpointName = next.EndpointName;
-            _options.UseTrayIcon = next.ShouldShowTrayIcon && !_options.HideTrayIcon;
+        _options.RuntimeKind = next.RuntimeKind;
+        _options.WorkerEndpointName = next.EndpointName;
+        _options.UseTrayIcon = next.ShouldShowTrayIcon && !_options.HideTrayIcon;
 
-            if (DataContext is MainWindowViewModel vm)
-            {
-                vm.CurrentMode = MapModeLabel(_options.RuntimeKind);
-                vm.RuntimeStatus = BuildRuntimeStatusText(_options.RuntimeKind, _options.GetServiceRuntimeState(), next.Status?.IsPaused ?? false);
-                vm.ExifToolVersion = NormalizeExifToolStatus(next.Status?.ExifToolVersion);
-            }
+        if (DataContext is MainWindowViewModel vm)
+        {
+            vm.CurrentMode = MapModeLabel(_options.RuntimeKind);
+            vm.RuntimeStatus = BuildRuntimeStatusText(_options.RuntimeKind, _options.GetServiceRuntimeState(), next.Status?.IsPaused ?? false);
+            vm.ExifToolVersion = NormalizeExifToolStatus(next.Status?.ExifToolVersion);
+        }
 
-            if (_options.UseTrayIcon)
-            {
-                _trayHost ??= new TrayHost(this, _options, ExitApplicationAsync);
-                _trayHost.IsVisible = true;
+        var isServiceMode = string.Equals(_options.RuntimeKind, "service", StringComparison.OrdinalIgnoreCase);
+        PauseResumeButton.IsEnabled = !isServiceMode;
+        if (isServiceMode)
+        {
+            PauseResumeButton.Content = "暂停（服务模式不可用）";
+        }
+
+        if (_options.UseTrayIcon)
+        {
+            _trayHost ??= new TrayHost(this, _options, ExitApplicationAsync);
+            _trayHost.IsVisible = true;
             }
             else
             {
@@ -919,39 +1107,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnSaveConfigClick(object? sender, RoutedEventArgs e)
-    {
-        if (_options is null || DataContext is not MainWindowViewModel vm)
-        {
-            return;
-        }
-
-        try
-        {
-            var command = new ConfigEditCommand(
-                ExifToolPath: vm.ExifToolPath,
-                BackupEnabled: vm.BackupEnabled,
-                LogEnabled: vm.LogEnabled,
-                HotFolderPath: vm.HotFolderPath,
-                HideMainWindowOnStartup: vm.HideGuiOnStartup,
-                HideTrayIcon: vm.HideTrayIcon,
-                ThemeVariant: vm.ThemeVariant);
-
-            ConfigEditor.UpdateConfig(_options.ConfigPath, command);
-            vm.SaveStatus = "已保存，待应用";
-        }
-        catch (Exception ex)
-        {
-            vm.SaveStatus = $"保存失败：{ex.Message}";
-            vm.AppendLog(new AuditLogEntry(
-                TimeText: DateTime.Now.ToString("HH:mm:ss"),
-                EventType: "config_save_failed",
-                DisplayEvent: "❌ 配置保存失败",
-                SourcePathMasked: _options.ConfigPath,
-                Message: ex.Message,
-                ColorHex: "#C62828"));
-        }
-    }
 
     private async void OnApplyConfigClick(object? sender, RoutedEventArgs e)
     {
@@ -963,13 +1118,27 @@ public partial class MainWindow : Window
         SetConfigButtonsBusy(isBusy: true);
         try
         {
+            var command = new ConfigEditCommand(
+                ExifToolPath: vm.ExifToolPath,
+                BackupEnabled: vm.BackupEnabled,
+                LogEnabled: vm.LogEnabled,
+                HotFolderPath: vm.HotFolderPath,
+                HideMainWindowOnStartup: vm.HideGuiOnStartup,
+                HideTrayIcon: vm.HideTrayIcon,
+                ThemeVariant: vm.ThemeVariant,
+                BackupDirectory: vm.BackupDirectory,
+                AuditLogDirectory: vm.AuditLogDirectory,
+                LogLevel: vm.LogLevel);
+            ConfigEditor.UpdateConfig(_options.ConfigPath, command);
+            await _workerManager.ReloadConfigAsync(_options.WorkerEndpointName, CancellationToken.None);
             ApplyRuntimeConfigToUiState();
-            await ApplyConfigForCurrentModeAsync(CancellationToken.None);
-            vm.SaveStatus = "配置已应用";
+            vm.SaveStatus = "✓ 已应用";
+            ScheduleSaveStatusClear();
         }
         catch (Exception ex)
         {
-            vm.SaveStatus = $"应用失败：{ex.Message}";
+            vm.SaveStatus = $"✗ 应用失败：{ex.Message}";
+            ScheduleSaveStatusClear();
             vm.AppendLog(new AuditLogEntry(
                 TimeText: DateTime.Now.ToString("HH:mm:ss"),
                 EventType: "config_apply_failed",
@@ -984,6 +1153,37 @@ public partial class MainWindow : Window
         }
     }
 
+    private void ScheduleSaveStatusClear()
+    {
+        _saveStatusResetCts?.Cancel();
+        _saveStatusResetCts?.Dispose();
+        _saveStatusResetCts = new CancellationTokenSource();
+        var token = _saveStatusResetCts.Token;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(3), token);
+                if (token.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    if (DataContext is MainWindowViewModel vm)
+                    {
+                        vm.SaveStatus = string.Empty;
+                    }
+                });
+            }
+            catch (TaskCanceledException)
+            {
+                // ignore
+            }
+        }, token);
+    }
+
     private async Task ApplyConfigForCurrentModeAsync(CancellationToken token)
     {
         if (_options is null)
@@ -991,121 +1191,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (string.Equals(_options.RuntimeKind, "service", StringComparison.OrdinalIgnoreCase))
-        {
-            await ApplyConfigInServiceModeAsync(token);
-            return;
-        }
-
-        await ApplyConfigInTrayModeAsync(token);
-    }
-
-    private async Task ApplyConfigInTrayModeAsync(CancellationToken token)
-    {
-        if (_options is null)
-        {
-            return;
-        }
-
-        var endpoint = PhotoPrivacy.Ipc.WorkerIpcEndpointNames.BackgroundPipe;
-        var aliveProbe = new WorkerIpcClient();
-        if (await aliveProbe.IsAliveAsync(endpoint, token))
-        {
-            await _workerManager.ShutdownAsync(endpoint, token);
-            for (var i = 0; i < 15; i++)
-            {
-                if (!await aliveProbe.IsAliveAsync(endpoint, token))
-                {
-                    break;
-                }
-
-                await Task.Delay(200, token);
-            }
-        }
-
-        var workerExecutablePath = ResolveServiceWorkerExecutablePath(_options);
-        if (string.IsNullOrWhiteSpace(workerExecutablePath))
-        {
-            throw new InvalidOperationException("未找到 Worker 可执行文件（PhotoPrivacyWorker）");
-        }
-
-        System.Diagnostics.Process.Start(WorkerProcessManager.BuildBackgroundLaunchStartInfo(workerExecutablePath, _options.ConfigPath));
-
-        var connected = false;
-        for (var i = 0; i < 25; i++)
-        {
-            if (await aliveProbe.IsAliveAsync(endpoint, token))
-            {
-                connected = true;
-                break;
-            }
-
-            await Task.Delay(200, token);
-        }
-
-        if (!connected)
-        {
-            throw new InvalidOperationException("后台模式未能在预期时间内完成重连");
-        }
-
-        _options.RuntimeKind = "tray";
-        _options.WorkerEndpointName = endpoint;
-        _options.UseTrayIcon = !_options.HideTrayIcon;
-
-        var status = await _workerManager.GetStatusAsync(endpoint, token);
-        if (DataContext is MainWindowViewModel vm)
-        {
-            vm.CurrentMode = MapModeLabel(_options.RuntimeKind);
-            vm.RuntimeStatus = BuildRuntimeStatusText(_options.RuntimeKind, _options.GetServiceRuntimeState(), status?.Data?.IsPaused ?? false);
-            vm.ExifToolVersion = NormalizeExifToolStatus(status?.Data?.ExifToolVersion);
-        }
-
-        if (_options.UseTrayIcon)
-        {
-            _trayHost ??= new TrayHost(this, _options, ExitApplicationAsync);
-            _trayHost.IsVisible = true;
-        }
-        else
-        {
-            _trayHost?.Dispose();
-            _trayHost = null;
-        }
-    }
-
-    private async Task ApplyConfigInServiceModeAsync(CancellationToken token)
-    {
-        if (_options is null)
-        {
-            return;
-        }
-
-        var workerExecutablePath = ResolveServiceWorkerExecutablePath(_options);
-        if (string.IsNullOrWhiteSpace(workerExecutablePath))
-        {
-            throw new InvalidOperationException("未找到 Worker 可执行文件（PhotoPrivacyWorker）");
-        }
-
-        await Task.Run(() => _serviceManager.Stop(), token);
-        var startResult = await Task.Run(() => _serviceManager.Start(workerExecutablePath, _options.ConfigPath), token);
-        ApplyServiceResult(startResult);
-
-        if (startResult.Status != ServiceCommandStatus.Success)
-        {
-            throw new InvalidOperationException(startResult.Message);
-        }
-
-        _options.RuntimeKind = "service";
-        _options.WorkerEndpointName = PhotoPrivacy.Ipc.WorkerIpcEndpointNames.ServicePipe;
-        _options.UseTrayIcon = false;
-
-        _trayHost?.Dispose();
-        _trayHost = null;
-
-        if (DataContext is MainWindowViewModel vm)
-        {
-            vm.CurrentMode = MapModeLabel(_options.RuntimeKind);
-            vm.RuntimeStatus = BuildRuntimeStatusText(_options.RuntimeKind, _serviceManager.GetRuntimeState(), false);
-        }
+        await _workerManager.ReloadConfigAsync(_options.WorkerEndpointName, token);
     }
 
     private void ApplyRuntimeConfigToUiState()
@@ -1137,6 +1223,10 @@ public partial class MainWindow : Window
                 vm.HideTrayIcon = cfg.Ui.HideTrayIcon;
                 vm.ThemeVariant = normalizedThemeVariant;
                 SyncThemeVariantComboSelection(vm.ThemeVariant);
+                vm.BackupDirectory = cfg.Backup.Directory;
+                vm.AuditLogDirectory = cfg.Audit.LogDirectory;
+                vm.LogLevel = cfg.Audit.DiagnosticMode ? "debug" : "info";
+                vm.ExifToolPathHint = _exifToolHint;
             }
 
             ApplyThemeVariantToApplication(normalizedThemeVariant);
@@ -1149,7 +1239,6 @@ public partial class MainWindow : Window
 
     private void SetConfigButtonsBusy(bool isBusy)
     {
-        SaveConfigButton.IsEnabled = !isBusy;
         ApplyConfigButton.IsEnabled = !isBusy;
     }
 
@@ -1328,5 +1417,73 @@ public partial class MainWindow : Window
         var workerName = OperatingSystem.IsWindows() ? "PhotoPrivacyWorker.exe" : "PhotoPrivacyWorker";
         var candidate = Path.Combine(AppContext.BaseDirectory, workerName);
         return File.Exists(candidate) ? candidate : null;
+    }
+}
+
+public partial class MainWindow
+{
+    internal Task TestPickHotFolderAsync()
+    {
+        OnBrowseHotFolderClick(this, new RoutedEventArgs());
+        return LastPickerTask ?? Task.CompletedTask;
+    }
+
+    private IStorageProvider? ResolveStorageProvider()
+    {
+        if (TestStorageProvider is not null)
+        {
+            return TestStorageProvider;
+        }
+
+        return StorageProvider;
+    }
+
+    private static string ResolveExifToolPath(string? current)
+    {
+        if (!string.IsNullOrWhiteSpace(current) && File.Exists(current))
+        {
+            return current;
+        }
+
+        foreach (var path in WellKnownExifToolPaths)
+        {
+            if (string.Equals(path, "exiftool.exe", StringComparison.OrdinalIgnoreCase))
+            {
+                var resolved = ResolveFromPath("exiftool.exe");
+                if (!string.IsNullOrWhiteSpace(resolved))
+                {
+                    return resolved;
+                }
+
+                continue;
+            }
+
+            if (File.Exists(path))
+            {
+                return path;
+            }
+        }
+
+        return current ?? string.Empty;
+    }
+
+    private static string? ResolveFromPath(string fileName)
+    {
+        var env = Environment.GetEnvironmentVariable("PATH");
+        if (string.IsNullOrWhiteSpace(env))
+        {
+            return null;
+        }
+
+        foreach (var segment in env.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var candidate = Path.Combine(segment.Trim(), fileName);
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return null;
     }
 }

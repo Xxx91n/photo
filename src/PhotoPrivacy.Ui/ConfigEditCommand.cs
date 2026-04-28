@@ -7,4 +7,7 @@ public sealed record ConfigEditCommand(
     string HotFolderPath,
     bool HideMainWindowOnStartup,
     bool HideTrayIcon,
-    string ThemeVariant);
+    string ThemeVariant,
+    string BackupDirectory,
+    string AuditLogDirectory,
+    string LogLevel);

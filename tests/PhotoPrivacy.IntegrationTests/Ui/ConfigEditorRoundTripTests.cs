@@ -23,7 +23,10 @@ public sealed class ConfigEditorRoundTripTests
                 HotFolderPath: @"D:\hot",
                 HideMainWindowOnStartup: true,
                 HideTrayIcon: false,
-                ThemeVariant: "dark");
+                ThemeVariant: "dark",
+                BackupDirectory: @"D:\hot\bak",
+                AuditLogDirectory: @"D:\hot\_audit",
+                LogLevel: "debug");
 
             ConfigEditor.UpdateConfig(configPath, command);
 

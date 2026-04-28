@@ -42,6 +42,7 @@ public static class AppConfigJson
             Backup = new BackupDto
             {
                 Enabled = config.Backup.Enabled,
+                Directory = config.Backup.Directory,
                 Suffix = config.Backup.Suffix,
                 Retention = config.Backup.Retention
             },
@@ -167,6 +168,9 @@ public static class AppConfigJson
     {
         [JsonPropertyName("enabled")]
         public bool Enabled { get; init; }
+
+        [JsonPropertyName("directory")]
+        public string Directory { get; init; } = string.Empty;
 
         [JsonPropertyName("suffix")]
         public string Suffix { get; init; } = string.Empty;

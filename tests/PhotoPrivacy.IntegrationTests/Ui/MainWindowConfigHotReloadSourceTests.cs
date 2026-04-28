@@ -11,8 +11,8 @@ public sealed class MainWindowConfigHotReloadSourceTests
         var source = File.ReadAllText(sourcePath, Encoding.UTF8);
 
         Assert.Contains("private async void OnApplyConfigClick", source, StringComparison.Ordinal);
-        Assert.Contains("vm.SaveStatus = \"已保存，待应用\"", source, StringComparison.Ordinal);
+        Assert.Contains("ReloadConfigAsync", source, StringComparison.Ordinal);
         Assert.Contains("ApplyRuntimeConfigToUiState();", source, StringComparison.Ordinal);
-        Assert.Contains("ApplyConfigForCurrentModeAsync", source, StringComparison.Ordinal);
+        Assert.Contains("\"✓ 已应用\"", source, StringComparison.Ordinal);
     }
 }

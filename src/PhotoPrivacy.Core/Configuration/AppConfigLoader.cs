@@ -50,6 +50,7 @@ public static class AppConfigLoader
                 BackoffSeconds: dto.Retry.BackoffSeconds ?? [1]),
             Backup: new BackupOptions(
                 Enabled: dto.Backup.Enabled,
+                Directory: dto.Backup.Directory,
                 Suffix: dto.Backup.Suffix,
                 Retention: dto.Backup.Retention),
             Quarantine: new QuarantineOptions(
@@ -200,6 +201,9 @@ public static class AppConfigLoader
     {
         [JsonPropertyName("enabled")]
         public bool Enabled { get; init; } = AppConfig.Default.Backup.Enabled;
+
+        [JsonPropertyName("directory")]
+        public string Directory { get; init; } = AppConfig.Default.Backup.Directory;
 
         [JsonPropertyName("suffix")]
         public string Suffix { get; init; } = AppConfig.Default.Backup.Suffix;

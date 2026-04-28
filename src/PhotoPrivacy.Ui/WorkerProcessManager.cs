@@ -108,6 +108,11 @@ public sealed class WorkerProcessManager
         return _ipcClient.SendAsync(endpointName, new WorkerIpcRequest(WorkerIpcMethods.Shutdown), cancellationToken);
     }
 
+    public Task<WorkerIpcResponse?> ReloadConfigAsync(string endpointName, CancellationToken cancellationToken)
+    {
+        return _ipcClient.SendAsync(endpointName, new WorkerIpcRequest(WorkerIpcMethods.ReloadConfig), cancellationToken);
+    }
+
     public static ProcessStartInfo BuildBackgroundLaunchStartInfo(string workerExecutablePath, string? configPath = null)
     {
         var args = string.IsNullOrWhiteSpace(configPath)

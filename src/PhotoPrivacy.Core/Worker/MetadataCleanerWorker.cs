@@ -26,6 +26,8 @@ public sealed class MetadataCleanerWorker : BackgroundService
     private RecentFingerprintCache? _recentFingerprintCache;
     private FswFolderWatcher? _watcher;
     private int _maxParallelDrain = 1;
+    private readonly SemaphoreSlim _reloadGate = new(1, 1);
+    private AppConfig? _currentConfig;
 
     public string CurrentExifToolVersion => _bridge?.VersionText ?? "unknown";
 
@@ -272,6 +274,66 @@ public sealed class MetadataCleanerWorker : BackgroundService
     private IExifToolBridge CreateBridge(AppConfig config, IAuditLogger audit)
     {
         return PooledExifToolBridgeFactory.BuildFromConfig(config, audit);
+    }
+
+    public async Task ReloadConfigAsync()
+    {
+        await _reloadGate.WaitAsync();
+        try
+        {
+            var config = LoadEffectiveConfig();
+            AppConfigValidator.Validate(config);
+            _currentConfig = config;
+            await ApplyConfigAsync(config, CancellationToken.None);
+        }
+        finally
+        {
+            _reloadGate.Release();
+        }
+    }
+
+    private async Task ApplyConfigAsync(AppConfig config, CancellationToken token)
+    {
+        _watcher?.Stop();
+
+        if (_bridge is not null)
+        {
+            using var bridgeCts = new CancellationTokenSource(TimeSpan.FromSeconds(4));
+            try
+            {
+                await _bridge.StopAsync(bridgeCts.Token);
+            }
+            catch
+            {
+                // best-effort
+            }
+        }
+
+        Directory.CreateDirectory(config.Watch.HotFolder);
+        Directory.CreateDirectory(config.Audit.LogDirectory);
+        Directory.CreateDirectory(config.Quarantine.Directory);
+
+        _audit = config.Audit.DiagnosticMode
+            ? new JsonLineAuditLogger(config.Audit.LogDirectory, config.Audit.RetainDays, config.Audit.DiagnosticMode)
+            : null;
+        IAuditLogger auditLogger = _audit is not null ? _audit : new NoopAuditLogger();
+        _bridge = CreateBridge(config, auditLogger);
+        _pipeline = new FileTaskPipeline(config, new RuleEngine(config), _bridge, new LocalFileOperations(), auditLogger);
+        _maxParallelDrain = Math.Max(1, Math.Min(config.ExifTool.MaxParallelDrain, config.ExifTool.StayOpenPoolSize));
+
+        await _bridge.StartAsync(token);
+
+        _watcher = new FswFolderWatcher(
+            config,
+            new DirectoryRecoveryScanner(config),
+            auditLogger,
+            path =>
+            {
+                EnqueueIfNeeded(path);
+                return Task.CompletedTask;
+            });
+
+        _watcher.Start();
     }
 
     private void EnqueueIfNeeded(string path)

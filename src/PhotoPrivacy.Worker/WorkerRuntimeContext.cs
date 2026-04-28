@@ -32,4 +32,6 @@ public sealed class WorkerRuntimeContext
     public void Pause() => _runtimeControl.Pause();
 
     public void Resume() => _runtimeControl.Resume();
+
+    public Task ReloadConfigAsync() => _worker.ReloadConfigAsync();
 }

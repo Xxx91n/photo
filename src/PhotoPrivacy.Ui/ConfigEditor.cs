@@ -18,11 +18,13 @@ public static class ConfigEditor
             },
             Backup = config.Backup with
             {
-                Enabled = command.BackupEnabled
+                Enabled = command.BackupEnabled,
+                Directory = ResolveBackupDirectory(command.BackupDirectory, command.HotFolderPath)
             },
             Audit = config.Audit with
             {
-                DiagnosticMode = command.LogEnabled
+                DiagnosticMode = ResolveDiagnosticMode(command.LogLevel, command.LogEnabled),
+                LogDirectory = command.AuditLogDirectory
             },
             Watch = config.Watch with
             {
@@ -44,5 +46,35 @@ public static class ConfigEditor
         }
 
         File.WriteAllText(configPath, json);
+    }
+
+    private static string ResolveBackupDirectory(string backupDirectory, string hotFolderPath)
+    {
+        if (!string.IsNullOrWhiteSpace(backupDirectory))
+        {
+            return backupDirectory;
+        }
+
+        if (string.IsNullOrWhiteSpace(hotFolderPath))
+        {
+            return string.Empty;
+        }
+
+        return Path.Combine(hotFolderPath, "bak");
+    }
+
+    private static bool ResolveDiagnosticMode(string logLevel, bool fallback)
+    {
+        if (string.Equals(logLevel, "debug", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (string.Equals(logLevel, "info", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return fallback;
     }
 }

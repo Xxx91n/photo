@@ -25,7 +25,7 @@ public sealed record RuleOptions(
 
 public sealed record RetryOptions(int MaxAttempts, int[] BackoffSeconds);
 
-public sealed record BackupOptions(bool Enabled, string Suffix, string Retention);
+public sealed record BackupOptions(bool Enabled, string Directory, string Suffix, string Retention);
 
 public sealed record QuarantineOptions(bool Enabled, string Directory);
 
@@ -68,7 +68,8 @@ public sealed record AppConfig(
             MaxAttempts: 3,
             BackoffSeconds: [1, 3, 10]),
         Backup: new BackupOptions(
-            Enabled: false,
+            Enabled: true,
+            Directory: string.Empty,
             Suffix: ".bak",
             Retention: "keep"),
         Quarantine: new QuarantineOptions(

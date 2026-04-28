@@ -45,4 +45,9 @@ public sealed class WorkerIpcClient
             return false;
         }
     }
+
+    public Task<WorkerIpcResponse?> ReloadConfigAsync(string pipeName, CancellationToken cancellationToken)
+    {
+        return SendAsync(pipeName, new WorkerIpcRequest(WorkerIpcMethods.ReloadConfig), cancellationToken);
+    }
 }

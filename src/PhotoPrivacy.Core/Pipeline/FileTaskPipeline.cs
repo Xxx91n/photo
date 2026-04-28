@@ -60,6 +60,12 @@ public sealed class FileTaskPipeline
 
             if (decision.CreateBackup && decision.BackupPath is not null)
             {
+                var backupDir = Path.GetDirectoryName(decision.BackupPath);
+                if (!string.IsNullOrWhiteSpace(backupDir))
+                {
+                    _fileOperations.EnsureDirectory(backupDir);
+                }
+
                 _fileOperations.Copy(sourcePath, decision.BackupPath, overwrite: true);
             }
 

@@ -22,6 +22,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private string _currentPage = "config";
     private string _themeVariant = "system";
     private string _saveStatus = string.Empty;
+    private string _backupDirectory = string.Empty;
+    private string _auditLogDirectory = string.Empty;
+    private string _logLevel = "info";
+    private string _exifToolPathHint = string.Empty;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -126,7 +130,22 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public string ThemeVariant
     {
         get => _themeVariant;
-        set => SetField(ref _themeVariant, value);
+        set
+        {
+            if (SetField(ref _themeVariant, value))
+            {
+                var normalized = value?.ToLowerInvariant();
+                if (Avalonia.Application.Current is not null)
+                {
+                    Avalonia.Application.Current.RequestedThemeVariant = normalized switch
+                    {
+                        "dark" => Avalonia.Styling.ThemeVariant.Dark,
+                        "light" => Avalonia.Styling.ThemeVariant.Light,
+                        _ => Avalonia.Styling.ThemeVariant.Default
+                    };
+                }
+            }
+        }
     }
 
     public string SaveStatus
@@ -134,6 +153,38 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         get => _saveStatus;
         set => SetField(ref _saveStatus, value);
     }
+
+    public string BackupDirectory
+    {
+        get => _backupDirectory;
+        set => SetField(ref _backupDirectory, value);
+    }
+
+    public string AuditLogDirectory
+    {
+        get => _auditLogDirectory;
+        set => SetField(ref _auditLogDirectory, value);
+    }
+
+    public string LogLevel
+    {
+        get => _logLevel;
+        set => SetField(ref _logLevel, value);
+    }
+
+    public string ExifToolPathHint
+    {
+        get => _exifToolPathHint;
+        set
+        {
+            if (SetField(ref _exifToolPathHint, value))
+            {
+                OnPropertyChanged(nameof(HasExifToolHint));
+            }
+        }
+    }
+
+    public bool HasExifToolHint => !string.IsNullOrWhiteSpace(_exifToolPathHint);
 
     public string ModeColor => IsServiceMode ? "#3B82F6" : "#22C55E";
 

@@ -41,7 +41,8 @@
     ]
   },
   "backup": {
-    "enabled": false,
+    "enabled": true,
+    "directory": "",
     "suffix": ".bak",
     "retention": "keep"
   },

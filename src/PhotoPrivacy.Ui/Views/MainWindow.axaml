@@ -83,11 +83,25 @@
                       <TextBlock Text="ExifTool 路径" Classes="row-label"/>
                       <TextBlock Text="exiftool 可执行文件的完整路径" Classes="row-desc"/>
                     </StackPanel>
-                    <TextBox DockPanel.Dock="Right"
-                             Width="320"
-                             Text="{Binding ExifToolPath}"
-                             Classes="inline-input"
-                             VerticalAlignment="Center"/>
+                    <StackPanel DockPanel.Dock="Right" Spacing="6">
+                      <DockPanel LastChildFill="False">
+                        <TextBox DockPanel.Dock="Left"
+                                 Width="280"
+                                 Text="{Binding ExifToolPath}"
+                                 Classes="inline-input"
+                                 VerticalAlignment="Center"/>
+                        <Button x:Name="BrowseExifToolButton"
+                                DockPanel.Dock="Right"
+                                Content="浏览"
+                                Width="36"
+                                Classes="ghost"
+                                VerticalAlignment="Center"/>
+                      </DockPanel>
+                      <TextBlock Text="{Binding ExifToolPathHint}"
+                                 FontSize="11"
+                                 Foreground="{DynamicResource TextTertiaryBrush}"
+                                 IsVisible="{Binding HasExifToolHint}"/>
+                    </StackPanel>
                   </DockPanel>
                 </Border>
 
@@ -99,11 +113,19 @@
                       <TextBlock Text="监控目录" Classes="row-label"/>
                       <TextBlock Text="自动清理此目录下新增文件的元数据" Classes="row-desc"/>
                     </StackPanel>
-                    <TextBox DockPanel.Dock="Right"
-                             Width="320"
-                             Text="{Binding HotFolderPath}"
-                             Classes="inline-input"
-                             VerticalAlignment="Center"/>
+                    <DockPanel DockPanel.Dock="Right" LastChildFill="False">
+                      <TextBox DockPanel.Dock="Left"
+                               Width="280"
+                               Text="{Binding HotFolderPath}"
+                               Classes="inline-input"
+                               VerticalAlignment="Center"/>
+                      <Button x:Name="BrowseHotFolderButton"
+                              DockPanel.Dock="Right"
+                              Content="浏览"
+                              Width="36"
+                              Classes="ghost"
+                              VerticalAlignment="Center"/>
+                    </DockPanel>
                   </DockPanel>
                 </Border>
               </StackPanel>
@@ -124,6 +146,28 @@
                 </Border>
 
                 <Border Classes="row-divider"/>
+
+                <Border Classes="settings-row" IsVisible="{Binding BackupEnabled}">
+                  <DockPanel LastChildFill="False">
+                    <StackPanel DockPanel.Dock="Left" Spacing="2">
+                      <TextBlock Text="备份目录" Classes="row-label"/>
+                      <TextBlock Text="留空默认使用监控目录/bak" Classes="row-desc"/>
+                    </StackPanel>
+                    <DockPanel DockPanel.Dock="Right" LastChildFill="False">
+                      <TextBox DockPanel.Dock="Left"
+                               Width="280"
+                               Text="{Binding BackupDirectory}"
+                               Classes="inline-input"
+                               VerticalAlignment="Center"/>
+                      <Button x:Name="BrowseBackupDirectoryButton"
+                              DockPanel.Dock="Right"
+                              Content="浏览"
+                              Width="36"
+                              Classes="ghost"
+                              VerticalAlignment="Center"/>
+                    </DockPanel>
+                  </DockPanel>
+                </Border>
 
                 <Border Classes="settings-row">
                   <DockPanel LastChildFill="False">
@@ -180,9 +224,54 @@
               </StackPanel>
             </Border>
 
+            <Border Classes="settings-card">
+              <StackPanel>
+                <TextBlock Text="日志设置" Classes="section-header"/>
+
+                <Border Classes="settings-row">
+                  <DockPanel LastChildFill="False">
+                    <StackPanel DockPanel.Dock="Left" Spacing="2">
+                      <TextBlock Text="日志级别" Classes="row-label"/>
+                      <TextBlock Text="info=标准日志，debug=详细调试日志" Classes="row-desc"/>
+                    </StackPanel>
+                    <ComboBox x:Name="LogLevelComboBox"
+                              DockPanel.Dock="Right"
+                              Width="160"
+                              SelectedItem="{Binding LogLevel}">
+                      <ComboBoxItem Content="info"/>
+                      <ComboBoxItem Content="debug"/>
+                    </ComboBox>
+                  </DockPanel>
+                </Border>
+
+                <Border Classes="row-divider"/>
+
+                <Border Classes="settings-row">
+                  <DockPanel LastChildFill="False">
+                    <StackPanel DockPanel.Dock="Left" Spacing="2">
+                      <TextBlock Text="日志保存路径" Classes="row-label"/>
+                      <TextBlock Text="audit jsonl 文件的存放目录" Classes="row-desc"/>
+                    </StackPanel>
+                    <DockPanel DockPanel.Dock="Right" LastChildFill="False">
+                      <TextBox DockPanel.Dock="Left"
+                               Width="280"
+                               Text="{Binding AuditLogDirectory}"
+                               Classes="inline-input"
+                               VerticalAlignment="Center"/>
+                      <Button x:Name="BrowseAuditLogDirectoryButton"
+                              DockPanel.Dock="Right"
+                              Content="浏览"
+                              Width="36"
+                              Classes="ghost"
+                              VerticalAlignment="Center"/>
+                    </DockPanel>
+                  </DockPanel>
+                </Border>
+              </StackPanel>
+            </Border>
+
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10" Margin="0,8,0,0">
               <TextBlock Text="{Binding SaveStatus}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"/>
-              <Button x:Name="SaveConfigButton" Content="保存更改" Classes="ghost"/>
               <Button x:Name="ApplyConfigButton" Content="应用配置" Classes="primary"/>
             </StackPanel>
           </StackPanel>
@@ -202,12 +291,18 @@
                   BorderThickness="0,1,0,1">
             <DockPanel>
               <Button DockPanel.Dock="Right" x:Name="ClearLogsButton" Content="清空" Classes="ghost" Height="28" FontSize="12"/>
-              <CheckBox x:Name="ShowDetailedEventsCheckBox"
-                        Content="详细事件"
-                        IsChecked="{Binding ShowDetailedEvents}"
-                        FontSize="12"
-                        Foreground="{DynamicResource TextSecondaryBrush}"
-                        VerticalAlignment="Center"/>
+              <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                <CheckBox x:Name="ShowDetailedEventsCheckBox"
+                          Content="详细事件"
+                          IsChecked="{Binding ShowDetailedEvents}"
+                          FontSize="12"
+                          Foreground="{DynamicResource TextSecondaryBrush}"
+                          VerticalAlignment="Center"/>
+                <TextBlock Text="显示 file_detected / file_skipped 等调试事件"
+                           FontSize="11"
+                           Foreground="{DynamicResource TextTertiaryBrush}"
+                           VerticalAlignment="Center"/>
+              </StackPanel>
             </DockPanel>
           </Border>
 

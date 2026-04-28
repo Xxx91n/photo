@@ -101,6 +101,10 @@ public sealed class WorkerIpcServerHostedService : BackgroundService
             case WorkerIpcMethods.Shutdown:
                 return new WorkerIpcResponse(true, Data: BuildStatus(), Message: "shutdown", Id: request.Id);
 
+            case WorkerIpcMethods.ReloadConfig:
+                _runtime.ReloadConfigAsync().GetAwaiter().GetResult();
+                return new WorkerIpcResponse(true, Data: BuildStatus(), Id: request.Id);
+
             default:
                 return new WorkerIpcResponse(false, Message: "unknown method", Id: request.Id);
         }
