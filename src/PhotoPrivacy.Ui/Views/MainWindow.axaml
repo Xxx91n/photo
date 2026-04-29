@@ -93,7 +93,8 @@
                         <Button x:Name="BrowseExifToolButton"
                                 DockPanel.Dock="Right"
                                 Content="…"
-                                Width="36"
+                                MinWidth="28"
+                                Padding="4,0"
                                 Classes="ghost"
                                 VerticalAlignment="Center"/>
                       </DockPanel>
@@ -122,7 +123,8 @@
                       <Button x:Name="BrowseHotFolderButton"
                               DockPanel.Dock="Right"
                               Content="…"
-                              Width="36"
+                              MinWidth="28"
+                              Padding="4,0"
                               Classes="ghost"
                               VerticalAlignment="Center"/>
                     </DockPanel>
@@ -162,7 +164,8 @@
                       <Button x:Name="BrowseBackupDirectoryButton"
                               DockPanel.Dock="Right"
                               Content="…"
-                              Width="36"
+                              MinWidth="28"
+                              Padding="4,0"
                               Classes="ghost"
                               VerticalAlignment="Center"/>
                     </DockPanel>
@@ -251,7 +254,8 @@
                       <Button x:Name="BrowseAuditLogDirectoryButton"
                               DockPanel.Dock="Right"
                               Content="…"
-                              Width="36"
+                              MinWidth="28"
+                              Padding="4,0"
                               Classes="ghost"
                               VerticalAlignment="Center"/>
                     </DockPanel>

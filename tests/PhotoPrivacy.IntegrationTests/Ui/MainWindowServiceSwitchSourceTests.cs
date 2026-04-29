@@ -14,7 +14,7 @@ public sealed class MainWindowServiceSwitchSourceTests
         Assert.Contains("vm.CurrentMode = MapModeLabel(_options.RuntimeKind);", source, StringComparison.Ordinal);
         Assert.Contains("OnInstallServiceClick(object? sender, RoutedEventArgs e)", source, StringComparison.Ordinal);
         Assert.Contains("OnStartServiceClick(object? sender, RoutedEventArgs e)", source, StringComparison.Ordinal);
-        Assert.Contains("_ = SwitchToServiceModeAfterInstallAsync(CancellationToken.None);", source, StringComparison.Ordinal);
+        Assert.Contains("SwitchToServiceModeAfterInstallAsync", source, StringComparison.Ordinal);
     }
 
     [Fact]

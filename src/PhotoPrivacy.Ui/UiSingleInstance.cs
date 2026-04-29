@@ -13,8 +13,16 @@ public sealed class UiSingleInstance : IDisposable
 
     public UiSingleInstance()
     {
-        _mutex = new Mutex(initiallyOwned: true, MutexName, out var isOwner);
-        _isOwner = isOwner;
+        try
+        {
+            _mutex = new Mutex(initiallyOwned: true, MutexName, out var isOwner);
+            _isOwner = isOwner;
+        }
+        catch (AbandonedMutexException)
+        {
+            _mutex = new Mutex(initiallyOwned: true, MutexName, out _);
+            _isOwner = true;
+        }
     }
 
     public bool IsOwner => _isOwner;

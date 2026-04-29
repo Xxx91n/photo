@@ -16,6 +16,14 @@ public static class UiProgram
 
     public static int Start(string[] args)
     {
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            UiDiagnosticLog.Write($"[FATAL] UnhandledException: {e.ExceptionObject}");
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            UiDiagnosticLog.Write($"[FATAL] UnobservedTaskException: {e.Exception}");
+            e.SetObserved();
+        };
+
         UiDiagnosticLog.Write("UiProgram.Start entered");
         using var single = new UiSingleInstance();
         if (!single.IsOwner)

@@ -91,6 +91,7 @@ public partial class MainWindow : Window
 
             ApplyThemeVariantToApplication(viewModel.ThemeVariant);
             SyncThemeVariantComboSelection(viewModel.ThemeVariant);
+            SyncLogLevelComboSelection(viewModel.LogLevel);
             viewModel.SaveStatus = string.Empty;
             SetCurrentPage(viewModel.CurrentPage);
 
@@ -567,6 +568,7 @@ public partial class MainWindow : Window
             if (DataContext is MainWindowViewModel vm)
             {
                 vm.LogLevel = level;
+                vm.LogEnabled = level is "all" or "debug";
                 vm.ShowDetailedEvents = level is "all" or "debug";
             }
         }
@@ -607,6 +609,33 @@ public partial class MainWindow : Window
             }
 
             ThemeVariantComboBox.SelectedIndex = 0;
+        }
+        catch
+        {
+            // control not yet ready
+        }
+    }
+
+    private void SyncLogLevelComboSelection(string level)
+    {
+        try
+        {
+            if (LogLevelComboBox is null || LogLevelComboBox.Items is null)
+            {
+                return;
+            }
+
+            foreach (var item in LogLevelComboBox.Items)
+            {
+                if (item is ComboBoxItem comboItem
+                    && string.Equals(comboItem.Tag?.ToString(), level, StringComparison.OrdinalIgnoreCase))
+                {
+                    LogLevelComboBox.SelectedItem = comboItem;
+                    return;
+                }
+            }
+
+            LogLevelComboBox.SelectedIndex = 1;
         }
         catch
         {
@@ -689,7 +718,11 @@ public partial class MainWindow : Window
 
         if (ImmediateModeSwitchPolicy.ShouldSwitchAfterInstall(result))
         {
-            _ = SwitchToServiceModeAfterInstallAsync(CancellationToken.None);
+            _ = Task.Run(async () =>
+            {
+                try { await SwitchToServiceModeAfterInstallAsync(CancellationToken.None); }
+                catch (Exception ex) { UiDiagnosticLog.Write($"SwitchToServiceMode failed: {ex.Message}"); }
+            });
         }
 
         SetServiceButtonsBusy(isBusy: false);
@@ -722,7 +755,11 @@ public partial class MainWindow : Window
 
         if (ImmediateModeSwitchPolicy.ShouldSwitchAfterUninstall(result))
         {
-            _ = EnsureTrayWorkerAfterServiceUninstallAsync(CancellationToken.None);
+            _ = Task.Run(async () =>
+            {
+                try { await EnsureTrayWorkerAfterServiceUninstallAsync(CancellationToken.None); }
+                catch (Exception ex) { UiDiagnosticLog.Write($"EnsureTrayWorker failed: {ex.Message}"); }
+            });
         }
 
         SetServiceButtonsBusy(isBusy: false);
@@ -775,7 +812,11 @@ public partial class MainWindow : Window
 
         if (result.Status == ServiceCommandStatus.Success)
         {
-            _ = SwitchToServiceModeAfterInstallAsync(CancellationToken.None);
+            _ = Task.Run(async () =>
+            {
+                try { await SwitchToServiceModeAfterInstallAsync(CancellationToken.None); }
+                catch (Exception ex) { UiDiagnosticLog.Write($"SwitchToServiceMode failed: {ex.Message}"); }
+            });
         }
 
         SetServiceButtonsBusy(isBusy: false);
@@ -1147,6 +1188,15 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (string.IsNullOrWhiteSpace(vm.ExifToolPath)
+            || !Path.IsPathFullyQualified(vm.ExifToolPath)
+            || !File.Exists(vm.ExifToolPath))
+        {
+            vm.SaveStatus = "✗ ExifTool 路径无效，请先选择正确的 exiftool.exe";
+            ScheduleSaveStatusClear();
+            return;
+        }
+
         SetConfigButtonsBusy(isBusy: true);
         try
         {
@@ -1162,7 +1212,18 @@ public partial class MainWindow : Window
                 AuditLogDirectory: vm.AuditLogDirectory,
                 LogLevel: vm.LogLevel);
             ConfigEditor.UpdateConfig(_options.ConfigPath, command);
-            await _workerManager.ReloadConfigAsync(_options.WorkerEndpointName, CancellationToken.None);
+
+            try
+            {
+                await _workerManager.ReloadConfigAsync(_options.WorkerEndpointName, CancellationToken.None);
+            }
+            catch
+            {
+                vm.SaveStatus = "✓ 已保存（Worker 未运行，下次启动生效）";
+                ScheduleSaveStatusClear();
+                return;
+            }
+
             ApplyRuntimeConfigToUiState();
             vm.SaveStatus = "✓ 已应用";
             ScheduleSaveStatusClear();
@@ -1258,6 +1319,7 @@ public partial class MainWindow : Window
                 vm.BackupDirectory = cfg.Backup.Directory;
                 vm.AuditLogDirectory = cfg.Audit.LogDirectory;
                 vm.LogLevel = cfg.Audit.DiagnosticMode ? "debug" : "info";
+                SyncLogLevelComboSelection(vm.LogLevel);
                 vm.ExifToolPathHint = _exifToolHint;
             }
 
