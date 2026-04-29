@@ -9,7 +9,7 @@ public sealed class AuditTailServiceFormattingTests
     {
         const string line = "{\"event_type\":\"file_processing_succeeded\",\"timestamp_utc\":\"2026-04-19T04:00:00.0000000+00:00\",\"source_path_masked\":\"D:/hot/***/a.jpg\",\"message\":\"ok\",\"data\":null}";
 
-        var parsed = AuditTailService.ParseAuditLine(line, includeDetailedEvents: false);
+        var parsed = AuditTailService.ParseAuditLine(line, "info");
 
         Assert.NotNull(parsed);
         Assert.Equal("✅ 清理完成", parsed!.DisplayEvent);
@@ -22,7 +22,7 @@ public sealed class AuditTailServiceFormattingTests
     {
         const string line = "{\"event_type\":\"file_detected\",\"timestamp_utc\":\"2026-04-19T04:00:00.0000000+00:00\",\"source_path_masked\":\"D:/hot/***/a.jpg\",\"message\":\"detected\",\"data\":null}";
 
-        var parsed = AuditTailService.ParseAuditLine(line, includeDetailedEvents: false);
+        var parsed = AuditTailService.ParseAuditLine(line, "info");
 
         Assert.Null(parsed);
     }
@@ -32,7 +32,7 @@ public sealed class AuditTailServiceFormattingTests
     {
         const string line = "{\"event_type\":\"file_detected\",\"timestamp_utc\":\"2026-04-19T04:00:00.0000000+00:00\",\"source_path_masked\":\"D:/hot/***/a.jpg\",\"message\":\"detected\",\"data\":null}";
 
-        var parsed = AuditTailService.ParseAuditLine(line, includeDetailedEvents: true);
+        var parsed = AuditTailService.ParseAuditLine(line, "all");
 
         Assert.NotNull(parsed);
         Assert.Equal("🔍 检测到文件", parsed!.DisplayEvent);
@@ -64,7 +64,7 @@ public sealed class AuditTailServiceFormattingTests
         const string invalid = "{\"event_type\":\"file_detected\"";
 
         AuditLogEntry? entry = null;
-        var exception = Record.Exception(() => entry = AuditTailService.ParseAuditLine(invalid, includeDetailedEvents: true));
+        var exception = Record.Exception(() => entry = AuditTailService.ParseAuditLine(invalid, "all"));
 
         Assert.Null(exception);
         Assert.Null(entry);

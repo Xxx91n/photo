@@ -65,12 +65,15 @@ public static class ConfigEditor
 
     private static bool ResolveDiagnosticMode(string logLevel, bool fallback)
     {
-        if (string.Equals(logLevel, "debug", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(logLevel, "all", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(logLevel, "debug", StringComparison.OrdinalIgnoreCase))
         {
             return true;
         }
 
-        if (string.Equals(logLevel, "info", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(logLevel, "info", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(logLevel, "warn", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(logLevel, "error", StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }

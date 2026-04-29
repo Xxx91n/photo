@@ -282,9 +282,16 @@ public sealed class MetadataCleanerWorker : BackgroundService
         try
         {
             var config = LoadEffectiveConfig();
-            AppConfigValidator.Validate(config);
             _currentConfig = config;
             await ApplyConfigAsync(config, CancellationToken.None);
+        }
+        catch (AppConfigValidationException ex)
+        {
+            _logger.LogWarning(ex, "ReloadConfig validation failed: {Message}", ex.Message);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "ReloadConfig failed: {Message}", ex.Message);
         }
         finally
         {
@@ -294,6 +301,15 @@ public sealed class MetadataCleanerWorker : BackgroundService
 
     private async Task ApplyConfigAsync(AppConfig config, CancellationToken token)
     {
+        try
+        {
+            AppConfigValidator.Validate(config);
+        }
+        catch (AppConfigValidationException)
+        {
+            throw;
+        }
+
         _watcher?.Stop();
 
         if (_bridge is not null)

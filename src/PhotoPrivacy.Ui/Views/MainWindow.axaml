@@ -92,7 +92,7 @@
                                  VerticalAlignment="Center"/>
                         <Button x:Name="BrowseExifToolButton"
                                 DockPanel.Dock="Right"
-                                Content="浏览"
+                                Content="…"
                                 Width="36"
                                 Classes="ghost"
                                 VerticalAlignment="Center"/>
@@ -121,7 +121,7 @@
                                VerticalAlignment="Center"/>
                       <Button x:Name="BrowseHotFolderButton"
                               DockPanel.Dock="Right"
-                              Content="浏览"
+                              Content="…"
                               Width="36"
                               Classes="ghost"
                               VerticalAlignment="Center"/>
@@ -161,25 +161,14 @@
                                VerticalAlignment="Center"/>
                       <Button x:Name="BrowseBackupDirectoryButton"
                               DockPanel.Dock="Right"
-                              Content="浏览"
+                              Content="…"
                               Width="36"
                               Classes="ghost"
                               VerticalAlignment="Center"/>
                     </DockPanel>
                   </DockPanel>
                 </Border>
-
-                <Border Classes="settings-row">
-                  <DockPanel LastChildFill="False">
-                    <StackPanel DockPanel.Dock="Left" Spacing="2">
-                      <TextBlock Text="启用诊断日志" Classes="row-label"/>
-                      <TextBlock Text="输出详细处理记录，仅调试时开启" Classes="row-desc"/>
-                    </StackPanel>
-                    <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding LogEnabled}" VerticalAlignment="Center" OnContent="" OffContent=""/>
-                  </DockPanel>
-                </Border>
-
-                <Border Classes="row-divider"/>
+<!-- 诊断日志已并入下方日志设置中的日志级别 -->
 
                 <Border Classes="settings-row">
                   <DockPanel LastChildFill="False">
@@ -213,11 +202,10 @@
                     </StackPanel>
                     <ComboBox x:Name="ThemeVariantComboBox"
                               DockPanel.Dock="Right"
-                              Width="160"
-                              SelectedItem="{Binding ThemeVariant}">
-                      <ComboBoxItem Content="system"/>
-                      <ComboBoxItem Content="light"/>
-                      <ComboBoxItem Content="dark"/>
+                              Width="160">
+                      <ComboBoxItem Content="跟随系统" Tag="system"/>
+                      <ComboBoxItem Content="浅色"     Tag="light"/>
+                      <ComboBoxItem Content="深色"     Tag="dark"/>
                     </ComboBox>
                   </DockPanel>
                 </Border>
@@ -236,10 +224,12 @@
                     </StackPanel>
                     <ComboBox x:Name="LogLevelComboBox"
                               DockPanel.Dock="Right"
-                              Width="160"
-                              SelectedItem="{Binding LogLevel}">
-                      <ComboBoxItem Content="info"/>
-                      <ComboBoxItem Content="debug"/>
+                              Width="160">
+                      <ComboBoxItem Content="ALL（全部）"   Tag="all"/>
+                      <ComboBoxItem Content="INFO（标准）"  Tag="info"/>
+                      <ComboBoxItem Content="DEBUG（调试）" Tag="debug"/>
+                      <ComboBoxItem Content="WARN（警告）"  Tag="warn"/>
+                      <ComboBoxItem Content="ERROR（错误）" Tag="error"/>
                     </ComboBox>
                   </DockPanel>
                 </Border>
@@ -260,7 +250,7 @@
                                VerticalAlignment="Center"/>
                       <Button x:Name="BrowseAuditLogDirectoryButton"
                               DockPanel.Dock="Right"
-                              Content="浏览"
+                              Content="…"
                               Width="36"
                               Classes="ghost"
                               VerticalAlignment="Center"/>
@@ -291,18 +281,6 @@
                   BorderThickness="0,1,0,1">
             <DockPanel>
               <Button DockPanel.Dock="Right" x:Name="ClearLogsButton" Content="清空" Classes="ghost" Height="28" FontSize="12"/>
-              <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                <CheckBox x:Name="ShowDetailedEventsCheckBox"
-                          Content="详细事件"
-                          IsChecked="{Binding ShowDetailedEvents}"
-                          FontSize="12"
-                          Foreground="{DynamicResource TextSecondaryBrush}"
-                          VerticalAlignment="Center"/>
-                <TextBlock Text="显示 file_detected / file_skipped 等调试事件"
-                           FontSize="11"
-                           Foreground="{DynamicResource TextTertiaryBrush}"
-                           VerticalAlignment="Center"/>
-              </StackPanel>
             </DockPanel>
           </Border>
 

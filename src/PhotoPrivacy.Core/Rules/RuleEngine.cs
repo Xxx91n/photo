@@ -31,7 +31,7 @@ public sealed class RuleEngine
 
         var outputPath = ResolveOutputPath(sourcePath);
         var createBackup = _config.Backup.Enabled;
-        var backupPath = ResolveBackupPath(sourcePath, createBackup, _config.Backup);
+        var backupPath = ResolveBackupPath(sourcePath, createBackup);
 
         if (createBackup
             && backupPath is not null
@@ -54,24 +54,20 @@ public sealed class RuleEngine
         return Path.Combine(_config.Rules.OutputDirectory, relative);
     }
 
-    private static string? ResolveBackupPath(string sourcePath, bool createBackup, BackupOptions backup)
+    private string? ResolveBackupPath(string sourcePath, bool createBackup)
     {
         if (!createBackup)
         {
             return null;
         }
 
+        var backup = _config.Backup;
         var backupDir = string.IsNullOrWhiteSpace(backup.Directory)
-            ? string.Empty
+            ? Path.Combine(_config.Watch.HotFolder, "bak")
             : backup.Directory;
 
         var fileName = Path.GetFileName(sourcePath);
         var backupFileName = fileName + backup.Suffix;
-
-        if (string.IsNullOrWhiteSpace(backupDir))
-        {
-            return Path.Combine(Path.GetDirectoryName(sourcePath) ?? ".", backupFileName);
-        }
 
         return Path.Combine(backupDir, backupFileName);
     }

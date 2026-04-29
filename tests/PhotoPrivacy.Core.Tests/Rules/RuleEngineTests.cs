@@ -41,13 +41,14 @@ public sealed class RuleEngineTests
     {
         var cfg = AppConfig.Default with
         {
-            Backup = AppConfig.Default.Backup with { Enabled = true, Suffix = ".bak" }
+            Backup = AppConfig.Default.Backup with { Enabled = true, Suffix = ".bak" },
+            Watch = AppConfig.Default.Watch with { HotFolder = @"D:\hot" }
         };
 
         var engine = new RuleEngine(cfg);
         var decision = engine.Decide(@"D:\hot\a.jpg");
 
         Assert.True(decision.CreateBackup);
-        Assert.Equal(@"D:\hot\a.jpg.bak", decision.BackupPath);
+        Assert.Equal(@"D:\hot\bak\a.jpg.bak", decision.BackupPath);
     }
 }

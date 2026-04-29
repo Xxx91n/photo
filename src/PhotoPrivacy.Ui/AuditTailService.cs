@@ -6,8 +6,8 @@ public sealed class AuditTailService
 {
     private readonly string _hotFolder;
     private readonly Action<AuditLogEntry> _onEntry;
-    private readonly Func<bool> _includeDetailedEvents;
-    private readonly Action<string?> _onExifToolExePathDetected;
+    private readonly Func<string> _getLogLevel;
+    private readonly Action<string?>? _onExifToolExePathDetected;
     private readonly CancellationTokenSource _cts = new();
     private readonly object _gate = new();
 
@@ -19,12 +19,12 @@ public sealed class AuditTailService
     public AuditTailService(
         string hotFolder,
         Action<AuditLogEntry> onEntry,
-        Func<bool> includeDetailedEvents,
-        Action<string?> onExifToolExePathDetected)
+        Func<string> getLogLevel,
+        Action<string?>? onExifToolExePathDetected = null)
     {
         _hotFolder = hotFolder;
         _onEntry = onEntry;
-        _includeDetailedEvents = includeDetailedEvents;
+        _getLogLevel = getLogLevel;
         _onExifToolExePathDetected = onExifToolExePathDetected;
         _currentAuditFilePath = BuildAuditPath(_hotFolder, DateTime.Today);
     }
@@ -79,7 +79,7 @@ public sealed class AuditTailService
         }
     }
 
-    public static AuditLogEntry? ParseAuditLine(string line, bool includeDetailedEvents)
+    public static AuditLogEntry? ParseAuditLine(string line, string logLevel)
     {
         if (string.IsNullOrWhiteSpace(line))
         {
@@ -95,7 +95,7 @@ public sealed class AuditTailService
                 ? eventTypeEl.GetString() ?? "unknown"
                 : "unknown";
 
-            if (!includeDetailedEvents && string.Equals(eventType, "file_detected", StringComparison.OrdinalIgnoreCase))
+            if (!ShouldInclude(eventType, logLevel))
             {
                 return null;
             }
@@ -128,6 +128,28 @@ public sealed class AuditTailService
         {
             return null;
         }
+    }
+
+    private static bool ShouldInclude(string eventType, string logLevel)
+    {
+        return logLevel switch
+        {
+            "all" => true,
+            "debug" => eventType is not "file_detected",
+            "info" => eventType is "file_processing_succeeded"
+                                or "file_quarantined"
+                                or "service_started"
+                                or "config_applied"
+                                or "file_processing_failed"
+                                or "config_apply_failed"
+                                or "file_processing_started",
+            "warn" => eventType is "file_retry_scheduled"
+                                or "file_quarantined"
+                                or "file_processing_failed",
+            "error" => eventType is "file_processing_failed"
+                                or "config_apply_failed",
+            _ => true
+        };
     }
 
     private async Task LoopAsync(CancellationToken token)
@@ -201,10 +223,10 @@ public sealed class AuditTailService
         var exePath = TryExtractExifToolExePath(line);
         if (!string.IsNullOrWhiteSpace(exePath))
         {
-            _onExifToolExePathDetected(exePath);
+            _onExifToolExePathDetected?.Invoke(exePath);
         }
 
-        var entry = ParseAuditLine(line, _includeDetailedEvents());
+        var entry = ParseAuditLine(line, _getLogLevel());
         if (entry is not null)
         {
             _onEntry(entry);

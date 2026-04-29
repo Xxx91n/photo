@@ -159,7 +159,7 @@ public partial class MainWindow : Window
                     }
                 });
             },
-            includeDetailedEvents: () => viewModel?.ShowDetailedEvents ?? false,
+            getLogLevel: () => (DataContext as MainWindowViewModel)?.LogLevel ?? "info",
             onExifToolExePathDetected: exePath => _ = ResolveExifToolVersionAsync(exePath ?? exifToolPathFromConfig));
 
         _auditTail.Start();
@@ -533,31 +533,46 @@ public partial class MainWindow : Window
 
     private void OnThemeVariantSelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
-        if (sender is not ComboBox combo)
+        try
         {
-            return;
-        }
+            if (sender is not ComboBox combo || combo.SelectedItem is not ComboBoxItem item)
+            {
+                return;
+            }
 
-        var variant = ReadComboItemString(combo.SelectedItem);
-        if (DataContext is MainWindowViewModel vm)
+            var variant = NormalizeThemeVariant(item.Tag?.ToString());
+            if (DataContext is MainWindowViewModel vm)
+            {
+                vm.ThemeVariant = variant;
+            }
+
+            ApplyThemeVariantToApplication(variant);
+        }
+        catch
         {
-            vm.ThemeVariant = variant;
+            // prevent crash on unexpected combo state
         }
-
-        ApplyThemeVariantToApplication(variant);
     }
 
     private void OnLogLevelSelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
-        if (sender is not ComboBox combo)
+        try
         {
-            return;
-        }
+            if (sender is not ComboBox combo || combo.SelectedItem is not ComboBoxItem item)
+            {
+                return;
+            }
 
-        var level = ReadComboItemString(combo.SelectedItem);
-        if (DataContext is MainWindowViewModel vm)
+            var level = item.Tag?.ToString() ?? "info";
+            if (DataContext is MainWindowViewModel vm)
+            {
+                vm.LogLevel = level;
+                vm.ShowDetailedEvents = level is "all" or "debug";
+            }
+        }
+        catch
         {
-            vm.LogLevel = level;
+            // prevent crash on unexpected combo state
         }
     }
 
@@ -573,18 +588,30 @@ public partial class MainWindow : Window
 
     private void SyncThemeVariantComboSelection(string variant)
     {
-        var normalized = NormalizeThemeVariant(variant);
-        foreach (var item in ThemeVariantComboBox.Items)
+        try
         {
-            if (item is ComboBoxItem comboItem
-                && string.Equals(comboItem.Content?.ToString(), normalized, StringComparison.OrdinalIgnoreCase))
+            if (ThemeVariantComboBox is null || ThemeVariantComboBox.Items is null)
             {
-                ThemeVariantComboBox.SelectedItem = comboItem;
                 return;
             }
-        }
 
-        ThemeVariantComboBox.SelectedIndex = 0;
+            var normalized = NormalizeThemeVariant(variant);
+            foreach (var item in ThemeVariantComboBox.Items)
+            {
+                if (item is ComboBoxItem comboItem
+                    && string.Equals(comboItem.Tag?.ToString(), normalized, StringComparison.OrdinalIgnoreCase))
+                {
+                    ThemeVariantComboBox.SelectedItem = comboItem;
+                    return;
+                }
+            }
+
+            ThemeVariantComboBox.SelectedIndex = 0;
+        }
+        catch
+        {
+            // control not yet ready
+        }
     }
 
     private static string ReadThemeVariantSelection(object? selectedItem)
@@ -945,11 +972,13 @@ public partial class MainWindow : Window
         }
 
         var isServiceMode = string.Equals(_options.RuntimeKind, "service", StringComparison.OrdinalIgnoreCase);
-        PauseResumeButton.IsEnabled = !isServiceMode;
-        if (isServiceMode)
+        await Dispatcher.UIThread.InvokeAsync(() =>
         {
-            PauseResumeButton.Content = "暂停（服务模式不可用）";
-        }
+            PauseResumeButton.IsEnabled = !isServiceMode;
+            PauseResumeButton.Content = isServiceMode
+                ? "暂停（服务模式不可用）"
+                : (DataContext as MainWindowViewModel)?.PauseResumeLabel ?? "⏸ 暂停";
+        });
 
         if (_options.UseTrayIcon)
         {
@@ -1067,6 +1096,9 @@ public partial class MainWindow : Window
                     vm.CurrentMode = MapModeLabel(_options.RuntimeKind);
                     vm.RuntimeStatus = BuildRuntimeStatusText(_options.RuntimeKind, _options.GetServiceRuntimeState(), false);
                 }
+
+                PauseResumeButton.IsEnabled = true;
+                PauseResumeButton.Content = (DataContext as MainWindowViewModel)?.PauseResumeLabel ?? "⏸ 暂停";
 
                 if (_options.UseTrayIcon)
                 {

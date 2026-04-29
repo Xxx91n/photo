@@ -117,8 +117,14 @@ public sealed class TrayHost : IDisposable
 
     private void ShowMainWindow()
     {
+        if (_window.WindowState == WindowState.Minimized)
+        {
+            _window.WindowState = WindowState.Normal;
+        }
+
         _window.Show();
         _window.Activate();
+        _window.BringIntoView();
     }
 
     private void OnTrayClicked(object? sender, EventArgs e)
