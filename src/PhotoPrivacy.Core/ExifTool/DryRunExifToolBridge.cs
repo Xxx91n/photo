@@ -28,6 +28,7 @@ public sealed class DryRunExifToolBridge : IExifToolBridge
         await _audit.WriteAsync(
             new AuditEvent(
                 EventType: "dry_run_wipe_skipped",
+                Level: AuditLevel.Info,
                 TimestampUtc: DateTimeOffset.UtcNow,
                 TaskId: Guid.NewGuid().ToString("N"),
                 SourcePath: targetPath,

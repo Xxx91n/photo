@@ -73,7 +73,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
             : null;
         IAuditLogger auditLogger = _audit is not null ? _audit : new NoopAuditLogger();
         _bridge = CreateBridge(config, auditLogger);
-        _pipeline = new FileTaskPipeline(config, new RuleEngine(config), _bridge, new LocalFileOperations(), auditLogger);
+        _pipeline = new FileTaskPipeline(config, new RuleEngine(config), _bridge, new LocalFileOperations(), auditLogger, new InMemoryProcessedRecordStore());
         _maxParallelDrain = Math.Max(1, Math.Min(config.ExifTool.MaxParallelDrain, config.ExifTool.StayOpenPoolSize));
         _debounceQueue = new DebounceQueue(TimeSpan.FromMilliseconds(config.Watch.DebounceMs), () => DateTimeOffset.UtcNow);
         _recentFingerprintCache = new RecentFingerprintCache(() => DateTimeOffset.UtcNow);
@@ -87,6 +87,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
                 await _audit.WriteAsync(
                     new AuditEvent(
                         EventType: "exiftool_started",
+                        Level: AuditLevel.Info,
                         TimestampUtc: DateTimeOffset.UtcNow,
                         TaskId: Guid.NewGuid().ToString("N"),
                         SourcePath: config.ExifTool.Path,
@@ -112,6 +113,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
             await _audit.WriteAsync(
                 new AuditEvent(
                     EventType: "service_started",
+                    Level: AuditLevel.Info,
                     TimestampUtc: DateTimeOffset.UtcNow,
                     TaskId: Guid.NewGuid().ToString("N"),
                     SourcePath: config.Watch.HotFolder,
@@ -190,6 +192,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
                 await _audit.WriteAsync(
                     new AuditEvent(
                         EventType: "service_stopped",
+                        Level: AuditLevel.Info,
                         TimestampUtc: DateTimeOffset.UtcNow,
                         TaskId: Guid.NewGuid().ToString("N"),
                         SourcePath: string.Empty,
@@ -334,7 +337,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
             : null;
         IAuditLogger auditLogger = _audit is not null ? _audit : new NoopAuditLogger();
         _bridge = CreateBridge(config, auditLogger);
-        _pipeline = new FileTaskPipeline(config, new RuleEngine(config), _bridge, new LocalFileOperations(), auditLogger);
+        _pipeline = new FileTaskPipeline(config, new RuleEngine(config), _bridge, new LocalFileOperations(), auditLogger, new InMemoryProcessedRecordStore());
         _maxParallelDrain = Math.Max(1, Math.Min(config.ExifTool.MaxParallelDrain, config.ExifTool.StayOpenPoolSize));
 
         await _bridge.StartAsync(token);

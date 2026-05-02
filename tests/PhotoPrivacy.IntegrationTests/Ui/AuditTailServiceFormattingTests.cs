@@ -7,7 +7,7 @@ public sealed class AuditTailServiceFormattingTests
     [Fact]
     public void ParseAuditLine_Should_Map_FileProcessingSucceeded_Event()
     {
-        const string line = "{\"event_type\":\"file_processing_succeeded\",\"timestamp_utc\":\"2026-04-19T04:00:00.0000000+00:00\",\"source_path_masked\":\"D:/hot/***/a.jpg\",\"message\":\"ok\",\"data\":null}";
+        const string line = "{\"event_type\":\"file_processing_succeeded\",\"level\":\"INFO\",\"timestamp_utc\":\"2026-04-19T04:00:00.0000000+00:00\",\"source_path_masked\":\"D:/hot/***/a.jpg\",\"message\":\"ok\",\"data\":null}";
 
         var parsed = AuditTailService.ParseAuditLine(line, "info");
 
@@ -20,7 +20,7 @@ public sealed class AuditTailServiceFormattingTests
     [Fact]
     public void ParseAuditLine_Should_Filter_FileDetected_When_Detailed_Disabled()
     {
-        const string line = "{\"event_type\":\"file_detected\",\"timestamp_utc\":\"2026-04-19T04:00:00.0000000+00:00\",\"source_path_masked\":\"D:/hot/***/a.jpg\",\"message\":\"detected\",\"data\":null}";
+        const string line = "{\"event_type\":\"file_detected\",\"level\":\"DEBUG\",\"timestamp_utc\":\"2026-04-19T04:00:00.0000000+00:00\",\"source_path_masked\":\"D:/hot/***/a.jpg\",\"message\":\"detected\",\"data\":null}";
 
         var parsed = AuditTailService.ParseAuditLine(line, "info");
 
@@ -30,7 +30,7 @@ public sealed class AuditTailServiceFormattingTests
     [Fact]
     public void ParseAuditLine_Should_Keep_FileDetected_When_Detailed_Enabled()
     {
-        const string line = "{\"event_type\":\"file_detected\",\"timestamp_utc\":\"2026-04-19T04:00:00.0000000+00:00\",\"source_path_masked\":\"D:/hot/***/a.jpg\",\"message\":\"detected\",\"data\":null}";
+        const string line = "{\"event_type\":\"file_detected\",\"level\":\"DEBUG\",\"timestamp_utc\":\"2026-04-19T04:00:00.0000000+00:00\",\"source_path_masked\":\"D:/hot/***/a.jpg\",\"message\":\"detected\",\"data\":null}";
 
         var parsed = AuditTailService.ParseAuditLine(line, "all");
 
@@ -61,7 +61,7 @@ public sealed class AuditTailServiceFormattingTests
     [Fact]
     public void ParseAuditLine_Should_Not_Throw_On_Invalid_Json_Line()
     {
-        const string invalid = "{\"event_type\":\"file_detected\"";
+        const string invalid = "{\"event_type\":\"file_detected\",\"level\":\"DEBUG\"";
 
         AuditLogEntry? entry = null;
         var exception = Record.Exception(() => entry = AuditTailService.ParseAuditLine(invalid, "all"));

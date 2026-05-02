@@ -15,6 +15,7 @@ public sealed class JsonLineAuditLoggerTests
             var logger = new JsonLineAuditLogger(dir, retainDays: 30, diagnosticMode: false);
             var ev = new AuditEvent(
                 EventType: "file_processing_succeeded",
+                Level: AuditLevel.Info,
                 TimestampUtc: DateTimeOffset.UtcNow,
                 TaskId: "t-1",
                 SourcePath: @"C:\Users\alice\Pictures\a.jpg",

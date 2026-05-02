@@ -96,7 +96,11 @@ public sealed class AuditTailService
                 ? eventTypeEl.GetString() ?? "unknown"
                 : "unknown";
 
-            if (!ShouldInclude(eventType, logLevel))
+            var level = root.TryGetProperty("level", out var levelEl)
+                ? levelEl.GetString() ?? "INFO"
+                : "INFO";
+
+            if (!ShouldInclude(level, logLevel))
             {
                 return null;
             }
@@ -131,26 +135,28 @@ public sealed class AuditTailService
         }
     }
 
-    private static bool ShouldInclude(string eventType, string logLevel)
+    private static bool ShouldInclude(string eventLevelText, string uiLogLevel)
     {
-        return logLevel switch
+        int eventLevel = eventLevelText.ToLowerInvariant() switch
         {
-            "all" => true,
-            "debug" => eventType is not "file_detected",
-            "info" => eventType is "file_processing_succeeded"
-                                or "file_quarantined"
-                                or "service_started"
-                                or "config_applied"
-                                or "file_processing_failed"
-                                or "config_apply_failed"
-                                or "file_processing_started",
-            "warn" => eventType is "file_retry_scheduled"
-                                or "file_quarantined"
-                                or "file_processing_failed",
-            "error" => eventType is "file_processing_failed"
-                                or "config_apply_failed",
-            _ => true
+            "debug" => 0,
+            "info"  => 1,
+            "warn"  => 2,
+            "error" => 3,
+            _       => 1
         };
+
+        int minDisplay = uiLogLevel.ToLowerInvariant() switch
+        {
+            "all"   => 0,
+            "debug" => 0,
+            "info"  => 1,
+            "warn"  => 2,
+            "error" => 3,
+            _       => 1
+        };
+
+        return eventLevel >= minDisplay;
     }
 
     private async Task LoopAsync(CancellationToken token)

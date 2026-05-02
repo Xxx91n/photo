@@ -13,22 +13,34 @@ public sealed class JsonLineAuditLogger : IAuditLogger
     private readonly string _logDirectory;
     private readonly int _retainDays;
     private readonly bool _diagnosticMode;
+    private AuditLevel _minimumWriteLevel;
 
-    public JsonLineAuditLogger(string logDirectory, int retainDays, bool diagnosticMode)
+    public JsonLineAuditLogger(
+        string logDirectory,
+        int retainDays,
+        bool diagnosticMode,
+        AuditLevel minimumWriteLevel = AuditLevel.Debug)
     {
         _logDirectory = logDirectory;
         _retainDays = retainDays;
         _diagnosticMode = diagnosticMode;
+        _minimumWriteLevel = minimumWriteLevel;
         Directory.CreateDirectory(_logDirectory);
     }
 
+    public void SetMinimumWriteLevel(AuditLevel level) => _minimumWriteLevel = level;
+
     public async ValueTask WriteAsync(AuditEvent auditEvent, CancellationToken cancellationToken)
     {
+        if (auditEvent.Level < _minimumWriteLevel)
+            return;
+
         var fileName = $"audit-{DateTime.UtcNow:yyyy-MM-dd}.jsonl";
         var target = Path.Combine(_logDirectory, fileName);
         var payload = new
         {
             event_type = auditEvent.EventType,
+            level = auditEvent.Level.ToString().ToUpperInvariant(),
             timestamp_utc = auditEvent.TimestampUtc.ToUniversalTime().ToString("O"),
             task_id = auditEvent.TaskId,
             source_path_masked = PathMasker.Mask(auditEvent.SourcePath),

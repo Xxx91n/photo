@@ -69,7 +69,7 @@ public sealed class FswFolderWatcher : IFolderWatcher
     private async Task RecoverAsync(Exception ex)
     {
         await _audit.WriteAsync(
-            new AuditEvent("fsw_error", DateTimeOffset.UtcNow, Guid.NewGuid().ToString("N"), _config.Watch.HotFolder, ex.Message, null),
+            new AuditEvent("fsw_error", AuditLevel.Warn, DateTimeOffset.UtcNow, Guid.NewGuid().ToString("N"), _config.Watch.HotFolder, ex.Message, null),
             CancellationToken.None);
 
         Stop();
@@ -86,7 +86,7 @@ public sealed class FswFolderWatcher : IFolderWatcher
         }
 
         await _audit.WriteAsync(
-            new AuditEvent("fsw_recovered", DateTimeOffset.UtcNow, Guid.NewGuid().ToString("N"), _config.Watch.HotFolder, "recreated_watcher", null),
+            new AuditEvent("fsw_recovered", AuditLevel.Info, DateTimeOffset.UtcNow, Guid.NewGuid().ToString("N"), _config.Watch.HotFolder, "recreated_watcher", null),
             CancellationToken.None);
     }
 

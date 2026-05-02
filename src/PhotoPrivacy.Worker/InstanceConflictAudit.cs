@@ -18,6 +18,7 @@ internal static class InstanceConflictAudit
             await logger.WriteAsync(
                 new AuditEvent(
                     EventType: "instance_conflict",
+                    Level: AuditLevel.Warn,
                     TimestampUtc: DateTimeOffset.UtcNow,
                     TaskId: Guid.NewGuid().ToString("N"),
                     SourcePath: config.Watch.HotFolder,

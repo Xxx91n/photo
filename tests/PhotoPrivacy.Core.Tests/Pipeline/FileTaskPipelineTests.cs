@@ -21,7 +21,7 @@ public sealed class FileTaskPipelineTests
         var bridge = new AlwaysFailBridge();
         var fileOps = new InMemoryFileOperations();
         var audit = new InMemoryAuditLogger();
-        var pipeline = new FileTaskPipeline(cfg, ruleEngine, bridge, fileOps, audit);
+        var pipeline = new FileTaskPipeline(cfg, ruleEngine, bridge, fileOps, audit, new InMemoryProcessedRecordStore());
 
         await pipeline.HandleAsync(@"D:\hot\a.jpg", CancellationToken.None);
 
@@ -37,7 +37,7 @@ public sealed class FileTaskPipelineTests
         var bridge = new SlowSuccessBridge();
         var fileOps = new InMemoryFileOperations();
         var audit = new InMemoryAuditLogger();
-        var pipeline = new FileTaskPipeline(cfg, ruleEngine, bridge, fileOps, audit);
+        var pipeline = new FileTaskPipeline(cfg, ruleEngine, bridge, fileOps, audit, new InMemoryProcessedRecordStore());
 
         var t1 = pipeline.HandleAsync(@"D:\hot\a.jpg", CancellationToken.None);
         var t2 = pipeline.HandleAsync(@"D:\hot\a.jpg", CancellationToken.None);
@@ -64,7 +64,7 @@ public sealed class FileTaskPipelineTests
         var bridge = new CaptureTargetBridge();
         var fileOps = new InMemoryFileOperations();
         var audit = new InMemoryAuditLogger();
-        var pipeline = new FileTaskPipeline(cfg, ruleEngine, bridge, fileOps, audit);
+        var pipeline = new FileTaskPipeline(cfg, ruleEngine, bridge, fileOps, audit, new InMemoryProcessedRecordStore());
 
         await pipeline.HandleAsync(@"D:\hot\album\a.jpg", CancellationToken.None);
 
@@ -84,7 +84,7 @@ public sealed class FileTaskPipelineTests
         var bridge = new CaptureTargetBridge();
         var fileOps = new InMemoryFileOperations();
         var audit = new InMemoryAuditLogger();
-        var pipeline = new FileTaskPipeline(cfg, ruleEngine, bridge, fileOps, audit);
+        var pipeline = new FileTaskPipeline(cfg, ruleEngine, bridge, fileOps, audit, new InMemoryProcessedRecordStore());
 
         await pipeline.HandleAsync(@"D:\hot\a.jpg", CancellationToken.None);
 
@@ -119,7 +119,7 @@ public sealed class FileTaskPipelineTests
         var bridge = new AlwaysFailBridge();
         var fileOps = new InMemoryFileOperations();
         var audit = new InMemoryAuditLogger();
-        var pipeline = new FileTaskPipeline(cfg, ruleEngine, bridge, fileOps, audit);
+        var pipeline = new FileTaskPipeline(cfg, ruleEngine, bridge, fileOps, audit, new InMemoryProcessedRecordStore());
 
         await pipeline.HandleAsync(@"D:\hot\album\a.jpg", CancellationToken.None);
 
@@ -140,7 +140,7 @@ public sealed class FileTaskPipelineTests
         var bridge = new AlwaysFailBridge();
         var fileOps = new InMemoryFileOperations();
         var audit = new InMemoryAuditLogger();
-        var pipeline = new FileTaskPipeline(cfg, ruleEngine, bridge, fileOps, audit);
+        var pipeline = new FileTaskPipeline(cfg, ruleEngine, bridge, fileOps, audit, new InMemoryProcessedRecordStore());
 
         await pipeline.HandleAsync(@"D:\hot\a.jpg", CancellationToken.None);
 

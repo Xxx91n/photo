@@ -104,6 +104,7 @@ public static class PooledExifToolBridgeFactory
                 await audit.WriteAsync(
                     new AuditEvent(
                         EventType: lifecycleEvent.EventType,
+                        Level: AuditLevel.Info,
                         TimestampUtc: DateTimeOffset.UtcNow,
                         TaskId: Guid.NewGuid().ToString("N"),
                         SourcePath: lifecycleEvent.SourcePath,

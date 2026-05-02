@@ -12,6 +12,7 @@ public sealed class FileTaskPipeline
     private readonly IExifToolBridge _bridge;
     private readonly IFileOperations _fileOperations;
     private readonly IAuditLogger _audit;
+    private readonly IProcessedRecordStore _processedStore;
 
     private readonly HashSet<string> _inflight = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _gate = new();
@@ -21,13 +22,15 @@ public sealed class FileTaskPipeline
         RuleEngine ruleEngine,
         IExifToolBridge bridge,
         IFileOperations fileOperations,
-        IAuditLogger audit)
+        IAuditLogger audit,
+        IProcessedRecordStore processedStore)
     {
         _config = config;
         _ruleEngine = ruleEngine;
         _bridge = bridge;
         _fileOperations = fileOperations;
         _audit = audit;
+        _processedStore = processedStore;
     }
 
     public async Task HandleAsync(string sourcePath, CancellationToken cancellationToken)
@@ -39,9 +42,27 @@ public sealed class FileTaskPipeline
 
         try
         {
+            var processedKey = TryBuildProcessedKey(sourcePath);
+
+            if (processedKey is not null && _processedStore.IsProcessed(processedKey))
+            {
+                await _audit.WriteAsync(
+                    new AuditEvent(
+                        "file_skipped",
+                        AuditLevel.Info,
+                        DateTimeOffset.UtcNow,
+                        Guid.NewGuid().ToString("N"),
+                        sourcePath,
+                        "already_processed",
+                        null),
+                    cancellationToken);
+                return;
+            }
+
             await _audit.WriteAsync(
                 new AuditEvent(
                     "file_detected",
+                    AuditLevel.Debug,
                     DateTimeOffset.UtcNow,
                     Guid.NewGuid().ToString("N"),
                     sourcePath,
@@ -53,7 +74,7 @@ public sealed class FileTaskPipeline
             if (!decision.ShouldProcess || decision.OutputPath is null)
             {
                 await _audit.WriteAsync(
-                    new AuditEvent("file_skipped", DateTimeOffset.UtcNow, Guid.NewGuid().ToString("N"), sourcePath, decision.Reason, null),
+                    new AuditEvent("file_skipped", AuditLevel.Info, DateTimeOffset.UtcNow, Guid.NewGuid().ToString("N"), sourcePath, decision.Reason, null),
                     cancellationToken);
                 return;
             }
@@ -88,6 +109,7 @@ public sealed class FileTaskPipeline
                     await _audit.WriteAsync(
                         new AuditEvent(
                             "file_processing_started",
+                            AuditLevel.Debug,
                             DateTimeOffset.UtcNow,
                             Guid.NewGuid().ToString("N"),
                             sourcePath,
@@ -97,14 +119,18 @@ public sealed class FileTaskPipeline
 
                     await _bridge.WipeMetadataAsync(target, cancellationToken);
                     await _audit.WriteAsync(
-                        new AuditEvent("file_processing_succeeded", DateTimeOffset.UtcNow, Guid.NewGuid().ToString("N"), sourcePath, $"attempt={attempt}", null),
+                        new AuditEvent("file_processing_succeeded", AuditLevel.Info, DateTimeOffset.UtcNow, Guid.NewGuid().ToString("N"), sourcePath, $"attempt={attempt}", null),
                         cancellationToken);
+                    if (processedKey is not null)
+                    {
+                        _processedStore.MarkProcessed(processedKey);
+                    }
                     return;
                 }
                 catch (Exception ex)
                 {
                     await _audit.WriteAsync(
-                        new AuditEvent("file_processing_failed", DateTimeOffset.UtcNow, Guid.NewGuid().ToString("N"), sourcePath, ex.Message, null),
+                        new AuditEvent("file_processing_failed", AuditLevel.Error, DateTimeOffset.UtcNow, Guid.NewGuid().ToString("N"), sourcePath, ex.Message, null),
                         cancellationToken);
 
                     if (attempt < _config.Retry.MaxAttempts)
@@ -115,6 +141,7 @@ public sealed class FileTaskPipeline
                         await _audit.WriteAsync(
                             new AuditEvent(
                                 "file_retry_scheduled",
+                                AuditLevel.Warn,
                                 DateTimeOffset.UtcNow,
                                 Guid.NewGuid().ToString("N"),
                                 sourcePath,
@@ -134,7 +161,7 @@ public sealed class FileTaskPipeline
                 var destination = Path.Combine(_config.Quarantine.Directory, Path.GetFileName(failedFilePath));
                 _fileOperations.Move(failedFilePath, destination);
                 await _audit.WriteAsync(
-                    new AuditEvent("file_quarantined", DateTimeOffset.UtcNow, Guid.NewGuid().ToString("N"), sourcePath, destination, null),
+                    new AuditEvent("file_quarantined", AuditLevel.Warn, DateTimeOffset.UtcNow, Guid.NewGuid().ToString("N"), sourcePath, destination, null),
                     cancellationToken);
             }
         }
@@ -157,6 +184,24 @@ public sealed class FileTaskPipeline
         lock (_gate)
         {
             _inflight.Remove(path);
+        }
+    }
+
+    private static string? TryBuildProcessedKey(string sourcePath)
+    {
+        try
+        {
+            var info = new FileInfo(sourcePath);
+            if (!info.Exists)
+            {
+                return null;
+            }
+
+            return ProcessedKeyBuilder.Build(sourcePath, info.Length, info.LastWriteTimeUtc);
+        }
+        catch
+        {
+            return null;
         }
     }
 }
