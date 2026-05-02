@@ -117,15 +117,57 @@ public sealed class FileTaskPipeline
                             null),
                         cancellationToken);
 
-                    await _bridge.WipeMetadataAsync(target, cancellationToken);
-                    await _audit.WriteAsync(
-                        new AuditEvent("file_processing_succeeded", AuditLevel.Info, DateTimeOffset.UtcNow, Guid.NewGuid().ToString("N"), sourcePath, $"attempt={attempt}", null),
-                        cancellationToken);
-                    if (processedKey is not null)
+                    var result = await _bridge.WipeMetadataAsync(target, cancellationToken);
+
+                    switch (result)
                     {
-                        _processedStore.MarkProcessed(processedKey);
+                        case WipeResult.Skipped_NoMetadata:
+                            await _audit.WriteAsync(
+                                new AuditEvent(
+                                    "file_skipped",
+                                    AuditLevel.Info,
+                                    DateTimeOffset.UtcNow,
+                                    Guid.NewGuid().ToString("N"),
+                                    sourcePath,
+                                    "no_metadata_found",
+                                    null),
+                                cancellationToken);
+                            return;
+
+                        case WipeResult.Skipped_NoClearable:
+                            await _audit.WriteAsync(
+                                new AuditEvent(
+                                    "file_skipped",
+                                    AuditLevel.Info,
+                                    DateTimeOffset.UtcNow,
+                                    Guid.NewGuid().ToString("N"),
+                                    sourcePath,
+                                    "no_clearable_metadata",
+                                    null),
+                                cancellationToken);
+                            return;
+
+                        case WipeResult.Cleaned_NoBackup:
+                        case WipeResult.Cleaned_WithBackup:
+                            await _audit.WriteAsync(
+                                new AuditEvent(
+                                    "file_processing_succeeded",
+                                    AuditLevel.Info,
+                                    DateTimeOffset.UtcNow,
+                                    Guid.NewGuid().ToString("N"),
+                                    sourcePath,
+                                    $"attempt={attempt};wipe_result={result}",
+                                    null),
+                                cancellationToken);
+                            if (processedKey is not null)
+                            {
+                                _processedStore.MarkProcessed(processedKey);
+                            }
+                            return;
+
+                        default:
+                            throw new InvalidOperationException($"Unexpected wipe result: {result}");
                     }
-                    return;
                 }
                 catch (Exception ex)
                 {

@@ -321,6 +321,12 @@ public sealed class ExifToolBridgeTests
                     EmitStdout(marker);
                 }
 
+                if (marker.Contains("PROBE_DONE_", StringComparison.Ordinal))
+                {
+                    EmitStdout("[{\"SourceFile\":\"probe\",\"GPSLatitude\":\"0\"}]");
+                    EmitStdout(marker);
+                }
+
                 if (marker.Contains("VERSION_DONE_", StringComparison.Ordinal))
                 {
                     EmitVersionReady(marker);

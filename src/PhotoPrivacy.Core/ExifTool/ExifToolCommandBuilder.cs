@@ -32,6 +32,11 @@ public static class ExifToolCommandBuilder
         return args.ToArray();
     }
 
+    public static string BuildProbeTaskBlock(string targetPath, string id)
+    {
+        return $"-json\n-echo1\nPROBE_DONE_{id}\n-execute\n{targetPath}\n";
+    }
+
     public static string BuildWipeTaskBlock(string targetPath, string taskId)
     {
         var sb = new StringBuilder();

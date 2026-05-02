@@ -119,20 +119,95 @@ public sealed class ExifToolBridge : IExifToolBridge
         await EnsureStartedAsync(cancellationToken);
 
         var id = Interlocked.Increment(ref _taskId).ToString();
-        var marker = $"TASK_DONE_{id}";
-        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _pending[marker] = tcs;
+
+        // Phase 1: Probe metadata via -json
+        var probeMarker = $"PROBE_DONE_{id}";
+        var probeTcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        string? probeOutput = null;
+        var probeLines = new List<string>();
+        var probeCaptured = false;
+
+        void ProbeLineHandler(string line)
+        {
+            if (line.Contains(probeMarker, StringComparison.Ordinal))
+            {
+                probeOutput = string.Join(Environment.NewLine, probeLines);
+                probeTcs.TrySetResult(probeOutput);
+                return;
+            }
+            if (!probeCaptured) probeCaptured = true;
+            if (probeCaptured && !string.IsNullOrWhiteSpace(line))
+            {
+                probeLines.Add(line);
+            }
+        }
+
+        _process.StdoutLine += ProbeLineHandler;
+        try
+        {
+            var probeBlock = ExifToolCommandBuilder.BuildProbeTaskBlock(targetPath, id);
+            await _process.WriteStdinAsync(probeBlock, cancellationToken);
+            probeOutput = await probeTcs.Task.WaitAsync(cancellationToken);
+        }
+        finally
+        {
+            _process.StdoutLine -= ProbeLineHandler;
+        }
+
+        // Phase 2: Check probe result
+        var hasClearableMetadata = !string.IsNullOrWhiteSpace(probeOutput) && HasClearableFields(probeOutput, targetPath);
+        if (!hasClearableMetadata)
+        {
+            return string.IsNullOrWhiteSpace(probeOutput)
+                ? WipeResult.Skipped_NoMetadata
+                : WipeResult.Skipped_NoClearable;
+        }
+
+        // Phase 3: Wipe
+        var wipeMarker = $"TASK_DONE_{id}";
+        var wipeTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _pending[wipeMarker] = wipeTcs;
 
         try
         {
-            var block = ExifToolCommandBuilder.BuildWipeTaskBlock(targetPath, id);
-            await _process.WriteStdinAsync(block, cancellationToken);
-            await tcs.Task.WaitAsync(cancellationToken);
+            var wipeBlock = ExifToolCommandBuilder.BuildWipeTaskBlock(targetPath, id);
+            await _process.WriteStdinAsync(wipeBlock, cancellationToken);
+            await wipeTcs.Task.WaitAsync(cancellationToken);
             return WipeResult.Cleaned_NoBackup;
         }
         finally
         {
-            _pending.TryRemove(marker, out _);
+            _pending.TryRemove(wipeMarker, out _);
+        }
+    }
+
+    private static bool HasClearableFields(string jsonOutput, string targetPath)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(jsonOutput);
+            var root = doc.RootElement;
+            if (root.ValueKind != System.Text.Json.JsonValueKind.Array || root.GetArrayLength() == 0)
+                return false;
+
+            var entry = root[0];
+            foreach (var prop in entry.EnumerateObject())
+            {
+                var name = prop.Name;
+                if (string.Equals(name, "SourceFile", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(name, "Directory", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (string.Equals(name, "Error", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(name, "ExifToolVersion", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                return true;
+            }
+            return false;
+        }
+        catch
+        {
+            return true;
         }
     }
 
