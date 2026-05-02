@@ -79,17 +79,6 @@ public sealed class FileTaskPipeline
                 return;
             }
 
-            if (decision.CreateBackup && decision.BackupPath is not null)
-            {
-                var backupDir = Path.GetDirectoryName(decision.BackupPath);
-                if (!string.IsNullOrWhiteSpace(backupDir))
-                {
-                    _fileOperations.EnsureDirectory(backupDir);
-                }
-
-                _fileOperations.Copy(sourcePath, decision.BackupPath, overwrite: true);
-            }
-
             var target = decision.OutputPath;
             if (!string.Equals(target, sourcePath, StringComparison.OrdinalIgnoreCase))
             {
@@ -149,6 +138,17 @@ public sealed class FileTaskPipeline
 
                         case WipeResult.Cleaned_NoBackup:
                         case WipeResult.Cleaned_WithBackup:
+                            if (decision.CreateBackup && decision.BackupPath is not null)
+                            {
+                                var backupDir = Path.GetDirectoryName(decision.BackupPath);
+                                if (!string.IsNullOrWhiteSpace(backupDir))
+                                {
+                                    _fileOperations.EnsureDirectory(backupDir);
+                                }
+
+                                _fileOperations.Copy(sourcePath, decision.BackupPath, overwrite: true);
+                            }
+
                             await _audit.WriteAsync(
                                 new AuditEvent(
                                     "file_processing_succeeded",
