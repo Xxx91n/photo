@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Avalonia.Threading;
 
 namespace PhotoPrivacy.Ui;
 
@@ -221,16 +222,20 @@ public sealed class AuditTailService
     private void EmitIfAny(string line)
     {
         var exePath = TryExtractExifToolExePath(line);
-        if (!string.IsNullOrWhiteSpace(exePath))
-        {
-            _onExifToolExePathDetected?.Invoke(exePath);
-        }
 
-        var entry = ParseAuditLine(line, _getLogLevel());
-        if (entry is not null)
+        Dispatcher.UIThread.Post(() =>
         {
-            _onEntry(entry);
-        }
+            if (!string.IsNullOrWhiteSpace(exePath))
+            {
+                _onExifToolExePathDetected?.Invoke(exePath);
+            }
+
+            var entry = ParseAuditLine(line, _getLogLevel());
+            if (entry is not null)
+            {
+                _onEntry(entry);
+            }
+        });
     }
 
     public static string? TryExtractExifToolExePath(string line)

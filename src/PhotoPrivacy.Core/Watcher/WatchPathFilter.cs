@@ -9,11 +9,22 @@ public static class WatchPathFilter
     public static IReadOnlyList<string> ResolveAutoExcludedSubdirectories(AppConfig config)
     {
         var hotFolder = NormalizePath(config.Watch.HotFolder);
-        var candidates = new[]
+        var candidates = new List<string?>
         {
             config.Audit.LogDirectory,
-            config.Quarantine.Directory
+            config.Quarantine.Directory,
+            config.Backup.Directory,
         };
+        if (!string.IsNullOrWhiteSpace(config.Backup.Directory))
+        {
+            candidates.Add(config.Backup.Directory);
+        }
+        var defaultBackupDir = Path.Combine(hotFolder, "bak");
+        candidates.Add(defaultBackupDir);
+        if (config.Watch.AutoExcludedDirectories is { Length: > 0 })
+        {
+            candidates.AddRange(config.Watch.AutoExcludedDirectories);
+        }
 
         var excluded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var candidate in candidates)

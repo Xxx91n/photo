@@ -25,7 +25,8 @@ public static class AppConfigJson
                 HotFolder = config.Watch.HotFolder,
                 IncludeSubdirectories = config.Watch.IncludeSubdirectories,
                 DebounceMs = config.Watch.DebounceMs,
-                InternalBufferSize = config.Watch.InternalBufferSize
+                InternalBufferSize = config.Watch.InternalBufferSize,
+                AutoExcludedDirectories = config.Watch.AutoExcludedDirectories ?? []
             },
             Rules = new RulesDto
             {
@@ -138,6 +139,9 @@ public static class AppConfigJson
 
         [JsonPropertyName("internal_buffer_size")]
         public int InternalBufferSize { get; init; }
+
+        [JsonPropertyName("auto_excluded_directories")]
+        public string[] AutoExcludedDirectories { get; init; } = [];
     }
 
     private sealed class RulesDto

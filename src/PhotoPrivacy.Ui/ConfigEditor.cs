@@ -30,6 +30,11 @@ public static class ConfigEditor
             {
                 HotFolder = command.HotFolderPath
             },
+            Quarantine = config.Quarantine with
+            {
+                Enabled = command.QuarantineEnabled,
+                Directory = command.QuarantineDirectory
+            },
             Ui = config.Ui with
             {
                 HideMainWindowOnStartup = command.HideMainWindowOnStartup,

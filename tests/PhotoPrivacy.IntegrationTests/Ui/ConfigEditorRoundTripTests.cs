@@ -26,7 +26,9 @@ public sealed class ConfigEditorRoundTripTests
                 ThemeVariant: "dark",
                 BackupDirectory: @"D:\hot\bak",
                 AuditLogDirectory: @"D:\hot\_audit",
-                LogLevel: "debug");
+                LogLevel: "debug",
+                QuarantineEnabled: true,
+                QuarantineDirectory: @"D:\hot\_quarantine");
 
             ConfigEditor.UpdateConfig(configPath, command);
 

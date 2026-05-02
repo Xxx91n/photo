@@ -99,10 +99,10 @@ public sealed class PooledExifToolBridgeTests
             return Task.CompletedTask;
         }
 
-        public Task WipeMetadataAsync(string targetPath, CancellationToken cancellationToken)
+        public Task<WipeResult> WipeMetadataAsync(string targetPath, CancellationToken cancellationToken)
         {
             WipeCalls++;
-            return Task.CompletedTask;
+            return Task.FromResult(WipeResult.Cleaned_NoBackup);
         }
     }
 
@@ -125,12 +125,13 @@ public sealed class PooledExifToolBridgeTests
 
         public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
-        public async Task WipeMetadataAsync(string targetPath, CancellationToken cancellationToken)
+        public async Task<WipeResult> WipeMetadataAsync(string targetPath, CancellationToken cancellationToken)
         {
             Interlocked.Increment(ref _inflight);
             try
             {
                 await _gate.WaitAsync(cancellationToken);
+                return WipeResult.Cleaned_NoBackup;
             }
             finally
             {

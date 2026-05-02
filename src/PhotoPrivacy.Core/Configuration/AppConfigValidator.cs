@@ -50,5 +50,18 @@ public static class AppConfigValidator
         {
             throw new AppConfigValidationException("extra_exiftool_args contains forbidden argument");
         }
+
+        if (config.Backup.Enabled)
+        {
+            var hot = Path.GetFullPath(config.Watch.HotFolder).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var backupDir = !string.IsNullOrWhiteSpace(config.Backup.Directory)
+                ? Path.GetFullPath(config.Backup.Directory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                : Path.Combine(hot, "bak");
+
+            if (string.Equals(hot, backupDir, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new AppConfigValidationException("备份目录不能与监控目录相同，请指定监控目录的子目录(如 bak)或其他路径。");
+            }
+        }
     }
 }

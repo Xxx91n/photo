@@ -39,7 +39,8 @@ public static class AppConfigLoader
                 HotFolder: dto.Watch.HotFolder,
                 IncludeSubdirectories: dto.Watch.IncludeSubdirectories,
                 DebounceMs: dto.Watch.DebounceMs,
-                InternalBufferSize: dto.Watch.InternalBufferSize),
+                InternalBufferSize: dto.Watch.InternalBufferSize,
+                AutoExcludedDirectories: dto.Watch.AutoExcludedDirectories ?? []),
             Rules: new RuleOptions(
                 AllowedExtensions: dto.Rules.AllowedExtensions ?? [],
                 ExcludedPatterns: dto.Rules.ExcludedPatterns ?? [],
@@ -171,6 +172,9 @@ public static class AppConfigLoader
 
         [JsonPropertyName("internal_buffer_size")]
         public int InternalBufferSize { get; init; } = AppConfig.Default.Watch.InternalBufferSize;
+
+        [JsonPropertyName("auto_excluded_directories")]
+        public string[]? AutoExcludedDirectories { get; init; } = [];
     }
 
     private sealed class RulesDto

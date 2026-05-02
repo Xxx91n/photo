@@ -23,7 +23,7 @@ public sealed class DryRunExifToolBridge : IExifToolBridge
         return Task.CompletedTask;
     }
 
-    public async Task WipeMetadataAsync(string targetPath, CancellationToken cancellationToken)
+    public async Task<WipeResult> WipeMetadataAsync(string targetPath, CancellationToken cancellationToken)
     {
         await _audit.WriteAsync(
             new AuditEvent(
@@ -34,5 +34,6 @@ public sealed class DryRunExifToolBridge : IExifToolBridge
                 Message: "dry-run mode enabled, exiftool execution skipped",
                 Data: null),
             cancellationToken);
+        return WipeResult.Cleaned_NoBackup;
     }
 }

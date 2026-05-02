@@ -6,6 +6,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Platform.Storage;
 using Avalonia.Styling;
 using PhotoPrivacy.Core.Configuration;
+using PhotoPrivacy.Core.Watcher;
 using PhotoPrivacy.Ui.ViewModels;
 
 namespace PhotoPrivacy.Ui.Views;
@@ -83,6 +84,20 @@ public partial class MainWindow : Window
                 viewModel.BackupDirectory = effectiveConfig.Backup.Directory;
                 viewModel.AuditLogDirectory = effectiveConfig.Audit.LogDirectory;
                 viewModel.LogLevel = effectiveConfig.Audit.DiagnosticMode ? "debug" : "info";
+                viewModel.QuarantineEnabled = effectiveConfig.Quarantine.Enabled;
+                viewModel.QuarantineDirectory = effectiveConfig.Quarantine.Directory;
+
+                viewModel.SystemAutoExcludedDirectories.Clear();
+                var systemExcluded = WatchPathFilter.ResolveAutoExcludedSubdirectories(effectiveConfig);
+                foreach (var dir in systemExcluded)
+                    viewModel.SystemAutoExcludedDirectories.Add(dir);
+
+                viewModel.UserExcludedDirectories.Clear();
+                if (effectiveConfig.Watch.AutoExcludedDirectories is { Length: > 0 })
+                {
+                    foreach (var dir in effectiveConfig.Watch.AutoExcludedDirectories)
+                        viewModel.UserExcludedDirectories.Add(dir);
+                }
             }
             else
             {
@@ -142,6 +157,9 @@ public partial class MainWindow : Window
         BrowseHotFolderButton.Click += OnBrowseHotFolderClick;
         BrowseBackupDirectoryButton.Click += OnBrowseBackupDirectoryClick;
         BrowseAuditLogDirectoryButton.Click += OnBrowseAuditLogDirectoryClick;
+        BrowseQuarantineDirectoryButton.Click += OnBrowseQuarantineDirectoryClick;
+        AddExcludedDirectoryButton.Click += OnAddExcludedDirectoryClick;
+        RemoveExcludedDirectoryButton.Click += OnRemoveExcludedDirectoryClick;
 
         if (this.FindControl<Button>("ApplyConfigButton") is { } applyConfigButton)
         {
@@ -150,16 +168,7 @@ public partial class MainWindow : Window
 
         _auditTail = new AuditTailService(
             hotFolder: hotFolder ?? Path.GetDirectoryName(options.AuditDirectory) ?? AppContext.BaseDirectory,
-            onEntry: entry =>
-            {
-                Dispatcher.UIThread.Post(() =>
-                {
-                    if (viewModel is not null)
-                    {
-                        viewModel.AppendLog(entry);
-                    }
-                });
-            },
+            onEntry: entry => viewModel?.AppendLog(entry),
             getLogLevel: () => (DataContext as MainWindowViewModel)?.LogLevel ?? "info",
             onExifToolExePathDetected: exePath => _ = ResolveExifToolVersionAsync(exePath ?? exifToolPathFromConfig));
 
@@ -453,6 +462,47 @@ public partial class MainWindow : Window
         if (DataContext is MainWindowViewModel vm)
         {
             vm.AuditLogDirectory = folders[0].Path.LocalPath;
+        }
+    }
+
+    private async void OnBrowseQuarantineDirectoryClick(object? sender, RoutedEventArgs e)
+    {
+        var storageProvider = ResolveStorageProvider();
+        if (storageProvider is null) return;
+        var task = storageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = "选择隔离目录",
+            AllowMultiple = false
+        });
+        LastPickerTask = task;
+        var folders = await task;
+        if (folders.Count == 0) return;
+        if (DataContext is MainWindowViewModel vm)
+            vm.QuarantineDirectory = folders[0].Path.LocalPath;
+    }
+
+    private async void OnAddExcludedDirectoryClick(object? sender, RoutedEventArgs e)
+    {
+        var storageProvider = ResolveStorageProvider();
+        if (storageProvider is null) return;
+        var task = storageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = "添加排除监听的目录",
+            AllowMultiple = false
+        });
+        LastPickerTask = task;
+        var folders = await task;
+        if (folders.Count == 0) return;
+        if (DataContext is MainWindowViewModel vm)
+            vm.UserExcludedDirectories.Add(folders[0].Path.LocalPath);
+    }
+
+    private void OnRemoveExcludedDirectoryClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel vm
+            && UserExcludedDirectoriesListBox.SelectedItem is string selected)
+        {
+            vm.UserExcludedDirectories.Remove(selected);
         }
     }
 
@@ -1210,7 +1260,9 @@ public partial class MainWindow : Window
                 ThemeVariant: vm.ThemeVariant,
                 BackupDirectory: vm.BackupDirectory,
                 AuditLogDirectory: vm.AuditLogDirectory,
-                LogLevel: vm.LogLevel);
+                LogLevel: vm.LogLevel,
+                QuarantineEnabled: vm.QuarantineEnabled,
+                QuarantineDirectory: vm.QuarantineDirectory);
             ConfigEditor.UpdateConfig(_options.ConfigPath, command);
 
             try
@@ -1321,6 +1373,20 @@ public partial class MainWindow : Window
                 vm.LogLevel = cfg.Audit.DiagnosticMode ? "debug" : "info";
                 SyncLogLevelComboSelection(vm.LogLevel);
                 vm.ExifToolPathHint = _exifToolHint;
+                vm.QuarantineEnabled = cfg.Quarantine.Enabled;
+                vm.QuarantineDirectory = cfg.Quarantine.Directory;
+
+                vm.SystemAutoExcludedDirectories.Clear();
+                var systemExcluded = WatchPathFilter.ResolveAutoExcludedSubdirectories(cfg);
+                foreach (var dir in systemExcluded)
+                    vm.SystemAutoExcludedDirectories.Add(dir);
+
+                vm.UserExcludedDirectories.Clear();
+                if (cfg.Watch.AutoExcludedDirectories is { Length: > 0 })
+                {
+                    foreach (var dir in cfg.Watch.AutoExcludedDirectories)
+                        vm.UserExcludedDirectories.Add(dir);
+                }
             }
 
             ApplyThemeVariantToApplication(normalizedThemeVariant);

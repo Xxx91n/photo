@@ -114,7 +114,7 @@ public sealed class ExifToolBridge : IExifToolBridge
         }
     }
 
-    public async Task WipeMetadataAsync(string targetPath, CancellationToken cancellationToken)
+    public async Task<WipeResult> WipeMetadataAsync(string targetPath, CancellationToken cancellationToken)
     {
         await EnsureStartedAsync(cancellationToken);
 
@@ -128,6 +128,7 @@ public sealed class ExifToolBridge : IExifToolBridge
             var block = ExifToolCommandBuilder.BuildWipeTaskBlock(targetPath, id);
             await _process.WriteStdinAsync(block, cancellationToken);
             await tcs.Task.WaitAsync(cancellationToken);
+            return WipeResult.Cleaned_NoBackup;
         }
         finally
         {

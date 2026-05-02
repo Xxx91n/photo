@@ -191,7 +191,7 @@ public sealed class FileTaskPipelineTests
 
         public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
-        public Task WipeMetadataAsync(string targetPath, CancellationToken cancellationToken)
+        public Task<WipeResult> WipeMetadataAsync(string targetPath, CancellationToken cancellationToken)
         {
             throw new InvalidOperationException("fail");
         }
@@ -207,10 +207,10 @@ public sealed class FileTaskPipelineTests
 
         public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
-        public Task WipeMetadataAsync(string targetPath, CancellationToken cancellationToken)
+        public Task<WipeResult> WipeMetadataAsync(string targetPath, CancellationToken cancellationToken)
         {
             LastTargetPath = targetPath;
-            return Task.CompletedTask;
+            return Task.FromResult(WipeResult.Cleaned_NoBackup);
         }
     }
 
@@ -224,10 +224,11 @@ public sealed class FileTaskPipelineTests
 
         public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
-        public async Task WipeMetadataAsync(string targetPath, CancellationToken cancellationToken)
+        public async Task<WipeResult> WipeMetadataAsync(string targetPath, CancellationToken cancellationToken)
         {
             Calls++;
             await Task.Delay(50, cancellationToken);
+            return WipeResult.Cleaned_NoBackup;
         }
     }
 }

@@ -13,7 +13,8 @@
     "hot_folder": "D:\\hot",
     "include_subdirectories": true,
     "debounce_ms": 800,
-    "internal_buffer_size": 65536
+    "internal_buffer_size": 65536,
+    "auto_excluded_directories": []
   },
   "rules": {
     "allowed_extensions": [

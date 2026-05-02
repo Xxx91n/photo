@@ -8,7 +8,7 @@ public interface IExifToolBridge
 
     Task StopAsync(CancellationToken cancellationToken);
 
-    Task WipeMetadataAsync(string targetPath, CancellationToken cancellationToken);
+    Task<WipeResult> WipeMetadataAsync(string targetPath, CancellationToken cancellationToken);
 }
 
 public interface IExifToolProcess

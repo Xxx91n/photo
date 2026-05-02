@@ -84,7 +84,7 @@
                       <TextBlock Text="exiftool 可执行文件的完整路径" Classes="row-desc"/>
                     </StackPanel>
                     <StackPanel DockPanel.Dock="Right" Spacing="6">
-                      <DockPanel LastChildFill="False">
+                      <DockPanel LastChildFill="False" VerticalAlignment="Center">
                         <TextBox DockPanel.Dock="Left"
                                  Width="280"
                                  Text="{Binding ExifToolPath}"
@@ -114,7 +114,7 @@
                       <TextBlock Text="监控目录" Classes="row-label"/>
                       <TextBlock Text="自动清理此目录下新增文件的元数据" Classes="row-desc"/>
                     </StackPanel>
-                    <DockPanel DockPanel.Dock="Right" LastChildFill="False">
+                    <DockPanel DockPanel.Dock="Right" LastChildFill="False" VerticalAlignment="Center">
                       <TextBox DockPanel.Dock="Left"
                                Width="280"
                                Text="{Binding HotFolderPath}"
@@ -155,7 +155,7 @@
                       <TextBlock Text="备份目录" Classes="row-label"/>
                       <TextBlock Text="留空默认使用监控目录/bak" Classes="row-desc"/>
                     </StackPanel>
-                    <DockPanel DockPanel.Dock="Right" LastChildFill="False">
+                    <DockPanel DockPanel.Dock="Right" LastChildFill="False" VerticalAlignment="Center">
                       <TextBox DockPanel.Dock="Left"
                                Width="280"
                                Text="{Binding BackupDirectory}"
@@ -172,6 +172,43 @@
                   </DockPanel>
                 </Border>
 <!-- 诊断日志已并入下方日志设置中的日志级别 -->
+
+                <Border Classes="row-divider"/>
+
+                <Border Classes="settings-row">
+                  <DockPanel LastChildFill="False" VerticalAlignment="Center">
+                    <StackPanel DockPanel.Dock="Left" Spacing="2">
+                      <TextBlock Text="启用隔离目录" Classes="row-label"/>
+                      <TextBlock Text="处理失败的文件移入此目录隔离" Classes="row-desc"/>
+                    </StackPanel>
+                    <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding QuarantineEnabled}" VerticalAlignment="Center" OnContent="" OffContent=""/>
+                  </DockPanel>
+                </Border>
+
+                <Border Classes="row-divider"/>
+
+                <Border Classes="settings-row" IsVisible="{Binding QuarantineEnabled}">
+                  <DockPanel LastChildFill="False" VerticalAlignment="Center">
+                    <StackPanel DockPanel.Dock="Left" Spacing="2">
+                      <TextBlock Text="隔离目录" Classes="row-label"/>
+                      <TextBlock Text="处理失败的文件存放路径" Classes="row-desc"/>
+                    </StackPanel>
+                    <DockPanel DockPanel.Dock="Right" LastChildFill="False" VerticalAlignment="Center">
+                      <TextBox DockPanel.Dock="Left"
+                               Width="280"
+                               Text="{Binding QuarantineDirectory}"
+                               Classes="inline-input"
+                               VerticalAlignment="Center"/>
+                      <Button x:Name="BrowseQuarantineDirectoryButton"
+                              DockPanel.Dock="Right"
+                              Content="…"
+                              MinWidth="28"
+                              Padding="4,0"
+                              Classes="ghost"
+                              VerticalAlignment="Center"/>
+                    </DockPanel>
+                  </DockPanel>
+                </Border>
 
                 <Border Classes="settings-row">
                   <DockPanel LastChildFill="False">
@@ -245,7 +282,7 @@
                       <TextBlock Text="日志保存路径" Classes="row-label"/>
                       <TextBlock Text="audit jsonl 文件的存放目录" Classes="row-desc"/>
                     </StackPanel>
-                    <DockPanel DockPanel.Dock="Right" LastChildFill="False">
+                    <DockPanel DockPanel.Dock="Right" LastChildFill="False" VerticalAlignment="Center">
                       <TextBox DockPanel.Dock="Left"
                                Width="280"
                                Text="{Binding AuditLogDirectory}"
@@ -260,6 +297,43 @@
                               VerticalAlignment="Center"/>
                     </DockPanel>
                   </DockPanel>
+                </Border>
+              </StackPanel>
+            </Border>
+
+            <Border Classes="settings-card">
+              <StackPanel>
+                <TextBlock Text="排除监听列表" Classes="section-header"/>
+
+                <Border Classes="settings-row">
+                  <StackPanel Spacing="4">
+                    <TextBlock Text="系统自动排除目录（只读）" Classes="row-label"/>
+                    <TextBlock Text="日志、备份、隔离目录自动被排除在文件监听之外" Classes="row-desc"/>
+                    <ListBox ItemsSource="{Binding SystemAutoExcludedDirectories}"
+                             Height="80"
+                             BorderBrush="{DynamicResource DividerBrush}"
+                             BorderThickness="1"/>
+                  </StackPanel>
+                </Border>
+
+                <Border Classes="row-divider"/>
+
+                <Border Classes="settings-row">
+                  <StackPanel Spacing="8">
+                    <StackPanel Spacing="2">
+                      <TextBlock Text="用户自定义排除目录" Classes="row-label"/>
+                      <TextBlock Text="可添加额外路径以排除监听" Classes="row-desc"/>
+                    </StackPanel>
+                    <ListBox x:Name="UserExcludedDirectoriesListBox"
+                             ItemsSource="{Binding UserExcludedDirectories}"
+                             Height="80"
+                             BorderBrush="{DynamicResource DividerBrush}"
+                             BorderThickness="1"/>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <Button x:Name="AddExcludedDirectoryButton" Content="+" Classes="ghost" MinWidth="28" Padding="4,0"/>
+                      <Button x:Name="RemoveExcludedDirectoryButton" Content="-" Classes="ghost" MinWidth="28" Padding="4,0"/>
+                    </StackPanel>
+                  </StackPanel>
                 </Border>
               </StackPanel>
             </Border>

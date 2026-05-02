@@ -53,14 +53,14 @@ public sealed class PooledExifToolBridge : IExifToolBridge
         }
     }
 
-    public async Task WipeMetadataAsync(string targetPath, CancellationToken cancellationToken)
+    public async Task<WipeResult> WipeMetadataAsync(string targetPath, CancellationToken cancellationToken)
     {
         await _parallelGate.WaitAsync(cancellationToken);
         try
         {
             var index = (uint)Interlocked.Increment(ref _nextIndex);
             var selected = _bridges[index % (uint)_bridges.Length];
-            await selected.WipeMetadataAsync(targetPath, cancellationToken);
+            return await selected.WipeMetadataAsync(targetPath, cancellationToken);
         }
         finally
         {

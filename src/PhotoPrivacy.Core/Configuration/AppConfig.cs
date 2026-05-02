@@ -15,7 +15,8 @@ public sealed record WatchOptions(
     string HotFolder,
     bool IncludeSubdirectories,
     int DebounceMs,
-    int InternalBufferSize);
+    int InternalBufferSize,
+    string[] AutoExcludedDirectories);
 
 public sealed record RuleOptions(
     string[] AllowedExtensions,
@@ -58,7 +59,8 @@ public sealed record AppConfig(
             HotFolder: @"D:\hot",
             IncludeSubdirectories: true,
             DebounceMs: 800,
-            InternalBufferSize: 65536),
+            InternalBufferSize: 65536,
+            AutoExcludedDirectories: []),
         Rules: new RuleOptions(
             AllowedExtensions: [".jpg", ".jpeg", ".png", ".heic", ".mp4", ".pdf", ".docx"],
             ExcludedPatterns: ["~$*", "*.tmp"],

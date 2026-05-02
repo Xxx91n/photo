@@ -10,4 +10,6 @@ public sealed record ConfigEditCommand(
     string ThemeVariant,
     string BackupDirectory,
     string AuditLogDirectory,
-    string LogLevel);
+    string LogLevel,
+    bool QuarantineEnabled,
+    string QuarantineDirectory);

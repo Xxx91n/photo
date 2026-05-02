@@ -26,6 +26,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private string _auditLogDirectory = string.Empty;
     private string _logLevel = "info";
     private string _exifToolPathHint = string.Empty;
+    private bool _quarantineEnabled = true;
+    private string _quarantineDirectory = @"D:\hot\_quarantine";
+    private ObservableCollection<string> _userExcludedDirectories = [];
+    private ObservableCollection<string> _systemAutoExcludedDirectories = [];
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -183,6 +187,22 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
             }
         }
     }
+
+    public bool QuarantineEnabled
+    {
+        get => _quarantineEnabled;
+        set => SetField(ref _quarantineEnabled, value);
+    }
+
+    public string QuarantineDirectory
+    {
+        get => _quarantineDirectory;
+        set => SetField(ref _quarantineDirectory, value);
+    }
+
+    public ObservableCollection<string> UserExcludedDirectories => _userExcludedDirectories;
+
+    public ObservableCollection<string> SystemAutoExcludedDirectories => _systemAutoExcludedDirectories;
 
     public bool HasExifToolHint => !string.IsNullOrWhiteSpace(_exifToolPathHint);
 
