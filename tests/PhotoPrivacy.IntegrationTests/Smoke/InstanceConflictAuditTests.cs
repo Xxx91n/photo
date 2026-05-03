@@ -2,7 +2,7 @@ using System.Diagnostics;
 
 namespace PhotoPrivacy.IntegrationTests.Smoke;
 
-public sealed class InstanceConflictAuditTests
+public sealed class InstanceConflictAuditTests : IntegrationTestBase
 {
     [Fact]
     public async Task Cli_Should_Write_InstanceConflict_Audit_When_Duplicate_Instance_Detected()
@@ -15,12 +15,13 @@ public sealed class InstanceConflictAuditTests
 
         try
         {
+            var exifToolPath = RequireExifTool();
             var configPath = Path.Combine(root, "config.json");
             File.WriteAllText(configPath, $$"""
             {
               "schema_version": 1,
               "exiftool": {
-                "path": "D:\\tools\\A_system\\ExifToolGUI\\ExifTool\\ExifTool.exe",
+                "path": "{{EscapePath(exifToolPath)}}",
                 "enable_windows_long_path": true,
                 "enable_large_file_support": true,
                 "dry_run": true,
@@ -119,9 +120,21 @@ public sealed class InstanceConflictAuditTests
 
     private static Process StartCli(string repoRoot, string configPath)
     {
-        var psi = new ProcessStartInfo(
-            "dotnet",
-            $"run --project src/PhotoPrivacy.Worker/PhotoPrivacy.Worker.csproj --framework net10.0 -- --mode cli --config \"{configPath}\"")
+        var workerDll = Path.Combine(repoRoot, "src", "PhotoPrivacy.Worker", "bin", "Debug", "net10.0", "PhotoPrivacyWorker.dll");
+
+        string fileName, arguments;
+        if (File.Exists(workerDll))
+        {
+            fileName = "dotnet";
+            arguments = $"\"{workerDll}\" --mode cli --config \"{configPath}\"";
+        }
+        else
+        {
+            fileName = "dotnet";
+            arguments = $"run --project src/PhotoPrivacy.Worker/PhotoPrivacy.Worker.csproj --framework net10.0 -- --mode cli --config \"{configPath}\"";
+        }
+
+        var psi = new ProcessStartInfo(fileName, arguments)
         {
             WorkingDirectory = repoRoot,
             RedirectStandardOutput = true,
@@ -133,9 +146,21 @@ public sealed class InstanceConflictAuditTests
 
     private static async Task<(int ExitCode, string Stdout, string Stderr)> RunCliOnceAsync(string repoRoot, string configPath, TimeSpan timeout)
     {
-        var psi = new ProcessStartInfo(
-            "dotnet",
-            $"run --project src/PhotoPrivacy.Worker/PhotoPrivacy.Worker.csproj --framework net10.0 -- --mode cli --once true --config \"{configPath}\"")
+        var workerDll = Path.Combine(repoRoot, "src", "PhotoPrivacy.Worker", "bin", "Debug", "net10.0", "PhotoPrivacyWorker.dll");
+
+        string fileName, arguments;
+        if (File.Exists(workerDll))
+        {
+            fileName = "dotnet";
+            arguments = $"\"{workerDll}\" --mode cli --once true --config \"{configPath}\"";
+        }
+        else
+        {
+            fileName = "dotnet";
+            arguments = $"run --project src/PhotoPrivacy.Worker/PhotoPrivacy.Worker.csproj --framework net10.0 -- --mode cli --once true --config \"{configPath}\"";
+        }
+
+        var psi = new ProcessStartInfo(fileName, arguments)
         {
             WorkingDirectory = repoRoot,
             RedirectStandardOutput = true,

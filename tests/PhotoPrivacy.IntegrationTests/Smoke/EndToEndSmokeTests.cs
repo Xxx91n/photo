@@ -2,7 +2,7 @@ using System.Diagnostics;
 
 namespace PhotoPrivacy.IntegrationTests.Smoke;
 
-public sealed class EndToEndSmokeTests
+public sealed class EndToEndSmokeTests : IntegrationTestBase
 {
     [Fact]
     public async Task CliHost_Should_Process_One_File_And_Write_Audit_Event()
@@ -17,10 +17,11 @@ public sealed class EndToEndSmokeTests
             var audit = Path.Combine(root, "audit");
             Directory.CreateDirectory(hot);
             Directory.CreateDirectory(audit);
+            var exifToolPath = RequireExifTool();
             File.WriteAllText(Path.Combine(hot, "a.jpg"), "dummy");
 
             var script = Path.Combine(repoRoot, "scripts", "smoke.ps1");
-            var psi = new ProcessStartInfo("powershell", $"-ExecutionPolicy Bypass -File \"{script}\" -HotFolder \"{hot}\" -AuditFolder \"{audit}\"")
+            var psi = new ProcessStartInfo("powershell", $"-ExecutionPolicy Bypass -File \"{script}\" -HotFolder \"{hot}\" -AuditFolder \"{audit}\" -ExifToolPath \"{exifToolPath}\"")
             {
                 WorkingDirectory = repoRoot,
                 RedirectStandardOutput = true,

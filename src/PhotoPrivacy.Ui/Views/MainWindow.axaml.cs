@@ -166,8 +166,12 @@ public partial class MainWindow : Window
             applyConfigButton.Click += OnApplyConfigClick;
         }
 
+        var auditDir = effectiveConfig?.Audit.LogDirectory
+                       ?? options.AuditDirectory
+                       ?? Path.Combine(AppContext.BaseDirectory, "_audit");
+
         _auditTail = new AuditTailService(
-            hotFolder: hotFolder ?? Path.GetDirectoryName(options.AuditDirectory) ?? AppContext.BaseDirectory,
+            hotFolder: auditDir,
             onEntry: entry => viewModel?.AppendLog(entry),
             getLogLevel: () => (DataContext as MainWindowViewModel)?.LogLevel ?? "info",
             onExifToolExePathDetected: exePath => _ = ResolveExifToolVersionAsync(exePath ?? exifToolPathFromConfig));

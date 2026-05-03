@@ -2,7 +2,7 @@ using System.Diagnostics;
 
 namespace PhotoPrivacy.IntegrationTests.Smoke;
 
-public sealed class DryRunOutputFlowTests
+public sealed class DryRunOutputFlowTests : IntegrationTestBase
 {
     private static readonly TimeSpan CliRunTimeout = TimeSpan.FromSeconds(30);
 
@@ -19,6 +19,7 @@ public sealed class DryRunOutputFlowTests
 
         try
         {
+            var exifToolPath = RequireExifTool();
             var sourceFile = Path.Combine(hot, "a.jpg");
             File.WriteAllText(sourceFile, "dummy");
 
@@ -27,7 +28,7 @@ public sealed class DryRunOutputFlowTests
             {
               "schema_version": 1,
               "exiftool": {
-                "path": "D:\\tools\\A_system\\ExifToolGUI\\ExifTool\\ExifTool.exe",
+                "path": "{{EscapePath(exifToolPath)}}",
                 "enable_windows_long_path": true,
                 "enable_large_file_support": true,
                 "dry_run": true,
@@ -189,12 +190,13 @@ public sealed class DryRunOutputFlowTests
 
         try
         {
+            var exifToolPath = RequireExifTool();
             var configPath = Path.Combine(root, "config.json");
             File.WriteAllText(configPath, $$"""
             {
               "schema_version": 1,
               "exiftool": {
-                "path": "D:\\tools\\A_system\\ExifToolGUI\\ExifTool\\ExifTool.exe",
+                "path": "{{EscapePath(exifToolPath)}}",
                 "enable_windows_long_path": true,
                 "enable_large_file_support": true,
                 "dry_run": true,
@@ -260,6 +262,7 @@ public sealed class DryRunOutputFlowTests
 
         try
         {
+            var exifToolPath = RequireExifTool();
             var sourceFile = Path.Combine(hot, "a.jpg");
             File.WriteAllText(sourceFile, "dummy");
 
@@ -268,7 +271,7 @@ public sealed class DryRunOutputFlowTests
             {
               "schema_version": 1,
               "exiftool": {
-                "path": "D:\\tools\\A_system\\ExifToolGUI\\ExifTool\\ExifTool.exe",
+                "path": "{{EscapePath(exifToolPath)}}",
                 "enable_windows_long_path": true,
                 "enable_large_file_support": true,
                 "dry_run": true,
@@ -337,12 +340,13 @@ public sealed class DryRunOutputFlowTests
 
         try
         {
+            var exifToolPath = RequireExifTool();
             var configPath = Path.Combine(root, "config.json");
             File.WriteAllText(configPath, $$"""
             {
               "schema_version": 1,
               "exiftool": {
-                "path": "D:\\tools\\A_system\\ExifToolGUI\\ExifTool\\ExifTool.exe",
+                "path": "{{EscapePath(exifToolPath)}}",
                 "enable_windows_long_path": true,
                 "enable_large_file_support": true,
                 "dry_run": true,
@@ -400,10 +404,23 @@ public sealed class DryRunOutputFlowTests
     private static async Task<CliRunResult> RunCliAsync(string configPath, TimeSpan timeout, string extraArgs = "", string framework = "net10.0")
     {
         var repoRoot = FindRepoRoot();
-        var mergedArgs = string.IsNullOrWhiteSpace(extraArgs) ? string.Empty : " " + extraArgs.Trim();
-        var psi = new ProcessStartInfo(
-            "dotnet",
-            $"run --project src/PhotoPrivacy.Worker/PhotoPrivacy.Worker.csproj --framework {framework} -- --mode cli --config \"{configPath}\" --once true{mergedArgs}")
+        var workerDll = Path.Combine(repoRoot, "src", "PhotoPrivacy.Worker", "bin", "Debug", "net10.0", "PhotoPrivacyWorker.dll");
+
+        string fileName, arguments;
+        if (File.Exists(workerDll))
+        {
+            fileName = "dotnet";
+            var mergedArgs = string.IsNullOrWhiteSpace(extraArgs) ? "" : " " + extraArgs.Trim();
+            arguments = $"\"{workerDll}\" --mode cli --config \"{configPath}\" --once true{mergedArgs}";
+        }
+        else
+        {
+            fileName = "dotnet";
+            var mergedArgs = string.IsNullOrWhiteSpace(extraArgs) ? "" : " " + extraArgs.Trim();
+            arguments = $"run --project src/PhotoPrivacy.Worker/PhotoPrivacy.Worker.csproj --framework {framework} -- --mode cli --config \"{configPath}\" --once true{mergedArgs}";
+        }
+
+        var psi = new ProcessStartInfo(fileName, arguments)
         {
             WorkingDirectory = repoRoot,
             RedirectStandardOutput = true,

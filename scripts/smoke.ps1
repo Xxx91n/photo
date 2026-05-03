@@ -2,7 +2,8 @@ param(
   [Parameter(Mandatory = $true)][string]$HotFolder,
   [Parameter(Mandatory = $true)][string]$AuditFolder,
   [string]$ConfigPath = "",
-  [string]$DryRun = "true"
+  [string]$DryRun = "true",
+  [string]$ExifToolPath = ""
 )
 
 Write-Host "Smoke test start"
@@ -12,6 +13,9 @@ $dryRunEnabled = $DryRun -match '^(1|true|yes|on)$'
 $args = @("--mode", "cli", "--hot-folder", "$HotFolder", "--audit-folder", "$AuditFolder", "--once", "true", "--dry-run", $dryRunEnabled.ToString())
 if (-not [string]::IsNullOrWhiteSpace($ConfigPath)) {
   $args += @("--config", "$ConfigPath")
+}
+if (-not [string]::IsNullOrWhiteSpace($ExifToolPath)) {
+  $args += @("--exiftool-path", "$ExifToolPath")
 }
 
 dotnet run --project src/PhotoPrivacy.Worker/PhotoPrivacy.Worker.csproj --framework net10.0 -- @args
