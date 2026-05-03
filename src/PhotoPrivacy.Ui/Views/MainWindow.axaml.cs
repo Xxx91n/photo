@@ -171,7 +171,7 @@ public partial class MainWindow : Window
                        ?? Path.Combine(AppContext.BaseDirectory, "_audit");
 
         _auditTail = new AuditTailService(
-            hotFolder: auditDir,
+            logDirectory: auditDir,
             onEntry: entry => viewModel?.AppendLog(entry),
             getLogLevel: () => (DataContext as MainWindowViewModel)?.LogLevel ?? "info",
             onExifToolExePathDetected: exePath => _ = ResolveExifToolVersionAsync(exePath ?? exifToolPathFromConfig));

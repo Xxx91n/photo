@@ -102,7 +102,7 @@ public sealed class PooledExifToolBridgeTests
         public Task<WipeResult> WipeMetadataAsync(string targetPath, CancellationToken cancellationToken)
         {
             WipeCalls++;
-            return Task.FromResult(WipeResult.Cleaned_NoBackup);
+            return Task.FromResult(WipeResult.Cleaned_NoOp);
         }
     }
 
@@ -131,7 +131,7 @@ public sealed class PooledExifToolBridgeTests
             try
             {
                 await _gate.WaitAsync(cancellationToken);
-                return WipeResult.Cleaned_NoBackup;
+                return WipeResult.Cleaned_NoOp;
             }
             finally
             {

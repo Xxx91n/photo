@@ -136,8 +136,24 @@ public sealed class FileTaskPipeline
                                 cancellationToken);
                             return;
 
-                        case WipeResult.Cleaned_NoBackup:
-                        case WipeResult.Cleaned_WithBackup:
+                        case WipeResult.Cleaned_NoOp:
+                            await _audit.WriteAsync(
+                                new AuditEvent(
+                                    "file_skipped",
+                                    AuditLevel.Info,
+                                    DateTimeOffset.UtcNow,
+                                    Guid.NewGuid().ToString("N"),
+                                    sourcePath,
+                                    "wipe_noop_file_unchanged",
+                                    null),
+                                cancellationToken);
+                            if (processedKey is not null)
+                            {
+                                _processedStore.MarkProcessed(processedKey);
+                            }
+                            return;
+
+                        case WipeResult.Cleaned_Modified:
                             if (decision.CreateBackup && decision.BackupPath is not null)
                             {
                                 var backupDir = Path.GetDirectoryName(decision.BackupPath);
@@ -156,7 +172,7 @@ public sealed class FileTaskPipeline
                                     DateTimeOffset.UtcNow,
                                     Guid.NewGuid().ToString("N"),
                                     sourcePath,
-                                    $"attempt={attempt};wipe_result={result}",
+                                    $"attempt={attempt};wipe_result=Cleaned_Modified",
                                     null),
                                 cancellationToken);
                             if (processedKey is not null)

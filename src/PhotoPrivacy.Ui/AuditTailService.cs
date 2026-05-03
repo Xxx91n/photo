@@ -5,7 +5,7 @@ namespace PhotoPrivacy.Ui;
 
 public sealed class AuditTailService
 {
-    private readonly string _hotFolder;
+    private readonly string _logDirectory;
     private readonly Action<AuditLogEntry> _onEntry;
     private readonly Func<string> _getLogLevel;
     private readonly Action<string?>? _onExifToolExePathDetected;
@@ -18,22 +18,21 @@ public sealed class AuditTailService
     private long _lastPosition;
 
     public AuditTailService(
-        string hotFolder,
+        string logDirectory,
         Action<AuditLogEntry> onEntry,
         Func<string> getLogLevel,
         Action<string?>? onExifToolExePathDetected = null)
     {
-        _hotFolder = hotFolder;
+        _logDirectory = logDirectory;
         _onEntry = onEntry;
         _getLogLevel = getLogLevel;
         _onExifToolExePathDetected = onExifToolExePathDetected;
-        _currentAuditFilePath = BuildAuditPath(_hotFolder, DateTime.Today);
+        _currentAuditFilePath = BuildAuditPath(_logDirectory, DateTime.Today);
     }
 
-    public static string BuildAuditPath(string hotFolder, DateTime day)
+    public static string BuildAuditPath(string logDirectory, DateTime day)
     {
-        var dir = Path.Combine(hotFolder, "_audit");
-        return Path.Combine(dir, $"audit-{day:yyyy-MM-dd}.jsonl");
+        return Path.Combine(logDirectory, $"audit-{day:yyyy-MM-dd}.jsonl");
     }
 
     public void Start()
@@ -171,7 +170,7 @@ public sealed class AuditTailService
 
     private void RotateIfDayChanged()
     {
-        var expected = BuildAuditPath(_hotFolder, DateTime.Today);
+        var expected = BuildAuditPath(_logDirectory, DateTime.Today);
         if (string.Equals(expected, _currentAuditFilePath, StringComparison.OrdinalIgnoreCase))
         {
             return;

@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -126,21 +127,16 @@ public sealed class ExifToolBridge : IExifToolBridge
 
         string? probeOutput = null;
         var probeLines = new List<string>();
-        var probeCaptured = false;
 
         void ProbeLineHandler(string line)
         {
             if (line.Contains(probeMarker, StringComparison.Ordinal))
             {
-                probeOutput = string.Join(Environment.NewLine, probeLines);
+                probeOutput = string.Join(Environment.NewLine, probeLines).Trim();
                 probeTcs.TrySetResult(probeOutput);
                 return;
             }
-            if (!probeCaptured) probeCaptured = true;
-            if (probeCaptured && !string.IsNullOrWhiteSpace(line))
-            {
-                probeLines.Add(line);
-            }
+            probeLines.Add(line);
         }
 
         _process.StdoutLine += ProbeLineHandler;
@@ -169,39 +165,76 @@ public sealed class ExifToolBridge : IExifToolBridge
         var wipeTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         _pending[wipeMarker] = wipeTcs;
 
+        FileInfo beforeInfo;
+        long beforeLength;
+        DateTime beforeWriteTime;
+        try
+        {
+            beforeInfo = new FileInfo(targetPath);
+            beforeLength = beforeInfo.Length;
+            beforeWriteTime = beforeInfo.LastWriteTimeUtc;
+        }
+        catch
+        {
+            beforeLength = -1;
+            beforeWriteTime = DateTime.MinValue;
+        }
+
         try
         {
             var wipeBlock = ExifToolCommandBuilder.BuildWipeTaskBlock(targetPath, id);
             await _process.WriteStdinAsync(wipeBlock, cancellationToken);
             await wipeTcs.Task.WaitAsync(cancellationToken);
-            return WipeResult.Cleaned_NoBackup;
         }
         finally
         {
             _pending.TryRemove(wipeMarker, out _);
         }
+
+        try
+        {
+            var afterInfo = new FileInfo(targetPath);
+            afterInfo.Refresh();
+            if (afterInfo.Exists)
+            {
+                var changed = afterInfo.Length != beforeLength
+                              || afterInfo.LastWriteTimeUtc != beforeWriteTime;
+                return changed ? WipeResult.Cleaned_Modified : WipeResult.Cleaned_NoOp;
+            }
+        }
+        catch
+        {
+        }
+
+        return WipeResult.Cleaned_Modified;
     }
+
+    private static readonly HashSet<string> _nonPrivacyFields = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "SourceFile", "Directory", "FileName", "FileSize", "FileModifyDate",
+        "FileAccessDate", "FileCreateDate", "FileInodeChangeDate", "FilePermissions",
+        "FileType", "FileTypeExtension", "MIMEType", "Compression", "Filter",
+        "Interlace", "ColorType", "BitDepth", "ImageWidth", "ImageHeight",
+        "ImageSize", "Megapixels", "XResolution", "YResolution", "ResolutionUnit",
+        "Error", "ExifToolVersion", "Warning",
+        "EncodingProcess", "YCbCrSubSampling", "ColorComponents",
+        "Quality", "NumImportantColors", "DCTEncodeVersion",
+    };
 
     private static bool HasClearableFields(string jsonOutput, string targetPath)
     {
         try
         {
-            using var doc = System.Text.Json.JsonDocument.Parse(jsonOutput);
+            using var doc = JsonDocument.Parse(jsonOutput);
             var root = doc.RootElement;
-            if (root.ValueKind != System.Text.Json.JsonValueKind.Array || root.GetArrayLength() == 0)
+            if (root.ValueKind != JsonValueKind.Array || root.GetArrayLength() == 0)
                 return false;
 
             var entry = root[0];
             foreach (var prop in entry.EnumerateObject())
             {
-                var name = prop.Name;
-                if (string.Equals(name, "SourceFile", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(name, "Directory", StringComparison.OrdinalIgnoreCase))
-                    continue;
-                if (string.Equals(name, "Error", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(name, "ExifToolVersion", StringComparison.OrdinalIgnoreCase))
-                    continue;
-                return true;
+                if (!_nonPrivacyFields.Contains(prop.Name))
+                    return true;
             }
             return false;
         }

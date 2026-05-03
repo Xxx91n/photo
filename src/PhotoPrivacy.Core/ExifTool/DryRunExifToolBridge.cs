@@ -35,6 +35,6 @@ public sealed class DryRunExifToolBridge : IExifToolBridge
                 Message: "dry-run mode enabled, exiftool execution skipped",
                 Data: null),
             cancellationToken);
-        return WipeResult.Cleaned_NoBackup;
+        return WipeResult.Cleaned_Modified;
     }
 }

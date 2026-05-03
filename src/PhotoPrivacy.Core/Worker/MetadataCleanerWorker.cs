@@ -28,6 +28,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
     private int _maxParallelDrain = 1;
     private readonly SemaphoreSlim _reloadGate = new(1, 1);
     private AppConfig? _currentConfig;
+    private IReadOnlyList<string> _autoExcludedSubdirectories = Array.Empty<string>();
 
     public string CurrentExifToolVersion => _bridge?.VersionText ?? "unknown";
 
@@ -73,7 +74,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
             : null;
         IAuditLogger auditLogger = _audit is not null ? _audit : new NoopAuditLogger();
         _bridge = CreateBridge(config, auditLogger);
-        _pipeline = new FileTaskPipeline(config, new RuleEngine(config), _bridge, new LocalFileOperations(), auditLogger, new InMemoryProcessedRecordStore());
+        _pipeline = new FileTaskPipeline(config, new RuleEngine(config), _bridge, new LocalFileOperations(), auditLogger, new FileProcessedRecordStore(config.Audit.LogDirectory));
         _maxParallelDrain = Math.Max(1, Math.Min(config.ExifTool.MaxParallelDrain, config.ExifTool.StayOpenPoolSize));
         _debounceQueue = new DebounceQueue(TimeSpan.FromMilliseconds(config.Watch.DebounceMs), () => DateTimeOffset.UtcNow);
         _recentFingerprintCache = new RecentFingerprintCache(() => DateTimeOffset.UtcNow);
@@ -108,6 +109,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
             });
 
         var autoExcluded = _watcher.GetAutoExcludedSubdirectories();
+        _autoExcludedSubdirectories = autoExcluded;
         if (_audit is not null)
         {
             await _audit.WriteAsync(
@@ -337,7 +339,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
             : null;
         IAuditLogger auditLogger = _audit is not null ? _audit : new NoopAuditLogger();
         _bridge = CreateBridge(config, auditLogger);
-        _pipeline = new FileTaskPipeline(config, new RuleEngine(config), _bridge, new LocalFileOperations(), auditLogger, new InMemoryProcessedRecordStore());
+        _pipeline = new FileTaskPipeline(config, new RuleEngine(config), _bridge, new LocalFileOperations(), auditLogger, new FileProcessedRecordStore(config.Audit.LogDirectory));
         _maxParallelDrain = Math.Max(1, Math.Min(config.ExifTool.MaxParallelDrain, config.ExifTool.StayOpenPoolSize));
 
         await _bridge.StartAsync(token);
@@ -352,6 +354,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
                 return Task.CompletedTask;
             });
 
+        _autoExcludedSubdirectories = _watcher.GetAutoExcludedSubdirectories();
         _watcher.Start();
     }
 
@@ -363,6 +366,12 @@ public sealed class MetadataCleanerWorker : BackgroundService
         }
 
         if (!File.Exists(path))
+        {
+            return;
+        }
+
+        if (_autoExcludedSubdirectories.Count > 0
+            && WatchPathFilter.ShouldSkipPath(path, _autoExcludedSubdirectories))
         {
             return;
         }

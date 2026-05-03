@@ -210,7 +210,7 @@ public sealed class FileTaskPipelineTests
         public Task<WipeResult> WipeMetadataAsync(string targetPath, CancellationToken cancellationToken)
         {
             LastTargetPath = targetPath;
-            return Task.FromResult(WipeResult.Cleaned_NoBackup);
+            return Task.FromResult(WipeResult.Cleaned_Modified);
         }
     }
 
@@ -228,7 +228,7 @@ public sealed class FileTaskPipelineTests
         {
             Calls++;
             await Task.Delay(50, cancellationToken);
-            return WipeResult.Cleaned_NoBackup;
+            return WipeResult.Cleaned_Modified;
         }
     }
 }

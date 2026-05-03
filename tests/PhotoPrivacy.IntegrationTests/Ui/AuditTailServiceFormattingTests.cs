@@ -39,11 +39,11 @@ public sealed class AuditTailServiceFormattingTests
     }
 
     [Fact]
-    public void BuildAuditPath_Should_Use_HotFolder_Audit_Subdirectory()
+    public void BuildAuditPath_Should_Use_LogDirectory_Directly()
     {
         var day = new DateTime(2026, 4, 19);
 
-        var path = AuditTailService.BuildAuditPath(@"D:\hot", day);
+        var path = AuditTailService.BuildAuditPath(@"D:\hot\_audit", day);
 
         Assert.Equal(@"D:\hot\_audit\audit-2026-04-19.jsonl", path);
     }
