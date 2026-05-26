@@ -18,13 +18,22 @@
   },
   "rules": {
     "allowed_extensions": [
-      ".jpg",
-      ".jpeg",
-      ".png",
-      ".heic",
-      ".mp4",
+      ".jpg", ".jpeg", ".jpe", ".jps", ".jph", ".jpf", ".j2k", ".jp2", ".jng",
+      ".jxl", ".jpm", ".jph", ".jpx", ".jxr",
+      ".cr2", ".cr3", ".crw", ".arw", ".nef", ".nrw", ".orf", ".ori", ".pef",
+      ".raf", ".raw", ".rw2", ".rwl", ".sr2", ".srw", ".mef", ".mos", ".erf",
+      ".mrw", ".dcp", ".dng", ".fff", ".gpr", ".lrf", ".lrv", ".iiq",
+      ".tif", ".tiff",
+      ".png", ".apng", ".pbm", ".pgm", ".ppm",
+      ".heic", ".heif", ".hif", ".avif",
+      ".psd", ".psdt", ".psb", ".ps", ".ps2", ".ps3", ".eps", ".eps2",
+      ".eps3", ".epsf", ".ai", ".ait", ".ind", ".indd", ".indt", ".insp",
       ".pdf",
-      ".docx"
+      ".mp4", ".m4a", ".m4b", ".m4p", ".m4v", ".mov", ".qt", ".3g2",
+      ".3gp", ".3gp2", ".3gpp", ".f4a", ".f4b", ".f4p", ".f4v", ".mqv",
+      ".360", ".aax", ".arq", ".ciff", ".cs1", ".dr4", ".dvb", ".exif",
+      ".exv", ".flif", ".gif", ".glv", ".hdp", ".icc", ".icm", ".mng",
+      ".mpo", ".nksc", ".thm", ".vrd", ".wdp", ".webp", ".x3f", ".xmp"
     ],
     "excluded_patterns": [
       "~$*",

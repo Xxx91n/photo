@@ -51,4 +51,65 @@ public sealed class RuleEngineTests
         Assert.True(decision.CreateBackup);
         Assert.Equal(@"D:\hot\bak\a.jpg.bak", decision.BackupPath);
     }
+
+    [Theory]
+    [InlineData(".cr3")]
+    [InlineData(".arw")]
+    [InlineData(".nef")]
+    [InlineData(".tiff")]
+    [InlineData(".webp")]
+    [InlineData(".avif")]
+    [InlineData(".psd")]
+    [InlineData(".ai")]
+    [InlineData(".eps")]
+    [InlineData(".heif")]
+    [InlineData(".dng")]
+    [InlineData(".raf")]
+    [InlineData(".rw2")]
+    [InlineData(".orf")]
+    [InlineData(".mov")]
+    [InlineData(".gif")]
+    [InlineData(".heic")]
+    [InlineData(".m4v")]
+    [InlineData(".3gp")]
+    [InlineData(".cr2")]
+    [InlineData(".ori")]
+    [InlineData(".3g2")]
+    [InlineData(".sr2")]
+    [InlineData(".mpo")]
+    [InlineData(".x3f")]
+    public void Decide_Should_Process_Writable_Extensions(string ext)
+    {
+        var cfg = AppConfig.Default;
+        var engine = new RuleEngine(cfg);
+        var decision = engine.Decide(Path.Combine(@"D:\hot", $"test{ext}"));
+
+        Assert.True(decision.ShouldProcess);
+    }
+
+    [Theory]
+    [InlineData(".mp3")]
+    [InlineData(".flac")]
+    [InlineData(".wav")]
+    [InlineData(".ogg")]
+    [InlineData(".zip")]
+    [InlineData(".exe")]
+    [InlineData(".avi")]
+    [InlineData(".mkv")]
+    [InlineData(".html")]
+    [InlineData(".txt")]
+    [InlineData(".svg")]
+    [InlineData(".csv")]
+    [InlineData(".json")]
+    [InlineData(".docx")]
+    [InlineData(".xls")]
+    public void Decide_Should_Reject_NonWritable_Extensions(string ext)
+    {
+        var cfg = AppConfig.Default;
+        var engine = new RuleEngine(cfg);
+        var decision = engine.Decide(Path.Combine(@"D:\hot", $"test{ext}"));
+
+        Assert.False(decision.ShouldProcess);
+        Assert.Equal("extension_not_allowed", decision.Reason);
+    }
 }
