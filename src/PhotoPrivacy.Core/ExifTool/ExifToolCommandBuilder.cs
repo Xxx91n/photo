@@ -34,11 +34,17 @@ public static class ExifToolCommandBuilder
 
     public static string BuildProbeTaskBlock(string targetPath, string id)
     {
-        return $"-json\n-echo1\nPROBE_DONE_{id}\n-execute\n{targetPath}\n";
+        if (targetPath.Contains('\n') || targetPath.Contains('\r'))
+            throw new ArgumentException("Path contains line break characters", nameof(targetPath));
+
+        return $"-fast\n-json\n{targetPath}\n-echo1\nPROBE_DONE_{id}\n-execute\n";
     }
 
     public static string BuildWipeTaskBlock(string targetPath, string taskId)
     {
+        if (targetPath.Contains('\n') || targetPath.Contains('\r'))
+            throw new ArgumentException("Path contains line break characters", nameof(targetPath));
+
         var sb = new StringBuilder();
         sb.Append("-all=\n");
         sb.Append("-overwrite_original\n");

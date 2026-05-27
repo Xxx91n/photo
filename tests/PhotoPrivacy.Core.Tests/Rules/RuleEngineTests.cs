@@ -78,6 +78,8 @@ public sealed class RuleEngineTests
     [InlineData(".sr2")]
     [InlineData(".mpo")]
     [InlineData(".x3f")]
+    [InlineData(".crm")]
+    [InlineData(".mie")]
     public void Decide_Should_Process_Writable_Extensions(string ext)
     {
         var cfg = AppConfig.Default;

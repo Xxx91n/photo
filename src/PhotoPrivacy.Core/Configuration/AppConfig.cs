@@ -67,7 +67,7 @@ public sealed record AppConfig(
             ".jpg", ".jpeg", ".jpe", ".jps", ".jph", ".jpf", ".j2k", ".jp2", ".jng",
             ".jxl", ".jpm", ".jph", ".jpx", ".jxr",
             // RAW
-            ".cr2", ".cr3", ".crw", ".arw", ".nef", ".nrw", ".orf", ".ori", ".pef",
+            ".cr2", ".cr3", ".crw", ".crm", ".arw", ".nef", ".nrw", ".orf", ".ori", ".pef",
             ".raf", ".raw", ".rw2", ".rwl", ".sr2", ".srw", ".mef", ".mos", ".erf",
             ".mrw", ".dcp", ".dng", ".fff", ".gpr", ".lrf", ".lrv", ".iiq",
             // TIFF
@@ -86,7 +86,7 @@ public sealed record AppConfig(
             ".3gp", ".3gp2", ".3gpp", ".f4a", ".f4b", ".f4p", ".f4v", ".mqv",
             // Others
             ".360", ".aax", ".arq", ".ciff", ".cs1", ".dr4", ".dvb", ".exif",
-            ".exv", ".flif", ".gif", ".glv", ".hdp", ".icc", ".icm", ".mng",
+            ".exv", ".flif", ".gif", ".glv", ".hdp", ".icc", ".icm", ".mie", ".mng",
             ".mpo", ".nksc", ".thm", ".vrd", ".wdp", ".webp", ".x3f", ".xmp",
         ],
             ExcludedPatterns: ["~$*", "*.tmp"],

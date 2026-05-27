@@ -125,18 +125,19 @@ public sealed class ExifToolBridge : IExifToolBridge
         var probeMarker = $"PROBE_DONE_{id}";
         var probeTcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        string? probeOutput = null;
-        var probeLines = new List<string>();
+        var probeOutputBuilder = new System.Text.StringBuilder();
+        var probeOutputLock = new object();
+        var probeOutputResult = (string?)null;
 
         void ProbeLineHandler(string line)
         {
             if (line.Contains(probeMarker, StringComparison.Ordinal))
             {
-                probeOutput = string.Join(Environment.NewLine, probeLines).Trim();
-                probeTcs.TrySetResult(probeOutput);
+                lock (probeOutputLock) { probeOutputResult = probeOutputBuilder.ToString().Trim(); }
+                probeTcs.TrySetResult(probeOutputResult);
                 return;
             }
-            probeLines.Add(line);
+            lock (probeOutputLock) { probeOutputBuilder.AppendLine(line); }
         }
 
         _process.StdoutLine += ProbeLineHandler;
@@ -144,7 +145,8 @@ public sealed class ExifToolBridge : IExifToolBridge
         {
             var probeBlock = ExifToolCommandBuilder.BuildProbeTaskBlock(targetPath, id);
             await _process.WriteStdinAsync(probeBlock, cancellationToken);
-            probeOutput = await probeTcs.Task.WaitAsync(cancellationToken);
+            var probeResult = await probeTcs.Task.WaitAsync(cancellationToken);
+            probeOutputResult ??= probeResult;
         }
         finally
         {
@@ -152,12 +154,17 @@ public sealed class ExifToolBridge : IExifToolBridge
         }
 
         // Phase 2: Check probe result
-        var hasClearableMetadata = !string.IsNullOrWhiteSpace(probeOutput) && HasClearableFields(probeOutput, targetPath);
+        var hasClearableMetadata = !string.IsNullOrWhiteSpace(probeOutputResult) && HasClearableFields(probeOutputResult, targetPath);
         if (!hasClearableMetadata)
         {
-            return string.IsNullOrWhiteSpace(probeOutput)
-                ? WipeResult.Skipped_NoMetadata
-                : WipeResult.Skipped_NoClearable;
+            if (string.IsNullOrWhiteSpace(probeOutputResult))
+            {
+                _logger.LogDebug(
+                    "Probe returned empty output for {Path}; treating as no metadata.",
+                    targetPath);
+                return WipeResult.Skipped_NoMetadata;
+            }
+            return WipeResult.Skipped_NoClearable;
         }
 
         // Phase 3: Wipe
@@ -219,7 +226,28 @@ public sealed class ExifToolBridge : IExifToolBridge
         "Error", "ExifToolVersion", "Warning",
         "EncodingProcess", "YCbCrSubSampling", "ColorComponents",
         "Quality", "NumImportantColors", "DCTEncodeVersion",
+        // PNG technical fields
+        "BackgroundColor", "PixelsPerUnitX", "PixelsPerUnitY", "PixelUnits",
+        "Gamma", "SRGBRendering", "ProfileName", "WhitePointX", "WhitePointY",
+        "RedX", "RedY", "GreenX", "GreenY", "BlueX", "BlueY",
+        "PaletteHistogram", "RowsPerStrip", "StripOffsets", "StripByteCounts",
+        // JPEG technical fields
+        "JFIFVersion", "ColorTransform",
+        // RAW sensor technical fields
+        "CFARepeatPatternDim", "CFAPattern2", "CFARepeatPattern", "CFAPlaneColor",
+        "BlackLevel", "WhiteLevel", "DefaultCropOrigin", "DefaultCropSize",
+        "ActiveArea", "OpcodeList3", "LinearizationTable",
+        // Video container metadata
+        "FrameRate", "Duration", "CodecID", "TrackVolume", "TrackDuration",
+        "MediaDuration", "VideoFrameRate", "AudioSampleRate", "AudioChannels",
+        "PreviewImage", "PreviewImageWidth", "PreviewImageHeight",
+        // PDF technical
+        "PDFVersion", "Linearized",
     };
+
+    // NOTE: fields not listed here are considered "privacy/sensitive" and trigger metadata wipe.
+    // ImageDescription and Software are intentionally omitted — they frequently contain
+    // creator/device info that users typically want removed.
 
     private static bool HasClearableFields(string jsonOutput, string targetPath)
     {
