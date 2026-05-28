@@ -323,8 +323,10 @@ public sealed class ExifToolBridgeTests
 
                 if (marker.Contains("PROBE_DONE_", StringComparison.Ordinal))
                 {
-                    EmitStdout("[{\"SourceFile\":\"probe\",\"GPSLatitude\":\"0\"}]");
+                    // Real ExifTool echoes markers BEFORE file processing output.
                     EmitStdout(marker);
+                    EmitStdout("[{\"SourceFile\":\"probe\",\"GPSLatitude\":\"0\"}]");
+                    EmitStdout("{ready}");
                 }
 
                 if (marker.Contains("VERSION_DONE_", StringComparison.Ordinal))

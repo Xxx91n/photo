@@ -40,7 +40,8 @@ public static class AppConfigLoader
                 IncludeSubdirectories: dto.Watch.IncludeSubdirectories,
                 DebounceMs: dto.Watch.DebounceMs,
                 InternalBufferSize: dto.Watch.InternalBufferSize,
-                AutoExcludedDirectories: dto.Watch.AutoExcludedDirectories ?? []),
+                AutoExcludedDirectories: dto.Watch.AutoExcludedDirectories ?? [],
+                PollingIntervalSeconds: dto.Watch.PollingIntervalSeconds),
             Rules: new RuleOptions(
                 AllowedExtensions: dto.Rules.AllowedExtensions ?? [],
                 ExcludedPatterns: dto.Rules.ExcludedPatterns ?? [],
@@ -175,6 +176,9 @@ public static class AppConfigLoader
 
         [JsonPropertyName("auto_excluded_directories")]
         public string[]? AutoExcludedDirectories { get; init; } = [];
+
+        [JsonPropertyName("polling_interval_seconds")]
+        public int PollingIntervalSeconds { get; init; } = AppConfig.Default.Watch.PollingIntervalSeconds;
     }
 
     private sealed class RulesDto

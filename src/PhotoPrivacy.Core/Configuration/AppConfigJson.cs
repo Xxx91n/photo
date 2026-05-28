@@ -26,7 +26,8 @@ public static class AppConfigJson
                 IncludeSubdirectories = config.Watch.IncludeSubdirectories,
                 DebounceMs = config.Watch.DebounceMs,
                 InternalBufferSize = config.Watch.InternalBufferSize,
-                AutoExcludedDirectories = config.Watch.AutoExcludedDirectories ?? []
+                AutoExcludedDirectories = config.Watch.AutoExcludedDirectories ?? [],
+                PollingIntervalSeconds = config.Watch.PollingIntervalSeconds
             },
             Rules = new RulesDto
             {
@@ -142,6 +143,9 @@ public static class AppConfigJson
 
         [JsonPropertyName("auto_excluded_directories")]
         public string[] AutoExcludedDirectories { get; init; } = [];
+
+        [JsonPropertyName("polling_interval_seconds")]
+        public int PollingIntervalSeconds { get; init; }
     }
 
     private sealed class RulesDto

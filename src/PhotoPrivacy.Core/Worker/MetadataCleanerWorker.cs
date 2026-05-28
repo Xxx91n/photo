@@ -139,18 +139,71 @@ public sealed class MetadataCleanerWorker : BackgroundService
 
         _watcher.Start();
 
+        // Log inotify limits on Linux (non-blocking diagnostic)
+        var inotifyDiag = InotifyMonitor.CheckAndWarn(_logger);
+        if (inotifyDiag is not null && _audit is not null)
+        {
+            await _audit.WriteAsync(
+                new AuditEvent(
+                    EventType: "inotify_limits",
+                    Level: AuditLevel.Info,
+                    TimestampUtc: DateTimeOffset.UtcNow,
+                    TaskId: Guid.NewGuid().ToString("N"),
+                    SourcePath: config.Watch.HotFolder,
+                    Message: inotifyDiag,
+                    Data: null),
+                stoppingToken);
+        }
+
+        // Main loop with exponential backoff on transient failures.
+        // Unrecoverable exceptions (config, bridge start) still propagate and stop the host.
+        const int maxConsecutiveFailures = 10;
+        var consecutiveFailures = 0;
+
         try
         {
             while (!stoppingToken.IsCancellationRequested)
             {
-                if (_runtimeControl.IsPaused)
+                try
                 {
-                    await Task.Delay(200, stoppingToken);
-                    continue;
-                }
+                    if (_runtimeControl.IsPaused)
+                    {
+                        await Task.Delay(200, stoppingToken);
+                        continue;
+                    }
 
-                await DrainReadyItemsAsync(stoppingToken);
-                await Task.Delay(200, stoppingToken);
+                    await DrainReadyItemsAsync(stoppingToken);
+                    await Task.Delay(200, stoppingToken);
+
+                    // Reset backoff on successful iteration
+                    consecutiveFailures = 0;
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    // graceful shutdown
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    consecutiveFailures++;
+                    _logger.LogError(ex,
+                        "Transient error in worker loop ({Count}/{Max}): {Message}",
+                        consecutiveFailures, maxConsecutiveFailures, ex.Message);
+
+                    if (consecutiveFailures >= maxConsecutiveFailures)
+                    {
+                        _logger.LogCritical(
+                            "Too many consecutive failures ({Count}), stopping host.",
+                            consecutiveFailures);
+                        _applicationLifetime.StopApplication();
+                        break;
+                    }
+
+                    // Exponential backoff: 1s, 2s, 4s, 8s, 16s, ... capped at 60s
+                    var backoffMs = Math.Min(1000 * (1 << (consecutiveFailures - 1)), 60_000);
+                    _logger.LogWarning("Backing off for {Ms}ms before retry.", backoffMs);
+                    await Task.Delay(backoffMs, stoppingToken);
+                }
             }
         }
         catch (TaskCanceledException)
@@ -352,7 +405,8 @@ public sealed class MetadataCleanerWorker : BackgroundService
             {
                 EnqueueIfNeeded(path);
                 return Task.CompletedTask;
-            });
+            },
+            logger: _logger);
 
         _autoExcludedSubdirectories = _watcher.GetAutoExcludedSubdirectories();
         _watcher.Start();

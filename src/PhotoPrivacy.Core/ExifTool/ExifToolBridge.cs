@@ -129,14 +129,29 @@ public sealed class ExifToolBridge : IExifToolBridge
         var probeOutputLock = new object();
         var probeOutputResult = (string?)null;
 
+        // ExifTool stay_upen protocol: -echo1 markers are echoed BEFORE file
+        // processing output. So the order is:
+        //   1. PROBE_DONE_{id}  (echo marker)
+        //   2. [{...JSON...}]   (file metadata)
+        //   3. {ready}           (task complete)
+        // We use {ready} as the end-of-task delimiter.
         void ProbeLineHandler(string line)
         {
-            if (line.Contains(probeMarker, StringComparison.Ordinal))
+            if (probeTcs.Task.IsCompleted)
+                return;
+
+            // {ready} prompt is ExifTool's end-of-task signal.
+            if (line.StartsWith("{ready", StringComparison.Ordinal))
             {
                 lock (probeOutputLock) { probeOutputResult = probeOutputBuilder.ToString().Trim(); }
                 probeTcs.TrySetResult(probeOutputResult);
                 return;
             }
+
+            // Skip the echo marker line itself — it's not part of the JSON output.
+            if (line.Contains(probeMarker, StringComparison.Ordinal))
+                return;
+
             lock (probeOutputLock) { probeOutputBuilder.AppendLine(line); }
         }
 

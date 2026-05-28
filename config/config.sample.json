@@ -14,7 +14,8 @@
     "include_subdirectories": true,
     "debounce_ms": 800,
     "internal_buffer_size": 65536,
-    "auto_excluded_directories": []
+    "auto_excluded_directories": [],
+    "polling_interval_seconds": 0
   },
   "rules": {
     "allowed_extensions": [

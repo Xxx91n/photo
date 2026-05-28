@@ -16,7 +16,8 @@ public sealed record WatchOptions(
     bool IncludeSubdirectories,
     int DebounceMs,
     int InternalBufferSize,
-    string[] AutoExcludedDirectories);
+    string[] AutoExcludedDirectories,
+    int PollingIntervalSeconds);
 
 public sealed record RuleOptions(
     string[] AllowedExtensions,
@@ -60,7 +61,8 @@ public sealed record AppConfig(
             IncludeSubdirectories: true,
             DebounceMs: 800,
             InternalBufferSize: 65536,
-            AutoExcludedDirectories: []),
+            AutoExcludedDirectories: [],
+            PollingIntervalSeconds: 0),
         Rules: new RuleOptions(
             AllowedExtensions: [
             // JPEG family
