@@ -127,7 +127,6 @@ public sealed class ExifToolBridge : IExifToolBridge
 
         var probeOutputBuilder = new System.Text.StringBuilder();
         var probeOutputLock = new object();
-        var probeOutputResult = (string?)null;
 
         // ExifTool stay_upen protocol: -echo1 markers are echoed BEFORE file
         // processing output. So the order is:
@@ -143,8 +142,7 @@ public sealed class ExifToolBridge : IExifToolBridge
             // {ready} prompt is ExifTool's end-of-task signal.
             if (line.StartsWith("{ready", StringComparison.Ordinal))
             {
-                lock (probeOutputLock) { probeOutputResult = probeOutputBuilder.ToString().Trim(); }
-                probeTcs.TrySetResult(probeOutputResult);
+                lock (probeOutputLock) { var result = probeOutputBuilder.ToString().Trim(); probeTcs.TrySetResult(result); }
                 return;
             }
 
@@ -160,8 +158,7 @@ public sealed class ExifToolBridge : IExifToolBridge
         {
             var probeBlock = ExifToolCommandBuilder.BuildProbeTaskBlock(targetPath, id);
             await _process.WriteStdinAsync(probeBlock, cancellationToken);
-            var probeResult = await probeTcs.Task.WaitAsync(cancellationToken);
-            probeOutputResult ??= probeResult;
+            await probeTcs.Task.WaitAsync(cancellationToken);
         }
         finally
         {
@@ -169,6 +166,7 @@ public sealed class ExifToolBridge : IExifToolBridge
         }
 
         // Phase 2: Check probe result
+        var probeOutputResult = probeTcs.Task.IsCompleted ? probeTcs.Task.Result : null;
         var hasClearableMetadata = !string.IsNullOrWhiteSpace(probeOutputResult) && HasClearableFields(probeOutputResult, targetPath);
         if (!hasClearableMetadata)
         {

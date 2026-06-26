@@ -36,12 +36,14 @@ public sealed class ProcessJobObject : IProcessJobObject
         }
     }
 
+    ~ProcessJobObject()
+    {
+        Dispose(disposing: false);
+    }
+
     public void Assign(Process process)
     {
-        if (_disposed)
-        {
-            throw new ObjectDisposedException(nameof(ProcessJobObject));
-        }
+        ObjectDisposedException.ThrowIf(_disposed, this);
 
         if (!NativeMethods.AssignProcessToJobObject(_handle, process.Handle))
         {
@@ -50,6 +52,12 @@ public sealed class ProcessJobObject : IProcessJobObject
     }
 
     public void Dispose()
+    {
+        Dispose(disposing: true);
+        GC.SuppressFinalize(this);
+    }
+
+    private void Dispose(bool disposing)
     {
         if (_disposed)
         {
@@ -103,12 +111,15 @@ public sealed class ProcessJobObject : IProcessJobObject
 
     private static partial class NativeMethods
     {
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
         public static extern IntPtr CreateJobObject(IntPtr lpJobAttributes, string? lpName);
 
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         [DllImport("kernel32.dll", SetLastError = true)]
         public static extern bool AssignProcessToJobObject(IntPtr hJob, IntPtr hProcess);
 
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         [DllImport("kernel32.dll", SetLastError = true)]
         public static extern bool SetInformationJobObject(
             IntPtr hJob,
@@ -116,6 +127,7 @@ public sealed class ProcessJobObject : IProcessJobObject
             ref JOBOBJECT_EXTENDED_LIMIT_INFORMATION lpJobObjectInfo,
             uint cbJobObjectInfoLength);
 
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         [DllImport("kernel32.dll", SetLastError = true)]
         public static extern bool CloseHandle(IntPtr hObject);
     }

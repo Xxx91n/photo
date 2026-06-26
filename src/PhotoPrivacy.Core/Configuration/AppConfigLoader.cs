@@ -5,6 +5,11 @@ namespace PhotoPrivacy.Core.Configuration;
 
 public static class AppConfigLoader
 {
+    private static readonly JsonSerializerOptions s_serializerOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
+
     public static AppConfig Load(string configPath)
     {
         if (!File.Exists(configPath))
@@ -15,10 +20,7 @@ public static class AppConfigLoader
         var json = File.ReadAllText(configPath);
         var (legacyExifToolPath, hasNestedExifToolPath) = ReadLegacyHints(json);
 
-        var dto = JsonSerializer.Deserialize<AppConfigDto>(json, new JsonSerializerOptions
-        {
-            PropertyNameCaseInsensitive = true
-        });
+        var dto = JsonSerializer.Deserialize<AppConfigDto>(json, s_serializerOptions);
 
         if (dto is null)
         {

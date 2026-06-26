@@ -3,7 +3,7 @@ using PhotoPrivacy.Core.Configuration;
 
 namespace PhotoPrivacy.Core.ExifTool;
 
-public sealed class PooledExifToolBridge : IExifToolBridge
+public sealed class PooledExifToolBridge : IExifToolBridge, IDisposable
 {
     private readonly IExifToolBridge[] _bridges;
     private readonly SemaphoreSlim _parallelGate;
@@ -66,6 +66,11 @@ public sealed class PooledExifToolBridge : IExifToolBridge
         {
             _parallelGate.Release();
         }
+    }
+
+    public void Dispose()
+    {
+        _parallelGate.Dispose();
     }
 }
 

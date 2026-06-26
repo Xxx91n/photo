@@ -2,9 +2,6 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
     <UseWpf>false</UseWpf>
     <UseWindowsForms>false</UseWindowsForms>
   </PropertyGroup>

@@ -8,12 +8,19 @@ docs/
 
 # Agent
 *.skill
-
+.codegraph/
+ 
 # local worktrees
 .worktrees/
 worktrees/
 config.json
 publish/
+
+# opencode
+opencode.json
+
+# logs
+logs/
 
 # dotnet
 **/bin/

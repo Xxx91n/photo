@@ -11,10 +11,7 @@
   </ItemGroup>
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
     <AssemblyName>PhotoPrivacyWorker</AssemblyName>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
     <OutputType Condition="$([MSBuild]::IsOSPlatform('Windows'))">Exe</OutputType>
     <OutputType Condition="!$([MSBuild]::IsOSPlatform('Windows'))">Exe</OutputType>
   </PropertyGroup>
