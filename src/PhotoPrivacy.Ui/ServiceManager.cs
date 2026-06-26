@@ -1,4 +1,4 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.Diagnostics;
 using System.ServiceProcess;
 using System.Runtime.Versioning;
@@ -253,12 +253,23 @@ public sealed class ServiceManager
     {
         return $"create {ServiceName} binPath= \"\"{exePath}\" --mode service --config \"{configPath}\"\" start= auto";
     }
-
     public static string BuildReconfigArguments(string exePath, string configPath)
     {
-        return $"config {ServiceName} binPath= \"\"{exePath}\" --mode service --config \"{configPath}\"\" start= auto";
+        ValidatePathForScCommand(exePath, nameof(exePath));
+        ValidatePathForScCommand(configPath, nameof(configPath));
+        return $@"config {ServiceName} binPath= """"{exePath}"" --mode service --config ""{configPath}"""" start= auto";
     }
 
+    private static void ValidatePathForScCommand(string path, string paramName)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            throw new ArgumentException("路径不能为空", paramName);
+        var dangerousChars = new[] { '"', '`', '$', '|', '>', '<', '&', '\0' };
+        if (path.IndexOfAny(dangerousChars) >= 0)
+            throw new ArgumentException($"路径包含不允许的字符: {path}", paramName);
+        if (!Path.IsPathFullyQualified(path))
+            throw new ArgumentException("路径必须是绝对路径", paramName);
+    }
     public ServiceCommandResult Uninstall()
     {
         return UninstallCore(forceElevation: null);
@@ -534,3 +545,5 @@ public sealed class ServiceManager
         return principal.IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
     }
 }
+
+

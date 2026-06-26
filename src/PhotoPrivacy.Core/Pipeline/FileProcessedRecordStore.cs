@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Text.Json;
 
 namespace PhotoPrivacy.Core.Pipeline;
@@ -10,6 +10,7 @@ public sealed class FileProcessedRecordStore : IProcessedRecordStore, IDisposabl
     private readonly TimeSpan _ttl;
     private readonly StreamWriter _writer;
     private readonly Timer? _cleanupTimer;
+    private bool _disposed;
 
     public FileProcessedRecordStore(string directory, TimeSpan? ttl = null)
     {
@@ -18,15 +19,35 @@ public sealed class FileProcessedRecordStore : IProcessedRecordStore, IDisposabl
         _filePath = Path.Combine(directory, "processed.ndjson");
 
         var stream = new FileStream(_filePath, FileMode.Append, FileAccess.Write, FileShare.Read);
-        _writer = new StreamWriter(stream);
+        try
+        {
+            _writer = new StreamWriter(stream);
+        }
+        catch
+        {
+            // 如果 StreamWriter 创建失败，确保 FileStream 被释放
+            stream.Dispose();
+            throw;
+        }
 
-        RecoverFromLog();
+        try
+        {
+            RecoverFromLog();
+        }
+        catch
+        {
+            // 如果恢复失败，清理资源并重新抛出
+            _writer.Dispose();
+            throw;
+        }
 
         _cleanupTimer = new Timer(_ => Cleanup(), null, TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(10));
     }
 
     public bool IsProcessed(string key)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
         if (!_cache.TryGetValue(key, out var ts))
             return false;
 
@@ -41,6 +62,8 @@ public sealed class FileProcessedRecordStore : IProcessedRecordStore, IDisposabl
 
     public void MarkProcessed(string key)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
         _cache[key] = DateTimeOffset.UtcNow;
         var entry = new { key, ts = DateTimeOffset.UtcNow.ToString("O") };
         var json = JsonSerializer.Serialize(entry);
@@ -53,6 +76,8 @@ public sealed class FileProcessedRecordStore : IProcessedRecordStore, IDisposabl
 
     public int Cleanup()
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
         var cutoff = DateTimeOffset.UtcNow - _ttl;
         var removed = 0;
         foreach (var kv in _cache)
@@ -65,6 +90,9 @@ public sealed class FileProcessedRecordStore : IProcessedRecordStore, IDisposabl
 
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
+
         _cleanupTimer?.Dispose();
         lock (_writer)
         {
@@ -97,9 +125,15 @@ public sealed class FileProcessedRecordStore : IProcessedRecordStore, IDisposabl
                         _cache.TryAdd(key, ts);
                     }
                 }
-                catch { /* skip malformed lines */ }
+                catch
+                {
+                    // 跳过格式错误的行
+                }
             }
         }
-        catch { /* best-effort recovery */ }
+        catch
+        {
+            // 最佳努力恢复，不阻塞初始化
+        }
     }
 }

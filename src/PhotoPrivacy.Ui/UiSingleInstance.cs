@@ -1,4 +1,6 @@
-using System.IO.Pipes;
+﻿using System.IO.Pipes;
+using System.Security.AccessControl;
+using System.Security.Principal;
 
 namespace PhotoPrivacy.Ui;
 
@@ -69,12 +71,8 @@ public sealed class UiSingleInstance : IDisposable
             {
                 try
                 {
-                    using var server = new NamedPipeServerStream(
-                        pipeName: listenPipe,
-                        direction: PipeDirection.In,
-                        maxNumberOfServerInstances: 1,
-                        transmissionMode: PipeTransmissionMode.Byte,
-                        options: PipeOptions.Asynchronous);
+                    // 使用带访问控制的管道，限制只有当前用户可以连接。
+                    using var server = CreatePipeServer(listenPipe);
 
                     await server.WaitForConnectionAsync(cancellationToken);
                     using var reader = new StreamReader(server);
@@ -94,5 +92,48 @@ public sealed class UiSingleInstance : IDisposable
                 }
             }
         }, cancellationToken);
+    }
+
+    /// <summary>
+    /// 创建带访问控制的命名管道服务器。限制只有当前用户可以连接。
+    /// </summary>
+    private static NamedPipeServerStream CreatePipeServer(string pipeName)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            try
+            {
+                var pipeSecurity = new PipeSecurity();
+                var currentUser = WindowsIdentity.GetCurrent().User;
+                if (currentUser is not null)
+                {
+                    pipeSecurity.AddAccessRule(new PipeAccessRule(
+                        currentUser,
+                        PipeAccessRights.ReadWrite,
+                        AccessControlType.Allow));
+                }
+
+                return NamedPipeServerStreamAcl.Create(
+                    pipeName: pipeName,
+                    direction: PipeDirection.In,
+                    maxNumberOfServerInstances: 1,
+                    transmissionMode: PipeTransmissionMode.Byte,
+                    options: PipeOptions.Asynchronous,
+                    inBufferSize: 0,
+                    outBufferSize: 0,
+                    pipeSecurity: pipeSecurity);
+            }
+            catch
+            {
+                // 回退：如果 ACL 操作失败（如容器环境），使用无 ACL 版本
+            }
+        }
+
+        return new NamedPipeServerStream(
+            pipeName: pipeName,
+            direction: PipeDirection.In,
+            maxNumberOfServerInstances: 1,
+            transmissionMode: PipeTransmissionMode.Byte,
+            options: PipeOptions.Asynchronous);
     }
 }

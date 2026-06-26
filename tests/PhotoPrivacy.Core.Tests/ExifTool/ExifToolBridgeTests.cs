@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using PhotoPrivacy.Core.Configuration;
 using PhotoPrivacy.Core.ExifTool;
 
@@ -187,7 +187,7 @@ public sealed class ExifToolBridgeTests
 
         var restarted = lifecycleEvents.Last(x => x.EventType == "exiftool_restarted");
         Assert.NotNull(restarted.Data);
-        Assert.Equal("timeout", restarted.Data!["reason"]);
+        Assert.Equal("health_timeout", restarted.Data!["reason"]);
         Assert.Equal("stderr: timeout", restarted.Data!["stderr_last_line"]);
     }
 
@@ -339,6 +339,12 @@ public sealed class ExifToolBridgeTests
             var hasVersionDoneMarker = markerLines.Any(x => x.Contains("VERSION_DONE_", StringComparison.Ordinal));
             if (hasVersionProbe && !hasVersionDoneMarker)
             {
+                // 发射版本探测 marker，让 handler 知道版本数据即将到来
+                var versionMarker = markerLines.LastOrDefault(m => m.Contains("VERSION_", StringComparison.Ordinal));
+                if (versionMarker is not null)
+                {
+                    EmitStdout(versionMarker);
+                }
                 EmitHealthVersion();
             }
 
@@ -423,7 +429,7 @@ public sealed class ExifToolBridgeTests
                 return;
             }
 
-            if (HealthResponseDelayMs <= 0)
+            if (VersionResponseDelayMs <= 0)
             {
                 EmitStdout(VersionText);
                 return;
@@ -431,7 +437,7 @@ public sealed class ExifToolBridgeTests
 
             _ = Task.Run(async () =>
             {
-                await Task.Delay(HealthResponseDelayMs);
+                await Task.Delay(VersionResponseDelayMs);
                 EmitStdout(VersionText);
             });
         }
@@ -463,3 +469,6 @@ public sealed class ExifToolBridgeTests
 
     private sealed record LogEntry(LogLevel Level, string Message);
 }
+
+
+

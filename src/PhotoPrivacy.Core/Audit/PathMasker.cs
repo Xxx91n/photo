@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using System.Text;
 
 namespace PhotoPrivacy.Core.Audit;
@@ -19,7 +19,7 @@ public static class PathMasker
         {
             if (string.Equals(parts[i], "Users", StringComparison.OrdinalIgnoreCase))
             {
-                parts[i + 1] = "<redacted>";
+                parts[i + 1] = "[redacted]";
                 return string.Join(separators[0], parts);
             }
         }

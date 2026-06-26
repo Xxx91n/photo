@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using PhotoPrivacy.Ipc;
 
 namespace PhotoPrivacy.Ui;
@@ -113,20 +113,31 @@ public sealed class WorkerProcessManager
         return _ipcClient.SendAsync(endpointName, new WorkerIpcRequest(WorkerIpcMethods.ReloadConfig), cancellationToken);
     }
 
+    /// <summary>
+    /// 构建后台 Worker 启动参数。
+    /// 使用 ArgumentList.Add 安全传递参数，避免字符串拼接导致的参数注入漏洞。
+    /// </summary>
     public static ProcessStartInfo BuildBackgroundLaunchStartInfo(string workerExecutablePath, string? configPath = null)
     {
-        var args = string.IsNullOrWhiteSpace(configPath)
-            ? "--mode background"
-            : $"--mode background --config \"{configPath}\"";
-
-        return new ProcessStartInfo
+        var startInfo = new ProcessStartInfo
         {
             FileName = workerExecutablePath,
-            Arguments = args,
             UseShellExecute = false,
             CreateNoWindow = true,
             WindowStyle = ProcessWindowStyle.Hidden
         };
+
+        // 使用 ArgumentList 安全传递参数，系统自动处理转义，防止参数注入。
+        startInfo.ArgumentList.Add("--mode");
+        startInfo.ArgumentList.Add("background");
+
+        if (!string.IsNullOrWhiteSpace(configPath))
+        {
+            startInfo.ArgumentList.Add("--config");
+            startInfo.ArgumentList.Add(configPath);
+        }
+
+        return startInfo;
     }
 }
 

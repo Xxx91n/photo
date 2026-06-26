@@ -1,4 +1,4 @@
-using PhotoPrivacy.Ui;
+﻿using PhotoPrivacy.Ui;
 
 namespace PhotoPrivacy.IntegrationTests.Ui;
 
@@ -10,7 +10,9 @@ public sealed class WorkerProcessManagerTests
         var psi = WorkerProcessManager.BuildBackgroundLaunchStartInfo(@"D:\app\PhotoPrivacyWorker.exe");
 
         Assert.Equal(@"D:\app\PhotoPrivacyWorker.exe", psi.FileName);
-        Assert.Equal("--mode background", psi.Arguments);
+        // 使用 ArgumentList 安全传递参数，不再使用 Arguments 字符串拼接
+        Assert.Contains("--mode", psi.ArgumentList, StringComparer.Ordinal);
+        Assert.Contains("background", psi.ArgumentList, StringComparer.Ordinal);
         Assert.False(psi.UseShellExecute);
         Assert.True(psi.CreateNoWindow);
         Assert.Equal(System.Diagnostics.ProcessWindowStyle.Hidden, psi.WindowStyle);
@@ -23,7 +25,10 @@ public sealed class WorkerProcessManagerTests
             @"D:\app\PhotoPrivacyWorker.exe",
             @"D:\app\config\config.json");
 
-        Assert.Contains("--mode background", psi.Arguments, StringComparison.Ordinal);
-        Assert.Contains("--config \"D:\\app\\config\\config.json\"", psi.Arguments, StringComparison.Ordinal);
+        // 使用 ArgumentList 安全传递参数
+        Assert.Contains("--mode", psi.ArgumentList, StringComparer.Ordinal);
+        Assert.Contains("background", psi.ArgumentList, StringComparer.Ordinal);
+        Assert.Contains("--config", psi.ArgumentList, StringComparer.Ordinal);
+        Assert.Contains(@"D:\app\config\config.json", psi.ArgumentList, StringComparer.Ordinal);
     }
 }

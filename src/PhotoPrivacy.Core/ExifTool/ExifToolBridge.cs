@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
@@ -14,11 +14,11 @@ public sealed class ExifToolBridge : IExifToolBridge
     private readonly ILogger<ExifToolBridge> _logger;
     private readonly Func<ExifToolLifecycleEvent, CancellationToken, ValueTask>? _lifecycleSink;
     private readonly ConcurrentDictionary<string, TaskCompletionSource<bool>> _pending = new();
-    private readonly object _lifecycleGate = new();
+    private readonly SemaphoreSlim _startLock = new(1, 1);
     private readonly TimeSpan _startupTimeout;
     private static readonly TimeSpan RunningHealthTimeout = TimeSpan.FromMilliseconds(500);
 
-    private bool _started;
+    private volatile bool _started;
     private int _taskId;
     private string _versionText = "unknown";
 
@@ -53,10 +53,7 @@ public sealed class ExifToolBridge : IExifToolBridge
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        lock (_lifecycleGate)
-        {
-            _started = false;
-        }
+        _started = false;
 
         foreach (var marker in _pending.Keys)
         {
@@ -69,16 +66,33 @@ public sealed class ExifToolBridge : IExifToolBridge
         await _process.StopAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// 确保 ExifTool 进程已启动。使用 SemaphoreSlim 防止并发启动竞争。
+    /// </summary>
     public async Task EnsureStartedAsync(CancellationToken cancellationToken)
     {
-        var shouldStart = false;
-        lock (_lifecycleGate)
+        if (_started)
         {
-            shouldStart = !_started;
+            var health = await TryHealthCheckAsync(cancellationToken, RunningHealthTimeout);
+            if (!health.IsHealthy)
+            {
+                await RestartAsync(cancellationToken, health);
+            }
+            return;
         }
 
-        if (shouldStart)
+        await _startLock.WaitAsync(cancellationToken);
+        try
         {
+            // 双重检查：获取锁后再次检查，避免重复启动。
+            if (_started)
+            {
+                return;
+            }
+
+            // 验证 ExifTool 路径在使用点仍然有效（防止热重载引入恶意路径）。
+            ValidateExifToolPath(_config.ExifTool.Path);
+
             var startArgs = ExifToolCommandBuilder.BuildStartArguments(_config);
 
             await _process.StartAsync(
@@ -86,10 +100,7 @@ public sealed class ExifToolBridge : IExifToolBridge
                 startArgs,
                 cancellationToken);
 
-            lock (_lifecycleGate)
-            {
-                _started = true;
-            }
+            _started = true;
 
             await EmitLifecycleEventAsync(
                 new ExifToolLifecycleEvent(
@@ -104,14 +115,10 @@ public sealed class ExifToolBridge : IExifToolBridge
                 cancellationToken);
 
             await ProbeVersionAndWarnIfNeededAsync(cancellationToken);
-
-            return;
         }
-
-        var health = await TryHealthCheckAsync(cancellationToken, RunningHealthTimeout);
-        if (!health.IsHealthy)
+        finally
         {
-            await RestartAsync(cancellationToken, health);
+            _startLock.Release();
         }
     }
 
@@ -128,29 +135,41 @@ public sealed class ExifToolBridge : IExifToolBridge
         var probeOutputBuilder = new System.Text.StringBuilder();
         var probeOutputLock = new object();
 
-        // ExifTool stay_upen protocol: -echo1 markers are echoed BEFORE file
+        // ExifTool stay_open protocol: -echo1 markers are echoed BEFORE file
         // processing output. So the order is:
         //   1. PROBE_DONE_{id}  (echo marker)
         //   2. [{...JSON...}]   (file metadata)
         //   3. {ready}           (task complete)
         // We use {ready} as the end-of-task delimiter.
+        var markerSeen = false;
         void ProbeLineHandler(string line)
         {
             if (probeTcs.Task.IsCompleted)
                 return;
 
-            // {ready} prompt is ExifTool's end-of-task signal.
-            if (line.StartsWith("{ready", StringComparison.Ordinal))
+            // 跳过 marker 行本身，只收集 marker 之后的数据。
+            if (!markerSeen)
             {
-                lock (probeOutputLock) { var result = probeOutputBuilder.ToString().Trim(); probeTcs.TrySetResult(result); }
+                if (line.Contains(probeMarker, StringComparison.Ordinal))
+                {
+                    markerSeen = true;
+                }
                 return;
             }
 
-            // Skip the echo marker line itself — it's not part of the JSON output.
-            if (line.Contains(probeMarker, StringComparison.Ordinal))
+            // {ready} prompt is ExifTool's end-of-task signal.
+            if (line.StartsWith("{ready", StringComparison.Ordinal))
+            {
+                var result = probeOutputBuilder.ToString();
+                probeTcs.TrySetResult(result);
                 return;
+            }
 
-            lock (probeOutputLock) { probeOutputBuilder.AppendLine(line); }
+            // Collect lines between the echo marker and {ready}.
+            lock (probeOutputLock)
+            {
+                probeOutputBuilder.AppendLine(line);
+            }
         }
 
         _process.StdoutLine += ProbeLineHandler;
@@ -185,9 +204,9 @@ public sealed class ExifToolBridge : IExifToolBridge
         var wipeTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         _pending[wipeMarker] = wipeTcs;
 
-        FileInfo beforeInfo;
-        long beforeLength;
-        DateTime beforeWriteTime;
+        FileInfo? beforeInfo = null;
+        long beforeLength = -1;
+        DateTime beforeWriteTime = DateTime.MinValue;
         try
         {
             beforeInfo = new FileInfo(targetPath);
@@ -196,8 +215,7 @@ public sealed class ExifToolBridge : IExifToolBridge
         }
         catch
         {
-            beforeLength = -1;
-            beforeWriteTime = DateTime.MinValue;
+            // best-effort: post-check will be skipped
         }
 
         try
@@ -213,89 +231,115 @@ public sealed class ExifToolBridge : IExifToolBridge
 
         try
         {
-            var afterInfo = new FileInfo(targetPath);
-            afterInfo.Refresh();
-            if (afterInfo.Exists)
+            if (beforeInfo is not null)
             {
-                var changed = afterInfo.Length != beforeLength
-                              || afterInfo.LastWriteTimeUtc != beforeWriteTime;
-                return changed ? WipeResult.Cleaned_Modified : WipeResult.Cleaned_NoOp;
+                beforeInfo.Refresh();
+                if (beforeInfo.Exists
+                    && beforeInfo.Length == beforeLength
+                    && beforeInfo.LastWriteTimeUtc == beforeWriteTime)
+                {
+                    _logger.LogWarning("ExifTool wipe completed but file appears unchanged for {Path}.", targetPath);
+                }
             }
         }
         catch
         {
+            // best-effort post-check
         }
 
         return WipeResult.Cleaned_Modified;
     }
 
-    private static readonly HashSet<string> _nonPrivacyFields = new(StringComparer.OrdinalIgnoreCase)
+    /// <summary>
+    /// 验证 ExifTool 路径的安全性。在进程启动和热重载时调用。
+    /// </summary>
+    private static void ValidateExifToolPath(string path)
     {
-        "SourceFile", "Directory", "FileName", "FileSize", "FileModifyDate",
-        "FileAccessDate", "FileCreateDate", "FileInodeChangeDate", "FilePermissions",
-        "FileType", "FileTypeExtension", "MIMEType", "Compression", "Filter",
-        "Interlace", "ColorType", "BitDepth", "ImageWidth", "ImageHeight",
-        "ImageSize", "Megapixels", "XResolution", "YResolution", "ResolutionUnit",
-        "Error", "ExifToolVersion", "Warning",
-        "EncodingProcess", "YCbCrSubSampling", "ColorComponents",
-        "Quality", "NumImportantColors", "DCTEncodeVersion",
-        // PNG technical fields
-        "BackgroundColor", "PixelsPerUnitX", "PixelsPerUnitY", "PixelUnits",
-        "Gamma", "SRGBRendering", "ProfileName", "WhitePointX", "WhitePointY",
-        "RedX", "RedY", "GreenX", "GreenY", "BlueX", "BlueY",
-        "PaletteHistogram", "RowsPerStrip", "StripOffsets", "StripByteCounts",
-        // JPEG technical fields
-        "JFIFVersion", "ColorTransform",
-        // RAW sensor technical fields
-        "CFARepeatPatternDim", "CFAPattern2", "CFARepeatPattern", "CFAPlaneColor",
-        "BlackLevel", "WhiteLevel", "DefaultCropOrigin", "DefaultCropSize",
-        "ActiveArea", "OpcodeList3", "LinearizationTable",
-        // Video container metadata
-        "FrameRate", "Duration", "CodecID", "TrackVolume", "TrackDuration",
-        "MediaDuration", "VideoFrameRate", "AudioSampleRate", "AudioChannels",
-        "PreviewImage", "PreviewImageWidth", "PreviewImageHeight",
-        // PDF technical
-        "PDFVersion", "Linearized",
-    };
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            throw new InvalidOperationException("ExifTool 路径不能为空");
+        }
 
-    // NOTE: fields not listed here are considered "privacy/sensitive" and trigger metadata wipe.
-    // ImageDescription and Software are intentionally omitted — they frequently contain
-    // creator/device info that users typically want removed.
+        if (!Path.IsPathFullyQualified(path))
+        {
+            throw new InvalidOperationException($"ExifTool 路径必须是绝对路径: {path}");
+        }
 
-    private static bool HasClearableFields(string jsonOutput, string targetPath)
+        if (!File.Exists(path))
+        {
+            throw new FileNotFoundException("ExifTool 可执行文件不存在", path);
+        }
+    }
+
+    private bool HasClearableFields(string jsonOutput, string targetPath)
     {
         try
         {
             using var doc = JsonDocument.Parse(jsonOutput);
             var root = doc.RootElement;
             if (root.ValueKind != JsonValueKind.Array || root.GetArrayLength() == 0)
-                return false;
-
-            var entry = root[0];
-            foreach (var prop in entry.EnumerateObject())
             {
-                if (!_nonPrivacyFields.Contains(prop.Name))
-                    return true;
+                return false;
             }
+
+            var first = root[0];
+            if (first.ValueKind != JsonValueKind.Object)
+            {
+                return false;
+            }
+
+            // 如果有超过 2 个字段（除了 SourceFile 和 File），说明有可清除的元数据。
+            return first.EnumerateObject().Count() >= 2;
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogDebug(ex, "Failed to parse probe output for {Path}", targetPath);
             return false;
         }
-        catch
-        {
-            return true;
-        }
+    }
+
+    private async Task RestartAsync(CancellationToken cancellationToken, HealthCheckResult reason)
+    {
+        _logger.LogWarning("Restarting ExifTool process: {Reason} - {Message}", reason.Reason, reason.Message);
+
+        await EmitLifecycleEventAsync(
+            new ExifToolLifecycleEvent(
+                EventType: "exiftool_restarted",
+                SourcePath: _config.ExifTool.Path,
+                Message: $"Restarting ExifTool: {reason.Reason} - {reason.Message}",
+                Data: reason.Data),
+            cancellationToken);
+
+        await _process.StopAsync(cancellationToken);
+        _started = false;
+
+        var startArgs = ExifToolCommandBuilder.BuildStartArguments(_config);
+        await _process.StartAsync(_config.ExifTool.Path, startArgs, cancellationToken);
+        _started = true;
+
+        await ProbeVersionAndWarnIfNeededAsync(cancellationToken);
     }
 
     private async Task<HealthCheckResult> TryHealthCheckAsync(CancellationToken cancellationToken, TimeSpan timeout)
     {
-        var marker = $"HEALTH_{Interlocked.Increment(ref _taskId)}";
+        if (!_process.IsRunning)
+        {
+            return new HealthCheckResult(
+                IsHealthy: false,
+                Reason: "process_exited",
+                Message: "ExifTool process is not running.",
+                Data: BuildHealthFailureData("process_exited", "ExifTool process is not running."));
+        }
+
+        var marker = $"HEALTH_{Guid.NewGuid():N}";
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         _pending[marker] = tcs;
 
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutCts.CancelAfter(timeout);
-
         try
         {
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutCts.CancelAfter(timeout);
+
             // Use explicit \n (not AppendLine/\r\n) — ExifTool stay_open protocol
             // requires LF-only line endings; \r\n breaks argument parsing.
             var cmd = $"-fast\n-echo1\n{marker}\n{_config.ExifTool.Path}\n-execute\n";
@@ -306,27 +350,19 @@ public sealed class ExifToolBridge : IExifToolBridge
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            var data = BuildHealthFailureData(
-                reason: "timeout",
-                detail: $"health check timed out after {timeout.TotalMilliseconds:F0} ms");
-
             return new HealthCheckResult(
                 IsHealthy: false,
-                Reason: "timeout",
-                Message: "health check timeout",
-                Data: data);
+                Reason: "health_timeout",
+                Message: $"Health check timed out after {timeout.TotalMilliseconds}ms.",
+                Data: BuildHealthFailureData("health_timeout", $"Timed out after {timeout.TotalMilliseconds}ms"));
         }
         catch (Exception ex)
         {
-            var data = BuildHealthFailureData(
-                reason: "exception",
-                detail: ex.Message);
-
             return new HealthCheckResult(
                 IsHealthy: false,
-                Reason: "exception",
+                Reason: "health_error",
                 Message: ex.Message,
-                Data: data);
+                Data: BuildHealthFailureData("health_error", ex.Message));
         }
         finally
         {
@@ -334,60 +370,44 @@ public sealed class ExifToolBridge : IExifToolBridge
         }
     }
 
-    private async Task RestartAsync(CancellationToken cancellationToken, HealthCheckResult healthResult)
-    {
-        try
-        {
-            await _process.StopAsync(cancellationToken);
-        }
-        catch
-        {
-            // swallow restart-stop errors, continue trying to re-create process
-        }
-
-        await _process.StartAsync(
-            _config.ExifTool.Path,
-            ExifToolCommandBuilder.BuildStartArguments(_config),
-            cancellationToken);
-
-        lock (_lifecycleGate)
-        {
-            _started = true;
-        }
-
-        await EmitLifecycleEventAsync(
-            new ExifToolLifecycleEvent(
-                EventType: "exiftool_restarted",
-                SourcePath: _config.ExifTool.Path,
-                Message: $"ExifTool process restarted after failed health check: {healthResult.Reason} ({healthResult.Message})",
-                Data: healthResult.Data),
-            cancellationToken);
-    }
-
     private async Task ProbeVersionAndWarnIfNeededAsync(CancellationToken cancellationToken)
     {
-        var marker = $"VERSION_DONE_{Interlocked.Increment(ref _taskId)}";
+        var marker = $"VERSION_{Guid.NewGuid():N}";
         var tcs = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+
         string? capturedVersionLine = null;
 
+        var markerSeen = false;
         void Handler(string line)
         {
-            if (line.Contains(marker, StringComparison.Ordinal))
-            {
-                tcs.TrySetResult(capturedVersionLine);
-                return;
-            }
+            if (tcs.Task.IsCompleted) return;
 
-            if (line.StartsWith("HEALTH_", StringComparison.Ordinal)
-                || line.StartsWith("TASK_DONE_", StringComparison.Ordinal)
+            // 跳过 {ready} 和 VERSION_DONE_ 信号
+            if (line.StartsWith("{ready", StringComparison.Ordinal)
                 || line.StartsWith("VERSION_DONE_", StringComparison.Ordinal))
             {
                 return;
             }
 
-            if (capturedVersionLine is null && !string.IsNullOrWhiteSpace(line))
+            if (line.Contains(marker, StringComparison.Ordinal))
+            {
+                markerSeen = true;
+                // 如果 version text 已经到达，立即返回结果
+                if (capturedVersionLine is not null)
+                {
+                    tcs.TrySetResult(capturedVersionLine);
+                }
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(line))
             {
                 capturedVersionLine = line.Trim();
+                // 如果 marker 已经看到，现在收到 version text，返回结果
+                if (markerSeen)
+                {
+                    tcs.TrySetResult(capturedVersionLine);
+                }
             }
         }
 
@@ -535,3 +555,6 @@ public sealed class ExifToolBridge : IExifToolBridge
         }
     }
 }
+
+
+

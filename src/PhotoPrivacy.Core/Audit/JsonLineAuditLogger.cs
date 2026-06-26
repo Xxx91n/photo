@@ -1,13 +1,19 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Encodings.Web;
 
 namespace PhotoPrivacy.Core.Audit;
 
 public sealed class JsonLineAuditLogger : IAuditLogger
 {
+    /// <summary>
+    /// 使用安全编码器：转义 HTML 特殊字符（&lt;, &gt;, &amp;, ', "）防止 XSS，
+    /// 同时允许非 ASCII 字符（中文等）正常显示。
+    /// 注意：之前使用 UnsafeRelaxedJsonEscaping 不会转义 HTML 特殊字符，
+    /// 如果日志在浏览器中渲染可能触发 XSS。
+    /// </summary>
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
-        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+        Encoder = JavaScriptEncoder.Create(System.Text.Unicode.UnicodeRanges.All)
     };
 
     private readonly string _logDirectory;
@@ -66,3 +72,4 @@ public sealed class JsonLineAuditLogger : IAuditLogger
         }
     }
 }
+

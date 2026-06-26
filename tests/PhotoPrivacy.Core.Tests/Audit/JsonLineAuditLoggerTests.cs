@@ -1,4 +1,4 @@
-using PhotoPrivacy.Core.Audit;
+﻿using PhotoPrivacy.Core.Audit;
 
 namespace PhotoPrivacy.Core.Tests.Audit;
 
@@ -27,7 +27,7 @@ public sealed class JsonLineAuditLoggerTests
             var file = Directory.GetFiles(dir, "audit-*.jsonl").Single();
             var line = File.ReadLines(file).Single();
             Assert.Contains("file_processing_succeeded", line);
-            Assert.Contains("<redacted>", line);
+            Assert.Contains("[redacted]", line);
             Assert.DoesNotContain("alice", line, StringComparison.OrdinalIgnoreCase);
         }
         finally
@@ -36,3 +36,4 @@ public sealed class JsonLineAuditLoggerTests
         }
     }
 }
+

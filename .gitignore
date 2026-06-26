@@ -25,3 +25,6 @@ logs/
 # dotnet
 **/bin/
 **/obj/
+
+# tmp
+tmp/
