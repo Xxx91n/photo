@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using Avalonia.Threading;
 
@@ -6,11 +7,14 @@ namespace PhotoPrivacy.Ui;
 public sealed class AuditTailService
 {
     private readonly string _logDirectory;
-    private readonly Action<AuditLogEntry> _onEntry;
+    private readonly Action<IReadOnlyList<AuditLogEntry>> _onBatch;
     private readonly Func<string> _getLogLevel;
     private readonly Action<string?>? _onExifToolExePathDetected;
     private readonly CancellationTokenSource _cts = new();
     private readonly object _gate = new();
+    private readonly ConcurrentQueue<AuditLogEntry> _pendingEntries = new();
+    private readonly ConcurrentQueue<string> _pendingExePaths = new();
+    private readonly DispatcherTimer _flushTimer;
 
     private FileSystemWatcher? _watcher;
     private Task? _loopTask;
@@ -19,15 +23,17 @@ public sealed class AuditTailService
 
     public AuditTailService(
         string logDirectory,
-        Action<AuditLogEntry> onEntry,
+        Action<IReadOnlyList<AuditLogEntry>> onBatch,
         Func<string> getLogLevel,
         Action<string?>? onExifToolExePathDetected = null)
     {
         _logDirectory = logDirectory;
-        _onEntry = onEntry;
+        _onBatch = onBatch;
         _getLogLevel = getLogLevel;
         _onExifToolExePathDetected = onExifToolExePathDetected;
         _currentAuditFilePath = BuildAuditPath(_logDirectory, DateTime.Today);
+
+        _flushTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(250), DispatcherPriority.Background, OnFlushTick);
     }
 
     public static string BuildAuditPath(string logDirectory, DateTime day)
@@ -52,12 +58,14 @@ public sealed class AuditTailService
         _watcher.Renamed += (_, _) => TryReadNewLines();
 
         _loopTask = Task.Run(() => LoopAsync(_cts.Token), _cts.Token);
+        _flushTimer.Start();
         TryReadNewLines();
     }
 
     public async Task StopAsync()
     {
         _cts.Cancel();
+        _flushTimer.Stop();
 
         if (_watcher is not null)
         {
@@ -77,6 +85,8 @@ public sealed class AuditTailService
                 // ignore shutdown races
             }
         }
+
+        FlushPending();
     }
 
     public static AuditLogEntry? ParseAuditLine(string line, string logLevel)
@@ -215,7 +225,7 @@ public sealed class AuditTailService
                 break;
             }
 
-            EmitIfAny(line);
+            BufferLine(line);
         }
 
         lock (_gate)
@@ -224,23 +234,48 @@ public sealed class AuditTailService
         }
     }
 
-    private void EmitIfAny(string line)
+    private void BufferLine(string line)
     {
         var exePath = TryExtractExifToolExePath(line);
-
-        Dispatcher.UIThread.Post(() =>
+        if (!string.IsNullOrWhiteSpace(exePath))
         {
-            if (!string.IsNullOrWhiteSpace(exePath))
-            {
-                _onExifToolExePathDetected?.Invoke(exePath);
-            }
+            _pendingExePaths.Enqueue(exePath);
+        }
 
-            var entry = ParseAuditLine(line, _getLogLevel());
-            if (entry is not null)
-            {
-                _onEntry(entry);
-            }
-        });
+        var entry = ParseAuditLine(line, _getLogLevel());
+        if (entry is not null)
+        {
+            _pendingEntries.Enqueue(entry);
+        }
+    }
+
+    private void OnFlushTick(object? sender, EventArgs e)
+    {
+        FlushPending();
+    }
+
+    private void FlushPending()
+    {
+        while (_pendingExePaths.TryDequeue(out var exePath))
+        {
+            _onExifToolExePathDetected?.Invoke(exePath);
+        }
+
+        if (_pendingEntries.IsEmpty)
+        {
+            return;
+        }
+
+        var batch = new List<AuditLogEntry>();
+        while (_pendingEntries.TryDequeue(out var entry))
+        {
+            batch.Add(entry);
+        }
+
+        if (batch.Count > 0)
+        {
+            _onBatch(batch);
+        }
     }
 
     public static string? TryExtractExifToolExePath(string line)

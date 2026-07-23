@@ -265,6 +265,31 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         }
     }
 
+    /// <summary>
+    /// 批量追加日志条目，减少 CollectionChanged 事件次数，避免 UI 线程洪泛。
+    /// 新条目插入头部，超出上限时从尾部批量移除。
+    /// </summary>
+    public void AppendLogBatch(IReadOnlyList<AuditLogEntry> entries)
+    {
+        if (entries.Count == 0) return;
+
+        // 逆序插入头部，保持最新在前
+        for (var i = entries.Count - 1; i >= 0; i--)
+        {
+            LogEntries.Insert(0, entries[i]);
+        }
+
+        // 批量裁剪尾部
+        var excess = LogEntries.Count - 500;
+        if (excess > 0)
+        {
+            for (var i = 0; i < excess; i++)
+            {
+                LogEntries.RemoveAt(LogEntries.Count - 1);
+            }
+        }
+    }
+
     public void ClearLogs()
     {
         LogEntries.Clear();
