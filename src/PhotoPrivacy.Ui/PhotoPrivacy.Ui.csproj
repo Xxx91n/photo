@@ -27,4 +27,8 @@
     </None>
   </ItemGroup>
 
+
+  <ItemGroup>
+    <EmbeddedResource Include="i18n\*.json" />
+  </ItemGroup>
 </Project>

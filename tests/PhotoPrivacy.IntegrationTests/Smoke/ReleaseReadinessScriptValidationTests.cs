@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Threading.Tasks;
 
 namespace PhotoPrivacy.IntegrationTests.Smoke;
 
@@ -10,7 +11,7 @@ public sealed class ReleaseReadinessScriptValidationTests
         var repoRoot = FindRepoRoot();
         var psi = new ProcessStartInfo(
             "powershell",
-            "-ExecutionPolicy Bypass -File scripts/release-readiness.ps1 -Version 0.1.0-preview -Runtime all")
+            "-NoProfile -ExecutionPolicy Bypass -File scripts/release-readiness.ps1 -Version 0.1.0-preview -Runtime all")
         {
             WorkingDirectory = repoRoot,
             RedirectStandardOutput = true,
@@ -18,12 +19,16 @@ public sealed class ReleaseReadinessScriptValidationTests
         };
 
         using var process = Process.Start(psi)!;
-        var stdoutTask = process.StandardOutput.ReadToEndAsync();
-        var stderrTask = process.StandardError.ReadToEndAsync();
-        await process.WaitForExitAsync();
+        var waitTask = process.WaitForExitAsync();
+        var finished = await Task.WhenAny(waitTask, Task.Delay(TimeSpan.FromSeconds(30)));
+        if (finished != waitTask)
+        {
+            try { process.Kill(entireProcessTree: true); } catch { }
+            throw new TimeoutException("release-readiness.ps1 hung (timeout 30s)");
+        }
 
-        var stdout = await stdoutTask;
-        var stderr = await stderrTask;
+        var stdout = await process.StandardOutput.ReadToEndAsync();
+        var stderr = await process.StandardError.ReadToEndAsync();
         var merged = stdout + Environment.NewLine + stderr;
 
         Assert.NotEqual(0, process.ExitCode);
@@ -77,16 +82,21 @@ public sealed class ReleaseReadinessScriptValidationTests
         {
             WorkingDirectory = repoRoot,
             RedirectStandardOutput = true,
-            RedirectStandardError = true
+            RedirectStandardError = true,
+            UseShellExecute = false
         };
 
         using var process = Process.Start(psi)!;
-        var stdoutTask = process.StandardOutput.ReadToEndAsync();
-        var stderrTask = process.StandardError.ReadToEndAsync();
-        await process.WaitForExitAsync();
+        var waitTask = process.WaitForExitAsync();
+        var finished = await Task.WhenAny(waitTask, Task.Delay(TimeSpan.FromSeconds(120)));
+        if (finished != waitTask)
+        {
+            try { process.Kill(entireProcessTree: true); } catch { }
+            throw new TimeoutException("publish-app.ps1 hung (timeout 120s)");
+        }
 
-        var stdout = await stdoutTask;
-        var stderr = await stderrTask;
+        var stdout = await process.StandardOutput.ReadToEndAsync();
+        var stderr = await process.StandardError.ReadToEndAsync();
         var merged = stdout + Environment.NewLine + stderr;
 
         Assert.Equal(0, process.ExitCode);
