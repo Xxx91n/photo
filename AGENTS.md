@@ -183,7 +183,7 @@ dotnet test tests/PhotoPrivacy.IntegrationTests/
 | `config/config.json` | 本地配置（含 ExifTool 路径） | ❌ |
 | `config/config.sample.json` | 配置模板 | ✅ |
 | `opencode.json` | OpenCode agent 配置 | ❌ (.gitignore) |
-| `AGENTS.md` | Agent 项目规范 | ❌ (.gitignore) |
+| `AGENTS.md` | Agent 项目规范 | ✅ |
 | `docs/superpowers/` | 设计文档和计划 | ✅ |
 | `publish/` | 发布输出 | ❌ |
 | `logs/` | 运行日志 | ❌ |
