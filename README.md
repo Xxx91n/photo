@@ -41,7 +41,7 @@ PhotoPrivacy 自动清除热文件夹中图片/视频/PDF 的隐私元数据（E
 
 1. 复制 `config/config.sample.json` 为 `config/config.json` 并按环境修改。
 2. 确认 ExifTool 路径可用：
-   `D:\tools\A_system\ExifToolGUI\ExifTool\ExifTool.exe`
+   `C:\Program Files\ExifTool\exiftool.exe`
    且同级存在 `exiftool_files`。
 3. 本地一次性验证（命令行单次执行）：
 

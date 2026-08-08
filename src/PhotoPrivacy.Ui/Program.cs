@@ -2,6 +2,7 @@ using Avalonia;
 using System.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using PhotoPrivacy.Core.Configuration;
+using Serilog;
 
 namespace PhotoPrivacy.Ui;
 
@@ -16,6 +17,9 @@ public static class UiProgram
 
     public static int Start(string[] args)
     {
+        var uiLogDir = Path.Combine(AppContext.BaseDirectory, "logs");
+        UiDiagnosticLog.Initialize(uiLogDir);
+
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
             UiDiagnosticLog.Write($"[FATAL] UnhandledException: {e.ExceptionObject}");
         TaskScheduler.UnobservedTaskException += (_, e) =>
@@ -86,6 +90,8 @@ public static class UiProgram
             showPipeCts.Dispose();
         }
 
+        UiDiagnosticLog.Shutdown();
+        Log.CloseAndFlush();
         return 0;
     }
 

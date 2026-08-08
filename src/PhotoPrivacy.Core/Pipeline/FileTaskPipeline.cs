@@ -189,7 +189,7 @@ public sealed class FileTaskPipeline
                                 if (needsTempRoute)
                                 {
                                     // sourcePath 仍是原始状态，直接备份
-                                    _fileOperations.Copy(sourcePath, decision.BackupPath, overwrite: true);
+                                    _fileOperations.AtomicCopy(sourcePath, decision.BackupPath, overwrite: true);
                                     // 再把清除后的临时文件移回原路径，完成"原地清除"的最终效果
                                     _fileOperations.Move(tempPath!, target);
                                     tempPath = null; // 标记已消费，finally 块不用清理
@@ -197,7 +197,7 @@ public sealed class FileTaskPipeline
                                 else
                                 {
                                     // target != sourcePath 的正常路径，原逻辑不变
-                                    _fileOperations.Copy(sourcePath, decision.BackupPath, overwrite: true);
+                                    _fileOperations.AtomicCopy(sourcePath, decision.BackupPath, overwrite: true);
                                 }
                             }
                             else if (needsTempRoute)

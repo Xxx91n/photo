@@ -6,6 +6,8 @@ using PhotoPrivacy.Core.Configuration;
 using PhotoPrivacy.Core.Runtime;
 using PhotoPrivacy.Core.Worker;
 using PhotoPrivacy.Worker;
+using Serilog;
+using Serilog.Extensions.Hosting;
 
 ConsoleCancelEventHandler? cancelKeyHandler = null;
 EventHandler? processExitHandler = null;
@@ -40,7 +42,14 @@ var builder = Host.CreateApplicationBuilder(args);
 var mode = RuntimeModeResolver.Resolve(builder.Configuration);
 
 builder.Logging.ClearProviders();
-builder.Logging.AddSimpleConsole();
+
+Log.Logger = new LoggerConfiguration()
+    .ReadFrom.Configuration(builder.Configuration)
+    .Enrich.FromLogContext()
+    .WriteTo.Console(outputTemplate: "[{Level:u3}] {Message:lj}{NewLine}{Exception}")
+    .CreateLogger();
+
+builder.Logging.AddSerilog(Log.Logger, dispose: false);
 if (mode != RuntimeMode.Cli)
 {
     builder.Logging.AddFilter("Microsoft.Hosting.Lifetime", LogLevel.None);
@@ -93,6 +102,7 @@ RegisterBestEffortShutdown(shutdownCoordinator, ref cancelKeyHandler, ref proces
 await app.RunAsync();
 UnregisterBestEffortShutdown(cancelKeyHandler, processExitHandler);
 posixHooks.Dispose();
+Log.CloseAndFlush();
 return Environment.ExitCode;
 
 static string ResolveWatchDirectory(string configPath, string? hotFolderArg)

@@ -50,7 +50,19 @@ public static class ConfigEditor
             Directory.CreateDirectory(dir);
         }
 
-        File.WriteAllText(configPath, json);
+        // Atomic backup before write: copy existing config to .bak via temp+rename
+        if (File.Exists(configPath))
+        {
+            var bakPath = configPath + ".bak";
+            var tmpPath = bakPath + ".tmp";
+            File.Copy(configPath, tmpPath, overwrite: true);
+            File.Move(tmpPath, bakPath, overwrite: true);
+        }
+
+        // Atomic write: write to temp then rename
+        var writeTmp = configPath + ".write.tmp";
+        File.WriteAllText(writeTmp, json);
+        File.Move(writeTmp, configPath, overwrite: true);
     }
 
     private static string ResolveBackupDirectory(string backupDirectory, string hotFolderPath)

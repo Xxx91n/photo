@@ -8,7 +8,7 @@ public sealed class DefaultPathsTests
     public void ExifToolPath_Should_Be_The_Required_Absolute_Path()
     {
         Assert.Equal(
-            @"D:\tools\A_system\ExifToolGUI\ExifTool\ExifTool.exe",
+            @"C:\Program Files\ExifTool\exiftool.exe",
             DefaultPaths.ExifToolPath);
     }
 }

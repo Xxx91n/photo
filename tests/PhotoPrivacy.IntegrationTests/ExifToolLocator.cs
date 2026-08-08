@@ -3,7 +3,7 @@ namespace PhotoPrivacy.IntegrationTests;
 internal static class ExifToolLocator
 {
     private const string EnvVar = "PHOTO_EXIFTOOL_PATH";
-    private const string DevMachineFallback = @"D:\tools\A_system\ExifToolGUI\ExifTool\ExifTool.exe";
+    private const string Fallback = @"C:\Program Files\ExifTool\exiftool.exe";
 
     public static string TryResolve()
     {
@@ -20,7 +20,7 @@ internal static class ExifToolLocator
         {
             var candidates = new[]
             {
-                DevMachineFallback,
+                Fallback,
                 @"C:\Windows\exiftool.exe",
                 @"C:\tools\exiftool.exe",
                 Path.Combine(
@@ -31,7 +31,7 @@ internal static class ExifToolLocator
                 if (File.Exists(c)) return c;
         }
 
-        return DevMachineFallback;
+        return Fallback;
     }
 
     private static string? FindInPath(string exeName)

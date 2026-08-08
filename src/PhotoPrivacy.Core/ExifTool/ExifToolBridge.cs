@@ -264,11 +264,6 @@ public sealed class ExifToolBridge : IExifToolBridge
         {
             throw new InvalidOperationException($"ExifTool 路径必须是绝对路径: {path}");
         }
-
-        if (!File.Exists(path))
-        {
-            throw new FileNotFoundException("ExifTool 可执行文件不存在", path);
-        }
     }
 
     private bool HasClearableFields(string jsonOutput, string targetPath)
@@ -555,6 +550,5 @@ public sealed class ExifToolBridge : IExifToolBridge
         }
     }
 }
-
 
 

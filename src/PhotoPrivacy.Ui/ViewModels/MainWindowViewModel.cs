@@ -27,7 +27,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private string _logLevel = "info";
     private string _exifToolPathHint = string.Empty;
     private bool _quarantineEnabled = true;
-    private string _quarantineDirectory = @"D:\hot\_quarantine";
+    private string _quarantineDirectory = string.Empty;
     private ObservableCollection<string> _userExcludedDirectories = [];
     private ObservableCollection<string> _systemAutoExcludedDirectories = [];
 

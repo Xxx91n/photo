@@ -170,6 +170,11 @@ public sealed class FileTaskPipelineTests
         {
             Copies.Add((source, destination, overwrite));
         }
+
+        public void AtomicCopy(string source, string destination, bool overwrite)
+        {
+            Copies.Add((source, destination, overwrite));
+        }
     }
 
     private sealed class InMemoryAuditLogger : IAuditLogger

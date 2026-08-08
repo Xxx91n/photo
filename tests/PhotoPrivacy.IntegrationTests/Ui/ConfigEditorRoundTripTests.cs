@@ -16,8 +16,8 @@ public sealed class ConfigEditorRoundTripTests
             var configPath = Path.Combine(root, "config.json");
             File.WriteAllText(configPath, AppConfigJson.ToIndentedJson(AppConfig.Default));
 
-            var command = new ConfigEditCommand(
-                ExifToolPath: @"D:\tools\A_system\ExifToolGUI\ExifTool\ExifTool.exe",
+           var command = new ConfigEditCommand(
+               ExifToolPath: @"C:\Program Files\ExifTool\exiftool.exe",
                 BackupEnabled: true,
                 LogEnabled: true,
                 HotFolderPath: @"D:\hot",

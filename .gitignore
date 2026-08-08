@@ -1,5 +1,5 @@
 # docx
-docs/
+*.docx
 
 # vscode
 *.code-workspace
@@ -25,6 +25,9 @@ logs/
 # dotnet
 **/bin/
 **/obj/
+# nuget local cache (project-level isolation)
+.nuget/
+
 
 # tmp
 tmp/

@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Text.Json;
 
 namespace PhotoPrivacy.Core.Pipeline;
@@ -8,7 +8,7 @@ public sealed class FileProcessedRecordStore : IProcessedRecordStore, IDisposabl
     private readonly ConcurrentDictionary<string, DateTimeOffset> _cache = new(StringComparer.OrdinalIgnoreCase);
     private readonly string _filePath;
     private readonly TimeSpan _ttl;
-    private readonly StreamWriter _writer;
+    private StreamWriter _writer;
     private readonly Timer? _cleanupTimer;
     private bool _disposed;
 
@@ -85,7 +85,35 @@ public sealed class FileProcessedRecordStore : IProcessedRecordStore, IDisposabl
             if (kv.Value < cutoff && _cache.TryRemove(kv.Key, out _))
                 removed++;
         }
+
+        Compact();
         return removed;
+    }
+
+    private void Compact()
+    {
+        lock (_writer)
+        {
+            _writer.Flush();
+            _writer.Dispose();
+
+            var tmpPath = _filePath + ".compact.tmp";
+            using (var compactWriter = new StreamWriter(new FileStream(tmpPath, FileMode.Create, FileAccess.Write, FileShare.None)))
+            {
+                foreach (var kv in _cache)
+                {
+                    var entry = new { key = kv.Key, ts = kv.Value.ToString("O") };
+                    var json = JsonSerializer.Serialize(entry);
+                    compactWriter.WriteLine(json);
+                }
+                compactWriter.Flush();
+            }
+
+            File.Move(tmpPath, _filePath, overwrite: true);
+
+            var stream = new FileStream(_filePath, FileMode.Append, FileAccess.Write, FileShare.Read);
+            _writer = new StreamWriter(stream);
+        }
     }
 
     public void Dispose()

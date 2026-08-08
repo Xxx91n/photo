@@ -27,7 +27,7 @@ public sealed record RuleOptions(
 
 public sealed record RetryOptions(int MaxAttempts, int[] BackoffSeconds);
 
-public sealed record BackupOptions(bool Enabled, string Directory, string Suffix, string Retention);
+public sealed record BackupOptions(bool Enabled, string Directory, string Suffix, int MaxSizeMb);
 
 public sealed record QuarantineOptions(bool Enabled, string Directory);
 
@@ -101,7 +101,7 @@ public sealed record AppConfig(
             Enabled: true,
             Directory: string.Empty,
             Suffix: ".bak",
-            Retention: "keep"),
+            MaxSizeMb: 5000),
         Quarantine: new QuarantineOptions(
             Enabled: true,
             Directory: @"D:\hot\_quarantine"),

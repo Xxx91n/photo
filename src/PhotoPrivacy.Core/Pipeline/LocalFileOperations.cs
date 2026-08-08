@@ -54,4 +54,22 @@ public sealed class LocalFileOperations : IFileOperations
         EnsureDirectory(Path.GetDirectoryName(destination) ?? string.Empty);
         _copy(source, destination, overwrite);
     }
+    public void AtomicCopy(string source, string destination, bool overwrite)
+    {
+        EnsureDirectory(Path.GetDirectoryName(destination) ?? string.Empty);
+
+        var tempPath = destination + ".tmp";
+
+        _copy(source, tempPath, true);
+
+        if (overwrite && File.Exists(destination))
+        {
+            File.Move(tempPath, destination, overwrite: true);
+        }
+        else
+        {
+            File.Move(tempPath, destination);
+        }
+    }
+
 }

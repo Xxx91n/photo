@@ -80,7 +80,7 @@ public sealed class MainWindowViewModelTests
             }
         };
 
-        vm.ExifToolPath = @"D:\tools\ExifTool.exe";
+       vm.ExifToolPath = @"C:\Program Files\ExifTool\exiftool.exe";
         vm.BackupEnabled = true;
         vm.LogEnabled = true;
         vm.HotFolderPath = @"D:\hot";

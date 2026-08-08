@@ -46,7 +46,7 @@ public static class AppConfigJson
                 Enabled = config.Backup.Enabled,
                 Directory = config.Backup.Directory,
                 Suffix = config.Backup.Suffix,
-                Retention = config.Backup.Retention
+                MaxSizeMb = config.Backup.MaxSizeMb
             },
             Quarantine = new QuarantineDto
             {
@@ -183,8 +183,8 @@ public static class AppConfigJson
         [JsonPropertyName("suffix")]
         public string Suffix { get; init; } = string.Empty;
 
-        [JsonPropertyName("retention")]
-        public string Retention { get; init; } = string.Empty;
+        [JsonPropertyName("max_size_mb")]
+        public int MaxSizeMb { get; init; } = 5000;
     }
 
     private sealed class QuarantineDto

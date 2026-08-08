@@ -7,4 +7,6 @@ public interface IFileOperations
     void Move(string source, string destination);
 
     void Copy(string source, string destination, bool overwrite);
+
+    void AtomicCopy(string source, string destination, bool overwrite);
 }

@@ -27,6 +27,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
     private FswFolderWatcher? _watcher;
     private int _maxParallelDrain = 1;
     private readonly SemaphoreSlim _reloadGate = new(1, 1);
+    private Timer? _cleanupTimer;
     private AppConfig? _currentConfig;
     private IReadOnlyList<string> _autoExcludedSubdirectories = Array.Empty<string>();
 
@@ -54,10 +55,11 @@ public sealed class MetadataCleanerWorker : BackgroundService
         }
         catch (AppConfigValidationException ex)
         {
-            _logger.LogError(ex, "Configuration validation failed: {Message}", ex.Message);
-            Environment.ExitCode = 1;
-            _applicationLifetime.StopApplication();
-            return;
+           _logger.LogError(ex, "Configuration validation failed: {Message}", ex.Message);
+           Environment.ExitCode = 1;
+           _applicationLifetime.StopApplication();
+           Environment.Exit(1);
+           return;
         }
 
         var printEffectiveConfig = ParseBool(GetValue("print-effective-config", "print_effective_config"));
@@ -76,6 +78,8 @@ public sealed class MetadataCleanerWorker : BackgroundService
         _bridge = CreateBridge(config, auditLogger);
         _pipeline = new FileTaskPipeline(config, new RuleEngine(config), _bridge, new LocalFileOperations(), auditLogger, new FileProcessedRecordStore(config.Audit.LogDirectory));
         _maxParallelDrain = Math.Max(1, Math.Min(config.ExifTool.MaxParallelDrain, config.ExifTool.StayOpenPoolSize));
+
+        _cleanupTimer = new Timer(_ => PerformPeriodicCleanup(config), null, TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(10));
         _debounceQueue = new DebounceQueue(TimeSpan.FromMilliseconds(config.Watch.DebounceMs), () => DateTimeOffset.UtcNow);
         _recentFingerprintCache = new RecentFingerprintCache(() => DateTimeOffset.UtcNow);
 
@@ -196,6 +200,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
                             "Too many consecutive failures ({Count}), stopping host.",
                             consecutiveFailures);
                         _applicationLifetime.StopApplication();
+                        Environment.Exit(1);
                         break;
                     }
 
@@ -214,6 +219,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
 
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
+        _cleanupTimer?.Dispose();
         _watcher?.Stop();
 
         // IMPORTANT: the host-provided cancellationToken here is already cancelled
@@ -262,6 +268,32 @@ public sealed class MetadataCleanerWorker : BackgroundService
         }
 
         await base.StopAsync(cancellationToken);
+    }
+
+    private void PerformPeriodicCleanup(AppConfig config)
+    {
+        try
+        {
+            _audit?.CleanupExpired();
+        }
+        catch
+        {
+            // best effort
+        }
+
+        try
+        {
+            var backupDir = config.Backup.Directory;
+            if (string.IsNullOrWhiteSpace(backupDir))
+            {
+                backupDir = Path.Combine(config.Watch.HotFolder, "_backup");
+            }
+            BackupRetentionService.EnforceMaxSize(backupDir, config.Backup.MaxSizeMb * 1024L * 1024L);
+        }
+        catch
+        {
+            // best effort
+        }
     }
 
     private AppConfig LoadEffectiveConfig()

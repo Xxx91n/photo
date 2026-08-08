@@ -23,6 +23,7 @@ public sealed class JsonLineAuditLoggerTests
                 Data: null);
 
             await logger.WriteAsync(ev, CancellationToken.None);
+            logger.Dispose();
 
             var file = Directory.GetFiles(dir, "audit-*.jsonl").Single();
             var line = File.ReadLines(file).Single();

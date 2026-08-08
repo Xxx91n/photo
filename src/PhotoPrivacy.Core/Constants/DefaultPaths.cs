@@ -23,6 +23,8 @@ public static class DefaultPaths
             }
         }
 
-        return @"D:\tools\A_system\ExifToolGUI\ExifTool\ExifTool.exe";
+        // ponytail: fallback to a standard install location placeholder, not a developer-private path.
+        // AppConfigValidator rejects non-existent paths, so production users get a clear "not configured" error.
+        return @"C:\Program Files\ExifTool\exiftool.exe";
     }
 }

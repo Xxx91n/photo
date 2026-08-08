@@ -209,7 +209,7 @@ dotnet test tests/PhotoPrivacy.IntegrationTests/
 
 | 工具 | 路径 |
 |------|------|
-| ExifTool | `D:\tools\A_system\ExifToolGUI\ExifTool\ExifTool.exe` |
+| ExifTool | `config.json` 配置（默认搜索 `C:\Program Files\ExifTool\exiftool.exe` 等标准位置） |
 | .NET SDK | 10.0.201 |
 | Semgrep | pip install（Python 3.11+） |
 | Python | `D:\DevTools\Python\runtimes\pythoncore-3.11-64\` |
