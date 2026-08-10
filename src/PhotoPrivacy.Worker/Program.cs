@@ -65,6 +65,10 @@ if (mode == RuntimeMode.Service)
             options.ServiceName = "PhotoPrivacyCleaner";
         });
     }
+    else if (OperatingSystem.IsLinux())
+    {
+        builder.Services.AddSystemd();
+    }
 }
 
 builder.Services.Configure<HostOptions>(options =>

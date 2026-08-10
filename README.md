@@ -93,7 +93,7 @@ PhotoPrivacyWorker.exe --mode service --config .\config\config.json
 推荐使用脚本（管理员 PowerShell）：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\install-service.ps1 -ExePath .\publish\app\0.1.0-preview\win-x64\PhotoPrivacyWorker.exe -ConfigPath .\config\config.json
+powershell -ExecutionPolicy Bypass -File .\scripts\install-service.ps1 -ExePath .\release\win-x64\worker\PhotoPrivacyWorker.exe -ConfigPath .\config\config.json
 ```
 
 手工 `sc.exe` 示例：
@@ -111,7 +111,7 @@ sc.exe start PhotoPrivacyCleaner
 powershell -ExecutionPolicy Bypass -File scripts/publish-app.ps1 -Version 0.1.0-preview -Runtime linux-x64 -SelfContained true -Zip true
 ```
 
-2) 上传并解压 `publish/PhotoPrivacy-<version>-linux-x64.tar.gz` 到主机（推荐 `/opt/photoprivacy`）。
+2) 上传并解压 `release/PhotoPrivacy-<version>-linux-x64.tar.gz` 到主机（推荐 `/opt/photoprivacy`）。
 
 3) 安装并启动 systemd 服务（root）：
 

@@ -113,7 +113,7 @@ dotnet test tests/PhotoPrivacy.Core.Tests/
 dotnet test tests/PhotoPrivacy.IntegrationTests/
 
 # 发布
-.\scripts\publish-app.ps1
+.\scripts\publish-app.ps1  # 输出到 release/<rid>/
 ```
 
 ---
@@ -185,7 +185,7 @@ dotnet test tests/PhotoPrivacy.IntegrationTests/
 | `opencode.json` | OpenCode agent 配置 | ❌ (.gitignore) |
 | `AGENTS.md` | Agent 项目规范 | ✅ |
 | `docs/superpowers/` | 设计文档和计划 | ✅ |
-| `publish/` | 发布输出 | ❌ |
+| `release/` | 发布输出 | ❌ |
 | `logs/` | 运行日志 | ❌ |
 
 ---

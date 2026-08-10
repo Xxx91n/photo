@@ -9,8 +9,8 @@ param(
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$publishRoot = Join-Path $repoRoot "publish"
-$targetDir = Join-Path $publishRoot ("app/{0}/{1}" -f $Version, $Runtime)
+$releaseRoot = Join-Path $repoRoot "release"
+$targetDir = Join-Path $releaseRoot $Runtime
 
 if (Test-Path $targetDir) {
   Remove-Item $targetDir -Recurse -Force
@@ -19,13 +19,19 @@ if (Test-Path $targetDir) {
 New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
 
 $selfContainedEnabled = $SelfContained -match '^(1|true|yes|on)$'
+$selfContainedValue = if ($selfContainedEnabled) { "true" } else { "false" }
 $zipEnabled = $Zip -match '^(1|true|yes|on)$'
 
-$selfContainedValue = if ($selfContainedEnabled) { "true" } else { "false" }
-$isLinuxRuntime = $Runtime -like "linux-*"
+$isLinuxRuntime = $Runtime -match '^linux'
+$isOsxRuntime = $Runtime -match '^osx'
 
-if ($Runtime -match '^(all|any)$') {
-  throw "Runtime '$Runtime' is not valid. Use a concrete RID like win-x64 or linux-x64."
+if ($isLinuxRuntime -and $isOsxRuntime) {
+  throw "Runtime '$Runtime' cannot be both linux and osx."
+}
+
+$validRuntimes = @("win-x64", "win-x86", "win-arm64", "linux-x64", "linux-arm64", "osx-x64", "osx-arm64")
+if ($validRuntimes -notcontains $Runtime) {
+  throw "Invalid Runtime '$Runtime'. Valid: $($validRuntimes -join ', ')"
 }
 
 $defaultFramework = "net10.0"
@@ -48,9 +54,6 @@ dotnet publish "$repoRoot\src\PhotoPrivacy.Ui\PhotoPrivacy.Ui.csproj" `
   -f $resolvedFramework `
   -r $Runtime `
   --self-contained $selfContainedValue `
-  /p:PublishSingleFile=true `
-  /p:IncludeNativeLibrariesForSelfExtract=true `
-  /p:PublishTrimmed=false `
   /p:Version=$Version `
   /p:UseAppHost=true `
   -o $uiPublishDir
@@ -64,9 +67,6 @@ dotnet publish "$repoRoot\src\PhotoPrivacy.Worker\PhotoPrivacy.Worker.csproj" `
   -f $resolvedFramework `
   -r $Runtime `
   --self-contained $selfContainedValue `
-  /p:PublishSingleFile=true `
-  /p:IncludeNativeLibrariesForSelfExtract=true `
-  /p:PublishTrimmed=false `
   /p:Version=$Version `
   /p:UseAppHost=true `
   -o $workerPublishDir
@@ -75,9 +75,9 @@ if ($LASTEXITCODE -ne 0) {
   throw "dotnet publish (worker) failed"
 }
 
-$uiSourceExeName = if ($isLinuxRuntime) { "PhotoPrivacy.Ui" } else { "PhotoPrivacy.Ui.exe" }
-$appExeName = if ($isLinuxRuntime) { "PhotoPrivacy" } else { "PhotoPrivacy.exe" }
-$workerExeName = if ($isLinuxRuntime) { "PhotoPrivacyWorker" } else { "PhotoPrivacyWorker.exe" }
+$uiSourceExeName = if ($isLinuxRuntime -or $isOsxRuntime) { "PhotoPrivacy.Ui" } else { "PhotoPrivacy.Ui.exe" }
+$appExeName = if ($isLinuxRuntime -or $isOsxRuntime) { "PhotoPrivacy" } else { "PhotoPrivacy.exe" }
+$workerExeName = if ($isLinuxRuntime -or $isOsxRuntime) { "PhotoPrivacyWorker" } else { "PhotoPrivacyWorker.exe" }
 
 $uiAppHostPath = Join-Path $uiPublishDir $uiSourceExeName
 $workerAppHostPath = Join-Path $workerPublishDir $workerExeName
@@ -107,6 +107,9 @@ if (Test-Path "$repoRoot\scripts\install-service.ps1") {
 if (Test-Path "$repoRoot\scripts\install-systemd-service.sh") {
   Copy-Item "$repoRoot\scripts\install-systemd-service.sh" (Join-Path $targetDir "install-systemd-service.sh") -Force
 }
+if (Test-Path "$repoRoot\scripts\install-launchd-service.sh") {
+  Copy-Item "$repoRoot\scripts\install-launchd-service.sh" (Join-Path $targetDir "install-launchd-service.sh") -Force
+}
 
 if (Test-Path $uiPublishDir) {
   Remove-Item $uiPublishDir -Recurse -Force
@@ -116,8 +119,8 @@ if (Test-Path $workerPublishDir) {
 }
 
 if ($zipEnabled) {
-  if ($isLinuxRuntime) {
-    $tarPath = Join-Path $publishRoot ("PhotoPrivacy-{0}-{1}.tar.gz" -f $Version, $Runtime)
+  if ($isLinuxRuntime -or $isOsxRuntime) {
+    $tarPath = Join-Path $releaseRoot ("PhotoPrivacy-{0}-{1}.tar.gz" -f $Version, $Runtime)
     if (Test-Path $tarPath) {
       Remove-Item $tarPath -Force
     }
@@ -130,7 +133,7 @@ if ($zipEnabled) {
     Write-Host "Package created: $tarPath"
   }
   else {
-    $zipPath = Join-Path $publishRoot ("PhotoPrivacy-{0}-{1}.zip" -f $Version, $Runtime)
+    $zipPath = Join-Path $releaseRoot ("PhotoPrivacy-{0}-{1}.zip" -f $Version, $Runtime)
     if (Test-Path $zipPath) {
       Remove-Item $zipPath -Force
     }

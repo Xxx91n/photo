@@ -14,7 +14,7 @@
 .worktrees/
 worktrees/
 config.json
-publish/
+release/
 
 # opencode
 opencode.json

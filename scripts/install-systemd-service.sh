@@ -76,7 +76,7 @@ fi
 EXE_PATH="${INSTALL_DIR}/PhotoPrivacyWorker"
 if [[ ! -x "$EXE_PATH" ]]; then
   echo "Missing executable: ${EXE_PATH}" >&2
-  echo "Please extract linux-x64 package to ${INSTALL_DIR} first." >&2
+  echo "Please extract release/linux-x64/worker/ package to ${INSTALL_DIR} first." >&2
   exit 1
 fi
 

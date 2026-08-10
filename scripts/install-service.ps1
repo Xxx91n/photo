@@ -1,6 +1,6 @@
 param(
   [string]$ServiceName = "PhotoPrivacyCleaner",
-  [string]$ExePath = ".\publish\app\0.1.0-preview\win-x64\PhotoPrivacyWorker.exe",
+  [string]$ExePath = ".\release\win-x64\worker\PhotoPrivacyWorker.exe",
   [string]$ConfigPath = "",
   [string]$DisplayName = "PhotoPrivacy Cleaner",
   [string]$Description = "Hot-folder metadata cleaner worker service (ExifTool stay_open)."

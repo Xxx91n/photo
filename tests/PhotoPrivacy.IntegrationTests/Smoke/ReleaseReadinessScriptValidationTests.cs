@@ -101,7 +101,7 @@ public sealed class ReleaseReadinessScriptValidationTests
 
         Assert.Equal(0, process.ExitCode);
 
-        var assetPath = Path.Combine(repoRoot, "publish", "app", "0.1.0-preview", "win-x64", "Assets", "tray-dot-16.png.base64");
+        var assetPath = Path.Combine(repoRoot, "release", "win-x64", "Assets", "tray-dot-16.png.base64");
         Assert.True(File.Exists(assetPath), $"missing tray asset: {assetPath}\n{merged}");
     }
 
