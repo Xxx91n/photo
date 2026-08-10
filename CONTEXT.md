@@ -39,3 +39,44 @@ _Avoid_: Safe write, transactional write
 **Compaction**:
 压缩清理，将 NDJSON append log 中未过期的条目重写到新文件，原子替换旧文件，控制文件大小。
 _Avoid_: Vacuum, defragment
+
+
+**RID (Runtime Identifier)**:
+.NET 运行时标识符，指定目标平台架构组合（如 win-x64、linux-arm64、osx-arm64）。本项目支持 7 个 RID，匹配 ExifTool 上游平台覆盖范围。
+_Avoid_: Platform, target
+
+**Shell (发布壳)**:
+本项目的编译产物（UI + Worker），不含 ExifTool 二进制。用户自行下载 ExifTool 并配置路径，与 ExifToolGUI 的法律合规模式一致。
+_Avoid_: Bundle, package
+
+**Release Directory**:
+统一发布输出目录 release/<rid>/，替代旧 publish/ 路径。每个 RID 子目录内为平铺结构，Worker 在 worker/ 子目录。
+_Avoid_: Publish directory, output folder
+
+**Publish Profile**:
+csproj PropertyGroup 中的发布属性集合（SelfContained、PublishSingleFile、IncludeNativeLibrariesForSelfExtract 等），确保本地和 CI 构建一致。
+_Avoid_: Build config, deployment config
+
+**Manual Dispatch**:
+GitHub Actions workflow_dispatch 手动触发模式，不在 push/PR 上自动运行。用户通过 GitHub UI 手动触发构建。
+_Avoid_: Auto build, CI trigger
+
+**Deb Package**:
+Linux .deb 安装包，control 文件声明 Avalonia native 依赖（libx11-6 等），用 dpkg-deb --build 手动构建。
+_Avoid_: Debian package, apt package
+
+**App Bundle**:
+macOS .app 目录结构，含 Info.plist 和图标，用 ditto 打包。
+_Avoid_: macOS app, application bundle
+
+**LaunchDaemon**:
+macOS 系统服务管理器，通过 plist XML 配置 + launchctl load 注册服务。
+_Avoid_: launchd agent, macOS service
+
+**Compaction**:
+（同前）NDJSON append log 定时压缩，重写未过期条目到新文件，原子替换旧文件。
+
+_Avoid_: Vacuum, defragment
+
+**Marketplace**:
+（保留占位，无新术语）
