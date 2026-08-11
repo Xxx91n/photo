@@ -78,5 +78,68 @@ _Avoid_: launchd agent, macOS service
 
 _Avoid_: Vacuum, defragment
 
-**Marketplace**:
-（保留占位，无新术语）
+
+**IPC Transport**:
+跨平台 IPC 传输抽象层，统一封装 Windows NamedPipe 和 Unix Domain Socket 两种传输后端，按 OS 切换实现。
+_Avoid_: IPC backend, transport layer
+
+**Unix Domain Socket**:
+Linux/macOS 原生 IPC 机制，使用 .NET System.Net.Sockets + AddressFamily.Unix + UnixDomainSocketEndPoint，监听 /run/photoprivacy/worker.sock（Linux）或 ~/Library/Application Support/photoprivacy/worker.sock（macOS）。
+_Avoid_: UDS, Unix socket
+
+**Service State Probe**:
+跨平台服务状态探测器抽象接口，Windows 用 ServiceController/sc.exe、Linux 用 systemctl is-active/is-enabled、macOS 用 launchctl list 映射到统一 ServiceRuntimeState 枚举。
+_Avoid_: Service monitor, status checker
+
+**Service Command Executor**:
+跨平台服务操作执行器抽象接口，通过提权辅助进程（Windows runas / Linux pkexec / macOS osascript）调用平台特定安装脚本，结果通过 Process.ExitCode 返回。
+_Avoid_: Service installer, service manager
+
+**Flock Single Instance**:
+Unix 单实例保证，通过 FileStream.Lock 独占锁文件（/run/photoprivacy/worker.lock、~/Library/Application Support/photoprivacy/ui.lock）防止多实例运行。Mutex 的 Global\ 前缀在 Unix 不可靠，仅 Windows 用 Mutex。
+_Avoid_: PID file, lock guard
+
+**Heartbeat Service**:
+UI 进程后台心跳服务，定时 ping Worker（复用现有 IPC Ping），指数退避（1s→2s→4s→...→60s cap），状态通过 INotifyPropertyChanged 暴露给 ViewModel，UI 按钮绑定状态门控。
+_Avoid_: Keepalive, health monitor
+
+**Stale Socket Cleanup**:
+Unix Domain Socket 服务端绑前无条件删除残留 socket 文件（File.Exists + File.Delete），防止前次崩溃残留导致 EADDRINUSE。NamedPipe 无此问题（内核对象）。
+_Avoid_: Socket unlink, endpoint cleanup
+
+**SIGHUP Reload**:
+Linux/macOS 服务管理发送 SIGHUP 触发配置重载，与 IPC ReloadConfig 复用同一代码路径。systemd unit 配 ExecReload=/bin/kill -HUP \$MAINPID。
+_Avoid_: Signal reload, hot config
+
+**Zombie Reap**:
+ExifTool 子进程退出时通过 Process.Exited 事件调用 WaitForExit 同步回收退出码，防止 Unix 僵尸进程驻留。
+_Avoid_: Child cleanup, process reap
+
+**Shared Group Model**:
+Linux/macOS 服务用户与 GUI 用户共享同一组（photoprivacy），setgid 目录（chmod 2770）保证成员可读写、新建子目录继承组。Quarantine 不开放给 GUI 直接访问，通过 IPC 代理读。
+_Avoid_: ACL model, group permissions
+
+**IPC Protocol Version**:
+WorkerIpcRequest/Response 中的可选 v 字段（默认 1，nullable）。老客户端发不含 v 的消息按 v1 处理。新功能以方法名扩展为主，version 用于协议能力协商。
+_Avoid_: Protocol negotiation, version handshake
+
+**Mode-Scoped Shutdown**:
+WorkerIpcMethods.Shutdown 仅在 CLI 模式可触发；Service/Background 模式收到 Shutdown 请求直接返回错误提示「请通过 systemctl/launchd 停止服务」，保护多用户共享场景。
+_Avoid_: Service stop, forced shutdown
+
+**Post-Action Probe Retry**:
+服务安装/卸载等操作成功后立即重试探测目标状态，指数退避（100ms→200ms→...→12.8s），最多 8 次约 25 秒，避免用户等心跳 5 秒才能看到结果。
+_Avoid_: Status wait, action confirm
+
+**Config Reload Validation**:
+Worker 收到 ReloadConfig IPC 时先验证新配置 schema 和 ExifTool 路径合法性，验证通过才热切换内部 accessor；失败保留旧配置，IPC 返回错误让 GUI 显示。
+_Avoid_: Config guard, schema check
+
+**Elevation Verb**:
+各平台提权方式统称：Windows Verb=runas (UAC ShellExecute)，Linux pkexec (polkit)，macOS osascript with administrator privileges。所有参数走 ProcessStartInfo.ArgumentList 自动转义。
+_Avoid_: Privilege escalation, admin prompt
+
+**PS5.1 Compat**:
+Windows PowerShell 脚本用 #Requires -Version 5.1 + #Requires -PSEdition Desktop,Core 声明兼容。Remove-Service 在 PowerShell 7+ 可用，Desktop 兜底用 sc.exe delete。
+_Avoid_: PS compat, script version
+

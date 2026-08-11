@@ -34,4 +34,12 @@ public sealed class WorkerRuntimeContext
     public void Resume() => _runtimeControl.Resume();
 
     public Task ReloadConfigAsync() => _worker.ReloadConfigAsync();
+
+    /// <summary>
+    /// ADR 0033: Validate config without applying. Returns (valid, errorMessage).
+    /// </summary>
+    public (bool valid, string? error) TryValidateConfig()
+    {
+        return _worker.TryValidateConfig();
+    }
 }

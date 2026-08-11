@@ -389,6 +389,27 @@ public sealed class MetadataCleanerWorker : BackgroundService
         }
     }
 
+    /// <summary>
+    /// ADR 0033: Validate current config without applying. Returns (valid, errorMessage).
+    /// </summary>
+    public (bool valid, string? error) TryValidateConfig()
+    {
+        try
+        {
+            var config = LoadEffectiveConfig();
+            AppConfigValidator.Validate(config);
+            return (true, null);
+        }
+        catch (AppConfigValidationException ex)
+        {
+            return (false, ex.Message);
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }
+    }
+
     private async Task ApplyConfigAsync(AppConfig config, CancellationToken token)
     {
         try

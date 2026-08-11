@@ -15,13 +15,15 @@ public static class WorkerIpcMethods
 
 public sealed record WorkerIpcRequest(
     [property: JsonPropertyName("method")] string Method,
-    [property: JsonPropertyName("id")] string? Id = null);
+    [property: JsonPropertyName("id")] string? Id = null,
+    [property: JsonPropertyName("v")] int? V = null);
 
 public sealed record WorkerIpcResponse(
     [property: JsonPropertyName("ok")] bool Ok,
     [property: JsonPropertyName("data")] WorkerStatusDto? Data = null,
     [property: JsonPropertyName("message")] string? Message = null,
-    [property: JsonPropertyName("id")] string? Id = null);
+    [property: JsonPropertyName("id")] string? Id = null,
+    [property: JsonPropertyName("v")] int? V = null);
 
 public sealed record WorkerStatusDto(
     [property: JsonPropertyName("isPaused")] bool IsPaused,
