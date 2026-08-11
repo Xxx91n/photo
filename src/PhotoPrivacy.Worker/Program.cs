@@ -43,12 +43,24 @@ var mode = RuntimeModeResolver.Resolve(builder.Configuration);
 
 builder.Logging.ClearProviders();
 
-Log.Logger = new LoggerConfiguration()
+var logConfig = new LoggerConfiguration()
     .ReadFrom.Configuration(builder.Configuration)
     .Enrich.FromLogContext()
     .Enrich.With<PhotoPrivacy.Core.Audit.PathMaskingEnricher>()
-    .WriteTo.Console(outputTemplate: "[{Level:u3}] {Message:lj}{NewLine}{Exception}")
-    .CreateLogger();
+    .WriteTo.Console(outputTemplate: "[{Level:u3}] {Message:lj}{NewLine}{Exception}");
+
+if (mode != RuntimeMode.Service)
+{
+    logConfig.WriteTo.Async(a => a.File(
+        "logs/worker-.log",
+        rollingInterval: RollingInterval.Day,
+        rollOnFileSizeLimit: true,
+        fileSizeLimitBytes: 104857600,
+        retainedFileCountLimit: 31,
+        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}"));
+}
+
+Log.Logger = logConfig.CreateLogger();
 
 builder.Logging.AddSerilog(Log.Logger, dispose: false);
 if (mode != RuntimeMode.Cli)

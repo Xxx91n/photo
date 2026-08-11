@@ -10,6 +10,7 @@ public sealed class BackgroundUiOptions
     public string WorkerExecutablePath { get; set; } = string.Empty;
 
     public Func<CancellationToken, Task<bool>> IsWorkerAliveAsync { get; set; } = static _ => Task.FromResult(false);
+    public ConnectionStateService? ConnectionState { get; set; }
     public Func<CancellationToken, Task<bool>> IsPausedAsync { get; set; } = static _ => Task.FromResult(false);
     public Func<CancellationToken, Task> PauseAsync { get; set; } = static _ => Task.CompletedTask;
     public Func<CancellationToken, Task> ResumeAsync { get; set; } = static _ => Task.CompletedTask;

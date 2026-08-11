@@ -67,6 +67,9 @@ public static class UiProgram
             workerManager: workerManager,
             serviceManager: serviceManager);
 
+        var connectionState = new ConnectionStateService(new WorkerIpcClient(), endpointName);
+        App.RuntimeOptions.ConnectionState = connectionState;
+
         var showPipeTask = UiSingleInstance.RunShowWindowServerAsync(
             onShowWindowRequested: () => App.RuntimeOptions.ShowMainWindow(),
             cancellationToken: showPipeCts.Token);
@@ -90,6 +93,7 @@ public static class UiProgram
             showPipeCts.Dispose();
         }
 
+        connectionState.Dispose();
         UiDiagnosticLog.Shutdown();
         Log.CloseAndFlush();
         return 0;
