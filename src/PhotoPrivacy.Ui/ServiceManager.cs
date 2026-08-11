@@ -146,7 +146,7 @@ public sealed class ServiceManager
     private readonly IServiceStateProbe _stateProbe;
 
     public ServiceManager()
-        : this(new ScCommandExecutor(), new ServiceStateProbe())
+        : this(CreateDefaultExecutor(), CreateDefaultStateProbe())
     {
     }
 
@@ -161,35 +161,20 @@ public sealed class ServiceManager
         _stateProbe = stateProbe;
     }
 
-    public bool IsAvailable => OperatingSystem.IsWindows();
+    public bool IsAvailable => OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS();
 
     public bool IsInstalled()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            return false;
-        }
-
         return _stateProbe.ServiceExists(ServiceName);
     }
 
     public ServiceRuntimeState GetRuntimeState()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            return ServiceRuntimeState.NotInstalled;
-        }
-
         return _stateProbe.GetState(ServiceName);
     }
 
     public string GetStatusText()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            return "Linux/macOS：请使用 systemd 管理服务";
-        }
-
         var state = _stateProbe.GetState(ServiceName);
         return state switch
         {
@@ -543,6 +528,55 @@ public sealed class ServiceManager
         using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
         var principal = new System.Security.Principal.WindowsPrincipal(identity);
         return principal.IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
+    }
+
+    /// <summary>
+    /// ADR 0020+0021: Create platform-appropriate default state probe.
+    /// </summary>
+    private static IServiceStateProbe CreateDefaultStateProbe()
+    {
+        if (OperatingSystem.IsLinux()) return new SystemdStateProbe();
+        if (OperatingSystem.IsMacOS()) return new LaunchdStateProbe();
+        return new ServiceStateProbe();
+    }
+
+    /// <summary>
+    /// ADR 0020+0021: Create platform-appropriate default command executor.
+    /// Cross-platform: Windows uses sc.exe; Linux uses pkexec+systemd script; macOS uses osascript+launchd.
+    /// </summary>
+    private static IScCommandExecutor CreateDefaultExecutor()
+    {
+        if (OperatingSystem.IsLinux()) return new SystemdCommandExecutor();
+        if (OperatingSystem.IsMacOS()) return new LaunchdCommandExecutor();
+        return new ScCommandExecutor();
+    }
+
+    /// <summary>
+    /// ADR 0032: Post-action probe retry with exponential backoff.
+    /// </summary>
+    public async Task<ServiceRuntimeState> WaitForStateAsync(
+        ServiceRuntimeState desired, CancellationToken cancellationToken = default)
+    {
+        for (int i = 0; i < 8; i++)
+        {
+            var state = _stateProbe.GetState(ServiceName);
+            if (state == desired)
+            {
+                return state;
+            }
+
+            var delay = TimeSpan.FromMilliseconds(100 * Math.Pow(2, i));
+            try
+            {
+                await Task.Delay(delay, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                return _stateProbe.GetState(ServiceName);
+            }
+        }
+
+        return _stateProbe.GetState(ServiceName);
     }
 }
 
