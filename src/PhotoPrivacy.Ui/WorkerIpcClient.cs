@@ -17,12 +17,12 @@ public sealed class WorkerIpcClient
         var transport = IpcTransportFactory.CreateServer(endpointName);
         try
         {
-            using var stream = await transport.ConnectAsync(TimeSpan.FromMilliseconds(700), cancellationToken);
+            using var stream = await transport.ConnectAsync(TimeSpan.FromMilliseconds(700), cancellationToken).ConfigureAwait(false);
 
             var payload = JsonSerializer.Serialize(request, WorkerIpcJsonContext.Default.WorkerIpcRequest);
             var payloadBytes = System.Text.Encoding.UTF8.GetBytes(payload + "\n");
-            await stream.WriteAsync(payloadBytes, cancellationToken);
-            await stream.FlushAsync(cancellationToken);
+            await stream.WriteAsync(payloadBytes, cancellationToken).ConfigureAwait(false);
+            await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
 
             var line = await ReadBoundedLineAsync(stream, MaxResponseBytes, cancellationToken);
             if (string.IsNullOrWhiteSpace(line))

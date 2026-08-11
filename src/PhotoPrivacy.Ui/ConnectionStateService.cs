@@ -1,6 +1,5 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
-using PhotoPrivacy.Ipc;
 
 namespace PhotoPrivacy.Ui;
 
@@ -13,9 +12,10 @@ public enum ConnectionState
 
 public sealed class ConnectionStateService : INotifyPropertyChanged, IDisposable
 {
-    private readonly WorkerIpcClient _client;
+    private readonly Func<string, CancellationToken, Task<bool>> _isAliveAsync;
     private readonly string _endpointName;
     private readonly CancellationTokenSource _cts = new();
+    private bool _disposed;
     private readonly Timer _timer;
     private ConnectionState _state = ConnectionState.Disconnected;
     private int _backoffMs = 1000;
@@ -37,17 +37,25 @@ public sealed class ConnectionStateService : INotifyPropertyChanged, IDisposable
     }
 
     public ConnectionStateService(WorkerIpcClient client, string endpointName)
+        : this(client.IsAliveAsync, endpointName)
     {
-        _client = client;
+    }
+
+    public ConnectionStateService(Func<string, CancellationToken, Task<bool>> isAliveAsync, string endpointName)
+    {
+        _isAliveAsync = isAliveAsync;
         _endpointName = endpointName;
         _timer = new Timer(HeartbeatCallback, null, TimeSpan.Zero, TimeSpan.FromMilliseconds(1000));
     }
 
     private async void HeartbeatCallback(object? state)
     {
+        if (_disposed) return;
+        CancellationToken token;
+        try { token = _cts.Token; } catch (ObjectDisposedException) { return; }
         try
         {
-            var alive = await _client.IsAliveAsync(_endpointName, _cts.Token).ConfigureAwait(false);
+            var alive = await _isAliveAsync(_endpointName, token).ConfigureAwait(false);
             if (alive)
             {
                 State = ConnectionState.Connected;
@@ -98,7 +106,9 @@ public sealed class ConnectionStateService : INotifyPropertyChanged, IDisposable
 
     public void Dispose()
     {
-        _cts.Cancel();
+        if (_disposed) return;
+        _disposed = true;
+        try { _cts.Cancel(); } catch (ObjectDisposedException) { }
         _timer.Dispose();
         _cts.Dispose();
     }

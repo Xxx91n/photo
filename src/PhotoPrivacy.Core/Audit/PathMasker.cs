@@ -17,7 +17,8 @@ public static class PathMasker
 
         for (var i = 0; i < parts.Length - 1; i++)
         {
-            if (string.Equals(parts[i], "Users", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(parts[i], "Users", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(parts[i], "home", StringComparison.OrdinalIgnoreCase))
             {
                 parts[i + 1] = "[redacted]";
                 return string.Join(separators[0], parts);
