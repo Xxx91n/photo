@@ -74,6 +74,17 @@ dotnet publish "$repoRoot\src\PhotoPrivacy.Worker\PhotoPrivacy.Worker.csproj" `
 if ($LASTEXITCODE -ne 0) {
   throw "dotnet publish (worker) failed"
 }
+# ADR 0024: Copy install scripts to release/<rid>/scripts/
+$scriptsDir = Join-Path $targetDir "scripts"
+New-Item -ItemType Directory -Force -Path $scriptsDir | Out-Null
+if ($isLinuxRuntime) {
+  Copy-Item "$repoRoot\scripts\install-systemd-service.sh" $scriptsDir -Force
+} elseif ($isOsxRuntime) {
+  Copy-Item "$repoRoot\scripts\install-launchd-service.sh" $scriptsDir -Force
+} else {
+  Copy-Item "$repoRoot\scripts\install-service.ps1" $scriptsDir -Force
+}
+
 
 $uiSourceExeName = if ($isLinuxRuntime -or $isOsxRuntime) { "PhotoPrivacy.Ui" } else { "PhotoPrivacy.Ui.exe" }
 $appExeName = if ($isLinuxRuntime -or $isOsxRuntime) { "PhotoPrivacy" } else { "PhotoPrivacy.exe" }

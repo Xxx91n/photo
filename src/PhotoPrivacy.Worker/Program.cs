@@ -46,6 +46,7 @@ builder.Logging.ClearProviders();
 Log.Logger = new LoggerConfiguration()
     .ReadFrom.Configuration(builder.Configuration)
     .Enrich.FromLogContext()
+    .Enrich.With<PhotoPrivacy.Core.Audit.PathMaskingEnricher>()
     .WriteTo.Console(outputTemplate: "[{Level:u3}] {Message:lj}{NewLine}{Exception}")
     .CreateLogger();
 
@@ -100,7 +101,7 @@ var app = builder.Build();
 var shutdownCoordinator = new ShutdownCoordinator(
     stopToken => app.StopAsync(stopToken),
     stopTimeout: TimeSpan.FromSeconds(4));
-posixHooks = PosixSignalHooks.Register(() => shutdownCoordinator.RequestStop());
+posixHooks = PosixSignalHooks.Register(() => shutdownCoordinator.RequestStop(), onReload: () => app.Services.GetRequiredService<MetadataCleanerWorker>().ReloadConfigAsync().GetAwaiter().GetResult());
 RegisterBestEffortShutdown(shutdownCoordinator, ref cancelKeyHandler, ref processExitHandler);
 
 await app.RunAsync();

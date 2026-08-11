@@ -106,6 +106,15 @@ fi
 
 [[ -f "${UI_PUB_DIR}/${UI_EXE}" ]] || { echo "UI executable not found: ${UI_PUB_DIR}/${UI_EXE}" >&2; exit 1; }
 [[ -f "${WORKER_PUB_DIR}/${WORKER_EXE}" ]] || { echo "Worker executable not found: ${WORKER_PUB_DIR}/${WORKER_EXE}" >&2; exit 1; }
+# ADR 0024: Copy install scripts to release/<rid>/scripts/
+SCRIPTS_DIR="${TARGET_DIR}/scripts"
+mkdir -p "$SCRIPTS_DIR"
+case "$RUNTIME" in
+  linux-*) cp "${REPO_ROOT}/scripts/install-systemd-service.sh" "$SCRIPTS_DIR/" ;;
+  osx-*) cp "${REPO_ROOT}/scripts/install-launchd-service.sh" "$SCRIPTS_DIR/" ;;
+  *) cp "${REPO_ROOT}/scripts/install-service.ps1" "$SCRIPTS_DIR/" ;;
+esac
+
 
 cp "${UI_PUB_DIR}/${UI_EXE}" "${TARGET_DIR}/${APP_EXE}"
 cp "${WORKER_PUB_DIR}/${WORKER_EXE}" "${TARGET_DIR}/${WORKER_EXE}"

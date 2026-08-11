@@ -1,35 +1,47 @@
+#Requires -Version 5.1
+#Requires -PSEdition Desktop,Core
+<#
+.SYNOPSIS
+  Install/uninstall PhotoPrivacy Windows service (ADR 0024).
+#>
 param(
+  [string]$Action = "install",
   [string]$ServiceName = "PhotoPrivacyCleaner",
-  [string]$ExePath = ".\release\win-x64\worker\PhotoPrivacyWorker.exe",
-  [string]$ConfigPath = "",
-  [string]$DisplayName = "PhotoPrivacy Cleaner",
-  [string]$Description = "Hot-folder metadata cleaner worker service (ExifTool stay_open)."
+  [string]$ExePath = "",
+  [string]$ConfigPath = ""
 )
 
 $ErrorActionPreference = "Stop"
 
-$resolvedExe = (Resolve-Path $ExePath).Path
-$exeName = [System.IO.Path]::GetFileName($resolvedExe)
-if (-not [string]::Equals($exeName, "PhotoPrivacyWorker.exe", [System.StringComparison]::OrdinalIgnoreCase)) {
-  throw "ExePath must point to PhotoPrivacyWorker.exe, current value: $resolvedExe"
+function Remove-ServiceCompat([string]$Name) {
+  if ($PSVersionTable.PSEdition -eq 'Core') {
+    try { Remove-Service -Name $Name -ErrorAction Stop } catch { sc.exe delete $Name }
+  } else {
+    sc.exe delete $Name
+  }
 }
 
-$binaryPath = '"{0}" --mode service' -f $resolvedExe
-
-if (-not [string]::IsNullOrWhiteSpace($ConfigPath)) {
-  $resolvedConfig = Resolve-Path $ConfigPath
-  $binaryPath = '{0} --config "{1}"' -f $binaryPath, $resolvedConfig
+switch ($Action.ToLower()) {
+  "install" {
+    $binPath = """ + $ExePath + """ --mode service --config """" + $ConfigPath + """
+    if (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
+      Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
+      Remove-ServiceCompat $ServiceName
+    }
+    if ($PSVersionTable.PSEdition -eq "Core") {
+      New-Service -Name $ServiceName -BinaryPathName $binPath -DisplayName "PhotoPrivacy Cleaner" -StartupType Automatic
+    } else {
+      sc.exe create $ServiceName binPath= $binPath start= auto
+    }
+    Start-Service -Name $ServiceName
+    Write-Host "Installed and started $ServiceName"
+  }
+  "uninstall" {
+    if (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
+      Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
+      Remove-ServiceCompat $ServiceName
+      Write-Host "Uninstalled $ServiceName"
+    } else { Write-Host "Not found" }
+  }
+  default { Write-Host "Usage: -Action install|uninstall -ExePath <p> -ConfigPath <p>"; exit 1 }
 }
-
-$serviceExists = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
-if ($null -eq $serviceExists) {
-  New-Service -Name $ServiceName -BinaryPathName $binaryPath -DisplayName $DisplayName -Description $Description -StartupType Automatic
-  Write-Host "Service created: $ServiceName"
-}
-else {
-  sc.exe config $ServiceName binPath= $binaryPath start= auto | Out-Null
-  Write-Host "Service updated: $ServiceName"
-}
-
-Start-Service -Name $ServiceName
-Write-Host "Service started: $ServiceName"

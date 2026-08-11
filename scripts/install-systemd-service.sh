@@ -90,6 +90,7 @@ fi
 
 mkdir -p "$HOT_FOLDER" "$AUDIT_FOLDER" "$QUARANTINE_FOLDER"
 chown -R "$USER_NAME:$GROUP_NAME" "$INSTALL_DIR" "$HOT_FOLDER" "$AUDIT_FOLDER" "$QUARANTINE_FOLDER"
+chmod 2770 "$HOT_FOLDER" "$AUDIT_FOLDER" "$QUARANTINE_FOLDER"
 
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 cat > "$SERVICE_FILE" <<EOF
@@ -106,6 +107,8 @@ ExecStart=${EXE_PATH} --mode service --config ${CONFIG_PATH} --hot-folder ${HOT_
 Restart=always
 RestartSec=3
 NoNewPrivileges=true
+RuntimeDirectory=photoprivacy
+ExecReload=/bin/kill -HUP $MAINPID
 
 [Install]
 WantedBy=multi-user.target

@@ -1,3 +1,4 @@
+using PhotoPrivacy.Core.Audit;
 using Serilog;
 using Serilog.Core;
 
@@ -18,6 +19,7 @@ public static class UiDiagnosticLog
             Directory.CreateDirectory(logDirectory);
             _logger = new LoggerConfiguration()
                 .MinimumLevel.Information()
+                .Enrich.With<PhotoPrivacy.Core.Audit.PathMaskingEnricher>()
                 .WriteTo.Async(a => a.File(
                     System.IO.Path.Combine(logDirectory, "ui-.log"),
                     rollingInterval: RollingInterval.Day,
