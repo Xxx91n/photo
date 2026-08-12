@@ -20,14 +20,14 @@
 PhotoPrivacy.sln
 ├── src/
 │   ├── PhotoPrivacy.Core/     # 核心逻辑：ExifTool桥接、文件监控、元数据处理
-│   ├── PhotoPrivacy.Ipc/      # 进程间通信（命名管道）
-│   ├── PhotoPrivacy.Worker/   # Windows 服务 / 后台 Worker
+│   ├── PhotoPrivacy.Ipc/      # 进程间通信（命名管道 + Unix 域套接字）
+│   ├── PhotoPrivacy.Worker/   # 跨平台 Worker 服务（Windows/Linux/macOS）
 │   └── PhotoPrivacy.Ui/       # Avalonia UI 桌面应用
 ├── tests/
 │   ├── PhotoPrivacy.Core.Tests/        # 单元测试
 │   └── PhotoPrivacy.IntegrationTests/  # 集成测试
 ├── config/                    # 配置文件（config.json 不提交）
-├── scripts/                   # PowerShell 部署/发布脚本
+├── scripts/                   # 部署/发布脚本（PowerShell + sh，跨平台）
 └── docs/                      # 文档和设计规范
 ```
 
@@ -104,16 +104,17 @@ semgrep scan --config p/csharp --config p/security-audit --json ./src
 dotnet build PhotoPrivacy.sln
 
 # 运行所有测试
-dotnet test PhotoPrivacy.sln
+dotnet vstest tests\PhotoPrivacy.Core.Tests\bin\Debug\net10.0\PhotoPrivacy.Core.Tests.dll tests\PhotoPrivacy.IntegrationTests\bin\Debug\net10.0\PhotoPrivacy.IntegrationTests.dll /Platform:x64
 
 # 运行单元测试
-dotnet test tests/PhotoPrivacy.Core.Tests/
+dotnet vstest tests\PhotoPrivacy.Core.Tests\bin\Debug\net10.0\PhotoPrivacy.Core.Tests.dll
 
 # 运行集成测试
-dotnet test tests/PhotoPrivacy.IntegrationTests/
+dotnet vstest tests\PhotoPrivacy.IntegrationTests\bin\Debug\net10.0\PhotoPrivacy.IntegrationTests.dll
 
 # 发布
-.\scripts\publish-app.ps1  # 输出到 release/<rid>/
+.\scripts\publish-app.ps1   # 输出到 release/<rid>/（Windows）
+./scripts/publish.sh        # 输出到 release/<rid>/（Linux/macOS）
 ```
 
 ---
