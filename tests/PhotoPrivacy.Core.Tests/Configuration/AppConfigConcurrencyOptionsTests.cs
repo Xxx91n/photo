@@ -17,7 +17,7 @@ public sealed class AppConfigConcurrencyOptionsTests
             {
               "schema_version": 1,
               "exiftool": {
-                "path": "D:\\tools\\A_system\\ExifToolGUI\\ExifTool\\ExifTool.exe",
+                "path": "C:\\Program Files\\ExifTool\\exiftool.exe",
                 "enable_windows_long_path": true,
                 "enable_large_file_support": true,
                 "dry_run": false,
@@ -69,7 +69,7 @@ public sealed class AppConfigConcurrencyOptionsTests
             {
               "schema_version": 1,
               "exiftool": {
-                "path": "D:\\tools\\A_system\\ExifToolGUI\\ExifTool\\ExifTool.exe",
+                "path": "C:\\Program Files\\ExifTool\\exiftool.exe",
                 "enable_windows_long_path": true,
                 "enable_large_file_support": true,
                 "dry_run": false,
