@@ -114,6 +114,11 @@ EOF
 chmod 644 "$PLIST_PATH"
 chown root:wheel "$PLIST_PATH"
 
+# ADR 0021 (Q15b): Unload existing label before loading the new plist, so the new binary starts fresh.
+if launchctl list | grep -q "^\t*${LABEL}\b" 2>/dev/null; then
+    launchctl unload -w "$PLIST_PATH" 2>/dev/null || true
+fi
+
 launchctl load -w "$PLIST_PATH"
 
 echo "Installed and started ${LABEL}"

@@ -93,6 +93,14 @@ chown -R "$USER_NAME:$GROUP_NAME" "$INSTALL_DIR" "$HOT_FOLDER" "$AUDIT_FOLDER" "
 chmod 2770 "$HOT_FOLDER" "$AUDIT_FOLDER" "$QUARANTINE_FOLDER"
 
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
+
+# ADR 0021 (Q15b): Stop existing service before replacing the unit file.
+# systemctl enable --now does not restart an already-running unit after daemon-reload,
+# so we stop first to guarantee the new unit actually starts fresh.
+if systemctl is-active --quiet "${SERVICE_NAME}" 2>/dev/null; then
+    systemctl stop "${SERVICE_NAME}" || true
+fi
+
 cat > "$SERVICE_FILE" <<EOF
 [Unit]
 Description=PhotoPrivacy Cleaner
@@ -115,7 +123,9 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable --now "${SERVICE_NAME}"
+# First-time enable, then restart to pick up the new binary (covers both fresh install and upgrade).
+systemctl enable "${SERVICE_NAME}" 2>/dev/null || true
+systemctl restart "${SERVICE_NAME}"
 
 echo "Installed and started ${SERVICE_NAME}.service"
 echo "Check status: systemctl status ${SERVICE_NAME} --no-pager"

@@ -1,6 +1,7 @@
 ﻿using System.IO.Pipes;
 using System.Security.AccessControl;
 using System.Security.Principal;
+using PhotoPrivacy.Core.Runtime;
 
 namespace PhotoPrivacy.Ui;
 
@@ -10,28 +11,19 @@ public sealed class UiSingleInstance : IDisposable
     internal const string DefaultPipeName = "PhotoPrivacyUi_ShowWindow";
     private const string Message = "SHOW_WINDOW";
 
-    private readonly Mutex _mutex;
-    private readonly bool _isOwner;
+    // ADR 0026 (Q7): delegate acquisition to ISingleInstanceGuard (Mutex on Windows, POSIX lockfile on Linux/macOS).
+    private readonly ISingleInstanceGuard _guard;
 
     public UiSingleInstance()
     {
-        try
-        {
-            _mutex = new Mutex(initiallyOwned: true, MutexName, out var isOwner);
-            _isOwner = isOwner;
-        }
-        catch (AbandonedMutexException)
-        {
-            _mutex = new Mutex(initiallyOwned: true, MutexName, out _);
-            _isOwner = true;
-        }
+        _guard = SingleInstanceGuardFactory.Create(MutexName);
     }
 
-    public bool IsOwner => _isOwner;
+    public bool IsOwner => _guard.IsOwner;
 
     public void Dispose()
     {
-        _mutex.Dispose();
+        _guard.Dispose();
     }
 
     public static async Task<bool> NotifyExistingInstanceAsync(CancellationToken cancellationToken = default, string? pipeName = null)

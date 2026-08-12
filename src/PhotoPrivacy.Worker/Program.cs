@@ -27,10 +27,12 @@ if (!hasModeOption && Environment.UserInteractive)
     requestedMode = RuntimeMode.Background;
 }
 
+// ADR 0026 (Q7): Single-instance guard via ISingleInstanceGuard (Mutex on Windows, POSIX lockfile on Linux/macOS).
+// The previous direct-Mutex path is replaced by a guard abstraction without changing observable behavior.
 var mutexName = WorkerInstanceMutexNames.Unified;
 
-using var mutex = new Mutex(initiallyOwned: true, mutexName, out var isNewInstance);
-if (!isNewInstance)
+using var instanceGuard = SingleInstanceGuardFactory.Create(mutexName);
+if (!instanceGuard.IsOwner)
 {
     Console.Error.WriteLine("[PhotoPrivacyWorker] 另一个 Worker 实例已在运行，退出。");
     Console.Error.WriteLine("[PhotoPrivacyWorker] another worker instance is already in use.");
@@ -47,6 +49,7 @@ var logConfig = new LoggerConfiguration()
     .ReadFrom.Configuration(builder.Configuration)
     .Enrich.FromLogContext()
     .Enrich.With<PhotoPrivacy.Core.Audit.PathMaskingEnricher>()
+    .Destructure.With<PhotoPrivacy.Core.Audit.PathMaskingDestructuringPolicy>()
     .WriteTo.Console(outputTemplate: "[{Level:u3}] {Message:lj}{NewLine}{Exception}");
 
 if (mode != RuntimeMode.Service)
@@ -114,6 +117,18 @@ var shutdownCoordinator = new ShutdownCoordinator(
     stopToken => app.StopAsync(stopToken),
     stopTimeout: TimeSpan.FromSeconds(4));
 posixHooks = PosixSignalHooks.Register(() => shutdownCoordinator.RequestStop(), onReload: () => app.Services.GetRequiredService<MetadataCleanerWorker>().ReloadConfigAsync().GetAwaiter().GetResult());
+// ADR 0034: UnhandledException + UnobservedTaskException → Serilog (also in UI Program.cs)
+AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+{
+    try { Log.Fatal((Exception)e.ExceptionObject, "AppDomain.UnhandledException"); } catch { }
+    try { Log.CloseAndFlush(); } catch { }
+};
+TaskScheduler.UnobservedTaskException += (_, e) =>
+{
+    try { Log.Error(e.Exception, "TaskScheduler.UnobservedTaskException"); } catch { }
+    e.SetObserved();
+};
+
 RegisterBestEffortShutdown(shutdownCoordinator, ref cancelKeyHandler, ref processExitHandler);
 
 await app.RunAsync();
