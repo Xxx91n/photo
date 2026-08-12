@@ -33,3 +33,6 @@ logs/
 tmp/
 
 .omx/
+
+# ExifTool upstream source (reference only, do not commit)
+exiftool/
