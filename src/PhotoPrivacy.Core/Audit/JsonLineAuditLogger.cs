@@ -95,6 +95,22 @@ public sealed class JsonLineAuditLogger : IAuditLogger, IDisposable
                     await FlushBatchAsync(batch, _cts.Token).ConfigureAwait(false);
                 }
             }
+
+            // Drain any remaining items after the loop exits (Dispose calls TryComplete)
+            batch.Clear();
+            while (reader.TryRead(out var item))
+            {
+                batch.Add(item);
+                if (batch.Count >= BatchSize)
+                {
+                    await FlushBatchAsync(batch, CancellationToken.None).ConfigureAwait(false);
+                    batch.Clear();
+                }
+            }
+            if (batch.Count > 0)
+            {
+                await FlushBatchAsync(batch, CancellationToken.None).ConfigureAwait(false);
+            }
         }
         catch (OperationCanceledException)
         {

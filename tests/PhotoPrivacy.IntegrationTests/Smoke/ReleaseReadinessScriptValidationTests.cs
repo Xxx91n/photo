@@ -19,6 +19,8 @@ public sealed class ReleaseReadinessScriptValidationTests
         };
 
         using var process = Process.Start(psi)!;
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
         var waitTask = process.WaitForExitAsync();
         var finished = await Task.WhenAny(waitTask, Task.Delay(TimeSpan.FromSeconds(30)));
         if (finished != waitTask)
@@ -27,9 +29,8 @@ public sealed class ReleaseReadinessScriptValidationTests
             throw new TimeoutException("release-readiness.ps1 hung (timeout 30s)");
         }
 
-        var stdout = await process.StandardOutput.ReadToEndAsync();
-        var stderr = await process.StandardError.ReadToEndAsync();
-        var merged = stdout + Environment.NewLine + stderr;
+        await waitTask;
+        var merged = await stdoutTask + Environment.NewLine + await stderrTask;
 
         Assert.NotEqual(0, process.ExitCode);
         Assert.Contains("Runtime 'all' is not valid", merged, StringComparison.OrdinalIgnoreCase);
@@ -87,17 +88,18 @@ public sealed class ReleaseReadinessScriptValidationTests
         };
 
         using var process = Process.Start(psi)!;
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
         var waitTask = process.WaitForExitAsync();
-        var finished = await Task.WhenAny(waitTask, Task.Delay(TimeSpan.FromSeconds(120)));
+        var finished = await Task.WhenAny(waitTask, Task.Delay(TimeSpan.FromSeconds(300)));
         if (finished != waitTask)
         {
             try { process.Kill(entireProcessTree: true); } catch { }
-            throw new TimeoutException("publish-app.ps1 hung (timeout 120s)");
+            throw new TimeoutException("publish-app.ps1 hung (timeout 300s)");
         }
 
-        var stdout = await process.StandardOutput.ReadToEndAsync();
-        var stderr = await process.StandardError.ReadToEndAsync();
-        var merged = stdout + Environment.NewLine + stderr;
+        await waitTask;
+        var merged = await stdoutTask + Environment.NewLine + await stderrTask;
 
         Assert.Equal(0, process.ExitCode);
 

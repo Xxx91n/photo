@@ -15,20 +15,27 @@ internal static class InstanceConflictAudit
                 config.Audit.RetainDays,
                 config.Audit.DiagnosticMode);
 
-            await logger.WriteAsync(
-                new AuditEvent(
-                    EventType: "instance_conflict",
-                    Level: AuditLevel.Warn,
-                    TimestampUtc: DateTimeOffset.UtcNow,
-                    TaskId: Guid.NewGuid().ToString("N"),
-                    SourcePath: config.Watch.HotFolder,
-                    Message: "检测到重复启动并已拒绝",
-                    Data: new Dictionary<string, string>
-                    {
-                        ["requested_mode"] = requestedMode.ToString().ToLowerInvariant(),
-                        ["mutex_name"] = mutexName
-                    }),
-                CancellationToken.None);
+            try
+            {
+                await logger.WriteAsync(
+                    new AuditEvent(
+                        EventType: "instance_conflict",
+                        Level: AuditLevel.Warn,
+                        TimestampUtc: DateTimeOffset.UtcNow,
+                        TaskId: Guid.NewGuid().ToString("N"),
+                        SourcePath: config.Watch.HotFolder,
+                        Message: "检测到重复启动并已拒绝",
+                        Data: new Dictionary<string, string>
+                        {
+                            ["requested_mode"] = requestedMode.ToString().ToLowerInvariant(),
+                            ["mutex_name"] = mutexName
+                        }),
+                    CancellationToken.None).ConfigureAwait(false);
+            }
+            finally
+            {
+                logger.Dispose();
+            }
         }
         catch
         {

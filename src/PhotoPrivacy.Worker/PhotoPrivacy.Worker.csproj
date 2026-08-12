@@ -20,10 +20,6 @@
   <PropertyGroup>
     <AssemblyName>PhotoPrivacyWorker</AssemblyName>
     <OutputType>Exe</OutputType>
-    <SelfContained>true</SelfContained>
-    <PublishSingleFile>true</PublishSingleFile>
-    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-    <PublishTrimmed>false</PublishTrimmed>
     <DebugType>embedded</DebugType>
   </PropertyGroup>
 
