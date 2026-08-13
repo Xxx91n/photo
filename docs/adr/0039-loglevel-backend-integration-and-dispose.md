@@ -90,3 +90,56 @@ release/win-x64/
   行为变化：从"不写审计"变为"写 info 及以上"。这是更符合用户预期的修正
 - audit logger 后台任务在 StopAsync 优雅 Dispose，无 Channel/CTS 泄漏
 - DiagnosticMode 字段保留向后兼容（不删，UI LogEnabled 与 audit JSON 字段仍用它）
+
+### 6. 打包流程全平台兼容（Grill 问题 2）
+
+**调研来源**: pwm pro gpt56 调研 × 3 次 + exa 广范围搜索，引用 dotnet/runtime .gitattributes、Microsoft single-file 文档、Avalonia 部署指南。
+
+#### 6.1 问题：Unix 二进制缺执行位（破坏性）
+
+Windows NTFS 无 POSIX 权限语义。当 `publish-app.ps1` 在 Windows 主机执行
+`dotnet publish -r linux-x64 --self-contained /p:PublishSingleFile=true` 时，
+生成的 ELF/Mach-O apphost 二进制在 NTFS 上不携带 Unix 执行位。
+`tar -czf` 打包时记录的 mode bits 不含 `+x`，
+Linux/macOS 用户解压 `tar.gz` 后 `./PhotoPrivacy` 报 `Permission denied`。
+pwm pro gpt56 确认：`.NET SDK cross-publish` 不保证在非 POSIX 文件系统上
+设置 `+x`，需 publish 脚本手动 `chmod +x`。
+
+**修复**: `publish-app.ps1` 在复制二进制到 `targetDir` 之后、`tar -czf` 之前，
+对 `linux-*`/`osx-*` runtime 执行 `chmod +x` 给三个文件：
+`PhotoPrivacy`、`PhotoPrivacyWorker`、`scripts/install-*.sh`。
+`chmod` 在 `pwsh` 跨平台原生可用（不依赖 WSL）。
+
+#### 6.2 问题：硬编码反斜杠路径（非跨平台）
+
+`publish-app.ps1` 原用 `"$repoRoot\src\..."` 反斜杠拼接路径，
+在 Linux/macOS 的 `pwsh` 上 `DotNet publish` 路径解析失败。
+
+**修复**: 全部 8 处硬编码 `\` 路径改为 `Join-Path` cmdlet，
+`pwsh` 原生跨平台路径拼接（`Join-Path $repoRoot "src" | Join-Path -ChildPath "..."`）。
+`publish.sh` 已用 `$(pwd)` + `/` 正确处理，无需改动。
+
+#### 6.3 问题：`.gitattributes` 缺 binary 标记 + .sh eol 规则（CRLF 损坏风险）
+
+原有 `.gitattributes` 仅 4 条规则（`* text=auto eol=lf` + 3 条 PS CRLF）。
+二进制资产（`.png/.ico/.dll/.exe/.so/.dylib`）含 `0x0D 0x0A` 字节会被
+`text=auto` 误判为文本，导致 CRLF 注入损坏二进制。
+`.sh` 脚本缺显式 `eol=lf` 规则（依赖 `auto` 兜底不可靠）。
+
+**修复**: 采用 dotnet/runtime 风格完整模板（方案 B），补全：
+- 5 条 Windows 脚本 CRLF 规则（`.bat/.cmd/.ps1/.psm1/.psd1`）
+- 1 条 Unix 脚本 LF 规则（`.sh`）
+- 8 条 .NET 源文件 `text` 规则（`.cs/.csproj/.sln/.fs/.fsproj/.vb/.vbproj/.csx`）
+- 8 条配置标记规则（`.json eol=lf/.xml/.config/.axaml/.xaml/.yaml/.yml/.toml`）
+- 2 条文档规则（`.md/.txt`）
+- 13 条 binary 资产（图片/字体）
+- 6 条 native 二进制（`.dll/.exe/.so/.dylib/.pdb/.mdb`）
+- 5 条归档格式（`.zip/.gz/.tar/.7z/.bz2`）
+
+#### 6.4 验证
+
+- `git add --renormalize .` 固化规则
+- `git diff --check` 无 CRLF 冲突
+- `publish-app.ps1 -Runtime win-x64 -Zip false` 落盘结构不变
+- `publish-app.ps1 -Runtime linux-x64` 生成 `tar.gz` 内二进制含执行位
+  （需在 Linux 主机或 WSL 上解压验证 `ls -l PhotoPrivacy` 有 `-rwxr-xr-x`）

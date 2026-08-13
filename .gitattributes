@@ -1,4 +1,68 @@
+# .gitattributes — dotnet/runtime style cross-platform template
+# ADR 0039 §6: binary markers + explicit text eol rules for all platform targets
+
+# General text normalization (LF by default, CRLF only for Windows-native scripts)
 * text=auto eol=lf
+
+# Windows-native scripts keep CRLF
 *.bat text eol=crlf
-*.ps1 text eol=crlf
 *.cmd text eol=crlf
+*.ps1 text eol=crlf
+*.psm1 text eol=crlf
+*.psd1 text eol=crlf
+
+# Unix scripts enforce LF
+*.sh text eol=lf
+
+# .NET source files
+*.cs text
+*.csproj text
+*.sln text
+*.fs text
+*.fsproj text
+*.vb text
+*.vbproj text
+*.csx text
+
+# Config and markup
+*.json text eol=lf
+*.xml text
+*.config text
+*.axaml text
+*.xaml text
+*.yaml text
+*.yml text
+*.toml text
+
+# Documentation
+*.md text
+*.txt text
+
+# Binary assets
+*.png binary
+*.ico binary
+*.icns binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.bmp binary
+*.ttf binary
+*.woff binary
+*.woff2 binary
+*.eot binary
+
+# Native binaries
+*.dll binary
+*.exe binary
+*.so binary
+*.dylib binary
+*.pdb binary
+*.mdb binary
+
+# Archives
+*.zip binary
+*.gz binary
+*.tar binary
+*.7z binary
+*.bz2 binary

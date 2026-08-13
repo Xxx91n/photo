@@ -49,7 +49,7 @@ $workerPublishDir = Join-Path $targetDir "worker"
 New-Item -ItemType Directory -Force -Path $uiPublishDir | Out-Null
 New-Item -ItemType Directory -Force -Path $workerPublishDir | Out-Null
 
-dotnet publish "$repoRoot\src\PhotoPrivacy.Ui\PhotoPrivacy.Ui.csproj" `
+dotnet publish (Join-Path $repoRoot "src" | Join-Path -ChildPath "PhotoPrivacy.Ui" | Join-Path -ChildPath "PhotoPrivacy.Ui.csproj") `
   -c Release `
   -f $resolvedFramework `
   -r $Runtime `
@@ -62,7 +62,7 @@ if ($LASTEXITCODE -ne 0) {
   throw "dotnet publish (ui) failed"
 }
 
-dotnet publish "$repoRoot\src\PhotoPrivacy.Worker\PhotoPrivacy.Worker.csproj" `
+dotnet publish (Join-Path $repoRoot "src" | Join-Path -ChildPath "PhotoPrivacy.Worker" | Join-Path -ChildPath "PhotoPrivacy.Worker.csproj") `
   -c Release `
   -f $resolvedFramework `
   -r $Runtime `
@@ -81,11 +81,11 @@ if ($LASTEXITCODE -ne 0) {
 $scriptsDir = Join-Path $targetDir "scripts"
 New-Item -ItemType Directory -Force -Path $scriptsDir | Out-Null
 if ($isLinuxRuntime) {
-  Copy-Item "$repoRoot\scripts\install-systemd-service.sh" $scriptsDir -Force
+  Copy-Item (Join-Path $repoRoot "scripts" | Join-Path -ChildPath "install-systemd-service.sh") $scriptsDir -Force
 } elseif ($isOsxRuntime) {
-  Copy-Item "$repoRoot\scripts\install-launchd-service.sh" $scriptsDir -Force
+  Copy-Item (Join-Path $repoRoot "scripts" | Join-Path -ChildPath "install-launchd-service.sh") $scriptsDir -Force
 } else {
-  Copy-Item "$repoRoot\scripts\install-service.ps1" $scriptsDir -Force
+  Copy-Item (Join-Path $repoRoot "scripts" | Join-Path -ChildPath "install-service.ps1") $scriptsDir -Force
 }
 
 
@@ -105,6 +105,18 @@ if (-not (Test-Path $workerAppHostPath)) {
 Copy-Item $uiAppHostPath (Join-Path $targetDir $appExeName) -Force
 Copy-Item $workerAppHostPath (Join-Path $targetDir $workerExeName) -Force
 
+# ADR 0039 §6: Set Unix executable bit for cross-platform binaries built on Windows
+if ($isLinuxRuntime -or $isOsxRuntime) {
+  chmod +x (Join-Path $targetDir $appExeName)
+  chmod +x (Join-Path $targetDir $workerExeName)
+  if ($isLinuxRuntime) {
+    chmod +x (Join-Path $scriptsDir "install-systemd-service.sh")
+  } elseif ($isOsxRuntime) {
+    chmod +x (Join-Path $scriptsDir "install-launchd-service.sh")
+  }
+  Write-Host "Set executable permissions for $Runtime binaries and install scripts"
+}
+
 $uiAssetsDir = Join-Path $uiPublishDir "Assets"
 if (Test-Path $uiAssetsDir) {
   Copy-Item $uiAssetsDir (Join-Path $targetDir "Assets") -Recurse -Force
@@ -112,10 +124,10 @@ if (Test-Path $uiAssetsDir) {
 
 $configDir = Join-Path $targetDir "config"
 New-Item -ItemType Directory -Force -Path $configDir | Out-Null
-Copy-Item "$repoRoot\config\config.sample.json" (Join-Path $configDir "config.sample.json") -Force
+Copy-Item (Join-Path $repoRoot "config" | Join-Path -ChildPath "config.sample.json") (Join-Path $configDir "config.sample.json") -Force
 # Copy config.sample.json as config.json so the release has a working default config
-Copy-Item "$repoRoot\config\config.sample.json" (Join-Path $configDir "config.json") -Force
-Copy-Item "$repoRoot\README.md" (Join-Path $targetDir "README.md") -Force
+Copy-Item (Join-Path $repoRoot "config" | Join-Path -ChildPath "config.sample.json") (Join-Path $configDir "config.json") -Force
+Copy-Item (Join-Path $repoRoot "README.md") (Join-Path $targetDir "README.md") -Force
 
 if (Test-Path $uiPublishDir) {
   Remove-Item $uiPublishDir -Recurse -Force
