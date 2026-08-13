@@ -71,6 +71,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
             return;
         }
 
+        CleanupStaleTempFiles();
         _audit = new JsonLineAuditLogger(config.Audit.LogDirectory, config.Audit.RetainDays, config.Audit.DiagnosticMode, AuditLevelParser.Parse(config.Audit.LogLevel));
         IAuditLogger auditLogger = _audit is not null ? _audit : new NoopAuditLogger();
         _bridge = CreateBridge(config, auditLogger);
@@ -271,7 +272,30 @@ public sealed class MetadataCleanerWorker : BackgroundService
         await base.StopAsync(cancellationToken);
     }
 
-    private void PerformPeriodicCleanup(AppConfig config)
+
+    /// <summary>
+    /// Scan %TEMP% for stale PP_ prefixed temp files left by prior crashes.
+    /// FileTaskPipeline creates %TEMP%/PP_*.ext temp copies; if a crash interrupts the
+    /// temp-route, these linger. Safe to delete: they are only transient copies.
+    /// ponytail: best-effort, ignore errors (file may be locked by another active session).
+    /// </summary>
+    private static void CleanupStaleTempFiles()
+    {
+        try
+        {
+            var tempDir = Path.GetTempPath();
+            foreach (var file in Directory.EnumerateFiles(tempDir, "PP_*", SearchOption.TopDirectoryOnly))
+            {
+                try { File.Delete(file); } catch { /* best effort */ }
+            }
+        }
+        catch
+        {
+            // best effort
+        }
+    }
+
+    private async void PerformPeriodicCleanup(AppConfig config)
     {
         try
         {
@@ -284,12 +308,12 @@ public sealed class MetadataCleanerWorker : BackgroundService
 
         try
         {
-            var backupDir = config.Backup.Directory;
-            if (string.IsNullOrWhiteSpace(backupDir))
-            {
-                backupDir = Path.Combine(config.Watch.HotFolder, "_backup");
-            }
-            BackupRetentionService.EnforceMaxSize(backupDir, config.Backup.MaxSizeMb * 1024L * 1024L);
+            var backupDir = string.IsNullOrWhiteSpace(config.Backup.Directory)
+                ? Pipeline.BackupPathResolver.ResolveDefaultBackupDir(config.Watch.HotFolder)
+                : config.Backup.Directory;
+            await BackupRetentionService.EnforceMaxSizeAsync(
+                backupDir, config.Backup.MaxSizeMb * 1024L * 1024L, config.Backup.RetainDays,
+                CancellationToken.None).ConfigureAwait(false);
         }
         catch
         {

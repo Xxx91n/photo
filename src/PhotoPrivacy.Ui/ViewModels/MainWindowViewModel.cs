@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using PhotoPrivacy.Ui.Localization;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 
@@ -7,9 +8,31 @@ namespace PhotoPrivacy.Ui.ViewModels;
 public sealed class MainWindowViewModel : INotifyPropertyChanged
 {
     public string Title { get; } = "PhotoPrivacy";
+
+    private Avalonia.Media.FlowDirection _uiFlowDirection = Avalonia.Media.FlowDirection.LeftToRight;
+
+    public Avalonia.Media.FlowDirection UiFlowDirection
+    {
+        get => _uiFlowDirection;
+        set => SetField(ref _uiFlowDirection, value);
+    }
+
+    public void RefreshLocaleDependent()
+    {
+        OnPropertyChanged(nameof(ModeLabel));
+        OnPropertyChanged(nameof(PauseResumeLabel));
+        ApplyLocaleFlowDirection();
+    }
+
+    public void ApplyLocaleFlowDirection()
+    {
+        UiFlowDirection = LocalizationService.Instance.IsRtl()
+            ? Avalonia.Media.FlowDirection.RightToLeft
+            : Avalonia.Media.FlowDirection.LeftToRight;
+    }
     private string _currentMode = "background";
-    private string _runtimeStatus = "运行中";
-    private string _exifToolVersion = "未找到 ExifTool";
+    private string _runtimeStatus = LocalizationService.Instance.Get("status.running");
+    private string _exifToolVersion = LocalizationService.Instance.Get("msg.exiftool_not_found");
     private string _serviceStatus = "N/A";
     private bool _showServiceManagerTab;
     private bool _showDetailedEvents;
@@ -208,11 +231,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
     public string ModeColor => IsServiceMode ? "#3B82F6" : "#22C55E";
 
-    public string ModeLabel => IsServiceMode ? "服务模式" : "托盘模式";
+    public string ModeLabel => IsServiceMode ? LocalizationService.Instance.Get("mode.service") : LocalizationService.Instance.Get("mode.tray");
 
     public string StatusDotColor => IsRuntimeRunning ? "#22C55E" : "#9CA3AF";
 
-    public string PauseResumeLabel => IsRuntimePaused ? "▶ 恢复" : "⏸ 暂停";
+    public string PauseResumeLabel => IsRuntimePaused ? LocalizationService.Instance.Get("btn.resume") : LocalizationService.Instance.Get("btn.pause");
 
     public string ServiceStatusDotColor
     {

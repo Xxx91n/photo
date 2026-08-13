@@ -175,6 +175,24 @@ public sealed class FileTaskPipelineTests
         {
             Copies.Add((source, destination, overwrite));
         }
+
+        public Task CopyAsync(string source, string destination, bool overwrite, CancellationToken cancellationToken)
+        {
+            Copies.Add((source, destination, overwrite));
+            return Task.CompletedTask;
+        }
+
+        public Task AtomicCopyAsync(string source, string destination, bool overwrite, CancellationToken cancellationToken)
+        {
+            Copies.Add((source, destination, overwrite));
+            return Task.CompletedTask;
+        }
+
+        public Task MoveAsync(string source, string destination, CancellationToken cancellationToken)
+        {
+            Moves.Add((source, destination));
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class InMemoryAuditLogger : IAuditLogger

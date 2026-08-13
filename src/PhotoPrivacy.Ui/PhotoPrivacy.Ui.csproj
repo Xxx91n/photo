@@ -38,6 +38,9 @@
 
 
   <ItemGroup>
-    <EmbeddedResource Include="i18n\*.json" />
+    <EmbeddedResource Include="Localization\Locales\*.json" />
+    <None Include="Localization\Locales\*.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 </Project>

@@ -56,7 +56,8 @@ public static class AppConfigLoader
                 Enabled: dto.Backup.Enabled,
                 Directory: dto.Backup.Directory,
                 Suffix: dto.Backup.Suffix,
-                MaxSizeMb: dto.Backup.MaxSizeMb),
+                MaxSizeMb: dto.Backup.MaxSizeMb,
+                RetainDays: dto.Backup.RetainDays),
             Quarantine: new QuarantineOptions(
                 Enabled: dto.Quarantine.Enabled,
                 Directory: dto.Quarantine.Directory),
@@ -221,6 +222,9 @@ public static class AppConfigLoader
 
         [JsonPropertyName("max_size_mb")]
         public int MaxSizeMb { get; init; } = AppConfig.Default.Backup.MaxSizeMb;
+
+        [JsonPropertyName("retain_days")]
+        public int RetainDays { get; init; } = AppConfig.Default.Backup.RetainDays;
     }
 
     private sealed class QuarantineDto

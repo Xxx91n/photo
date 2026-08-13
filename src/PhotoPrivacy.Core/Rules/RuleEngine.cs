@@ -63,7 +63,7 @@ public sealed class RuleEngine
 
         var backup = _config.Backup;
         var backupDir = string.IsNullOrWhiteSpace(backup.Directory)
-            ? Path.Combine(_config.Watch.HotFolder, "bak")
+            ? Pipeline.BackupPathResolver.ResolveDefaultBackupDir(_config.Watch.HotFolder)
             : backup.Directory;
 
         var fileName = Path.GetFileName(sourcePath);

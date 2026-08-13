@@ -1,4 +1,5 @@
 using PhotoPrivacy.Core.Configuration;
+using PhotoPrivacy.Core.Pipeline;
 
 namespace PhotoPrivacy.Core.Watcher;
 
@@ -19,7 +20,7 @@ public static class WatchPathFilter
         {
             candidates.Add(config.Backup.Directory);
         }
-        var defaultBackupDir = Path.Combine(hotFolder, "bak");
+        var defaultBackupDir = Pipeline.BackupPathResolver.ResolveDefaultBackupDir(config.Watch.HotFolder);
         candidates.Add(defaultBackupDir);
         if (config.Watch.AutoExcludedDirectories is { Length: > 0 })
         {

@@ -9,4 +9,11 @@ public interface IFileOperations
     void Copy(string source, string destination, bool overwrite);
 
     void AtomicCopy(string source, string destination, bool overwrite);
+
+    // Async versions (hot path uses these to avoid thread-pool blocking)
+    Task CopyAsync(string source, string destination, bool overwrite, CancellationToken cancellationToken);
+
+    Task AtomicCopyAsync(string source, string destination, bool overwrite, CancellationToken cancellationToken);
+
+    Task MoveAsync(string source, string destination, CancellationToken cancellationToken);
 }

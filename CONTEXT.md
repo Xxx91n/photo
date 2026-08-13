@@ -143,3 +143,43 @@ _Avoid_: Privilege escalation, admin prompt
 Windows PowerShell 脚本用 #Requires -Version 5.1 + #Requires -PSEdition Desktop,Core 声明兼容。Remove-Service 在 PowerShell 7+ 可用，Desktop 兜底用 sc.exe delete。
 _Avoid_: PS compat, script version
 
+
+**Locale Path Resolver**:
+跨平台 locale 文件路径解析器，集中计算三层 locale 来源（嵌入式资源 → exe 同目录 → 用户配置目录），所有 OS 特定路径分支集中在 `LocalePathResolver` 一处，不在调用点硬编码。
+_Avoid_: i18n resolver, locale loader
+
+**Localize Extension**:
+Avalonia MarkupExtension（`LocalizeExtension : MarkupExtension`），AXAML 中 `Text="{ex:Localize nav.config}"` 解析为 locale 字符串。订阅 `LocalizationService.CultureChanged` 事件 + WeakReference 持有目标控件，语言切换时自动刷新 UI。
+_Avoid_: I18n markup, translation binding
+
+**Three-Layer Locale**:
+i18n 文件分层架构：(1) 嵌入式资源（DLL 内，永远可用不可删）→ (2) exe 同目录 `Localization/Locales/`（便携/安装均可用）→ (3) 用户配置目录 `locales/`（per-user 覆盖）。后者覆盖前者同 key。参考 env-manager 同款心智模型。
+_Avoid_: Locale stack, i18n layers
+
+**RTL (Right-to-Left)**:
+从右到左的语言布局支持，当前支持阿拉伯语（ar）。`LocalizationService` 切换到 RTL locale 时通过 CultureChanged 事件传递 isRtl 标志，`MainWindow` 绑定 `FlowDirection` 自动切换布局方向。
+_Avoid_: BiDi, mirror layout
+
+**Backup Atomic Replace**:
+备份原子替换模式，使用 `File.Replace(source, dest, null, true)` 跨平台原子 swap（Windows ReplaceFile API / Unix rename(2)），temp 文件加随机后缀防并发碰撞，消除 `File.Move(overwrite)` 的崩溃窗口。
+_Avoid_: Atomic backup swap, safe replace
+
+**Async File Operations**:
+`IFileOperations` 的异步扩展（`CopyAsync`/`AtomicCopyAsync`/`MoveAsync`），`CopyAsync` 用 FileOptions.Asynchronous + CopyToAsync 真异步 I/O；pipeline 热路径调用 async 版本，同步方法保留兼容现有测试/mock。
+_Avoid_: Non-blocking file ops, async IO
+
+**Backup TTL (RetainDays)**:
+备份保留的时间维度策略，`BackupOptions.RetainDays`（默认 30 天）。`EnforceMaxSizeAsync` 单遍遍历同时应用 size + TTL 双淘汰：先删过期文件，再按最老优先直到 size 上限。与 `AuditOptions.RetainDays` 概念对称。
+_Avoid_: Backup expiry, time retention
+
+**Backup Default Directory**:
+备份默认目录 `{HotFolder}/bak`（统一两端点计算：`RuleEngine.ResolveBackupPath` 和 `MetadataCleanerWorker` 共用 `ResolveDefaultBackupDir` helper，修复 bak vs _backup 不一致 bug）。Worker 启动时自动注入 `AutoExcludedDirectories` 防止 FSW 监听自身备份。
+_Avoid_: Backup folder, bak dir
+
+**Backup Retention Async**:
+`BackupRetentionService.EnforceMaxSizeAsync` 在 `_cleanupTimer`（10 分钟）tick 中触发，脱离 pipeline 热路径。原 per-file 同步调用删除。失败不阻塞主流程（try-catch + audit log）。
+_Avoid_: Retention throttle, cleanup retention
+
+**Temp File Route**:
+`FileTaskPipeline` 的备份-清除路由：当 ExifTool 原地清除且需要备份时，先把 sourcePath 复制到临时文件（`%TEMP%/PP_*` 前缀），ExifTool 操作 temp，清除后 AtomicCopy(sourcePath, backupPath) 再把 temp 移回 sourcePath。temp 加 `PP_` 前缀，Worker 启动扫描残留 `.codex-tmp` 清理。
+_Avoid_: Temp copy route, safe modify route

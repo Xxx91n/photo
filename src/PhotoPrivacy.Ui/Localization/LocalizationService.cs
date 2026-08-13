@@ -1,12 +1,14 @@
 using System.Collections.Concurrent;
 using System.Globalization;
+using System.Reflection;
 using System.Text.Json;
+using PhotoPrivacy.Core.Constants;
 
 namespace PhotoPrivacy.Ui.Localization;
 
 /// <summary>
 /// Lightweight JSON-based localization service.
-/// Loads locale files from Localization/Locales/{lang}.json at startup.
+/// Three-layer loader: embedded resource -> exe-same-dir -> user config dir (ascending priority).
 /// Supports runtime language switching with PropertyChanged notification.
 /// </summary>
 public sealed class LocalizationService : System.ComponentModel.INotifyPropertyChanged
@@ -16,17 +18,18 @@ public sealed class LocalizationService : System.ComponentModel.INotifyPropertyC
 
     private readonly ConcurrentDictionary<string, Dictionary<string, string>> _locales = new();
     private string _currentLocale = "zh-CN";
+    private string? _previousEffectiveLocale;
     private Dictionary<string, string> _currentStrings = new();
 
     public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+    public event EventHandler<string>? CultureChanged;
 
     public string CurrentLocale => _currentLocale;
-
     public IReadOnlyList<string> AvailableLocales => _locales.Keys.OrderBy(k => k).ToList();
 
     private LocalizationService()
     {
-        LoadEmbeddedLocales();
+        LoadAllLayers();
     }
 
     public void Initialize(string? locale = null)
@@ -37,6 +40,9 @@ public sealed class LocalizationService : System.ComponentModel.INotifyPropertyC
 
     public void SwitchLocale(string locale)
     {
+        if (locale == _previousEffectiveLocale) return;
+        _previousEffectiveLocale = locale;
+
         if (_locales.TryGetValue(locale, out var strings))
         {
             _currentLocale = locale;
@@ -49,10 +55,8 @@ public sealed class LocalizationService : System.ComponentModel.INotifyPropertyC
         }
 
         PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(CurrentLocale)));
-        CultureChanged?.Invoke(this, _currentLocale);
+        CultureChanged?.Invoke(this, locale);
     }
-
-    public event EventHandler<string>? CultureChanged;
 
     public string this[string key] => Get(key);
 
@@ -63,13 +67,12 @@ public sealed class LocalizationService : System.ComponentModel.INotifyPropertyC
             return value;
         }
 
-        // Fallback to zh-CN
         if (_locales.TryGetValue("zh-CN", out var zhStrings) && zhStrings.TryGetValue(key, out var zhValue))
         {
             return zhValue;
         }
 
-        return key; // Return key itself as last resort
+        return key;
     }
 
     public string Get(string key, params object[] args)
@@ -98,41 +101,23 @@ public sealed class LocalizationService : System.ComponentModel.INotifyPropertyC
             "fr" or "fr-FR" => "fr",
             "es" or "es-ES" => "es",
             "ru" or "ru-RU" => "ru",
+            "ar" or "ar-SA" or "ar-EG" => "ar",
             _ => "en"
         };
     }
 
-    private void LoadEmbeddedLocales()
+    /// <summary>
+    /// Three-layer loader (ascending priority):
+    /// 1. Embedded resource (always available, bottom layer)
+    /// 2. exe-same-dir Localization/Locales/
+    /// 3. User config dir locales/ (per-user override, top priority)
+    /// </summary>
+    private void LoadAllLayers()
     {
-        var localeDir = Path.Combine(AppContext.BaseDirectory, "Localization", "Locales");
-        if (!Directory.Exists(localeDir))
-        {
-            // Fallback: try relative to assembly
-            localeDir = Path.Combine(Path.GetDirectoryName(typeof(LocalizationService).Assembly.Location)!, "Localization", "Locales");
-        }
+        LoadEmbeddedLocales();
+        LoadDiskLocales(LocalePathResolver.ExeLocaleDirectory);
+        LoadDiskLocales(LocalePathResolver.UserLocaleDirectory);
 
-        if (Directory.Exists(localeDir))
-        {
-            foreach (var file in Directory.GetFiles(localeDir, "*.json"))
-            {
-                var localeName = Path.GetFileNameWithoutExtension(file);
-                try
-                {
-                    var json = File.ReadAllText(file);
-                    var dict = JsonSerializer.Deserialize<Dictionary<string, string>>(json);
-                    if (dict is not null)
-                    {
-                        _locales[localeName] = dict;
-                    }
-                }
-                catch
-                {
-                    // Skip malformed locale files
-                }
-            }
-        }
-
-        // Always ensure zh-CN and en exist as built-in fallback
         if (!_locales.ContainsKey("zh-CN"))
         {
             _locales["zh-CN"] = BuiltInZhCN();
@@ -142,6 +127,81 @@ public sealed class LocalizationService : System.ComponentModel.INotifyPropertyC
             _locales["en"] = BuiltInEn();
         }
     }
+
+    private void LoadEmbeddedLocales()
+    {
+        var asm = typeof(LocalizationService).Assembly;
+        foreach (var name in asm.GetManifestResourceNames())
+        {
+            if (!name.EndsWith(".json", StringComparison.OrdinalIgnoreCase)) continue;
+            var localeName = ExtractLocaleName(name);
+            if (localeName is null) continue;
+            try
+            {
+                using var stream = asm.GetManifestResourceStream(name);
+                if (stream is null) continue;
+                using var reader = new StreamReader(stream);
+                var json = reader.ReadToEnd();
+                var dict = JsonSerializer.Deserialize<Dictionary<string, string>>(json);
+                if (dict is not null)
+                {
+                    _locales[localeName] = MergeDicts(_locales.GetValueOrDefault(localeName), dict);
+                }
+            }
+            catch
+            {
+                // Skip malformed embedded locale
+            }
+        }
+    }
+
+    private void LoadDiskLocales(string localeDir)
+    {
+        if (!Directory.Exists(localeDir)) return;
+        foreach (var file in Directory.GetFiles(localeDir, "*.json"))
+        {
+            var localeName = Path.GetFileNameWithoutExtension(file);
+            try
+            {
+                var json = File.ReadAllText(file);
+                var dict = JsonSerializer.Deserialize<Dictionary<string, string>>(json);
+                if (dict is not null)
+                {
+                    _locales[localeName] = MergeDicts(_locales.GetValueOrDefault(localeName), dict);
+                }
+            }
+            catch
+            {
+                // Skip malformed locale files
+            }
+        }
+    }
+
+    private static string? ExtractLocaleName(string resourceName)
+    {
+        var idx = resourceName.IndexOf("Locales.", StringComparison.OrdinalIgnoreCase);
+        if (idx < 0) return null;
+        var rest = resourceName.Substring(idx + "Locales.".Length);
+        if (rest.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+        {
+            rest = rest.Substring(0, rest.Length - ".json".Length);
+        }
+        return rest;
+    }
+
+    private static Dictionary<string, string> MergeDicts(Dictionary<string, string>? baseDict, Dictionary<string, string> overlay)
+    {
+        var merged = new Dictionary<string, string>(baseDict ?? new());
+        foreach (var kvp in overlay)
+        {
+            merged[kvp.Key] = kvp.Value;
+        }
+        return merged;
+    }
+
+    private static readonly string[] RtlLocales = { "ar" };
+    public bool IsRtl(string? locale = null) =>
+        RtlLocales.Contains(locale ?? _currentLocale, StringComparer.OrdinalIgnoreCase);
 
     private static Dictionary<string, string> BuiltInZhCN() => new()
     {
@@ -160,30 +220,6 @@ public sealed class LocalizationService : System.ComponentModel.INotifyPropertyC
         ["mode.tray"] = "托盘模式",
         ["mode.service"] = "服务模式",
         ["mode.background"] = "后台模式",
-        ["settings.exiftool_path"] = "ExifTool 路径",
-        ["settings.hot_folder"] = "监控目录",
-        ["settings.backup"] = "备份",
-        ["settings.backup_dir"] = "备份目录",
-        ["settings.theme"] = "主题",
-        ["settings.language"] = "语言",
-        ["settings.font"] = "字体",
-        ["settings.font_size"] = "字体大小",
-        ["settings.hide_on_startup"] = "启动时隐藏主窗口",
-        ["settings.hide_tray"] = "隐藏托盘图标",
-        ["settings.quarantine"] = "隔离区",
-        ["settings.quarantine_dir"] = "隔离目录",
-        ["settings.audit_log_dir"] = "审计日志目录",
-        ["settings.log_level"] = "日志级别",
-        ["settings.excluded_dirs"] = "排除目录",
-        ["settings.system_excluded"] = "系统自动排除",
-        ["service.status"] = "服务状态",
-        ["service.install"] = "安装服务",
-        ["service.uninstall"] = "卸载服务",
-        ["service.start"] = "启动服务",
-        ["service.stop"] = "停止服务",
-        ["service.running"] = "运行中",
-        ["service.stopped"] = "已停止",
-        ["service.failed"] = "失败",
         ["msg.saved"] = "配置已保存",
         ["msg.save_failed"] = "保存失败",
         ["msg.exiftool_not_found"] = "未找到 ExifTool",
@@ -208,30 +244,6 @@ public sealed class LocalizationService : System.ComponentModel.INotifyPropertyC
         ["mode.tray"] = "Tray Mode",
         ["mode.service"] = "Service Mode",
         ["mode.background"] = "Background Mode",
-        ["settings.exiftool_path"] = "ExifTool Path",
-        ["settings.hot_folder"] = "Watch Folder",
-        ["settings.backup"] = "Backup",
-        ["settings.backup_dir"] = "Backup Directory",
-        ["settings.theme"] = "Theme",
-        ["settings.language"] = "Language",
-        ["settings.font"] = "Font",
-        ["settings.font_size"] = "Font Size",
-        ["settings.hide_on_startup"] = "Hide window on startup",
-        ["settings.hide_tray"] = "Hide tray icon",
-        ["settings.quarantine"] = "Quarantine",
-        ["settings.quarantine_dir"] = "Quarantine Directory",
-        ["settings.audit_log_dir"] = "Audit Log Directory",
-        ["settings.log_level"] = "Log Level",
-        ["settings.excluded_dirs"] = "Excluded Directories",
-        ["settings.system_excluded"] = "System Auto-Excluded",
-        ["service.status"] = "Service Status",
-        ["service.install"] = "Install Service",
-        ["service.uninstall"] = "Uninstall Service",
-        ["service.start"] = "Start Service",
-        ["service.stop"] = "Stop Service",
-        ["service.running"] = "Running",
-        ["service.stopped"] = "Stopped",
-        ["service.failed"] = "Failed",
         ["msg.saved"] = "Configuration saved",
         ["msg.save_failed"] = "Save failed",
         ["msg.exiftool_not_found"] = "ExifTool not found",

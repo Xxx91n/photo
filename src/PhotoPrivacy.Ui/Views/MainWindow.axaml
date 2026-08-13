@@ -1,11 +1,13 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ex="using:PhotoPrivacy.Ui.Localization"
         x:Class="PhotoPrivacy.Ui.Views.MainWindow"
         Width="920"
         Height="600"
         MinWidth="740"
         MinHeight="480"
         Title="PhotoPrivacy"
+        FlowDirection="{Binding UiFlowDirection}"
         Background="{DynamicResource AppBgBrush}">
   <Grid ColumnDefinitions="200,*">
     <Border Grid.Column="0"
@@ -42,11 +44,11 @@
         </Border>
 
         <StackPanel DockPanel.Dock="Top" Margin="8,16,8,0" Spacing="2">
-          <Button x:Name="ConfigNavButton" Classes="nav active" Content="配置" Tag="config"/>
-          <Button x:Name="LogNavButton" Classes="nav" Content="日志" Tag="log"/>
+          <Button x:Name="ConfigNavButton" Classes="nav active" Content="{ex:Localize nav.config}" Tag="config"/>
+          <Button x:Name="LogNavButton" Classes="nav" Content="{ex:Localize nav.logs}" Tag="log"/>
           <Button x:Name="OpenServiceManagerTabButton"
                   Classes="nav"
-                  Content="服务管理器"
+                  Content="{ex:Localize nav.service_manager}"
                   Tag="service"
                   IsVisible="{Binding ShowServiceManagerTab}"/>
         </StackPanel>
@@ -58,7 +60,7 @@
                   Content="{Binding PauseResumeLabel}"
                   HorizontalAlignment="Stretch"/>
           <Button x:Name="OpenConfigDirButton"
-                  Content="打开配置目录"
+                  Content="{ex:Localize btn.open_config_dir}"
                   Classes="nav-action"
                   HorizontalAlignment="Stretch"/>
         </StackPanel>
@@ -68,20 +70,20 @@
     <Grid Grid.Column="1" x:Name="MainContentGrid">
       <Grid x:Name="ConfigPage" RowDefinitions="Auto,*" IsVisible="True">
         <Border Padding="24,20,24,16" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1">
-          <TextBlock Text="配置" FontSize="16" FontWeight="SemiBold"/>
+          <TextBlock Text="{ex:Localize nav.config}" FontSize="16" FontWeight="SemiBold"/>
         </Border>
 
         <ScrollViewer Grid.Row="1" Margin="24,16,24,20" VerticalScrollBarVisibility="Auto">
           <StackPanel Spacing="0">
             <Border Classes="settings-card">
               <StackPanel>
-                <TextBlock Text="路径设置" Classes="section-header"/>
+                <TextBlock Text="{ex:Localize config.section.path}" Classes="section-header"/>
 
                 <Border Classes="settings-row">
                   <DockPanel LastChildFill="False">
                     <StackPanel DockPanel.Dock="Left" Spacing="2" VerticalAlignment="Center">
-                      <TextBlock Text="ExifTool 路径" Classes="row-label"/>
-                      <TextBlock Text="exiftool 可执行文件的完整路径" Classes="row-desc"/>
+                      <TextBlock Text="{ex:Localize settings.exiftool_path}" Classes="row-label"/>
+                      <TextBlock Text="{ex:Localize config.desc.exiftool_path}" Classes="row-desc"/>
                     </StackPanel>
                     <StackPanel DockPanel.Dock="Right" Spacing="6">
                       <DockPanel LastChildFill="False" VerticalAlignment="Center">
@@ -111,8 +113,8 @@
                 <Border Classes="settings-row">
                   <DockPanel LastChildFill="False">
                     <StackPanel DockPanel.Dock="Left" Spacing="2" VerticalAlignment="Center">
-                      <TextBlock Text="监控目录" Classes="row-label"/>
-                      <TextBlock Text="自动清理此目录下新增文件的元数据" Classes="row-desc"/>
+                      <TextBlock Text="{ex:Localize settings.hot_folder}" Classes="row-label"/>
+                      <TextBlock Text="{ex:Localize config.desc.hot_folder}" Classes="row-desc"/>
                     </StackPanel>
                     <DockPanel DockPanel.Dock="Right" LastChildFill="False" VerticalAlignment="Center">
                       <TextBox DockPanel.Dock="Left"
@@ -135,13 +137,13 @@
 
             <Border Classes="settings-card">
               <StackPanel>
-                <TextBlock Text="行为设置" Classes="section-header"/>
+                <TextBlock Text="{ex:Localize config.section.behavior}" Classes="section-header"/>
 
                 <Border Classes="settings-row">
                   <DockPanel LastChildFill="False">
                     <StackPanel DockPanel.Dock="Left" Spacing="2">
-                      <TextBlock Text="启用备份" Classes="row-label"/>
-                      <TextBlock Text="清理前将原文件复制到备份目录" Classes="row-desc"/>
+                      <TextBlock Text="{ex:Localize config.row.enable_backup}" Classes="row-label"/>
+                      <TextBlock Text="{ex:Localize config.desc.backup_enabled}" Classes="row-desc"/>
                     </StackPanel>
                     <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding BackupEnabled}" VerticalAlignment="Center" OnContent="" OffContent=""/>
                   </DockPanel>
@@ -152,8 +154,8 @@
                 <Border Classes="settings-row" IsVisible="{Binding BackupEnabled}">
                   <DockPanel LastChildFill="False">
                     <StackPanel DockPanel.Dock="Left" Spacing="2">
-                      <TextBlock Text="备份目录" Classes="row-label"/>
-                      <TextBlock Text="留空默认使用监控目录/bak" Classes="row-desc"/>
+                      <TextBlock Text="{ex:Localize settings.backup_dir}" Classes="row-label"/>
+                      <TextBlock Text="{ex:Localize config.desc.backup_dir}" Classes="row-desc"/>
                     </StackPanel>
                     <DockPanel DockPanel.Dock="Right" LastChildFill="False" VerticalAlignment="Center">
                       <TextBox DockPanel.Dock="Left"
@@ -178,8 +180,8 @@
                 <Border Classes="settings-row">
                   <DockPanel LastChildFill="False" VerticalAlignment="Center">
                     <StackPanel DockPanel.Dock="Left" Spacing="2">
-                      <TextBlock Text="启用隔离目录" Classes="row-label"/>
-                      <TextBlock Text="处理失败的文件移入此目录隔离" Classes="row-desc"/>
+                      <TextBlock Text="{ex:Localize config.row.enable_quarantine}" Classes="row-label"/>
+                      <TextBlock Text="{ex:Localize config.desc.quarantine_enabled}" Classes="row-desc"/>
                     </StackPanel>
                     <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding QuarantineEnabled}" VerticalAlignment="Center" OnContent="" OffContent=""/>
                   </DockPanel>
@@ -190,8 +192,8 @@
                 <Border Classes="settings-row" IsVisible="{Binding QuarantineEnabled}">
                   <DockPanel LastChildFill="False" VerticalAlignment="Center">
                     <StackPanel DockPanel.Dock="Left" Spacing="2">
-                      <TextBlock Text="隔离目录" Classes="row-label"/>
-                      <TextBlock Text="处理失败的文件存放路径" Classes="row-desc"/>
+                      <TextBlock Text="{ex:Localize settings.quarantine_dir}" Classes="row-label"/>
+                      <TextBlock Text="{ex:Localize config.desc.quarantine_dir}" Classes="row-desc"/>
                     </StackPanel>
                     <DockPanel DockPanel.Dock="Right" LastChildFill="False" VerticalAlignment="Center">
                       <TextBox DockPanel.Dock="Left"
@@ -213,8 +215,8 @@
                 <Border Classes="settings-row">
                   <DockPanel LastChildFill="False">
                     <StackPanel DockPanel.Dock="Left" Spacing="2">
-                      <TextBlock Text="启动时隐藏主窗口" Classes="row-label"/>
-                      <TextBlock Text="启动后仅在托盘显示，不弹出主窗口" Classes="row-desc"/>
+                      <TextBlock Text="{ex:Localize settings.hide_on_startup}" Classes="row-label"/>
+                      <TextBlock Text="{ex:Localize config.desc.hide_on_startup}" Classes="row-desc"/>
                     </StackPanel>
                     <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding HideGuiOnStartup}" VerticalAlignment="Center" OnContent="" OffContent=""/>
                   </DockPanel>
@@ -225,8 +227,8 @@
                 <Border Classes="settings-row">
                   <DockPanel LastChildFill="False">
                     <StackPanel DockPanel.Dock="Left" Spacing="2">
-                      <TextBlock Text="隐藏托盘图标" Classes="row-label"/>
-                      <TextBlock Text="在托盘模式下隐藏图标，仅保留后台处理" Classes="row-desc"/>
+                      <TextBlock Text="{ex:Localize settings.hide_tray}" Classes="row-label"/>
+                      <TextBlock Text="{ex:Localize config.desc.hide_tray}" Classes="row-desc"/>
                     </StackPanel>
                     <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding HideTrayIcon}" VerticalAlignment="Center" OnContent="" OffContent=""/>
                   </DockPanel>
@@ -237,15 +239,15 @@
                 <Border Classes="settings-row">
                   <DockPanel LastChildFill="False">
                     <StackPanel DockPanel.Dock="Left" Spacing="2">
-                      <TextBlock Text="界面主题" Classes="row-label"/>
-                      <TextBlock Text="可在系统/亮色/暗色之间自由切换" Classes="row-desc"/>
+                      <TextBlock Text="{ex:Localize settings.theme}" Classes="row-label"/>
+                      <TextBlock Text="{ex:Localize config.desc.theme}" Classes="row-desc"/>
                     </StackPanel>
                     <ComboBox x:Name="ThemeVariantComboBox"
                               DockPanel.Dock="Right"
                               Width="160">
-                      <ComboBoxItem Content="跟随系统" Tag="system"/>
-                      <ComboBoxItem Content="浅色"     Tag="light"/>
-                      <ComboBoxItem Content="深色"     Tag="dark"/>
+                      <ComboBoxItem Content="{ex:Localize theme.option.system}" Tag="system"/>
+                      <ComboBoxItem Content="{ex:Localize theme.option.light}"     Tag="light"/>
+                      <ComboBoxItem Content="{ex:Localize theme.option.dark}"     Tag="dark"/>
                     </ComboBox>
                   </DockPanel>
                 </Border>
@@ -254,22 +256,22 @@
 
             <Border Classes="settings-card">
               <StackPanel>
-                <TextBlock Text="日志设置" Classes="section-header"/>
+                <TextBlock Text="{ex:Localize config.section.logs}" Classes="section-header"/>
 
                 <Border Classes="settings-row">
                   <DockPanel LastChildFill="False">
                     <StackPanel DockPanel.Dock="Left" Spacing="2">
-                      <TextBlock Text="日志级别" Classes="row-label"/>
-                      <TextBlock Text="info=标准日志，debug=详细调试日志" Classes="row-desc"/>
+                      <TextBlock Text="{ex:Localize settings.log_level}" Classes="row-label"/>
+                      <TextBlock Text="{ex:Localize config.desc.log_level}" Classes="row-desc"/>
                     </StackPanel>
                     <ComboBox x:Name="LogLevelComboBox"
                               DockPanel.Dock="Right"
                               Width="160">
-                      <ComboBoxItem Content="ALL（全部）"   Tag="all"/>
-                      <ComboBoxItem Content="INFO（标准）"  Tag="info"/>
-                      <ComboBoxItem Content="DEBUG（调试）" Tag="debug"/>
-                      <ComboBoxItem Content="WARN（警告）"  Tag="warn"/>
-                      <ComboBoxItem Content="ERROR（错误）" Tag="error"/>
+                      <ComboBoxItem Content="{ex:Localize loglevel.option.all}"   Tag="all"/>
+                      <ComboBoxItem Content="{ex:Localize loglevel.option.info}"  Tag="info"/>
+                      <ComboBoxItem Content="{ex:Localize loglevel.option.debug}" Tag="debug"/>
+                      <ComboBoxItem Content="{ex:Localize loglevel.option.warn}"  Tag="warn"/>
+                      <ComboBoxItem Content="{ex:Localize loglevel.option.error}" Tag="error"/>
                     </ComboBox>
                   </DockPanel>
                 </Border>
@@ -279,8 +281,8 @@
                 <Border Classes="settings-row">
                   <DockPanel LastChildFill="False">
                     <StackPanel DockPanel.Dock="Left" Spacing="2">
-                      <TextBlock Text="日志保存路径" Classes="row-label"/>
-                      <TextBlock Text="audit jsonl 文件的存放目录" Classes="row-desc"/>
+                      <TextBlock Text="{ex:Localize settings.audit_log_dir_label}" Classes="row-label"/>
+                      <TextBlock Text="{ex:Localize config.desc.audit_log_dir}" Classes="row-desc"/>
                     </StackPanel>
                     <DockPanel DockPanel.Dock="Right" LastChildFill="False" VerticalAlignment="Center">
                       <TextBox DockPanel.Dock="Left"
@@ -303,12 +305,12 @@
 
             <Border Classes="settings-card">
               <StackPanel>
-                <TextBlock Text="排除监听列表" Classes="section-header"/>
+                <TextBlock Text="{ex:Localize config.section.excluded}" Classes="section-header"/>
 
                 <Border Classes="settings-row">
                   <StackPanel Spacing="4">
-                    <TextBlock Text="系统自动排除目录（只读）" Classes="row-label"/>
-                    <TextBlock Text="日志、备份、隔离目录自动被排除在文件监听之外" Classes="row-desc"/>
+                    <TextBlock Text="{ex:Localize config.label.system_excluded}" Classes="row-label"/>
+                    <TextBlock Text="{ex:Localize config.desc.system_excluded}" Classes="row-desc"/>
                     <ListBox ItemsSource="{Binding SystemAutoExcludedDirectories}"
                              Height="80"
                              BorderBrush="{DynamicResource DividerBrush}"
@@ -321,8 +323,8 @@
                 <Border Classes="settings-row">
                   <StackPanel Spacing="8">
                     <StackPanel Spacing="2">
-                      <TextBlock Text="用户自定义排除目录" Classes="row-label"/>
-                      <TextBlock Text="可添加额外路径以排除监听" Classes="row-desc"/>
+                      <TextBlock Text="{ex:Localize config.label.user_excluded}" Classes="row-label"/>
+                      <TextBlock Text="{ex:Localize config.desc.user_excluded}" Classes="row-desc"/>
                     </StackPanel>
                     <ListBox x:Name="UserExcludedDirectoriesListBox"
                              ItemsSource="{Binding UserExcludedDirectories}"
@@ -347,7 +349,7 @@
 
       <Grid x:Name="LogPage" RowDefinitions="Auto,*" IsVisible="False">
         <Border Padding="24,20,24,16" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1">
-          <TextBlock Text="日志" FontSize="16" FontWeight="SemiBold"/>
+          <TextBlock Text="{ex:Localize nav.logs}" FontSize="16" FontWeight="SemiBold"/>
         </Border>
 
         <DockPanel Grid.Row="1" Margin="24,12,24,20">
@@ -357,7 +359,7 @@
                   BorderBrush="{DynamicResource DividerBrush}"
                   BorderThickness="0,1,0,1">
             <DockPanel>
-              <Button DockPanel.Dock="Right" x:Name="ClearLogsButton" Content="清空" Classes="ghost" Height="28" FontSize="12"/>
+              <Button DockPanel.Dock="Right" x:Name="ClearLogsButton" Content="{ex:Localize log.btn.clear}" Classes="ghost" Height="28" FontSize="12"/>
             </DockPanel>
           </Border>
 
@@ -405,14 +407,14 @@
 
       <Grid x:Name="ServiceManagerTab" RowDefinitions="Auto,*" IsVisible="False">
         <Border Padding="24,20,24,16" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1">
-          <TextBlock Text="服务管理器" FontSize="16" FontWeight="SemiBold"/>
+          <TextBlock Text="{ex:Localize nav.service_manager}" FontSize="16" FontWeight="SemiBold"/>
         </Border>
 
         <ScrollViewer Grid.Row="1" Margin="24,16,24,20" VerticalScrollBarVisibility="Auto">
           <StackPanel>
             <Border Classes="settings-card">
               <StackPanel>
-                <TextBlock Text="CURRENT STATUS" Classes="section-header" Margin="16,12,16,8"/>
+                <TextBlock Text="{ex:Localize service.section.status}" Classes="section-header" Margin="16,12,16,8"/>
                 <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="16,0,16,12">
                   <Ellipse Width="10" Height="10" Fill="{Binding ServiceStatusDotColor}" VerticalAlignment="Center"/>
                   <TextBlock Text="{Binding ServiceStatus}" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
@@ -427,10 +429,10 @@
                 <Border Classes="settings-row">
                   <DockPanel LastChildFill="False">
                     <StackPanel DockPanel.Dock="Left" Spacing="2">
-                      <TextBlock Text="安装并启动服务" Classes="row-label"/>
-                      <TextBlock Text="将 PhotoPrivacyWorker 注册为 Windows 系统服务" Classes="row-desc"/>
+                      <TextBlock Text="{ex:Localize service.row.install_start}" Classes="row-label"/>
+                      <TextBlock Text="{ex:Localize service.desc.install}" Classes="row-desc"/>
                     </StackPanel>
-                    <Button x:Name="InstallServiceButton" DockPanel.Dock="Right" Content="安装服务" Classes="primary" VerticalAlignment="Center"/>
+                    <Button x:Name="InstallServiceButton" DockPanel.Dock="Right" Content="{ex:Localize service.btn.install}" Classes="primary" VerticalAlignment="Center"/>
                   </DockPanel>
                 </Border>
 
@@ -439,13 +441,13 @@
                 <Border Classes="settings-row">
                   <DockPanel LastChildFill="False">
                     <StackPanel DockPanel.Dock="Left" Spacing="2">
-                      <TextBlock Text="启动 / 停止服务" Classes="row-label"/>
-                      <TextBlock Text="手动控制已安装服务的运行状态" Classes="row-desc"/>
+                      <TextBlock Text="{ex:Localize service.row.start_stop}" Classes="row-label"/>
+                      <TextBlock Text="{ex:Localize service.desc.start_stop}" Classes="row-desc"/>
                     </StackPanel>
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8">
-                      <Button x:Name="StartServiceButton" Content="启动" Classes="ghost" VerticalAlignment="Center"/>
-                      <Button x:Name="StopServiceButton" Content="停止" Classes="ghost" VerticalAlignment="Center"/>
-                      <Button x:Name="RefreshServiceStatusButton" Content="刷新" Classes="ghost" VerticalAlignment="Center"/>
+                      <Button x:Name="StartServiceButton" Content="{ex:Localize service.btn.start}" Classes="ghost" VerticalAlignment="Center"/>
+                      <Button x:Name="StopServiceButton" Content="{ex:Localize service.btn.stop}" Classes="ghost" VerticalAlignment="Center"/>
+                      <Button x:Name="RefreshServiceStatusButton" Content="{ex:Localize service.btn.refresh}" Classes="ghost" VerticalAlignment="Center"/>
                     </StackPanel>
                   </DockPanel>
                 </Border>
@@ -455,10 +457,10 @@
                 <Border Classes="settings-row">
                   <DockPanel LastChildFill="False">
                     <StackPanel DockPanel.Dock="Left" Spacing="2">
-                      <TextBlock Text="卸载服务" Classes="row-label" Foreground="{DynamicResource AccentRedBrush}"/>
-                      <TextBlock Text="从系统移除服务，切换为托盘模式运行" Classes="row-desc"/>
+                      <TextBlock Text="{ex:Localize service.row.uninstall}" Classes="row-label" Foreground="{DynamicResource AccentRedBrush}"/>
+                      <TextBlock Text="{ex:Localize service.desc.uninstall}" Classes="row-desc"/>
                     </StackPanel>
-                    <Button x:Name="UninstallServiceButton" DockPanel.Dock="Right" Content="卸载服务" Classes="danger" VerticalAlignment="Center"/>
+                    <Button x:Name="UninstallServiceButton" DockPanel.Dock="Right" Content="{ex:Localize service.row.uninstall}" Classes="danger" VerticalAlignment="Center"/>
                   </DockPanel>
                 </Border>
               </StackPanel>

@@ -7,6 +7,7 @@ using Avalonia.Platform.Storage;
 using Avalonia.Styling;
 using PhotoPrivacy.Core.Configuration;
 using PhotoPrivacy.Core.Watcher;
+using PhotoPrivacy.Ui.Localization;
 using PhotoPrivacy.Ui.ViewModels;
 
 namespace PhotoPrivacy.Ui.Views;
@@ -67,6 +68,14 @@ public partial class MainWindow : Window
         var hotFolder = effectiveConfig?.Watch.HotFolder;
         var exifToolPathFromConfig = effectiveConfig?.ExifTool.Path;
         var viewModel = DataContext as MainWindowViewModel;
+
+        // i18n initialization: load persisted locale preference from config + subscribe to CultureChanged
+        LocalizationService.Instance.Initialize(); // auto-detect from system culture
+        LocalizationService.Instance.CultureChanged += (_, locale) =>
+        {
+            Dispatcher.UIThread.Post(() => viewModel?.RefreshLocaleDependent(), DispatcherPriority.Background);
+        };
+        viewModel?.ApplyLocaleFlowDirection();
 
         if (viewModel is not null)
         {
