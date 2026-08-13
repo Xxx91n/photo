@@ -101,7 +101,7 @@ public partial class MainWindow : Window
                 viewModel.ThemeVariant = NormalizeThemeVariant(effectiveConfig.Ui.ThemeVariant);
                 viewModel.BackupDirectory = effectiveConfig.Backup.Directory;
                 viewModel.AuditLogDirectory = effectiveConfig.Audit.LogDirectory;
-                viewModel.LogLevel = effectiveConfig.Audit.DiagnosticMode ? "debug" : "info";
+                viewModel.LogLevel = effectiveConfig.Audit.LogLevel;
                 viewModel.QuarantineEnabled = effectiveConfig.Quarantine.Enabled;
                 viewModel.QuarantineDirectory = effectiveConfig.Quarantine.Directory;
 
@@ -1470,7 +1470,7 @@ public partial class MainWindow : Window
                 SyncThemeVariantComboSelection(vm.ThemeVariant);
                 vm.BackupDirectory = cfg.Backup.Directory;
                 vm.AuditLogDirectory = cfg.Audit.LogDirectory;
-                vm.LogLevel = cfg.Audit.DiagnosticMode ? "debug" : "info";
+                vm.LogLevel = cfg.Audit.LogLevel;
                 SyncLogLevelComboSelection(vm.LogLevel);
                 vm.ExifToolPathHint = _exifToolHint;
                 vm.QuarantineEnabled = cfg.Quarantine.Enabled;

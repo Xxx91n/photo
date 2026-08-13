@@ -31,7 +31,7 @@ public sealed record BackupOptions(bool Enabled, string Directory, string Suffix
 
 public sealed record QuarantineOptions(bool Enabled, string Directory);
 
-public sealed record AuditOptions(string LogDirectory, int RetainDays, bool DiagnosticMode);
+public sealed record AuditOptions(string LogDirectory, int RetainDays, bool DiagnosticMode, string LogLevel = "info");
 
 public sealed record UiOptions(bool HideMainWindowOnStartup, bool HideTrayIcon, string ThemeVariant);
 
@@ -108,7 +108,8 @@ public sealed record AppConfig(
         Audit: new AuditOptions(
             LogDirectory: @"D:\hot\_audit",
             RetainDays: 30,
-            DiagnosticMode: true),
+            DiagnosticMode: true,
+            LogLevel: "info"),
         Ui: new UiOptions(
             HideMainWindowOnStartup: false,
             HideTrayIcon: false,

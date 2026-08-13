@@ -72,7 +72,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
         }
 
         _audit = config.Audit.DiagnosticMode
-            ? new JsonLineAuditLogger(config.Audit.LogDirectory, config.Audit.RetainDays, config.Audit.DiagnosticMode)
+            ? new JsonLineAuditLogger(config.Audit.LogDirectory, config.Audit.RetainDays, config.Audit.DiagnosticMode, AuditLevelParser.Parse(config.Audit.LogLevel))
             : null;
         IAuditLogger auditLogger = _audit is not null ? _audit : new NoopAuditLogger();
         _bridge = CreateBridge(config, auditLogger);
@@ -441,7 +441,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
         Directory.CreateDirectory(config.Quarantine.Directory);
 
         _audit = config.Audit.DiagnosticMode
-            ? new JsonLineAuditLogger(config.Audit.LogDirectory, config.Audit.RetainDays, config.Audit.DiagnosticMode)
+            ? new JsonLineAuditLogger(config.Audit.LogDirectory, config.Audit.RetainDays, config.Audit.DiagnosticMode, AuditLevelParser.Parse(config.Audit.LogLevel))
             : null;
         IAuditLogger auditLogger = _audit is not null ? _audit : new NoopAuditLogger();
         _bridge = CreateBridge(config, auditLogger);

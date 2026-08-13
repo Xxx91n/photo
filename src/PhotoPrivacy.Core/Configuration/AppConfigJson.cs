@@ -57,7 +57,8 @@ public static class AppConfigJson
             {
                 LogDirectory = config.Audit.LogDirectory,
                 RetainDays = config.Audit.RetainDays,
-                DiagnosticMode = config.Audit.DiagnosticMode
+                DiagnosticMode = config.Audit.DiagnosticMode,
+                LogLevel = config.Audit.LogLevel
             },
             Ui = new UiDto
             {
@@ -206,6 +207,9 @@ public static class AppConfigJson
 
         [JsonPropertyName("diagnostic_mode")]
         public bool DiagnosticMode { get; init; }
+
+        [JsonPropertyName("log_level")]
+        public string LogLevel { get; init; } = "info";
     }
 
     private sealed class UiDto

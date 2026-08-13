@@ -24,7 +24,8 @@ public static class ConfigEditor
             Audit = config.Audit with
             {
                 DiagnosticMode = ResolveDiagnosticMode(command.LogLevel, command.LogEnabled),
-                LogDirectory = command.AuditLogDirectory
+                LogDirectory = command.AuditLogDirectory,
+                LogLevel = command.LogLevel
             },
             Watch = config.Watch with
             {

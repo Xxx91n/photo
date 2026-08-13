@@ -63,7 +63,8 @@ public static class AppConfigLoader
             Audit: new AuditOptions(
                 LogDirectory: dto.Audit.LogDirectory,
                 RetainDays: dto.Audit.RetainDays,
-                DiagnosticMode: dto.Audit.DiagnosticMode),
+                DiagnosticMode: dto.Audit.DiagnosticMode,
+                LogLevel: dto.Audit.LogLevel),
             Ui: new UiOptions(
                 HideMainWindowOnStartup: dto.Ui.HideMainWindowOnStartup,
                 HideTrayIcon: dto.Ui.HideTrayIcon,
@@ -241,6 +242,9 @@ public static class AppConfigLoader
 
         [JsonPropertyName("diagnostic_mode")]
         public bool DiagnosticMode { get; init; } = AppConfig.Default.Audit.DiagnosticMode;
+
+        [JsonPropertyName("log_level")]
+        public string LogLevel { get; init; } = AppConfig.Default.Audit.LogLevel;
     }
 
     private sealed class UiDto
