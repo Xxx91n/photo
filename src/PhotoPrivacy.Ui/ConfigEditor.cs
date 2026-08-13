@@ -1,4 +1,5 @@
 using PhotoPrivacy.Core.Configuration;
+using PhotoPrivacy.Core.Pipeline;
 
 namespace PhotoPrivacy.Ui;
 
@@ -78,7 +79,7 @@ public static class ConfigEditor
             return string.Empty;
         }
 
-        return Path.Combine(hotFolderPath, "bak");
+        return BackupPathResolver.ResolveDefaultBackupDir(hotFolderPath);
     }
 
     private static bool ResolveDiagnosticMode(string logLevel, bool fallback)

@@ -56,13 +56,13 @@ public sealed record AppConfig(
             ExtraExifToolArgs: [],
             StayOpenPoolSize: 1,
             MaxParallelDrain: 1),
-        Watch: new WatchOptions(
-            HotFolder: @"D:\hot",
-            IncludeSubdirectories: true,
-            DebounceMs: 800,
-            InternalBufferSize: 65536,
-            AutoExcludedDirectories: [],
-            PollingIntervalSeconds: 0),
+       Watch: new WatchOptions(
+            HotFolder: DefaultPaths.DefaultHotFolder,
+           IncludeSubdirectories: true,
+           DebounceMs: 800,
+           InternalBufferSize: 65536,
+           AutoExcludedDirectories: [],
+           PollingIntervalSeconds: 0),
         Rules: new RuleOptions(
             AllowedExtensions: [
             // JPEG family
@@ -97,20 +97,20 @@ public sealed record AppConfig(
         Retry: new RetryOptions(
             MaxAttempts: 3,
             BackoffSeconds: [1, 3, 10]),
-        Backup: new BackupOptions(
-            Enabled: true,
-            Directory: string.Empty,
-            Suffix: ".bak",
-            MaxSizeMb: 5000,
-            RetainDays: 30),
-        Quarantine: new QuarantineOptions(
-            Enabled: true,
-            Directory: @"D:\hot\_quarantine"),
-        Audit: new AuditOptions(
-            LogDirectory: @"D:\hot\_audit",
-            RetainDays: 30,
-            DiagnosticMode: false,
-            LogLevel: "info"),
+       Backup: new BackupOptions(
+           Enabled: true,
+           Directory: string.Empty,
+           Suffix: ".bak",
+           MaxSizeMb: 5000,
+           RetainDays: 30),
+       Quarantine: new QuarantineOptions(
+           Enabled: true,
+            Directory: DefaultPaths.DefaultQuarantineDirectory),
+       Audit: new AuditOptions(
+            LogDirectory: DefaultPaths.DefaultAuditLogDirectory,
+           RetainDays: 30,
+           DiagnosticMode: false,
+           LogLevel: "info"),
         Ui: new UiOptions(
             HideMainWindowOnStartup: false,
             HideTrayIcon: false,
