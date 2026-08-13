@@ -13,6 +13,18 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# Auto-detect exe and config relative to this script (release/<rid>/scripts/)
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$releaseDir = Split-Path -Parent $scriptDir
+if ([string]::IsNullOrWhiteSpace($ExePath)) {
+  $ExePath = Join-Path $releaseDir "PhotoPrivacyWorker.exe"
+}
+if ([string]::IsNullOrWhiteSpace($ConfigPath)) {
+  $ConfigPath = Join-Path $releaseDir "config\config.json"
+}
+if (-not (Test-Path $ExePath)) { throw "Worker exe not found: $ExePath" }
+if (-not (Test-Path $ConfigPath)) { throw "Config not found: $ConfigPath" }
+
 function Remove-ServiceCompat([string]$Name) {
   if ($PSVersionTable.PSEdition -eq 'Core') {
     try { Remove-Service -Name $Name -ErrorAction Stop } catch { sc.exe delete $Name }
@@ -23,7 +35,7 @@ function Remove-ServiceCompat([string]$Name) {
 
 switch ($Action.ToLower()) {
   "install" {
-    $binPath = """ + $ExePath + """ --mode service --config """" + $ConfigPath + """
+    $binPath = '"{0}" --mode service --config "{1}"' -f $ExePath, $ConfigPath
     if (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
       Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
       Remove-ServiceCompat $ServiceName

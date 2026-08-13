@@ -29,7 +29,11 @@ if (!hasModeOption && Environment.UserInteractive)
 
 // ADR 0026 (Q7): Single-instance guard via ISingleInstanceGuard (Mutex on Windows, POSIX lockfile on Linux/macOS).
 // The previous direct-Mutex path is replaced by a guard abstraction without changing observable behavior.
-var mutexName = WorkerInstanceMutexNames.Unified;
+var mutexName = requestedMode switch
+    {
+        RuntimeMode.Service => WorkerInstanceMutexNames.Service,
+        _ => WorkerInstanceMutexNames.Background
+    };
 
 using var instanceGuard = SingleInstanceGuardFactory.Create(mutexName);
 if (!instanceGuard.IsOwner)
@@ -52,16 +56,13 @@ var logConfig = new LoggerConfiguration()
     .Destructure.With<PhotoPrivacy.Core.Audit.PathMaskingDestructuringPolicy>()
     .WriteTo.Console(outputTemplate: "[{Level:u3}] {Message:lj}{NewLine}{Exception}");
 
-if (mode != RuntimeMode.Service)
-{
-    logConfig.WriteTo.Async(a => a.File(
-        "logs/worker-.log",
-        rollingInterval: RollingInterval.Day,
-        rollOnFileSizeLimit: true,
-        fileSizeLimitBytes: 104857600,
-        retainedFileCountLimit: 31,
-        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}"));
-}
+logConfig.WriteTo.Async(a => a.File(
+    "logs/worker-.log",
+    rollingInterval: RollingInterval.Day,
+    rollOnFileSizeLimit: true,
+    fileSizeLimitBytes: 104857600,
+    retainedFileCountLimit: 31,
+    outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}"));
 
 Log.Logger = logConfig.CreateLogger();
 

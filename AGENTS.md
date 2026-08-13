@@ -154,6 +154,8 @@ dotnet vstest tests\PhotoPrivacy.IntegrationTests\bin\Debug\net10.0\PhotoPrivacy
 4. **禁止 sync-over-async on UI 线程** — 禁止在 UI 线程调用 Worker IPC 使用 .GetAwaiter().GetResult() 或 .Result（见 ADR 0035）。WorkerIpcClient.SendAsync 已加 3s 读超时兜底
 5. **NamedPipe 不使用 ACL** — Background 模式同用户不需要 WorldSid ACL；NamedPipeServerStreamAcl.Create 在单文件解压上下文抛 UnauthorizedAccessException 并泄漏管道实例（见 ADR 0035）
 6. **TrayIcon.IsVisible 延迟设置** — 必须用 Dispatcher.UIThread.Post(Background) 延迟，避免 Avalonia 11.1.3 在 InitializeRuntime 中死锁 UI 线程
+7. **Service 模式必须配置文件日志** — 禁止用 `if (mode != RuntimeMode.Service)` 跳过 Serilog File sink；服务崩溃时 stdout 不可见会导致完全无诊断信息（见 ADR 0036）
+8. **Background 和 Service 必须使用独立 Mutex** — 禁止共享同一个 `Global\PhotoPrivacyWorker_Instance`；它们有独立的 IPC 端点，共存时不能互相阻塞（见 ADR 0036）
 
 ---
 
@@ -169,6 +171,10 @@ dotnet vstest tests\PhotoPrivacy.IntegrationTests\bin\Debug\net10.0\PhotoPrivacy
 | 硬编码文件路径 | 可移植性 |
 | `Thread.Sleep` 在异步上下文 | 阻塞线程池 |
 | UI 线程 sync-over-async（`.GetAwaiter().GetResult()` / `.Result`）调用 Worker IPC | 死锁 UI 线程（见 ADR 0035） |
+| Service 模式跳过 Serilog File sink | 服务崩溃无文件日志，无法诊断（见 ADR 0036） |
+| Background 和 Service 共享同一 Mutex | Background 持有 Mutex 时 Service 无法启动（见 ADR 0036） |
+| 发布脚本只复制 config.sample.json 不复制 config.json | 服务 binPath 引用 config.json 不存在，Worker 启动失败 |
+| install-service.ps1 使用 `"""` 三重引号拼接 binPath | PowerShell 5.1 ParserError，脚本无法执行 |
 
 ---
 

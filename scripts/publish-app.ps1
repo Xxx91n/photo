@@ -113,6 +113,8 @@ if (Test-Path $uiAssetsDir) {
 $configDir = Join-Path $targetDir "config"
 New-Item -ItemType Directory -Force -Path $configDir | Out-Null
 Copy-Item "$repoRoot\config\config.sample.json" (Join-Path $configDir "config.sample.json") -Force
+# Copy config.sample.json as config.json so the release has a working default config
+Copy-Item "$repoRoot\config\config.sample.json" (Join-Path $configDir "config.json") -Force
 Copy-Item "$repoRoot\README.md" (Join-Path $targetDir "README.md") -Force
 
 if (Test-Path $uiPublishDir) {
