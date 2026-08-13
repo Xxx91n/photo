@@ -1,6 +1,4 @@
 using System.IO.Pipes;
-using System.Security.AccessControl;
-using System.Security.Principal;
 
 namespace PhotoPrivacy.Ipc;
 
@@ -57,30 +55,12 @@ public sealed class NamedPipeIpcTransport : IIpcTransport
         return ValueTask.CompletedTask;
     }
 
+    // ponytail: plain NamedPipeServerStream — no ACL. WorldSid ReadWrite ACL was only needed for
+    // cross-user service mode (service as LocalSystem, UI as user). Background mode runs same-user,
+    // so ACL is unnecessary and NamedPipeServerStreamAcl.Create throws UnauthorizedAccessException
+    // in single-file extract context, leaking pipe instances until the 254-instance limit is hit.
     private static NamedPipeServerStream CreatePipeServer(string pipeName)
     {
-        if (OperatingSystem.IsWindows())
-        {
-            var pipeSecurity = new PipeSecurity();
-            var sid = new SecurityIdentifier(WellKnownSidType.WorldSid, null);
-            pipeSecurity.AddAccessRule(new PipeAccessRule(sid, PipeAccessRights.ReadWrite, AccessControlType.Allow));
-            try
-            {
-                return NamedPipeServerStreamAcl.Create(
-                    pipeName: pipeName,
-                    direction: PipeDirection.InOut,
-                    maxNumberOfServerInstances: 254,
-                    transmissionMode: PipeTransmissionMode.Byte,
-                    options: PipeOptions.Asynchronous,
-                    inBufferSize: 0,
-                    outBufferSize: 0,
-                    pipeSecurity: pipeSecurity);
-            }
-            catch
-            {
-                // Fallback: no ACL (e.g. container environment)
-            }
-        }
         return new NamedPipeServerStream(
             pipeName: pipeName,
             direction: PipeDirection.InOut,

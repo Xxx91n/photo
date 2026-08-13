@@ -91,6 +91,9 @@ dotnet publish "${REPO_ROOT}/src/PhotoPrivacy.Worker/PhotoPrivacy.Worker.csproj"
   -f "$FRAMEWORK" \
   -r "$RUNTIME" \
   --self-contained "$SC" \
+  /p:PublishSingleFile=true \
+  /p:IncludeNativeLibrariesForSelfExtract=true \
+  /p:PublishTrimmed=false \
   /p:Version="$VERSION" \
   /p:UseAppHost=true \
   -o "$WORKER_PUB_DIR"
@@ -124,10 +127,6 @@ cp "${WORKER_PUB_DIR}/${WORKER_EXE}" "${TARGET_DIR}/${WORKER_EXE}"
 mkdir -p "${TARGET_DIR}/config"
 cp "${REPO_ROOT}/config/config.sample.json" "${TARGET_DIR}/config/config.sample.json"
 cp "${REPO_ROOT}/README.md" "${TARGET_DIR}/README.md"
-
-[[ -f "${REPO_ROOT}/scripts/install-service.ps1" ]] && cp "${REPO_ROOT}/scripts/install-service.ps1" "${TARGET_DIR}/"
-[[ -f "${REPO_ROOT}/scripts/install-systemd-service.sh" ]] && cp "${REPO_ROOT}/scripts/install-systemd-service.sh" "${TARGET_DIR}/"
-[[ -f "${REPO_ROOT}/scripts/install-launchd-service.sh" ]] && cp "${REPO_ROOT}/scripts/install-launchd-service.sh" "${TARGET_DIR}/"
 
 rm -rf "$UI_PUB_DIR" "$WORKER_PUB_DIR"
 

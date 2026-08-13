@@ -66,7 +66,9 @@ public partial class MainWindow : Window
                     return "unknown";
                 }
             });
-            viewModel.ExifToolVersion = NormalizeExifToolStatus(_versionSnapshot.ReadInitial());
+            // ponytail: fire-and-forget initial version read — avoids UI-thread deadlock from sync-over-async
+            // PollVersionAsync (background thread) will detect the real version within 1s and post via Dispatcher.UIThread
+            viewModel.ExifToolVersion = "检测中…";
             viewModel.ShowDetailedEvents = false;
             viewModel.RuntimeStatus = BuildRuntimeStatusText(options.RuntimeKind, options.GetServiceRuntimeState(), false);
             viewModel.ShowServiceManagerTab = OperatingSystem.IsWindows();
@@ -90,7 +92,7 @@ public partial class MainWindow : Window
                 viewModel.SystemAutoExcludedDirectories.Clear();
                 var systemExcluded = WatchPathFilter.ResolveAutoExcludedSubdirectories(effectiveConfig);
                 foreach (var dir in systemExcluded)
-                    viewModel.SystemAutoExcludedDirectories.Add(dir);
+                        viewModel.SystemAutoExcludedDirectories.Add(dir);
 
                 viewModel.UserExcludedDirectories.Clear();
                 if (effectiveConfig.Watch.AutoExcludedDirectories is { Length: > 0 })
@@ -112,7 +114,7 @@ public partial class MainWindow : Window
 
             var autoDetected = ResolveExifToolPath(viewModel.ExifToolPath);
             if (!string.IsNullOrWhiteSpace(autoDetected)
-                && !string.Equals(autoDetected, viewModel.ExifToolPath, StringComparison.OrdinalIgnoreCase))
+                    && !string.Equals(autoDetected, viewModel.ExifToolPath, StringComparison.OrdinalIgnoreCase))
             {
                 viewModel.ExifToolPath = autoDetected;
                 _exifToolHint = "已自动检测到";
@@ -173,7 +175,12 @@ public partial class MainWindow : Window
         _auditTail = new AuditTailService(
             logDirectory: auditDir,
             onBatch: batch => viewModel?.AppendLogBatch(batch),
-            getLogLevel: () => (DataContext as MainWindowViewModel)?.LogLevel ?? "info",
+            getLogLevel: () =>
+            {
+                if (Dispatcher.UIThread.CheckAccess())
+                    return (DataContext as MainWindowViewModel)?.LogLevel ?? "info";
+                return Dispatcher.UIThread.Invoke(() => (DataContext as MainWindowViewModel)?.LogLevel ?? "info");
+            },
             onExifToolExePathDetected: exePath => _ = ResolveExifToolVersionAsync(exePath ?? exifToolPathFromConfig));
 
         _auditTail.Start();
@@ -186,10 +193,11 @@ public partial class MainWindow : Window
         if (options.UseTrayIcon && !options.HideTrayIcon)
         {
             _trayHost = new TrayHost(this, options, ExitApplicationAsync);
-            _trayHost.IsVisible = true;
-            UiDiagnosticLog.Write("Tray icon host created and set visible");
+            // ponytail: defer tray visibility via Post to avoid Avalonia 11.1.3 TrayIcon.IsVisible setter
+            // dead-locking the UI thread during InitializeRuntime (Win32 Shell_NotifyIcon reentrancy).
             trayReady = _trayHost.IconLoaded;
-            UiDiagnosticLog.Write($"Tray icon ready state: {trayReady}");
+            Dispatcher.UIThread.Post(() => _trayHost.IsVisible = true, DispatcherPriority.Background);
+            UiDiagnosticLog.Write($"Tray icon created. IconLoaded={trayReady}, visibility deferred");
         }
 
         if (MainWindowRuntimePolicy.ShouldHideOnStartup(
@@ -211,7 +219,6 @@ public partial class MainWindow : Window
             () => PollServiceModeTransitionAsync(_serviceModePollCts.Token),
             _serviceModePollCts.Token);
         UiDiagnosticLog.Write("MainWindow.InitializeRuntime end");
-
         EnsureWindowVisibleFallback(options);
     }
 
@@ -978,17 +985,21 @@ public partial class MainWindow : Window
                     PhotoPrivacy.Ipc.WorkerIpcEndpointNames.BackgroundPipe,
                     StringComparison.Ordinal);
 
-            if (shouldReadTrayPauseStatus)
+            // ponytail: skip sync-over-async pause read on UI thread — causes deadlock when Worker IPC stalls.
+            // RuntimeStatus is updated by background poll tasks; initial state defaults to false.
+            _ = Task.Run(async () =>
             {
                 try
                 {
-                    paused = _options.IsPausedAsync(CancellationToken.None).GetAwaiter().GetResult();
+                    var p = await _options.IsPausedAsync(CancellationToken.None).ConfigureAwait(false);
+                    await Dispatcher.UIThread.InvokeAsync(() =>
+                    {
+                        if (DataContext is MainWindowViewModel vm)
+                            vm.RuntimeStatus = BuildRuntimeStatusText(_options.RuntimeKind, state, p);
+                    });
                 }
-                catch
-                {
-                    paused = false;
-                }
-            }
+                catch { }
+            });
 
             vm.RuntimeStatus = BuildRuntimeStatusText(_options.RuntimeKind, state, paused);
         }

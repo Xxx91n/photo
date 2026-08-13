@@ -7,6 +7,7 @@ namespace PhotoPrivacy.Ui;
 public sealed class WorkerIpcClient
 {
     private const int MaxResponseBytes = 64 * 1024; // 64 KB
+    private const int ReadTimeoutMs = 3000;
 
     /// <summary>
     /// Send an IPC request to the worker. Uses cross-platform transport (ADR 0019).
@@ -24,13 +25,26 @@ public sealed class WorkerIpcClient
             await stream.WriteAsync(payloadBytes, cancellationToken).ConfigureAwait(false);
             await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
 
-            var line = await ReadBoundedLineAsync(stream, MaxResponseBytes, cancellationToken);
-            if (string.IsNullOrWhiteSpace(line))
+            // ponytail: linked CTS with read timeout — if caller passes CancellationToken.None
+            // (e.g. from UpdateServiceButtons GetAwaiter().GetResult() on UI thread), the read
+            // must still time out instead of blocking the UI thread forever when Worker stalls.
+            using var readCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            readCts.CancelAfter(ReadTimeoutMs);
+            try
             {
+                var line = await ReadBoundedLineAsync(stream, MaxResponseBytes, readCts.Token);
+                if (string.IsNullOrWhiteSpace(line))
+                {
+                    return null;
+                }
+
+                return JsonSerializer.Deserialize(line, WorkerIpcJsonContext.Default.WorkerIpcResponse);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                // Read timed out — Worker accepted connection but never responded
                 return null;
             }
-
-            return JsonSerializer.Deserialize(line, WorkerIpcJsonContext.Default.WorkerIpcResponse);
         }
         finally
         {

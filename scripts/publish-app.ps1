@@ -67,6 +67,9 @@ dotnet publish "$repoRoot\src\PhotoPrivacy.Worker\PhotoPrivacy.Worker.csproj" `
   -f $resolvedFramework `
   -r $Runtime `
   --self-contained $selfContainedValue `
+  /p:PublishSingleFile=true `
+  /p:IncludeNativeLibrariesForSelfExtract=true `
+  /p:PublishTrimmed=false `
   /p:Version=$Version `
   /p:UseAppHost=true `
   -o $workerPublishDir
@@ -111,16 +114,6 @@ $configDir = Join-Path $targetDir "config"
 New-Item -ItemType Directory -Force -Path $configDir | Out-Null
 Copy-Item "$repoRoot\config\config.sample.json" (Join-Path $configDir "config.sample.json") -Force
 Copy-Item "$repoRoot\README.md" (Join-Path $targetDir "README.md") -Force
-
-if (Test-Path "$repoRoot\scripts\install-service.ps1") {
-  Copy-Item "$repoRoot\scripts\install-service.ps1" (Join-Path $targetDir "install-service.ps1") -Force
-}
-if (Test-Path "$repoRoot\scripts\install-systemd-service.sh") {
-  Copy-Item "$repoRoot\scripts\install-systemd-service.sh" (Join-Path $targetDir "install-systemd-service.sh") -Force
-}
-if (Test-Path "$repoRoot\scripts\install-launchd-service.sh") {
-  Copy-Item "$repoRoot\scripts\install-launchd-service.sh" (Join-Path $targetDir "install-launchd-service.sh") -Force
-}
 
 if (Test-Path $uiPublishDir) {
   Remove-Item $uiPublishDir -Recurse -Force

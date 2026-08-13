@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Threading;
 using Avalonia.Media.Imaging;
 
 namespace PhotoPrivacy.Ui;
@@ -49,7 +50,8 @@ public sealed class TrayHost : IDisposable
         UiDiagnosticLog.Write($"TrayHost created. IconLoaded={_trayIcon.Icon is not null}");
 
         _window.Closing += OnWindowClosing;
-        UpdateMenu();
+        // ponytail: skip sync UpdateMenu in ctor — it blocks UI thread on Worker IPC. Background poll updates it.
+        _ = UpdateMenuAsync();
     }
 
     public void Dispose()
@@ -92,26 +94,22 @@ public sealed class TrayHost : IDisposable
         _window.Hide();
     }
 
-    private void TogglePauseResume()
+    // ponytail: async pause/resume — avoids sync-over-async on UI thread
+    private async void TogglePauseResume()
     {
         try
         {
-            var paused = _options.IsPausedAsync(CancellationToken.None).GetAwaiter().GetResult();
+            var paused = await _options.IsPausedAsync(CancellationToken.None).ConfigureAwait(false);
             if (paused)
-            {
-                _options.ResumeAsync(CancellationToken.None).GetAwaiter().GetResult();
-            }
+                await _options.ResumeAsync(CancellationToken.None).ConfigureAwait(false);
             else
-            {
-                _options.PauseAsync(CancellationToken.None).GetAwaiter().GetResult();
-            }
+                await _options.PauseAsync(CancellationToken.None).ConfigureAwait(false);
 
-            UpdateMenu();
+            await UpdateMenuAsync().ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             UiDiagnosticLog.Write($"TrayHost.TogglePauseResume failed: {ex.Message}");
-            _pauseResumeItem.Header = "暂停";
         }
     }
 
@@ -134,15 +132,22 @@ public sealed class TrayHost : IDisposable
 
     private void UpdateMenu()
     {
+        _ = UpdateMenuAsync();
+    }
+
+    private async Task UpdateMenuAsync()
+    {
         try
         {
-            var paused = _options.IsPausedAsync(CancellationToken.None).GetAwaiter().GetResult();
-            _pauseResumeItem.Header = paused ? "恢复" : "暂停";
+            var paused = await _options.IsPausedAsync(CancellationToken.None).ConfigureAwait(false);
+            if (Dispatcher.UIThread.CheckAccess())
+                _pauseResumeItem.Header = paused ? "恢复" : "暂停";
+            else
+                await Dispatcher.UIThread.InvokeAsync(() => _pauseResumeItem.Header = paused ? "恢复" : "暂停");
         }
         catch (Exception ex)
         {
             UiDiagnosticLog.Write($"TrayHost.UpdateMenu failed: {ex.Message}");
-            _pauseResumeItem.Header = "暂停";
         }
     }
 
