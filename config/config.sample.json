@@ -9,9 +9,9 @@
     "stay_open_pool_size": 1,
     "max_parallel_drain": 1
   },
- "watch": {
+  "watch": {
     "hot_folder": "",
-   "include_subdirectories": true,
+    "include_subdirectories": true,
     "debounce_ms": 800,
     "internal_buffer_size": 65536,
     "auto_excluded_directories": [],
@@ -58,13 +58,13 @@
     "max_size_mb": 5000,
     "retain_days": 30
   },
- "quarantine": {
-   "enabled": true,
+  "quarantine": {
+    "enabled": true,
     "directory": ""
- },
- "audit": {
+  },
+  "audit": {
     "log_directory": "",
-   "retain_days": 30,
+    "retain_days": 30,
     "diagnostic_mode": true,
     "log_level": "debug"
   },
