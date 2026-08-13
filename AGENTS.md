@@ -151,6 +151,9 @@ dotnet vstest tests\PhotoPrivacy.IntegrationTests\bin\Debug\net10.0\PhotoPrivacy
 1. **命名管道需认证** — 验证连接方身份
 2. **消息验证** — 反序列化前校验格式和大小
 3. **超时处理** — 避免无限等待
+4. **禁止 sync-over-async on UI 线程** — 禁止在 UI 线程调用 Worker IPC 使用 .GetAwaiter().GetResult() 或 .Result（见 ADR 0035）。WorkerIpcClient.SendAsync 已加 3s 读超时兜底
+5. **NamedPipe 不使用 ACL** — Background 模式同用户不需要 WorldSid ACL；NamedPipeServerStreamAcl.Create 在单文件解压上下文抛 UnauthorizedAccessException 并泄漏管道实例（见 ADR 0035）
+6. **TrayIcon.IsVisible 延迟设置** — 必须用 Dispatcher.UIThread.Post(Background) 延迟，避免 Avalonia 11.1.3 在 InitializeRuntime 中死锁 UI 线程
 
 ---
 
@@ -165,6 +168,7 @@ dotnet vstest tests\PhotoPrivacy.IntegrationTests\bin\Debug\net10.0\PhotoPrivacy
 | 使用 `Process.Start` 且 `UseShellExecute = true` | 命令注入风险 |
 | 硬编码文件路径 | 可移植性 |
 | `Thread.Sleep` 在异步上下文 | 阻塞线程池 |
+| UI 线程 sync-over-async（`.GetAwaiter().GetResult()` / `.Result`）调用 Worker IPC | 死锁 UI 线程（见 ADR 0035） |
 
 ---
 
@@ -185,7 +189,7 @@ dotnet vstest tests\PhotoPrivacy.IntegrationTests\bin\Debug\net10.0\PhotoPrivacy
 | `config/config.sample.json` | 配置模板 | ✅ |
 | `opencode.json` | OpenCode agent 配置 | ❌ (.gitignore) |
 | `AGENTS.md` | Agent 项目规范 | ✅ |
-| `docs/superpowers/` | 设计文档和计划 | ✅ |
+| `docs/adr/` | 架构决策记录（ADR） | ✅ |
 | `release/` | 发布输出 | ❌ |
 | `logs/` | 运行日志 | ❌ |
 
