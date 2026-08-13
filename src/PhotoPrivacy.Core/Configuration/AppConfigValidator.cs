@@ -51,9 +51,14 @@ public static class AppConfigValidator
             throw new AppConfigValidationException("extra_exiftool_args contains forbidden argument");
         }
 
-        if (config.Backup.Enabled)
-        {
-            var hot = Path.GetFullPath(config.Watch.HotFolder).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+       if (config.Backup.Enabled)
+       {
+            if (string.IsNullOrWhiteSpace(config.Watch.HotFolder))
+            {
+                throw new AppConfigValidationException("watch.hot_folder 未配置，无法启用备份。请先设置监控目录。");
+            }
+
+           var hot = Path.GetFullPath(config.Watch.HotFolder).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
             var backupDir = !string.IsNullOrWhiteSpace(config.Backup.Directory)
                 ? Path.GetFullPath(config.Backup.Directory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
                 : Path.Combine(hot, "bak");

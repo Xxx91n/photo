@@ -7,19 +7,23 @@ public static class WatchPathFilter
 {
     public const string ServiceStartedDataKey = "已自动排除的子目录列表";
 
-    public static IReadOnlyList<string> ResolveAutoExcludedSubdirectories(AppConfig config)
-    {
-        var hotFolder = NormalizePath(config.Watch.HotFolder);
-        var candidates = new List<string?>
+   public static IReadOnlyList<string> ResolveAutoExcludedSubdirectories(AppConfig config)
+   {
+        if (string.IsNullOrWhiteSpace(config.Watch.HotFolder))
         {
-            config.Audit.LogDirectory,
-            config.Quarantine.Directory,
-            config.Backup.Directory,
-        };
-        if (!string.IsNullOrWhiteSpace(config.Backup.Directory))
-        {
-            candidates.Add(config.Backup.Directory);
+            return Array.Empty<string>();
         }
+
+       var hotFolder = NormalizePath(config.Watch.HotFolder);
+       var candidates = new List<string?>
+       {
+           config.Audit.LogDirectory,
+           config.Quarantine.Directory,
+       };
+       if (!string.IsNullOrWhiteSpace(config.Backup.Directory))
+       {
+           candidates.Add(config.Backup.Directory);
+       }
         var defaultBackupDir = Pipeline.BackupPathResolver.ResolveDefaultBackupDir(config.Watch.HotFolder);
         candidates.Add(defaultBackupDir);
         if (config.Watch.AutoExcludedDirectories is { Length: > 0 })
@@ -111,9 +115,13 @@ public static class WatchPathFilter
         return !Path.IsPathRooted(relativePath);
     }
 
-    private static string NormalizePath(string path)
-    {
-        var fullPath = Path.GetFullPath(path);
+   private static string NormalizePath(string path)
+   {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return string.Empty;
+        }
+       var fullPath = Path.GetFullPath(path);
         var root = Path.GetPathRoot(fullPath);
         if (!string.IsNullOrEmpty(root)
             && string.Equals(fullPath, root, StringComparison.OrdinalIgnoreCase))
