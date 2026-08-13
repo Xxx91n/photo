@@ -13,7 +13,8 @@ internal static class InstanceConflictAudit
             var logger = new JsonLineAuditLogger(
                 config.Audit.LogDirectory,
                 config.Audit.RetainDays,
-                config.Audit.DiagnosticMode);
+                config.Audit.DiagnosticMode,
+                AuditLevelParser.Parse(config.Audit.LogLevel));
 
             try
             {

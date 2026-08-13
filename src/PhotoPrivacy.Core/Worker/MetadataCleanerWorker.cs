@@ -71,9 +71,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
             return;
         }
 
-        _audit = config.Audit.DiagnosticMode
-            ? new JsonLineAuditLogger(config.Audit.LogDirectory, config.Audit.RetainDays, config.Audit.DiagnosticMode, AuditLevelParser.Parse(config.Audit.LogLevel))
-            : null;
+        _audit = new JsonLineAuditLogger(config.Audit.LogDirectory, config.Audit.RetainDays, config.Audit.DiagnosticMode, AuditLevelParser.Parse(config.Audit.LogLevel));
         IAuditLogger auditLogger = _audit is not null ? _audit : new NoopAuditLogger();
         _bridge = CreateBridge(config, auditLogger);
         _pipeline = new FileTaskPipeline(config, new RuleEngine(config), _bridge, new LocalFileOperations(), auditLogger, new FileProcessedRecordStore(config.Audit.LogDirectory));
@@ -267,6 +265,9 @@ public sealed class MetadataCleanerWorker : BackgroundService
             }
         }
 
+        _audit?.Dispose();
+        _reloadGate.Dispose();
+
         await base.StopAsync(cancellationToken);
     }
 
@@ -440,9 +441,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
         Directory.CreateDirectory(config.Audit.LogDirectory);
         Directory.CreateDirectory(config.Quarantine.Directory);
 
-        _audit = config.Audit.DiagnosticMode
-            ? new JsonLineAuditLogger(config.Audit.LogDirectory, config.Audit.RetainDays, config.Audit.DiagnosticMode, AuditLevelParser.Parse(config.Audit.LogLevel))
-            : null;
+        _audit = new JsonLineAuditLogger(config.Audit.LogDirectory, config.Audit.RetainDays, config.Audit.DiagnosticMode, AuditLevelParser.Parse(config.Audit.LogLevel));
         IAuditLogger auditLogger = _audit is not null ? _audit : new NoopAuditLogger();
         _bridge = CreateBridge(config, auditLogger);
         _pipeline = new FileTaskPipeline(config, new RuleEngine(config), _bridge, new LocalFileOperations(), auditLogger, new FileProcessedRecordStore(config.Audit.LogDirectory));

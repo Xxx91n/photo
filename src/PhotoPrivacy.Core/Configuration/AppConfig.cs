@@ -108,7 +108,7 @@ public sealed record AppConfig(
         Audit: new AuditOptions(
             LogDirectory: @"D:\hot\_audit",
             RetainDays: 30,
-            DiagnosticMode: true,
+            DiagnosticMode: false,
             LogLevel: "info"),
         Ui: new UiOptions(
             HideMainWindowOnStartup: false,

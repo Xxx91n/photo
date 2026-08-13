@@ -64,7 +64,8 @@
   "audit": {
     "log_directory": "D:\\hot\\_audit",
     "retain_days": 30,
-    "diagnostic_mode": true
+    "diagnostic_mode": true,
+    "log_level": "debug"
   },
   "ui": {
     "hide_main_window_on_startup": false,
