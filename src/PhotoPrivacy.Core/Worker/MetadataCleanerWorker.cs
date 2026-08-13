@@ -376,14 +376,25 @@ public sealed class MetadataCleanerWorker : BackgroundService
                 {
                     MaxParallelDrain = ParseInt(maxParallelDrainArg, "max_parallel_drain")
                 }
-            };
-        }
+           };
+       }
 
-        Directory.CreateDirectory(config.Watch.HotFolder);
-        Directory.CreateDirectory(config.Audit.LogDirectory);
-        Directory.CreateDirectory(config.Quarantine.Directory);
+       // ponytail: empty config paths (config.sample.json defaults to "") would throw
+       // ArgumentException on Directory.CreateDirectory — skip if blank.
+       if (!string.IsNullOrWhiteSpace(config.Watch.HotFolder))
+       {
+           Directory.CreateDirectory(config.Watch.HotFolder);
+       }
+       if (!string.IsNullOrWhiteSpace(config.Audit.LogDirectory))
+       {
+           Directory.CreateDirectory(config.Audit.LogDirectory);
+       }
+       if (!string.IsNullOrWhiteSpace(config.Quarantine.Directory))
+       {
+           Directory.CreateDirectory(config.Quarantine.Directory);
+       }
 
-        return config;
+       return config;
     }
 
     private IExifToolBridge CreateBridge(AppConfig config, IAuditLogger audit)
@@ -459,13 +470,24 @@ public sealed class MetadataCleanerWorker : BackgroundService
             {
                 // best-effort
             }
+       }
+
+        // ponytail: empty config paths (config.sample.json defaults to "") would throw
+        // ArgumentException on Directory.CreateDirectory — skip if blank.
+        if (!string.IsNullOrWhiteSpace(config.Watch.HotFolder))
+        {
+            Directory.CreateDirectory(config.Watch.HotFolder);
+        }
+        if (!string.IsNullOrWhiteSpace(config.Audit.LogDirectory))
+        {
+            Directory.CreateDirectory(config.Audit.LogDirectory);
+        }
+        if (!string.IsNullOrWhiteSpace(config.Quarantine.Directory))
+        {
+            Directory.CreateDirectory(config.Quarantine.Directory);
         }
 
-        Directory.CreateDirectory(config.Watch.HotFolder);
-        Directory.CreateDirectory(config.Audit.LogDirectory);
-        Directory.CreateDirectory(config.Quarantine.Directory);
-
-        _audit = new JsonLineAuditLogger(config.Audit.LogDirectory, config.Audit.RetainDays, config.Audit.DiagnosticMode, AuditLevelParser.Parse(config.Audit.LogLevel));
+       _audit = new JsonLineAuditLogger(config.Audit.LogDirectory, config.Audit.RetainDays, config.Audit.DiagnosticMode, AuditLevelParser.Parse(config.Audit.LogLevel));
         IAuditLogger auditLogger = _audit is not null ? _audit : new NoopAuditLogger();
         _bridge = CreateBridge(config, auditLogger);
         _pipeline = new FileTaskPipeline(config, new RuleEngine(config), _bridge, new LocalFileOperations(), auditLogger, new FileProcessedRecordStore(config.Audit.LogDirectory));

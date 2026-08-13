@@ -191,9 +191,14 @@ public partial class MainWindow : Window
         // ADR 0037: instant-apply via debounced PropertyChanged — no manual "应用配置" button.
         viewModel.PropertyChanged += OnViewModelPropertyChanged;
 
-        var auditDir = effectiveConfig?.Audit.LogDirectory
-                       ?? options.AuditDirectory
-                       ?? Path.Combine(AppContext.BaseDirectory, "_audit");
+           var auditDir = effectiveConfig?.Audit.LogDirectory
+                          ?? options.AuditDirectory
+                          ?? Path.Combine(AppContext.BaseDirectory, "_audit");
+            // ponytail: config.sample.json paths can be empty string (not null), ?? won't fall through
+            if (string.IsNullOrWhiteSpace(auditDir))
+            {
+                auditDir = Path.Combine(AppContext.BaseDirectory, "_audit");
+            }
 
         _auditTail = new AuditTailService(
             logDirectory: auditDir,

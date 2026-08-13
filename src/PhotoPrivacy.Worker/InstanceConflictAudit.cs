@@ -63,10 +63,14 @@ internal static class InstanceConflictAudit
         if (!string.IsNullOrWhiteSpace(auditFolder))
         {
             config = config with { Audit = config.Audit with { LogDirectory = auditFolder } };
-        }
+       }
 
-        Directory.CreateDirectory(config.Audit.LogDirectory);
-        return config;
+        // ponytail: empty log directory (config.sample.json defaults to "") would throw
+        if (!string.IsNullOrWhiteSpace(config.Audit.LogDirectory))
+        {
+           Directory.CreateDirectory(config.Audit.LogDirectory);
+        }
+       return config;
     }
 
     private static string? ResolveOptionValue(string[] args, string optionName)

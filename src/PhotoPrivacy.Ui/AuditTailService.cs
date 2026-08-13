@@ -41,10 +41,15 @@ public sealed class AuditTailService
         return Path.Combine(logDirectory, $"audit-{day:yyyy-MM-dd}.jsonl");
     }
 
-    public void Start()
-    {
-        var auditDir = Path.GetDirectoryName(_currentAuditFilePath)!;
-        Directory.CreateDirectory(auditDir);
+   public void Start()
+   {
+        if (string.IsNullOrWhiteSpace(_logDirectory))
+        {
+            return;
+        }
+
+       var auditDir = Path.GetDirectoryName(_currentAuditFilePath)!;
+       Directory.CreateDirectory(auditDir);
 
         _watcher = new FileSystemWatcher(auditDir, "audit-*.jsonl")
         {

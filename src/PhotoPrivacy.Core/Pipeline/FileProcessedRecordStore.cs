@@ -12,11 +12,16 @@ public sealed class FileProcessedRecordStore : IProcessedRecordStore, IDisposabl
     private readonly Timer? _cleanupTimer;
     private bool _disposed;
 
-    public FileProcessedRecordStore(string directory, TimeSpan? ttl = null)
-    {
-        _ttl = ttl ?? TimeSpan.FromDays(7);
-        Directory.CreateDirectory(directory);
-        _filePath = Path.Combine(directory, "processed.ndjson");
+   public FileProcessedRecordStore(string directory, TimeSpan? ttl = null)
+   {
+       _ttl = ttl ?? TimeSpan.FromDays(7);
+        // ponytail: empty directory (config.sample.json defaults to "") would throw
+        if (string.IsNullOrWhiteSpace(directory))
+        {
+            directory = Path.Combine(AppContext.BaseDirectory, "_audit");
+        }
+       Directory.CreateDirectory(directory);
+       _filePath = Path.Combine(directory, "processed.ndjson");
 
         var stream = new FileStream(_filePath, FileMode.Append, FileAccess.Write, FileShare.Read);
         try

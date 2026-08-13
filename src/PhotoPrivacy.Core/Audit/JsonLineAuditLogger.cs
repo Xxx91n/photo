@@ -33,8 +33,12 @@ public sealed class JsonLineAuditLogger : IAuditLogger, IDisposable
         _logDirectory = logDirectory;
         _retainDays = retainDays;
         _diagnosticMode = diagnosticMode;
-        _minimumWriteLevel = minimumWriteLevel;
-        Directory.CreateDirectory(_logDirectory);
+       _minimumWriteLevel = minimumWriteLevel;
+        // ponytail: empty logDirectory (config.sample.json defaults to "") would throw
+        if (!string.IsNullOrWhiteSpace(_logDirectory))
+        {
+           Directory.CreateDirectory(_logDirectory);
+        }
 
         _channel = Channel.CreateBounded<string>(new BoundedChannelOptions(4096)
         {
