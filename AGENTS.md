@@ -157,6 +157,8 @@ dotnet vstest tests\PhotoPrivacy.IntegrationTests\bin\Debug\net10.0\PhotoPrivacy
 7. **Service 模式必须配置文件日志** — 禁止用 `if (mode != RuntimeMode.Service)` 跳过 Serilog File sink；服务崩溃时 stdout 不可见会导致完全无诊断信息（见 ADR 0036）
 8. **Background 和 Service 必须使用独立 Mutex** — 禁止共享同一个 `Global\PhotoPrivacyWorker_Instance`；它们有独立的 IPC 端点，共存时不能互相阻塞（见 ADR 0036）
 
+9. **禁止"应用配置"手动按钮** — 配置变更必须防抖即时写盘（500ms），不依赖用户手动点击（见 ADR 0037）
+10. **清空日志必须重置 AuditTailService 读取偏移** — 仅清内存 ObservableCollection 不够，restart 后旧日志会重新填充（见 ADR 0037）
 ---
 
 ## 6. 禁止事项
@@ -176,6 +178,9 @@ dotnet vstest tests\PhotoPrivacy.IntegrationTests\bin\Debug\net10.0\PhotoPrivacy
 | 发布脚本只复制 config.sample.json 不复制 config.json | 服务 binPath 引用 config.json 不存在，Worker 启动失败 |
 | install-service.ps1 使用 `"""` 三重引号拼接 binPath | PowerShell 5.1 ParserError，脚本无法执行 |
 
+| 依赖手动"应用配置"按钮做配置持久化 | 用户忘记点击 → 重启后配置丢失（见 ADR 0037） |
+| ClearLogs 只清内存不重置 _lastPosition | FSW 下次轮询重新填充旧日志→隐私泄露（见 ADR 0037） |
+| AuditTailService 初始化从头读取历史日志 | 重启后敏感历史重现（见 ADR 0037） |
 ---
 
 ## 7. Git 规范

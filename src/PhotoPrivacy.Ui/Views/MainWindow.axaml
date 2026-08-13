@@ -340,7 +340,6 @@
 
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10" Margin="0,8,0,0">
               <TextBlock Text="{Binding SaveStatus}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"/>
-              <Button x:Name="ApplyConfigButton" Content="应用配置" Classes="primary"/>
             </StackPanel>
           </StackPanel>
         </ScrollViewer>

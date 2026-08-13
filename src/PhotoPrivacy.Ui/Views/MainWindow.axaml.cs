@@ -26,6 +26,22 @@ public partial class MainWindow : Window
     private bool _isSwitchingMode;
     private string _exifToolHint = string.Empty;
     private CancellationTokenSource? _saveStatusResetCts;
+    private CancellationTokenSource? _configApplyDebounceCts;
+    private static readonly HashSet<string> _configProperties = new(StringComparer.OrdinalIgnoreCase)
+    {
+        nameof(MainWindowViewModel.ExifToolPath),
+        nameof(MainWindowViewModel.BackupEnabled),
+        nameof(MainWindowViewModel.LogEnabled),
+        nameof(MainWindowViewModel.HotFolderPath),
+        nameof(MainWindowViewModel.HideGuiOnStartup),
+        nameof(MainWindowViewModel.HideTrayIcon),
+        nameof(MainWindowViewModel.ThemeVariant),
+        nameof(MainWindowViewModel.BackupDirectory),
+        nameof(MainWindowViewModel.AuditLogDirectory),
+        nameof(MainWindowViewModel.LogLevel),
+        nameof(MainWindowViewModel.QuarantineEnabled),
+        nameof(MainWindowViewModel.QuarantineDirectory)
+    };
     internal IStorageProvider? TestStorageProvider { get; set; }
     internal Task? LastPickerTask { get; private set; }
     private static readonly string[] WellKnownExifToolPaths =
@@ -163,10 +179,8 @@ public partial class MainWindow : Window
         AddExcludedDirectoryButton.Click += OnAddExcludedDirectoryClick;
         RemoveExcludedDirectoryButton.Click += OnRemoveExcludedDirectoryClick;
 
-        if (this.FindControl<Button>("ApplyConfigButton") is { } applyConfigButton)
-        {
-            applyConfigButton.Click += OnApplyConfigClick;
-        }
+        // ADR 0037: instant-apply via debounced PropertyChanged — no manual "应用配置" button.
+        viewModel.PropertyChanged += OnViewModelPropertyChanged;
 
         var auditDir = effectiveConfig?.Audit.LogDirectory
                        ?? options.AuditDirectory
@@ -273,6 +287,9 @@ public partial class MainWindow : Window
         _saveStatusResetCts?.Cancel();
         _saveStatusResetCts?.Dispose();
         _saveStatusResetCts = null;
+        _configApplyDebounceCts?.Cancel();
+        _configApplyDebounceCts?.Dispose();
+        _configApplyDebounceCts = null;
 
         if (_versionPollCts is not null)
         {
@@ -361,6 +378,7 @@ public partial class MainWindow : Window
         if (DataContext is MainWindowViewModel vm)
         {
             vm.ClearLogs();
+            _auditTail?.SkipToCurrentEnd();
         }
     }
 
@@ -1246,6 +1264,75 @@ public partial class MainWindow : Window
     }
 
 
+    private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (!_configProperties.Contains(e.PropertyName ?? string.Empty))
+            return;
+        ScheduleDebouncedConfigApply();
+    }
+
+    private void ScheduleDebouncedConfigApply()
+    {
+        _configApplyDebounceCts?.Cancel();
+        _configApplyDebounceCts?.Dispose();
+        _configApplyDebounceCts = new CancellationTokenSource();
+        var token = _configApplyDebounceCts.Token;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(500), token);
+                if (token.IsCancellationRequested)
+                    return;
+                await Dispatcher.UIThread.InvokeAsync(async () => await ApplyConfigImmediatelyAsync());
+            }
+            catch (TaskCanceledException) { }
+        }, token);
+    }
+
+    private async Task ApplyConfigImmediatelyAsync()
+    {
+        if (_options is null || DataContext is not MainWindowViewModel vm)
+            return;
+
+        try
+        {
+            var command = new ConfigEditCommand(
+                ExifToolPath: vm.ExifToolPath,
+                BackupEnabled: vm.BackupEnabled,
+                LogEnabled: vm.LogEnabled,
+                HotFolderPath: vm.HotFolderPath,
+                HideMainWindowOnStartup: vm.HideGuiOnStartup,
+                HideTrayIcon: vm.HideTrayIcon,
+                ThemeVariant: vm.ThemeVariant,
+                BackupDirectory: vm.BackupDirectory,
+                AuditLogDirectory: vm.AuditLogDirectory,
+                LogLevel: vm.LogLevel,
+                QuarantineEnabled: vm.QuarantineEnabled,
+                QuarantineDirectory: vm.QuarantineDirectory);
+            ConfigEditor.UpdateConfig(_options.ConfigPath, command);
+            try
+            {
+                await _workerManager.ReloadConfigAsync(_options.WorkerEndpointName, CancellationToken.None);
+            }
+            catch
+            {
+                vm.SaveStatus = "✓ 已自动保存（Worker 未运行）";
+                ScheduleSaveStatusClear();
+                return;
+            }
+            ApplyRuntimeConfigToUiState();
+            vm.SaveStatus = "✓ 已自动保存";
+            ScheduleSaveStatusClear();
+        }
+        catch (Exception ex)
+        {
+            vm.SaveStatus = $"✗ 保存失败：{ex.Message}";
+            ScheduleSaveStatusClear();
+        }
+    }
+
+
     private async void OnApplyConfigClick(object? sender, RoutedEventArgs e)
     {
         if (_options is null || DataContext is not MainWindowViewModel vm)
@@ -1262,7 +1349,6 @@ public partial class MainWindow : Window
             return;
         }
 
-        SetConfigButtonsBusy(isBusy: true);
         try
         {
             var command = new ConfigEditCommand(
@@ -1309,7 +1395,6 @@ public partial class MainWindow : Window
         }
         finally
         {
-            SetConfigButtonsBusy(isBusy: false);
         }
     }
 
@@ -1410,11 +1495,6 @@ public partial class MainWindow : Window
         {
             UiDiagnosticLog.Write($"ApplyRuntimeConfigToUiState failed: {ex.Message}");
         }
-    }
-
-    private void SetConfigButtonsBusy(bool isBusy)
-    {
-        ApplyConfigButton.IsEnabled = !isBusy;
     }
 
     private async Task PollVersionAsync(CancellationToken token)

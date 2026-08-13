@@ -59,7 +59,29 @@ public sealed class AuditTailService
 
         _loopTask = Task.Run(() => LoopAsync(_cts.Token), _cts.Token);
         _flushTimer.Start();
-        TryReadNewLines();
+
+        // ADR 0037: start at file end — only show NEW events from this session, not history.
+        SkipToCurrentEnd();
+    }
+
+    /// <summary>
+    /// Skip to the end of the current audit file so TryReadNewLines only catches future lines.
+    /// Used both on startup (don't replay history) and when the user clears logs.
+    /// </summary>
+    public void SkipToCurrentEnd()
+    {
+        lock (_gate)
+        {
+            if (File.Exists(_currentAuditFilePath))
+            {
+                using var stream = new FileStream(_currentAuditFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                _lastPosition = stream.Length;
+            }
+            else
+            {
+                _lastPosition = 0;
+            }
+        }
     }
 
     public async Task StopAsync()
