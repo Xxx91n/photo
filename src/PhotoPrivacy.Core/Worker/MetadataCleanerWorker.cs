@@ -244,6 +244,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
             {
                 _logger.LogWarning(ex, "Bridge stop threw unexpectedly, continuing shutdown.");
             }
+            (_bridge as IDisposable)?.Dispose();
         }
 
         if (_audit is not null)
@@ -472,6 +473,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
             {
                 // best-effort
             }
+            (_bridge as IDisposable)?.Dispose();
        }
 
         // ponytail: empty config paths (config.sample.json defaults to "") would throw

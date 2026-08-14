@@ -7,7 +7,7 @@ using PhotoPrivacy.Core.Configuration;
 
 namespace PhotoPrivacy.Core.ExifTool;
 
-public sealed class ExifToolBridge : IExifToolBridge
+public sealed class ExifToolBridge : IExifToolBridge, IDisposable
 {
     private readonly IExifToolProcess _process;
     private readonly AppConfig _config;
@@ -549,6 +549,11 @@ public sealed class ExifToolBridge : IExifToolBridge
             }
         }
     }
+    public void Dispose()
+    {
+        _startLock.Dispose();
+    }
+
 }
 
 

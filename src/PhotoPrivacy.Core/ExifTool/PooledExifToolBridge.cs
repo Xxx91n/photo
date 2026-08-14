@@ -70,6 +70,10 @@ public sealed class PooledExifToolBridge : IExifToolBridge, IDisposable
 
     public void Dispose()
     {
+        foreach (var bridge in _bridges)
+        {
+            (bridge as IDisposable)?.Dispose();
+        }
         _parallelGate.Dispose();
     }
 }
