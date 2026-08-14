@@ -214,5 +214,14 @@
     "select_log_dir": "Select log directory",
     "select_quarantine_dir": "Select quarantine directory",
     "select_excluded_dir": "Add directory to exclude from watching"
+  },
+  "audit": {
+    "exiftool_started": "ExifTool started",
+    "service_started": "Service started",
+    "file_cleaned": "Cleaned",
+    "file_skipped": "Skipped",
+    "file_detected": "File detected",
+    "instance_conflict": "Duplicate launch rejected",
+    "file_failed": "Cleaning failed"
   }
 }

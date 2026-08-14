@@ -214,5 +214,14 @@
     "select_log_dir": "选择日志目录",
     "select_quarantine_dir": "选择隔离目录",
     "select_excluded_dir": "添加排除监听的目录"
+  },
+  "audit": {
+    "exiftool_started": "ExifTool 启动",
+    "service_started": "服务启动",
+    "file_cleaned": "清理完成",
+    "file_skipped": "已跳过",
+    "file_detected": "检测到文件",
+    "instance_conflict": "重复启动被拒",
+    "file_failed": "清理失败"
   }
 }

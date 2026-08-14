@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Threading;
 using Avalonia.Media.Imaging;
+using PhotoPrivacy.Ui.Localization;
 
 namespace PhotoPrivacy.Ui;
 
@@ -22,13 +23,13 @@ public sealed class TrayHost : IDisposable
         _options = options;
         _exitAsync = exitAsync;
 
-        _pauseResumeItem = new NativeMenuItem("暂停");
+        _pauseResumeItem = new NativeMenuItem(LocalizationService.Instance.Get("tray.pause"));
         _pauseResumeItem.Click += (_, _) => TogglePauseResume();
 
-        _openMainWindowItem = new NativeMenuItem("打开主窗口");
+        _openMainWindowItem = new NativeMenuItem(LocalizationService.Instance.Get("tray.open_window"));
         _openMainWindowItem.Click += (_, _) => ShowMainWindow();
 
-        _exitItem = new NativeMenuItem("退出");
+        _exitItem = new NativeMenuItem(LocalizationService.Instance.Get("tray.exit"));
         _exitItem.Click += async (_, _) => await _exitAsync();
 
         var menu = new NativeMenu
@@ -41,7 +42,7 @@ public sealed class TrayHost : IDisposable
 
         _trayIcon = new TrayIcon
         {
-            ToolTipText = "PhotoPrivacy",
+            ToolTipText = LocalizationService.Instance.Get("tray.tooltip"),
             Menu = menu,
             Icon = CreateDefaultIcon(),
             IsVisible = false
@@ -52,10 +53,26 @@ public sealed class TrayHost : IDisposable
         _window.Closing += OnWindowClosing;
         // ponytail: skip sync UpdateMenu in ctor — it blocks UI thread on Worker IPC. Background poll updates it.
         _ = UpdateMenuAsync();
+
+        LocalizationService.Instance.CultureChanged += OnCultureChanged;
+    }
+
+    private void OnCultureChanged(object? sender, string e)
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            var svc = LocalizationService.Instance;
+            _pauseResumeItem.Header = svc.Get("tray.pause"); // actual pause/resume state set by UpdateMenuAsync
+            _openMainWindowItem.Header = svc.Get("tray.open_window");
+            _exitItem.Header = svc.Get("tray.exit");
+            _trayIcon.ToolTipText = svc.Get("tray.tooltip");
+            _ = UpdateMenuAsync(); // refresh pause/resume label to correct state
+        });
     }
 
     public void Dispose()
     {
+        LocalizationService.Instance.CultureChanged -= OnCultureChanged;
         _window.Closing -= OnWindowClosing;
         _trayIcon.Clicked -= OnTrayClicked;
         _trayIcon.IsVisible = false;
@@ -141,9 +158,9 @@ public sealed class TrayHost : IDisposable
         {
             var paused = await _options.IsPausedAsync(CancellationToken.None).ConfigureAwait(false);
             if (Dispatcher.UIThread.CheckAccess())
-                _pauseResumeItem.Header = paused ? "恢复" : "暂停";
+                _pauseResumeItem.Header = paused ? LocalizationService.Instance.Get("tray.resume") : LocalizationService.Instance.Get("tray.pause");
             else
-                await Dispatcher.UIThread.InvokeAsync(() => _pauseResumeItem.Header = paused ? "恢复" : "暂停");
+                await Dispatcher.UIThread.InvokeAsync(() => _pauseResumeItem.Header = paused ? LocalizationService.Instance.Get("tray.resume") : LocalizationService.Instance.Get("tray.pause"));
         }
         catch (Exception ex)
         {

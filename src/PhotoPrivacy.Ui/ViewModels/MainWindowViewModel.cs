@@ -250,19 +250,18 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         {
             var text = _serviceStatus;
             if (text.Contains("Running", StringComparison.OrdinalIgnoreCase)
-                || text.Contains("运行", StringComparison.OrdinalIgnoreCase))
+                || text.Contains("running", StringComparison.OrdinalIgnoreCase))
             {
                 return "#22C55E";
             }
 
-            if (text.Contains("failed", StringComparison.OrdinalIgnoreCase)
-                || text.Contains("失败", StringComparison.OrdinalIgnoreCase))
+            if (text.Contains("failed", StringComparison.OrdinalIgnoreCase))
             {
                 return "#EF4444";
             }
 
             if (text.Contains("stop", StringComparison.OrdinalIgnoreCase)
-                || text.Contains("停止", StringComparison.OrdinalIgnoreCase)
+                || text.Contains("stopped", StringComparison.OrdinalIgnoreCase)
                 || text.Contains("pending", StringComparison.OrdinalIgnoreCase))
             {
                 return "#F59E0B";
@@ -275,16 +274,16 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public ObservableCollection<AuditLogEntry> LogEntries { get; } = [];
 
     private bool IsServiceMode =>
-        _currentMode.Contains("服务", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(_currentMode, "service", StringComparison.OrdinalIgnoreCase);
+        string.Equals(_currentMode, "service", StringComparison.OrdinalIgnoreCase)
+        || _currentMode.Contains("service", StringComparison.OrdinalIgnoreCase);
 
     private bool IsRuntimePaused =>
-        _runtimeStatus.Contains("暂停", StringComparison.OrdinalIgnoreCase)
-        || _runtimeStatus.Contains("paused", StringComparison.OrdinalIgnoreCase);
+        _runtimeStatus.Contains("paused", StringComparison.OrdinalIgnoreCase)
+        || _runtimeStatus.Contains("pause", StringComparison.OrdinalIgnoreCase);
 
     private bool IsRuntimeRunning =>
-        _runtimeStatus.Contains("运行", StringComparison.OrdinalIgnoreCase)
-        || _runtimeStatus.Contains("running", StringComparison.OrdinalIgnoreCase);
+        _runtimeStatus.Contains("running", StringComparison.OrdinalIgnoreCase)
+        || _runtimeStatus.Contains("run", StringComparison.OrdinalIgnoreCase);
 
     public void AppendLog(AuditLogEntry entry)
     {

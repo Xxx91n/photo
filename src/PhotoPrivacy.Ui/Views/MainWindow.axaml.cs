@@ -93,7 +93,7 @@ public partial class MainWindow : Window
             });
             // ponytail: fire-and-forget initial version read — avoids UI-thread deadlock from sync-over-async
             // PollVersionAsync (background thread) will detect the real version within 1s and post via Dispatcher.UIThread
-            viewModel.ExifToolVersion = "检测中…";
+            viewModel.ExifToolVersion = LocalizationService.Instance.Get("status.detecting");
             viewModel.ShowDetailedEvents = false;
             viewModel.RuntimeStatus = BuildRuntimeStatusText(options.RuntimeKind, options.GetServiceRuntimeState(), false);
             viewModel.ShowServiceManagerTab = OperatingSystem.IsWindows();
@@ -145,7 +145,7 @@ public partial class MainWindow : Window
                     && !string.Equals(autoDetected, viewModel.ExifToolPath, StringComparison.OrdinalIgnoreCase))
             {
                 viewModel.ExifToolPath = autoDetected;
-                _exifToolHint = "已自动检测到";
+                _exifToolHint = LocalizationService.Instance.Get("status.auto_detected");
                 viewModel.ExifToolPathHint = _exifToolHint;
             }
             else
@@ -156,7 +156,7 @@ public partial class MainWindow : Window
 
             var isServiceMode = string.Equals(options.RuntimeKind, "service", StringComparison.OrdinalIgnoreCase);
             PauseResumeButton.IsEnabled = !isServiceMode;
-            PauseResumeButton.Content = isServiceMode ? "暂停（服务模式不可用）" : viewModel.PauseResumeLabel;
+            PauseResumeButton.Content = isServiceMode ? LocalizationService.Instance.Get("status.pause_service_unavailable") : viewModel.PauseResumeLabel;
 
             UpdateServiceButtons(viewModel);
         }
@@ -461,7 +461,7 @@ public partial class MainWindow : Window
 
         var task = storageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = "选择 ExifTool 可执行文件",
+            Title = LocalizationService.Instance.Get("dialog.select_exiftool"),
             AllowMultiple = false,
             FileTypeFilter =
             [
@@ -495,7 +495,7 @@ public partial class MainWindow : Window
 
         var task = storageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
         {
-            Title = "选择监控目录",
+            Title = LocalizationService.Instance.Get("dialog.select_hot_folder"),
             AllowMultiple = false
         });
         LastPickerTask = task;
@@ -521,7 +521,7 @@ public partial class MainWindow : Window
 
         var task = storageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
         {
-            Title = "选择备份目录",
+            Title = LocalizationService.Instance.Get("dialog.select_backup_dir"),
             AllowMultiple = false
         });
         LastPickerTask = task;
@@ -547,7 +547,7 @@ public partial class MainWindow : Window
 
         var task = storageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
         {
-            Title = "选择日志目录",
+            Title = LocalizationService.Instance.Get("dialog.select_log_dir"),
             AllowMultiple = false
         });
         LastPickerTask = task;
@@ -569,7 +569,7 @@ public partial class MainWindow : Window
         if (storageProvider is null) return;
         var task = storageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
         {
-            Title = "选择隔离目录",
+            Title = LocalizationService.Instance.Get("dialog.select_quarantine_dir"),
             AllowMultiple = false
         });
         LastPickerTask = task;
@@ -585,7 +585,7 @@ public partial class MainWindow : Window
         if (storageProvider is null) return;
         var task = storageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
         {
-            Title = "添加排除监听的目录",
+            Title = LocalizationService.Instance.Get("dialog.select_excluded_dir"),
             AllowMultiple = false
         });
         LastPickerTask = task;
@@ -893,7 +893,7 @@ public partial class MainWindow : Window
         {
             if (DataContext is MainWindowViewModel vmMissingWorker)
             {
-                vmMissingWorker.ServiceStatus = "未找到 Worker 可执行文件（PhotoPrivacyWorker）";
+                vmMissingWorker.ServiceStatus = LocalizationService.Instance.Get("msg.worker_not_found_detail");
                 UpdateServiceButtons(vmMissingWorker);
             }
 
@@ -936,7 +936,7 @@ public partial class MainWindow : Window
         SetServiceButtonsBusy(isBusy: true);
         if (DataContext is MainWindowViewModel vmBusy)
         {
-            vmBusy.ServiceStatus = $"{_serviceManager.GetStatusText()} | 正在卸载服务...";
+            vmBusy.ServiceStatus = $"{_serviceManager.GetStatusText()} | {LocalizationService.Instance.Get("service.uninstalling")}";
         }
 
         ServiceCommandResult result;
@@ -974,7 +974,7 @@ public partial class MainWindow : Window
         var workerExecutablePath = ResolveServiceWorkerExecutablePath(_options);
         if (string.IsNullOrWhiteSpace(workerExecutablePath))
         {
-            ApplyServiceResult(ServiceCommandResult.Failed("未找到 Worker 可执行文件（PhotoPrivacyWorker）"));
+            ApplyServiceResult(ServiceCommandResult.Failed(LocalizationService.Instance.Get("msg.worker_not_found_detail")));
             return;
         }
 
@@ -990,7 +990,7 @@ public partial class MainWindow : Window
             var trayShutdownDone = await ShutdownTrayWorkerForServiceSwitchAsync(CancellationToken.None);
             if (!trayShutdownDone)
             {
-                ApplyServiceResult(ServiceCommandResult.Failed("托盘 Worker 仍在运行，已取消服务启动，请稍后重试"));
+                ApplyServiceResult(ServiceCommandResult.Failed(LocalizationService.Instance.Get("msg.tray_worker_running")));
                 SetServiceButtonsBusy(isBusy: false);
                 return;
             }
@@ -1070,9 +1070,9 @@ public partial class MainWindow : Window
         vm.ServiceStatus = result.Status switch
         {
             ServiceCommandStatus.Success => $"{status} | {result.Message}",
-            ServiceCommandStatus.Skipped => $"{status} | 跳过：{result.Message}",
-            ServiceCommandStatus.ElevationCancelled => $"{status} | 已取消：{result.Message}",
-            ServiceCommandStatus.Failed => $"{status} | 失败：{result.Message}",
+            ServiceCommandStatus.Skipped => LocalizationService.Instance.Get("service.status_format_skip", status, result.Message),
+            ServiceCommandStatus.ElevationCancelled => LocalizationService.Instance.Get("service.status_format_cancel", status, result.Message),
+            ServiceCommandStatus.Failed => LocalizationService.Instance.Get("service.status_format_fail", status, result.Message),
             _ => status
         };
 
@@ -1224,8 +1224,8 @@ public partial class MainWindow : Window
         {
             PauseResumeButton.IsEnabled = !isServiceMode;
             PauseResumeButton.Content = isServiceMode
-                ? "暂停（服务模式不可用）"
-                : (DataContext as MainWindowViewModel)?.PauseResumeLabel ?? "⏸ 暂停";
+                ? LocalizationService.Instance.Get("status.pause_service_unavailable")
+                : (DataContext as MainWindowViewModel)?.PauseResumeLabel ?? LocalizationService.Instance.Get("btn.pause");
         });
 
         if (_options.UseTrayIcon)
@@ -1346,7 +1346,7 @@ public partial class MainWindow : Window
                 }
 
                 PauseResumeButton.IsEnabled = true;
-                PauseResumeButton.Content = (DataContext as MainWindowViewModel)?.PauseResumeLabel ?? "⏸ 暂停";
+                PauseResumeButton.Content = (DataContext as MainWindowViewModel)?.PauseResumeLabel ?? LocalizationService.Instance.Get("btn.pause");
 
                 if (_options.UseTrayIcon)
                 {
@@ -1442,17 +1442,17 @@ public partial class MainWindow : Window
             }
             catch
             {
-                vm.SaveStatus = "✓ 已自动保存（Worker 未运行）";
+                vm.SaveStatus = LocalizationService.Instance.Get("msg.auto_saved_worker_down");
                 ScheduleSaveStatusClear();
                 return;
             }
             ApplyRuntimeConfigToUiState();
-            vm.SaveStatus = "✓ 已自动保存";
+            vm.SaveStatus = LocalizationService.Instance.Get("msg.auto_saved");
             ScheduleSaveStatusClear();
         }
         catch (Exception ex)
         {
-            vm.SaveStatus = $"✗ 保存失败：{ex.Message}";
+            vm.SaveStatus = LocalizationService.Instance.Get("msg.save_failed_exception", ex.Message);
             ScheduleSaveStatusClear();
         }
     }
@@ -1469,7 +1469,7 @@ public partial class MainWindow : Window
             || !Path.IsPathFullyQualified(vm.ExifToolPath)
             || !File.Exists(vm.ExifToolPath))
         {
-            vm.SaveStatus = "✗ ExifTool 路径无效，请先选择正确的 exiftool.exe";
+            vm.SaveStatus = LocalizationService.Instance.Get("msg.invalid_exiftool_path");
             ScheduleSaveStatusClear();
             return;
         }
@@ -1498,23 +1498,23 @@ public partial class MainWindow : Window
             }
             catch
             {
-                vm.SaveStatus = "✓ 已保存（Worker 未运行，下次启动生效）";
+                vm.SaveStatus = LocalizationService.Instance.Get("msg.saved_worker_down");
                 ScheduleSaveStatusClear();
                 return;
             }
 
             ApplyRuntimeConfigToUiState();
-            vm.SaveStatus = "✓ 已应用";
+            vm.SaveStatus = LocalizationService.Instance.Get("msg.applied");
             ScheduleSaveStatusClear();
         }
         catch (Exception ex)
         {
-            vm.SaveStatus = $"✗ 应用失败：{ex.Message}";
+            vm.SaveStatus = LocalizationService.Instance.Get("msg.apply_failed_exception", ex.Message);
             ScheduleSaveStatusClear();
             vm.AppendLog(new AuditLogEntry(
                 TimeText: DateTime.Now.ToString("HH:mm:ss"),
                 EventType: "config_apply_failed",
-                DisplayEvent: "⚠ 配置应用失败",
+                DisplayEvent: LocalizationService.Instance.Get("msg.config_apply_failed"),
                 SourcePathMasked: _options.ConfigPath,
                 Message: ex.Message,
                 ColorHex: "#C62828"));
@@ -1654,7 +1654,7 @@ public partial class MainWindow : Window
         if (string.IsNullOrWhiteSpace(raw)
             || string.Equals(raw, "unknown", StringComparison.OrdinalIgnoreCase))
         {
-            return "未找到 ExifTool";
+            return LocalizationService.Instance.Get("status.exiftool_not_found");
         }
 
         var text = raw.Trim();
@@ -1671,7 +1671,7 @@ public partial class MainWindow : Window
             {
                 if (DataContext is MainWindowViewModel vm)
                 {
-                    vm.ExifToolVersion = "未找到 ExifTool";
+                    vm.ExifToolVersion = LocalizationService.Instance.Get("status.exiftool_not_found");
                 }
             });
             return;
@@ -1698,7 +1698,7 @@ public partial class MainWindow : Window
             await process.WaitForExitAsync();
 
             var text = string.IsNullOrWhiteSpace(version)
-                ? "未找到 ExifTool"
+                ? LocalizationService.Instance.Get("status.exiftool_not_found")
                 : $"ExifTool v{version.Trim()} ✓";
 
             Dispatcher.UIThread.Post(() =>
@@ -1715,7 +1715,7 @@ public partial class MainWindow : Window
             {
                 if (DataContext is MainWindowViewModel vm)
                 {
-                    vm.ExifToolVersion = "未找到 ExifTool";
+                    vm.ExifToolVersion = LocalizationService.Instance.Get("status.exiftool_not_found");
                 }
             });
         }
@@ -1760,12 +1760,12 @@ public partial class MainWindow : Window
     {
         if (string.Equals(runtimeKind, "service", StringComparison.OrdinalIgnoreCase))
         {
-            return "服务模式";
+            return LocalizationService.Instance.Get("mode.service");
         }
 
         if (string.Equals(runtimeKind, "tray", StringComparison.OrdinalIgnoreCase))
         {
-            return "托盘模式";
+            return LocalizationService.Instance.Get("mode.tray");
         }
 
         return runtimeKind;
@@ -1776,11 +1776,11 @@ public partial class MainWindow : Window
         if (string.Equals(runtimeKind, "service", StringComparison.OrdinalIgnoreCase))
         {
             return state is ServiceRuntimeState.Running or ServiceRuntimeState.StartPending or ServiceRuntimeState.ContinuePending
-                ? "服务运行中"
-                : "服务已停止";
+                ? LocalizationService.Instance.Get("status.service_running")
+                : LocalizationService.Instance.Get("status.service_stopped");
         }
 
-        return isPaused ? "托盘已暂停" : "托盘运行中";
+        return isPaused ? LocalizationService.Instance.Get("status.tray_paused") : LocalizationService.Instance.Get("status.tray_running");
     }
 
     private static string? ResolveServiceWorkerExecutablePath(BackgroundUiOptions? options)

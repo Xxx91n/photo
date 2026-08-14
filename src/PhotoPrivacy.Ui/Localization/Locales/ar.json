@@ -214,5 +214,14 @@
     "select_log_dir": "اختر مجلد السجل",
     "select_quarantine_dir": "اختر مجلد الحجر",
     "select_excluded_dir": "إضافة مجلد للاستثناء من المراقبة"
+  },
+  "audit": {
+    "exiftool_started": "بدء ExifTool",
+    "service_started": "بدء الخدمة",
+    "file_cleaned": "اكتمل التنظيف",
+    "file_skipped": "تم التخطي",
+    "file_detected": "تم كشف ملف",
+    "instance_conflict": "تم رفض الإطلاق المكرر",
+    "file_failed": "فشل التنظيف"
   }
 }

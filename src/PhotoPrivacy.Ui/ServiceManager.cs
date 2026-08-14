@@ -1,6 +1,7 @@
 ﻿using System.ComponentModel;
 using System.Diagnostics;
 using System.ServiceProcess;
+using PhotoPrivacy.Ui.Localization;
 using System.Runtime.Versioning;
 
 namespace PhotoPrivacy.Ui;
@@ -15,7 +16,7 @@ public enum ServiceCommandStatus
 
 public sealed record ServiceCommandResult(ServiceCommandStatus Status, string Message, int? ExitCode = null)
 {
-    public static ServiceCommandResult Success(int? exitCode = 0, string message = "操作成功")
+    public static ServiceCommandResult Success(int? exitCode = 0, string? message = null)
     {
         return new ServiceCommandResult(ServiceCommandStatus.Success, message, exitCode);
     }
@@ -178,15 +179,15 @@ public sealed class ServiceManager
         var state = _stateProbe.GetState(ServiceName);
         return state switch
         {
-            ServiceRuntimeState.NotInstalled => "未安装",
-            ServiceRuntimeState.Running => "运行中",
-            ServiceRuntimeState.StartPending => "启动中",
-            ServiceRuntimeState.PausePending => "暂停中",
-            ServiceRuntimeState.Paused => "已暂停",
-            ServiceRuntimeState.ContinuePending => "恢复中",
-            ServiceRuntimeState.Stopped => "已停止",
-            ServiceRuntimeState.StopPending => "停止中",
-            _ => "未知"
+            ServiceRuntimeState.NotInstalled => LocalizationService.Instance.Get("service.state.not_installed"),
+            ServiceRuntimeState.Running => LocalizationService.Instance.Get("status.running"),
+            ServiceRuntimeState.StartPending => LocalizationService.Instance.Get("service.state.start_pending"),
+            ServiceRuntimeState.PausePending => LocalizationService.Instance.Get("service.state.pause_pending"),
+            ServiceRuntimeState.Paused => LocalizationService.Instance.Get("status.paused"),
+            ServiceRuntimeState.ContinuePending => LocalizationService.Instance.Get("service.state.continue_pending"),
+            ServiceRuntimeState.Stopped => LocalizationService.Instance.Get("status.stopped"),
+            ServiceRuntimeState.StopPending => LocalizationService.Instance.Get("service.state.stop_pending"),
+            _ => LocalizationService.Instance.Get("service.state.unknown")
         };
     }
 
@@ -204,12 +205,12 @@ public sealed class ServiceManager
     {
         if (!OperatingSystem.IsWindows())
         {
-            return ServiceCommandResult.Skipped("Linux/macOS 请使用 systemd 管理服务");
+            return ServiceCommandResult.Skipped(LocalizationService.Instance.Get("service.msg.use_systemd"));
         }
 
         if (!IsWorkerExecutablePath(exePath))
         {
-            return ServiceCommandResult.Failed("安装服务必须使用 PhotoPrivacyWorker.exe");
+            return ServiceCommandResult.Failed(LocalizationService.Instance.Get("service.msg.must_use_worker"));
         }
 
         var precheck = EnsureRemovedBeforeInstall(forceElevation);
@@ -248,12 +249,12 @@ public sealed class ServiceManager
     private static void ValidatePathForScCommand(string path, string paramName)
     {
         if (string.IsNullOrWhiteSpace(path))
-            throw new ArgumentException("路径不能为空", paramName);
+            throw new ArgumentException(LocalizationService.Instance.Get("service.msg.path_empty"), paramName);
         var dangerousChars = new[] { '"', '`', '$', '|', '>', '<', '&', '\0' };
         if (path.IndexOfAny(dangerousChars) >= 0)
-            throw new ArgumentException($"路径包含不允许的字符: {path}", paramName);
+            throw new ArgumentException(LocalizationService.Instance.Get("service.msg.path_invalid_chars", path), paramName);
         if (!Path.IsPathFullyQualified(path))
-            throw new ArgumentException("路径必须是绝对路径", paramName);
+            throw new ArgumentException(LocalizationService.Instance.Get("service.msg.path_must_be_absolute"), paramName);
     }
     public ServiceCommandResult Uninstall()
     {
@@ -269,7 +270,7 @@ public sealed class ServiceManager
     {
         if (!OperatingSystem.IsWindows())
         {
-            return ServiceCommandResult.Skipped("Linux/macOS 请使用 systemd 管理服务");
+            return ServiceCommandResult.Skipped(LocalizationService.Instance.Get("service.msg.use_systemd"));
         }
 
         var state = _stateProbe.GetState(ServiceName);
@@ -313,7 +314,7 @@ public sealed class ServiceManager
     {
         if (!OperatingSystem.IsWindows())
         {
-            return ServiceCommandResult.Skipped("Linux/macOS 请使用 systemd 管理服务");
+            return ServiceCommandResult.Skipped(LocalizationService.Instance.Get("service.msg.use_systemd"));
         }
 
         if (!_stateProbe.ServiceExists(ServiceName))
@@ -323,7 +324,7 @@ public sealed class ServiceManager
 
         if (!string.IsNullOrWhiteSpace(exePath) && !IsWorkerExecutablePath(exePath))
         {
-            return ServiceCommandResult.Failed("服务运行目标必须是 PhotoPrivacyWorker.exe");
+            return ServiceCommandResult.Failed(LocalizationService.Instance.Get("service.msg.invalid_target"));
         }
 
         var ensureConfig = EnsureInstalledConfigSynced(exePath, configPath, forceElevation);
@@ -382,17 +383,17 @@ public sealed class ServiceManager
 
     public static string TranslateExitCode(int? code) => code switch
     {
-        0 => "操作成功",
-        5 => "权限不足，请以管理员身份运行",
-        1053 => "服务启动超时，请检查 ExifTool 路径和配置文件是否正确",
-        1055 => "服务数据库被锁定，请稍后重试",
-        1056 => "服务已在运行",
-        1058 => "服务已被禁用",
-        1060 => "服务不存在，请先安装",
-        1062 => "服务未运行，无需停止",
-        1072 => "服务已标记为删除，请重启系统后重试",
-        1073 => "服务已存在，已自动执行先卸载再安装",
-        _ => $"未知错误（代码 {code}）"
+        0 => LocalizationService.Instance.Get("service.exitcode.0"),
+        5 => LocalizationService.Instance.Get("service.exitcode.5"),
+        1053 => LocalizationService.Instance.Get("service.exitcode.1053"),
+        1055 => LocalizationService.Instance.Get("service.exitcode.1055"),
+        1056 => LocalizationService.Instance.Get("service.exitcode.1056"),
+        1058 => LocalizationService.Instance.Get("service.exitcode.1058"),
+        1060 => LocalizationService.Instance.Get("service.exitcode.1060"),
+        1062 => LocalizationService.Instance.Get("service.exitcode.1062"),
+        1072 => LocalizationService.Instance.Get("service.exitcode.1072"),
+        1073 => LocalizationService.Instance.Get("service.exitcode.1073"),
+        _ => LocalizationService.Instance.Get("service.exitcode.unknown", code)
     };
 
     public static bool IsElevationCancelled(Exception exception)
@@ -447,7 +448,7 @@ public sealed class ServiceManager
     {
         if (!OperatingSystem.IsWindows())
         {
-            return ServiceCommandResult.Skipped("Linux/macOS 请使用 systemd 管理服务");
+            return ServiceCommandResult.Skipped(LocalizationService.Instance.Get("service.msg.use_systemd"));
         }
 
         try
@@ -457,7 +458,7 @@ public sealed class ServiceManager
         }
         catch (Exception ex) when (IsElevationCancelled(ex))
         {
-            return ServiceCommandResult.ElevationCancelled("用户取消了管理员授权");
+            return ServiceCommandResult.ElevationCancelled(LocalizationService.Instance.Get("service.msg.elevation_cancelled"));
         }
         catch (Exception ex)
         {

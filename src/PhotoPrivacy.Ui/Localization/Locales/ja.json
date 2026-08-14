@@ -214,5 +214,14 @@
     "select_log_dir": "ログディレクトリを選択",
     "select_quarantine_dir": "隔離ディレクトリを選択",
     "select_excluded_dir": "除外するディレクトリを追加"
+  },
+  "audit": {
+    "exiftool_started": "ExifTool 起動",
+    "service_started": "サービス起動",
+    "file_cleaned": "クリーン完了",
+    "file_skipped": "スキップ",
+    "file_detected": "ファイル検出",
+    "instance_conflict": "重複起動が拒否されました",
+    "file_failed": "クリーン失敗"
   }
 }

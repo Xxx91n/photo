@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using Avalonia.Threading;
 
+using PhotoPrivacy.Ui.Localization;
 namespace PhotoPrivacy.Ui;
 
 public sealed class AuditTailService
@@ -342,13 +343,13 @@ public sealed class AuditTailService
     {
         return eventType switch
         {
-            "exiftool_started" => ("🟢 ExifTool 启动", "#2E7D32"),
-            "service_started" => ("🟢 服务启动", "#2E7D32"),
-            "file_processing_succeeded" => ("✅ 清理完成", "#D8DEE9"),
-            "file_skipped" => ("⏭ 已跳过", "#9E9E9E"),
-            "file_detected" => ("🔍 检测到文件", "#90A4AE"),
-            "instance_conflict" => ("⚠️ 重复启动被拒", "#F57C00"),
-            "file_processing_failed" => ("❌ 清理失败", "#C62828"),
+            "exiftool_started" => ($"🟢 {LocalizationService.Instance.Get("audit.exiftool_started")}", "#2E7D32"),
+            "service_started" => ($"🟢 {LocalizationService.Instance.Get("audit.service_started")}", "#2E7D32"),
+            "file_processing_succeeded" => ($"✅ {LocalizationService.Instance.Get("audit.file_cleaned")}", "#D8DEE9"),
+            "file_skipped" => ($"⏭ {LocalizationService.Instance.Get("audit.file_skipped")}", "#9E9E9E"),
+            "file_detected" => ($"🔍 {LocalizationService.Instance.Get("audit.file_detected")}", "#90A4AE"),
+            "instance_conflict" => ($"⚠️ {LocalizationService.Instance.Get("audit.instance_conflict")}", "#F57C00"),
+            "file_processing_failed" => ($"❌ {LocalizationService.Instance.Get("audit.file_failed")}", "#C62828"),
             _ => (eventType, "#D8DEE9")
         };
     }
