@@ -74,7 +74,15 @@ public partial class MainWindow : Window
         LocalizationService.Instance.Initialize(); // auto-detect from system culture
         LocalizationService.Instance.CultureChanged += (_, locale) =>
         {
-            Dispatcher.UIThread.Post(() => viewModel?.RefreshLocaleDependent(), DispatcherPriority.Background);
+           Dispatcher.UIThread.Post(() =>
+           {
+               viewModel?.RefreshLocaleDependent();
+               if (viewModel is not null && _options is not null)
+               {
+                    var paused = _options.IsPausedAsync(CancellationToken.None).GetAwaiter().GetResult();
+                    viewModel.RuntimeStatus = BuildRuntimeStatusText(_options.RuntimeKind, _options.GetServiceRuntimeState(), paused);
+               }
+           }, DispatcherPriority.Background);
         };
         viewModel?.ApplyLocaleFlowDirection();
 

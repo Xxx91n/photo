@@ -193,6 +193,67 @@ public sealed class LocalizationServiceTests
         }
     }
 
+    [Fact]
+    public void RuntimeStatus_Keys_Translate_Correctly_Across_Locales()
+    {
+        // Regression guard: "托盘运行中/Tray running" and "已暂停/Paused" must
+        // be Get-able for every locale, so BuildRuntimeStatusText can produce
+        // the right left-top status text on language switch without restart.
+        var svc = LocalizationService.Instance;
+        var locales = new[] { "zh-CN", "en", "ja", "ko", "de", "fr", "es", "pt", "ru", "ar" };
+        try
+        {
+            foreach (var loc in locales)
+            {
+                svc.SwitchLocale(loc);
+                var running = svc.Get("status.tray_running");
+                var paused = svc.Get("status.tray_paused");
+                Assert.False(string.IsNullOrEmpty(running), $"status.tray_running empty for {loc}");
+                Assert.False(string.IsNullOrEmpty(paused), $"status.tray_paused empty for {loc}");
+                // Must not fall back to the key itself for any locale
+                Assert.NotEqual("status.tray_running", running);
+                Assert.NotEqual("status.tray_paused", paused);
+            }
+        }
+        finally
+        {
+            svc.SwitchLocale("zh-CN");
+        }
+    }
+
+    [Fact]
+    public void ComboBox_Option_Keys_Translate_Correctly_Across_Locales()
+    {
+        // Regression guard: theme and loglevel ComboBox item texts must translate
+        // for every locale. Covers the AXAML change from ComboBoxItem.Content
+        // to inner TextBlock.Text (the fix for "dropdown not refreshing on switch").
+        var svc = LocalizationService.Instance;
+        var keys = new[]
+        {
+            "theme.option.system", "theme.option.light", "theme.option.dark",
+            "loglevel.option.all", "loglevel.option.info", "loglevel.option.debug",
+            "loglevel.option.warn", "loglevel.option.error",
+        };
+        var locales = new[] { "zh-CN", "en", "ja", "ko", "de", "fr", "es", "pt", "ru", "ar" };
+        try
+        {
+            foreach (var loc in locales)
+            {
+                svc.SwitchLocale(loc);
+                foreach (var key in keys)
+                {
+                    var val = svc.Get(key);
+                    Assert.False(string.IsNullOrEmpty(val), $"{key} empty for {loc}");
+                    Assert.NotEqual(key, val);
+                }
+            }
+        }
+        finally
+        {
+            svc.SwitchLocale("zh-CN");
+        }
+    }
+
     private static HashSet<string> FlattenKeys(string json)
     {
         var node = JsonNode.Parse(json);
