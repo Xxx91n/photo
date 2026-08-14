@@ -82,8 +82,6 @@ public sealed class MetadataCleanerWorker : BackgroundService
         _debounceQueue = new DebounceQueue(TimeSpan.FromMilliseconds(config.Watch.DebounceMs), () => DateTimeOffset.UtcNow);
         _recentFingerprintCache = new RecentFingerprintCache(() => DateTimeOffset.UtcNow);
 
-        await _bridge.StartAsync(stoppingToken);
-
         if (config.ExifTool.DryRun)
         {
             if (_audit is not null)
