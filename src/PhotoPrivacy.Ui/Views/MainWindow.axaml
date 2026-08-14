@@ -251,6 +251,26 @@
                     </ComboBox>
                   </DockPanel>
                 </Border>
+
+                <Border Classes="row-divider"/>
+
+                <Border Classes="settings-row">
+                  <DockPanel LastChildFill="False">
+                    <StackPanel DockPanel.Dock="Left" Spacing="2">
+                      <TextBlock Text="{ex:Localize settings.language}" Classes="row-label"/>
+                      <TextBlock Text="{ex:Localize config.desc.language}" Classes="row-desc"/>
+                    </StackPanel>
+                    <ComboBox x:Name="LocaleVariantComboBox"
+                              DockPanel.Dock="Right"
+                              Width="160"
+                              SelectionChanged="OnLocaleSelectionChanged">
+                      <ComboBoxItem Content="中文" Tag="zh-CN"/>
+                      <ComboBoxItem Content="English" Tag="en"/>
+                      <ComboBoxItem Content="日本語" Tag="ja"/>
+                      <ComboBoxItem Content="العربية" Tag="ar"/>
+                    </ComboBox>
+                  </DockPanel>
+                </Border>
               </StackPanel>
             </Border>
 

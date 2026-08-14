@@ -41,7 +41,8 @@ public static class ConfigEditor
             {
                 HideMainWindowOnStartup = command.HideMainWindowOnStartup,
                 HideTrayIcon = command.HideTrayIcon,
-                ThemeVariant = command.ThemeVariant
+                ThemeVariant = command.ThemeVariant,
+                Locale = command.Locale
             }
         };
 

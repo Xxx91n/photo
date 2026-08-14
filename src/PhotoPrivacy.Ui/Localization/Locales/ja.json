@@ -65,6 +65,7 @@
   "config.desc.hide_on_startup": "起動後トレイのみ表示、メインウィンドウを開かない",
   "config.desc.hide_tray": "トレイモードでアイコンを非表示、バックグラウンド処理のみ保持",
   "config.desc.theme": "システム/ライト/ダークを自由に切替",
+  "config.desc.language": "中国語/英語/日本語/アラビア語を切り替え",
   "config.desc.log_level": "info=標準ログ、debug=詳細デバッグログ",
   "config.desc.audit_log_dir": "監査 JSONL ファイルの保存ディレクトリ",
   "config.desc.system_excluded": "ログ、バックアップ、隔離ディレクトリは自動除外",

@@ -108,6 +108,7 @@ public partial class MainWindow : Window
                 viewModel.HideGuiOnStartup = effectiveConfig.Ui.HideMainWindowOnStartup;
                 viewModel.HideTrayIcon = effectiveConfig.Ui.HideTrayIcon;
                 viewModel.ThemeVariant = NormalizeThemeVariant(effectiveConfig.Ui.ThemeVariant);
+                viewModel.CurrentLocale = string.IsNullOrWhiteSpace(effectiveConfig.Ui.Locale) ? "zh-CN" : effectiveConfig.Ui.Locale;
                 viewModel.BackupDirectory = effectiveConfig.Backup.Directory;
                 viewModel.AuditLogDirectory = effectiveConfig.Audit.LogDirectory;
                 viewModel.LogLevel = effectiveConfig.Audit.LogLevel;
@@ -129,11 +130,13 @@ public partial class MainWindow : Window
             else
             {
                 viewModel.ThemeVariant = "system";
+                viewModel.CurrentLocale = "zh-CN";
             }
 
             ApplyThemeVariantToApplication(viewModel.ThemeVariant);
             SyncThemeVariantComboSelection(viewModel.ThemeVariant);
             SyncLogLevelComboSelection(viewModel.LogLevel);
+            SyncLocaleComboSelection(viewModel.CurrentLocale);
             viewModel.SaveStatus = string.Empty;
             SetCurrentPage(viewModel.CurrentPage);
 
@@ -180,6 +183,7 @@ public partial class MainWindow : Window
         StopServiceButton.Click += OnStopServiceClick;
         ThemeVariantComboBox.SelectionChanged += OnThemeVariantSelectionChanged;
         LogLevelComboBox.SelectionChanged += OnLogLevelSelectionChanged;
+        // LocaleVariantComboBox uses inline SelectionChanged in AXAML, no manual wire needed
         BrowseExifToolButton.Click += OnBrowseExifToolClick;
         BrowseHotFolderButton.Click += OnBrowseHotFolderClick;
         BrowseBackupDirectoryButton.Click += OnBrowseBackupDirectoryClick;
@@ -668,6 +672,61 @@ public partial class MainWindow : Window
         catch
         {
             // prevent crash on unexpected combo state
+        }
+    }
+
+    private void OnLocaleSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        try
+        {
+            if (sender is not ComboBox combo || combo.SelectedItem is not ComboBoxItem item)
+            {
+                return;
+            }
+
+            var locale = item.Tag?.ToString() ?? "zh-CN";
+            if (DataContext is MainWindowViewModel vm)
+            {
+                vm.CurrentLocale = locale;
+            }
+
+            LocalizationService.Instance.SwitchLocale(locale);
+            if (DataContext is MainWindowViewModel vm2)
+            {
+                vm2.RefreshLocaleDependent();
+            }
+        }
+        catch
+        {
+            // prevent crash on unexpected combo state
+        }
+    }
+
+    private void SyncLocaleComboSelection(string locale)
+    {
+        try
+        {
+            if (LocaleVariantComboBox is null || LocaleVariantComboBox.Items is null)
+            {
+                return;
+            }
+
+            var target = string.IsNullOrWhiteSpace(locale) ? "zh-CN" : locale;
+            foreach (var item in LocaleVariantComboBox.Items)
+            {
+                if (item is ComboBoxItem comboItem
+                    && string.Equals(comboItem.Tag?.ToString(), target, StringComparison.OrdinalIgnoreCase))
+                {
+                    LocaleVariantComboBox.SelectedItem = comboItem;
+                    return;
+                }
+            }
+
+            LocaleVariantComboBox.SelectedIndex = 0;
+        }
+        catch
+        {
+            // control not yet ready
         }
     }
 
@@ -1319,6 +1378,7 @@ public partial class MainWindow : Window
                 HideMainWindowOnStartup: vm.HideGuiOnStartup,
                 HideTrayIcon: vm.HideTrayIcon,
                 ThemeVariant: vm.ThemeVariant,
+                Locale: vm.CurrentLocale,
                 BackupDirectory: vm.BackupDirectory,
                 AuditLogDirectory: vm.AuditLogDirectory,
                 LogLevel: vm.LogLevel,
@@ -1373,6 +1433,7 @@ public partial class MainWindow : Window
                 HideMainWindowOnStartup: vm.HideGuiOnStartup,
                 HideTrayIcon: vm.HideTrayIcon,
                 ThemeVariant: vm.ThemeVariant,
+                Locale: vm.CurrentLocale,
                 BackupDirectory: vm.BackupDirectory,
                 AuditLogDirectory: vm.AuditLogDirectory,
                 LogLevel: vm.LogLevel,

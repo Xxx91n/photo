@@ -64,7 +64,8 @@ public static class AppConfigJson
             {
                 HideMainWindowOnStartup = config.Ui.HideMainWindowOnStartup,
                 HideTrayIcon = config.Ui.HideTrayIcon,
-                ThemeVariant = config.Ui.ThemeVariant
+                ThemeVariant = config.Ui.ThemeVariant,
+                Locale = config.Ui.Locale
             }
         };
 
@@ -222,5 +223,8 @@ public static class AppConfigJson
 
         [JsonPropertyName("theme_variant")]
         public string ThemeVariant { get; init; } = string.Empty;
+
+        [JsonPropertyName("locale")]
+        public string? Locale { get; init; }
     }
 }

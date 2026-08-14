@@ -8,6 +8,7 @@ public sealed record ConfigEditCommand(
     bool HideMainWindowOnStartup,
     bool HideTrayIcon,
     string ThemeVariant,
+    string Locale,
     string BackupDirectory,
     string AuditLogDirectory,
     string LogLevel,

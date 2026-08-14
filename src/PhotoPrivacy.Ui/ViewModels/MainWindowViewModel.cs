@@ -44,6 +44,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private bool _hideTrayIcon;
     private string _currentPage = "config";
     private string _themeVariant = "system";
+    private string _currentLocale = "zh-CN";
     private string _saveStatus = string.Empty;
     private string _backupDirectory = string.Empty;
     private string _auditLogDirectory = string.Empty;
@@ -173,6 +174,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
                 }
             }
         }
+    }
+
+    public string CurrentLocale
+    {
+        get => _currentLocale;
+        set => SetField(ref _currentLocale, value);
     }
 
     public string SaveStatus

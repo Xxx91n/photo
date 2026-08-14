@@ -62,6 +62,7 @@
   "config.desc.hide_on_startup": "启动后仅在托盘显示，不弹出主窗口",
   "config.desc.hide_tray": "在托盘模式下隐藏图标，仅保留后台处理",
   "config.desc.theme": "可在系统/亮色/暗色之间自由切换",
+  "config.desc.language": "在中文/英语/日语/阿拉伯语之间切换界面语言",
   "config.desc.log_level": "info=标准日志，debug=详细调试日志",
   "config.desc.audit_log_dir": "audit jsonl 文件的存放目录",
   "config.desc.system_excluded": "日志、备份、隔离目录自动被排除在文件监听之外",

@@ -24,6 +24,7 @@ public sealed class ConfigEditorRoundTripTests
                 HideMainWindowOnStartup: true,
                 HideTrayIcon: false,
                 ThemeVariant: "dark",
+                Locale: "en",
                 BackupDirectory: @"D:\hot\bak",
                 AuditLogDirectory: @"D:\hot\_audit",
                 LogLevel: "debug",
@@ -39,6 +40,7 @@ public sealed class ConfigEditorRoundTripTests
             Assert.Equal(command.HideMainWindowOnStartup, reloaded.Ui.HideMainWindowOnStartup);
             Assert.Equal(command.HideTrayIcon, reloaded.Ui.HideTrayIcon);
             Assert.Equal(command.ThemeVariant, reloaded.Ui.ThemeVariant);
+            Assert.Equal(command.Locale, reloaded.Ui.Locale);
             Assert.Equal(command.LogEnabled, reloaded.Audit.DiagnosticMode);
 
             using var doc = JsonDocument.Parse(File.ReadAllText(configPath));
@@ -47,6 +49,7 @@ public sealed class ConfigEditorRoundTripTests
             Assert.True(uiEl.TryGetProperty("hide_main_window_on_startup", out _));
             Assert.True(uiEl.TryGetProperty("hide_tray_icon", out _));
             Assert.True(uiEl.TryGetProperty("theme_variant", out _));
+            Assert.True(uiEl.TryGetProperty("locale", out _));
         }
         finally
         {

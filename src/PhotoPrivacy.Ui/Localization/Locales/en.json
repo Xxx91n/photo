@@ -62,6 +62,7 @@
   "config.desc.hide_on_startup": "Show in tray only after startup, no main window popup",
   "config.desc.hide_tray": "Hide tray icon in tray mode, keep background processing only",
   "config.desc.theme": "Switch freely between system/light/dark",
+  "config.desc.language": "Switch between Chinese/English/Japanese/Arabic",
   "config.desc.log_level": "info=standard logging, debug=verbose debugging logs",
   "config.desc.audit_log_dir": "Directory where audit JSONL files are stored",
   "config.desc.system_excluded": "Log, backup, and quarantine dirs are auto-excluded from file watching",
