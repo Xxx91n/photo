@@ -161,6 +161,12 @@ public sealed class WorkerIpcServerHostedService : BackgroundService
                         Id: request.Id, V: ProtocolVersion), false);
                 }
 
+            case WorkerIpcMethods.GetRecentLogs:
+                {
+                    var logs = ReadRecentAuditLogs(50);
+                    return (new WorkerIpcResponse(true, Logs: new RecentLogsDto(logs), Id: request.Id, V: ProtocolVersion), false);
+                }
+
             default:
                 return (new WorkerIpcResponse(false, Message: "unknown method", Id: request.Id, V: ProtocolVersion), false);
         }
@@ -173,5 +179,34 @@ public sealed class WorkerIpcServerHostedService : BackgroundService
             ExifToolVersion: _runtime.ExifToolVersion,
             WatchDirectory: _runtime.WatchDirectory,
             Mode: _runtime.Mode == RuntimeMode.Service ? "service" : "background");
+    }
+
+    /// <summary>
+    /// ADR 0046: Read the tail N lines of today's audit JSONL file.
+    /// Returns empty array if the log directory or file is missing.
+    /// </summary>
+    private string[] ReadRecentAuditLogs(int maxLines)
+    {
+        try
+        {
+            var logDir = _runtime.AuditLogDirectory;
+            if (string.IsNullOrWhiteSpace(logDir) || !Directory.Exists(logDir))
+            {
+                return [];
+            }
+
+            var auditPath = Path.Combine(logDir, $"audit-{DateTime.Today:yyyy-MM-dd}.jsonl");
+            if (!File.Exists(auditPath))
+            {
+                return [];
+            }
+
+            var lines = File.ReadAllLines(auditPath);
+            return lines.Length <= maxLines ? lines : lines[^maxLines..];
+        }
+        catch
+        {
+            return [];
+        }
     }
 }

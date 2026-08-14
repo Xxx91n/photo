@@ -11,6 +11,7 @@ public static class WorkerIpcMethods
     public const string GetExifToolVersion = "GetExifToolVersion";
     public const string Shutdown = "Shutdown";
     public const string ReloadConfig = "ReloadConfig";
+    public const string GetRecentLogs = "GetRecentLogs";
 }
 
 public sealed record WorkerIpcRequest(
@@ -21,6 +22,7 @@ public sealed record WorkerIpcRequest(
 public sealed record WorkerIpcResponse(
     [property: JsonPropertyName("ok")] bool Ok,
     [property: JsonPropertyName("data")] WorkerStatusDto? Data = null,
+    [property: JsonPropertyName("logs")] RecentLogsDto? Logs = null,
     [property: JsonPropertyName("message")] string? Message = null,
     [property: JsonPropertyName("id")] string? Id = null,
     [property: JsonPropertyName("v")] int? V = null);
@@ -30,3 +32,6 @@ public sealed record WorkerStatusDto(
     [property: JsonPropertyName("exifToolVersion")] string ExifToolVersion,
     [property: JsonPropertyName("watchDirectory")] string WatchDirectory,
     [property: JsonPropertyName("mode")] string Mode);
+
+public sealed record RecentLogsDto(
+    [property: JsonPropertyName("lines")] string[] Lines);

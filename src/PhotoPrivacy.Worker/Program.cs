@@ -98,6 +98,24 @@ builder.Services.AddSingleton<IRuntimeControl, RuntimeControl>();
 builder.Services.AddSingleton<MetadataCleanerWorker>();
 builder.Services.AddHostedService(static services => services.GetRequiredService<MetadataCleanerWorker>());
 
+static string? ResolveAuditLogDirectory(string configPath, string? cliOverride)
+{
+    try
+    {
+        var config = File.Exists(configPath)
+            ? PhotoPrivacy.Core.Configuration.AppConfigLoader.Load(configPath)
+            : PhotoPrivacy.Core.Configuration.AppConfig.Default;
+        var dir = !string.IsNullOrWhiteSpace(cliOverride)
+            ? cliOverride
+            : config.Audit.LogDirectory;
+        return string.IsNullOrWhiteSpace(dir) ? null : dir;
+    }
+    catch
+    {
+        return null;
+    }
+}
+
 builder.Services.AddSingleton(services =>
 {
     var configuration = services.GetRequiredService<IConfiguration>();
@@ -107,7 +125,8 @@ builder.Services.AddSingleton(services =>
         runtimeControl: services.GetRequiredService<IRuntimeControl>(),
         worker: services.GetRequiredService<MetadataCleanerWorker>(),
         watchDirectoryAccessor: () => watchDirectory,
-        mode: mode);
+        mode: mode,
+        auditLogDirectoryAccessor: () => ResolveAuditLogDirectory(configPath, configuration["audit-folder"] ?? configuration["audit_folder"]));
 });
 
 builder.Services.AddHostedService<WorkerIpcServerHostedService>();

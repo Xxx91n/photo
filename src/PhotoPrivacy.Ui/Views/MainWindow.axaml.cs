@@ -217,6 +217,7 @@ public partial class MainWindow : Window
 
         _auditTail.Start();
         _ = ResolveExifToolVersionAsync(exifToolPathFromConfig);
+        _ = BackfillRecentLogsAsync();
 
         _versionPollCts = new CancellationTokenSource();
         _versionPollTask = Task.Run(() => PollVersionAsync(_versionPollCts.Token), _versionPollCts.Token);
@@ -397,6 +398,56 @@ public partial class MainWindow : Window
         {
             vm.ClearLogs();
             _auditTail?.SkipToCurrentEnd();
+        }
+    }
+
+    /// <summary>
+    /// ADR 0046: Backfill recent audit log lines from Worker via IPC on UI startup/reconnect.
+    /// Fills the gap that FileSystemWatcher-based AuditTailService misses between Worker writes and UI connect.
+    /// </summary>
+    private async Task BackfillRecentLogsAsync()
+    {
+        if (_options is null)
+            return;
+
+        try
+        {
+            var endpoint = _options.WorkerEndpointName;
+            var response = await _workerManager.GetRecentLogsAsync(endpoint, CancellationToken.None);
+            if (response is not null && response.Ok && response.Logs is { Lines: { Length: > 0 } lines })
+            {
+                if (DataContext is MainWindowViewModel vm)
+                {
+                    await Dispatcher.UIThread.InvokeAsync(() =>
+                    {
+                        var logLevel = vm.LogLevel;
+                        var batch = new List<AuditLogEntry>();
+                        foreach (var line in lines)
+                        {
+                            if (string.IsNullOrWhiteSpace(line))
+                                continue;
+
+                            var entry = AuditTailService.ParseAuditLine(line, logLevel);
+                            if (entry is not null)
+                            {
+                                batch.Add(entry);
+                            }
+                        }
+                        if (batch.Count > 0)
+                        {
+                            vm.AppendLogBatch(batch);
+                        }
+                    });
+                }
+            }
+        }
+        catch (TaskCanceledException)
+        {
+            // shutdown — ignore
+        }
+        catch
+        {
+            // best-effort — don't block startup
         }
     }
 

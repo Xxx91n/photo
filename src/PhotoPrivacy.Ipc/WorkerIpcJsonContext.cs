@@ -6,6 +6,7 @@ namespace PhotoPrivacy.Ipc;
 [JsonSerializable(typeof(WorkerIpcRequest))]
 [JsonSerializable(typeof(WorkerIpcResponse))]
 [JsonSerializable(typeof(WorkerStatusDto))]
+[JsonSerializable(typeof(RecentLogsDto))]
 public partial class WorkerIpcJsonContext : JsonSerializerContext
 {
 }

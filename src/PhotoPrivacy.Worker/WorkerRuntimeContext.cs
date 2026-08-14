@@ -8,16 +8,19 @@ public sealed class WorkerRuntimeContext
     private readonly IRuntimeControl _runtimeControl;
     private readonly MetadataCleanerWorker _worker;
     private readonly Func<string> _watchDirectoryAccessor;
+    private readonly Func<string?> _auditLogDirectoryAccessor;
 
     public WorkerRuntimeContext(
         IRuntimeControl runtimeControl,
         MetadataCleanerWorker worker,
         Func<string> watchDirectoryAccessor,
-        RuntimeMode mode)
+        RuntimeMode mode,
+        Func<string?>? auditLogDirectoryAccessor = null)
     {
         _runtimeControl = runtimeControl;
         _worker = worker;
         _watchDirectoryAccessor = watchDirectoryAccessor;
+        _auditLogDirectoryAccessor = auditLogDirectoryAccessor ?? (() => null);
         Mode = mode;
     }
 
@@ -28,6 +31,11 @@ public sealed class WorkerRuntimeContext
     public string ExifToolVersion => _worker.CurrentExifToolVersion;
 
     public string WatchDirectory => _watchDirectoryAccessor();
+
+    /// <summary>
+    /// ADR 0046: audit log directory for GetRecentLogs IPC channel.
+    /// </summary>
+    public string? AuditLogDirectory => _auditLogDirectoryAccessor();
 
     public void Pause() => _runtimeControl.Pause();
 

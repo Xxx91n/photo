@@ -114,6 +114,15 @@ public sealed class WorkerProcessManager
     }
 
     /// <summary>
+    /// ADR 0046: Pull recent audit log lines from the worker via IPC.
+    /// Used by UI to backfill missed log entries on reconnect.
+    /// </summary>
+    public Task<WorkerIpcResponse?> GetRecentLogsAsync(string endpointName, CancellationToken cancellationToken)
+    {
+        return _ipcClient.SendAsync(endpointName, new WorkerIpcRequest(WorkerIpcMethods.GetRecentLogs), cancellationToken);
+    }
+
+    /// <summary>
     /// 构建后台 Worker 启动参数。
     /// 使用 ArgumentList.Add 安全传递参数，避免字符串拼接导致的参数注入漏洞。
     /// </summary>
