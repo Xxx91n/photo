@@ -169,6 +169,10 @@ dotnet run --project src/PhotoPrivacy.Worker/PhotoPrivacy.Worker.csproj -- --mod
 
 ## Build EXE / Package
 
+> **发布前必须先测试**：`publish-app.ps1` 内部调用 `dotnet publish`（含编译）但跳过完整 test 验证。
+> 推荐使用 `release-readiness.ps1`（含 test + smoke + publish 完整 gate）代替直接 publish。
+> 直接 publish 而不先 test 会导致 bug 已修但发布的二进制仍是旧版。
+
 Windows:
 
 ```powershell

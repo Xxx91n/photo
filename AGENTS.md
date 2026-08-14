@@ -99,6 +99,11 @@ semgrep scan --config p/csharp --config p/security-audit --json ./src
 
 ## 4. 构建与测试
 
+> **重要**：发布前必须先运行测试或 `release-readiness.ps1`（含 test+smoke+publish 完整 gate）。
+> `publish-app.ps1` 内部调用 `dotnet publish`（含编译），但**跳过完整 test 验证**。
+> 仅运行 publish 而不先 test，会导致 bug 已修但发布的二进制仍是旧版。
+> 正确流程：**构建 → 测试 → 发布**（或直接用 `release-readiness.ps1` 一键 gate）。
+
 ```powershell
 # 构建
 dotnet build PhotoPrivacy.sln
@@ -112,9 +117,12 @@ dotnet vstest tests\PhotoPrivacy.Core.Tests\bin\Debug\net10.0\PhotoPrivacy.Core.
 # 运行集成测试
 dotnet vstest tests\PhotoPrivacy.IntegrationTests\bin\Debug\net10.0\PhotoPrivacy.IntegrationTests.dll
 
-# 发布
+# 发布（仅打包，不含测试验证）
 .\scripts\publish-app.ps1   # 输出到 release/<rid>/（Windows）
 ./scripts/publish.sh        # 输出到 release/<rid>/（Linux/macOS）
+
+# 发布前一键 gate（test + smoke + publish，推荐）
+.\scripts\release-readiness.ps1 -Version 0.1.0-preview -Runtime win-x64
 ```
 
 ---
