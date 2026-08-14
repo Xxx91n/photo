@@ -195,3 +195,20 @@ _Avoid_: Empty folder fallback, silent skip
 **IPC Log Pull**:
 WorkerIpcMethods.GetRecentLogs IPC 方法，UI 主动拉取 Worker 最近 N 条审计日志事件（JSONL tail）。补位 AuditTailService FSW tail 的盲区：UI 重连后立即获取历史日志，不依赖 FSW 没有错过的事件。Worker 端读取审计日志文件尾部返回，UI 端合并到 ObservableCollection。
 _Avoid_: Log push, audit stream
+
+
+**i18n Full Coverage**:
+i18n 从 AXAML-only 扩展到全 UI 层覆盖：code-behind (MainWindow.axaml.cs) 和 ServiceManager.cs 的硬编码中文字符串全部提取到 locale JSON，通过 `LocalizationService.Instance.Get("key")` 取值。ViewModel 不再用中文字符串做 `Contains` 状态判断，改为 enum/布尔标志（见 ADR 0047）。
+_Avoid_: AXAML-only i18n, partial localization
+
+**Tray i18n Refresh**:
+TrayHost 订阅 `LocalizationService.CultureChanged` 事件，语言切换时自动刷新 NativeMenuItem.Header。构造时用 `Get("tray.pause")` 初始化，事件回调重建所有菜单项文案。不依赖调用方持有 TrayHost 引用手动刷新（见 ADR 0047）。
+_Avoid_: Manual tray refresh, tray static labels
+
+**Nested Locale JSON**:
+locale JSON 从 flat key（`nav.config`）迁移到嵌套结构（`{"nav": {"config": "配置"}}`），10 语言各 ~130 key。嵌套结构按功能分组（nav/btn/status/mode/settings/config/service/dialog/tray/theme/loglevel/msg），提高维护清晰度（见 ADR 0047）。
+_Avoid_: Flat locale keys, dot-separated keys
+
+**10-Language Expansion**:
+从 4 语言（zh-CN/en/ja/ar）扩展到 10 语言（+ko/de/fr/es/pt/ru），对齐 env-manager 支持范围。以 en.json 为基准，pwm pro 逐语言翻译，key 集合与 en.json 完全对齐校验（见 ADR 0047）。
+_Avoid_: 4-language limit, hardcoded language list
