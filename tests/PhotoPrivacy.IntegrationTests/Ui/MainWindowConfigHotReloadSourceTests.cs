@@ -13,6 +13,6 @@ public sealed class MainWindowConfigHotReloadSourceTests
         Assert.Contains("private async void OnApplyConfigClick", source, StringComparison.Ordinal);
         Assert.Contains("ReloadConfigAsync", source, StringComparison.Ordinal);
         Assert.Contains("ApplyRuntimeConfigToUiState();", source, StringComparison.Ordinal);
-        Assert.Contains("\"✓ 已应用\"", source, StringComparison.Ordinal);
+        Assert.Contains("LocalizationService.Instance.Get(\"msg.applied\")", source, StringComparison.Ordinal);
     }
 }

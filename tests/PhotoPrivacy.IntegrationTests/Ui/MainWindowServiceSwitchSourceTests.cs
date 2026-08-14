@@ -24,7 +24,7 @@ public sealed class MainWindowServiceSwitchSourceTests
         var source = File.ReadAllText(sourcePath, Encoding.UTF8);
 
         Assert.Contains("await ShutdownTrayWorkerForServiceSwitchAsync(CancellationToken.None);", source, StringComparison.Ordinal);
-        Assert.Contains("托盘 Worker 仍在运行，已取消服务启动，请稍后重试", source, StringComparison.Ordinal);
+        Assert.Contains("msg.tray_worker_running", source, StringComparison.Ordinal);
     }
 
     [Fact]

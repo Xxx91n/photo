@@ -402,6 +402,13 @@ public sealed class LocalizationService : System.ComponentModel.INotifyPropertyC
         ["dialog.select_log_dir"] = "选择日志目录",
         ["dialog.select_quarantine_dir"] = "选择隔离目录",
         ["dialog.select_excluded_dir"] = "添加排除监听的目录",
+            ["audit.exiftool_started"] = "ExifTool 启动",
+        ["audit.service_started"] = "服务启动",
+        ["audit.file_cleaned"] = "清理完成",
+        ["audit.file_skipped"] = "已跳过",
+        ["audit.file_detected"] = "检测到文件",
+        ["audit.instance_conflict"] = "重复启动被拒",
+        ["audit.file_failed"] = "清理失败",
     };
 
     private static Dictionary<string, string> BuiltInEn() => new()
@@ -564,5 +571,12 @@ public sealed class LocalizationService : System.ComponentModel.INotifyPropertyC
         ["dialog.select_log_dir"] = "Select log directory",
         ["dialog.select_quarantine_dir"] = "Select quarantine directory",
         ["dialog.select_excluded_dir"] = "Add directory to exclude from watching",
+            ["audit.exiftool_started"] = "ExifTool started",
+        ["audit.service_started"] = "Service started",
+        ["audit.file_cleaned"] = "Cleaned",
+        ["audit.file_skipped"] = "Skipped",
+        ["audit.file_detected"] = "File detected",
+        ["audit.instance_conflict"] = "Duplicate launch rejected",
+        ["audit.file_failed"] = "Cleaning failed",
     };
 }
