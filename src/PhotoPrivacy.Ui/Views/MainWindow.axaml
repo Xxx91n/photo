@@ -1,7 +1,10 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ex="using:PhotoPrivacy.Ui.Localization"
+        xmlns:vm="using:PhotoPrivacy.Ui.ViewModels"
+        xmlns:audit="using:PhotoPrivacy.Ui"
         x:Class="PhotoPrivacy.Ui.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
         Width="920"
         Height="600"
         MinWidth="740"
@@ -245,9 +248,9 @@
                     <ComboBox x:Name="ThemeVariantComboBox"
                               DockPanel.Dock="Right"
                               Width="160">
-                      <ComboBoxItem Content="{ex:Localize theme.option.system}" Tag="system"/>
-                      <ComboBoxItem Content="{ex:Localize theme.option.light}"     Tag="light"/>
-                      <ComboBoxItem Content="{ex:Localize theme.option.dark}"     Tag="dark"/>
+                      <ComboBoxItem Tag="system"><TextBlock Text="{ex:Localize theme.option.system}"/></ComboBoxItem>
+                      <ComboBoxItem Tag="light"><TextBlock Text="{ex:Localize theme.option.light}"/></ComboBoxItem>
+                      <ComboBoxItem Tag="dark"><TextBlock Text="{ex:Localize theme.option.dark}"/></ComboBoxItem>
                     </ComboBox>
                   </DockPanel>
                 </Border>
@@ -293,11 +296,11 @@
                     <ComboBox x:Name="LogLevelComboBox"
                               DockPanel.Dock="Right"
                               Width="160">
-                      <ComboBoxItem Content="{ex:Localize loglevel.option.all}"   Tag="all"/>
-                      <ComboBoxItem Content="{ex:Localize loglevel.option.info}"  Tag="info"/>
-                      <ComboBoxItem Content="{ex:Localize loglevel.option.debug}" Tag="debug"/>
-                      <ComboBoxItem Content="{ex:Localize loglevel.option.warn}"  Tag="warn"/>
-                      <ComboBoxItem Content="{ex:Localize loglevel.option.error}" Tag="error"/>
+                      <ComboBoxItem Tag="all"><TextBlock Text="{ex:Localize loglevel.option.all}"/></ComboBoxItem>
+                      <ComboBoxItem Tag="info"><TextBlock Text="{ex:Localize loglevel.option.info}"/></ComboBoxItem>
+                      <ComboBoxItem Tag="debug"><TextBlock Text="{ex:Localize loglevel.option.debug}"/></ComboBoxItem>
+                      <ComboBoxItem Tag="warn"><TextBlock Text="{ex:Localize loglevel.option.warn}"/></ComboBoxItem>
+                      <ComboBoxItem Tag="error"><TextBlock Text="{ex:Localize loglevel.option.error}"/></ComboBoxItem>
                     </ComboBox>
                   </DockPanel>
                 </Border>
@@ -395,7 +398,7 @@
                    BorderThickness="0"
                    Padding="4">
             <ListBox.ItemTemplate>
-              <DataTemplate>
+              <DataTemplate x:DataType="audit:AuditLogEntry">
                 <Grid ColumnDefinitions="68,108,*,1.6*" Height="32" Background="Transparent">
                   <TextBlock Text="{Binding TimeText}"
                              FontFamily="Cascadia Code,Consolas,monospace"
