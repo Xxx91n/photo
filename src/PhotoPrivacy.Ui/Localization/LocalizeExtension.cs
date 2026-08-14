@@ -1,4 +1,5 @@
-using Avalonia.Data;
+using System.Runtime.CompilerServices;
+using Avalonia;
 using Avalonia.Markup.Xaml;
 
 namespace PhotoPrivacy.Ui.Localization;
@@ -7,14 +8,29 @@ namespace PhotoPrivacy.Ui.Localization;
 /// Avalonia 11 MarkupExtension for i18n string binding.
 /// Usage in AXAML: Text="{ex:Localize nav.config}"
 ///
-/// Returns an IBinding to LocalizationService indexer "Item[key]" so Avalonia's
-/// binding engine owns lifetime and refresh: when SwitchLocale raises
-/// PropertyChanged("Item[]") every bound TextBlock.Text / Button.Content
-/// re-evaluates automatically. This is the industry-standard production pattern
-/// per Avalonia discussions #16686, #20537 and the code4ward lifecycle article.
+/// Returns the translated string directly. On language switch, CultureChanged
+/// fires and OnCultureChanged walks a ConditionalWeakTable that strongly
+/// associates each target AvaloniaObject (Control) with its LocalizeExtension
+/// instance preventing GC from collecting the extension before refresh.
+/// This is the code4ward production pattern, adapted to pure BCL + Avalonia API.
 /// </summary>
 public sealed class LocalizeExtension : MarkupExtension
 {
+    private sealed class BindingEntry
+    {
+        public LocalizeExtension Ext { get; }
+        public AvaloniaProperty Prop { get; }
+        public BindingEntry(LocalizeExtension ext, AvaloniaProperty prop)
+        {
+            Ext = ext;
+            Prop = prop;
+        }
+    }
+
+    private static readonly ConditionalWeakTable<AvaloniaObject, BindingEntry> _bindings = new();
+    private static readonly object _lock = new();
+    private static bool _hooked;
+
     private string _key = string.Empty;
 
     public LocalizeExtension() { }
@@ -30,15 +46,50 @@ public sealed class LocalizeExtension : MarkupExtension
         set => _key = value;
     }
 
+    /// <summary>Optional format args for string.Format(template, args).</summary>
+    public object[]? Args { get; set; }
+
+    private static void EnsureHook()
+    {
+        if (_hooked) return;
+        _hooked = true;
+        LocalizationService.Instance.CultureChanged += OnCultureChanged;
+    }
+
+    private static void OnCultureChanged(object? sender, string e)
+    {
+        lock (_lock)
+        {
+            foreach (var kvp in _bindings)
+            {
+                kvp.Value.Ext.RefreshTarget(kvp.Key, kvp.Value.Prop);
+            }
+        }
+    }
+
+    private void RefreshTarget(AvaloniaObject target, AvaloniaProperty prop)
+    {
+        target.SetValue(prop, ResolveValue());
+    }
+
+    private string ResolveValue()
+    {
+        var svc = LocalizationService.Instance;
+        return Args is { Length: > 0 } ? svc.Get(_key, Args) : svc.Get(_key);
+    }
+
     public override object ProvideValue(IServiceProvider serviceProvider)
     {
-        var binding = new Binding
+        EnsureHook();
+        var value = ResolveValue();
+
+        if (serviceProvider.GetService(typeof(IProvideValueTarget)) is IProvideValueTarget pvt
+            && pvt.TargetObject is AvaloniaObject ao
+            && pvt.TargetProperty is AvaloniaProperty ap)
         {
-            Source = LocalizationService.Instance,
-            Path = $"[\"{_key}\"]",
-            Mode = BindingMode.OneWay,
-            FallbackValue = _key,
-        };
-        return binding;
+            _bindings.AddOrUpdate(ao, new BindingEntry(this, ap));
+        }
+
+        return value;
     }
 }

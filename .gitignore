@@ -36,3 +36,5 @@ tmp/
 
 # ExifTool upstream source (reference only, do not commit)
 exiftool/
+.codex-tmp/
+.codex-tmp/
