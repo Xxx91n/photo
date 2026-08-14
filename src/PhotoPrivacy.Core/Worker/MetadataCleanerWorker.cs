@@ -311,6 +311,17 @@ public sealed class MetadataCleanerWorker : BackgroundService
 
         try
         {
+            // ADR 0047 M6: bound fingerprint cache. Periodic cleanup of stale entries
+            // plus eviction when capacity exceeded. Prevents unbounded growth on hot folders.
+            _recentFingerprintCache?.CleanupExpired(TimeSpan.FromMinutes(10));
+        }
+        catch
+        {
+            // best effort
+        }
+
+        try
+        {
             var backupDir = string.IsNullOrWhiteSpace(config.Backup.Directory)
                 ? Pipeline.BackupPathResolver.ResolveDefaultBackupDir(config.Watch.HotFolder)
                 : config.Backup.Directory;
