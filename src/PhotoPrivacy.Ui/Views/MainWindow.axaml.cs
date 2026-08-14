@@ -77,6 +77,7 @@ public partial class MainWindow : Window
            Dispatcher.UIThread.Post(() =>
            {
                viewModel?.RefreshLocaleDependent();
+               RefreshI18nComboBoxItems();
                if (viewModel is not null && _options is not null)
                {
                     var paused = _options.IsPausedAsync(CancellationToken.None).GetAwaiter().GetResult();
@@ -798,6 +799,43 @@ public partial class MainWindow : Window
         }
 
         return selectedItem?.ToString() ?? string.Empty;
+    }
+
+    private static readonly Dictionary<string, string> ThemeVariantTagToLocaleKey = new()
+    {
+        ["system"] = "theme.option.system",
+        ["light"] = "theme.option.light",
+        ["dark"] = "theme.option.dark",
+    };
+
+    private static readonly Dictionary<string, string> LogLevelTagToLocaleKey = new()
+    {
+        ["all"] = "loglevel.option.all",
+        ["info"] = "loglevel.option.info",
+        ["debug"] = "loglevel.option.debug",
+        ["warn"] = "loglevel.option.warn",
+        ["error"] = "loglevel.option.error",
+    };
+
+    private void RefreshI18nComboBoxItems()
+    {
+        var svc = LocalizationService.Instance;
+        RefreshComboBoxItems(ThemeVariantComboBox, ThemeVariantTagToLocaleKey, svc);
+        RefreshComboBoxItems(LogLevelComboBox, LogLevelTagToLocaleKey, svc);
+    }
+
+    private static void RefreshComboBoxItems(ComboBox? combo, Dictionary<string, string> tagToKey, LocalizationService svc)
+    {
+        if (combo?.Items is null) return;
+        foreach (var item in combo.Items)
+        {
+            if (item is not ComboBoxItem comboItem) continue;
+            var tag = comboItem.Tag?.ToString();
+            if (tag is not null && tagToKey.TryGetValue(tag, out var key))
+            {
+                comboItem.Content = svc.Get(key);
+            }
+        }
     }
 
     private void SyncThemeVariantComboSelection(string variant)

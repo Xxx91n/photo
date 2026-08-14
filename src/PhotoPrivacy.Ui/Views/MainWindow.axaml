@@ -248,9 +248,9 @@
                     <ComboBox x:Name="ThemeVariantComboBox"
                               DockPanel.Dock="Right"
                               Width="160">
-                      <ComboBoxItem Tag="system"><TextBlock Text="{ex:Localize theme.option.system}"/></ComboBoxItem>
-                      <ComboBoxItem Tag="light"><TextBlock Text="{ex:Localize theme.option.light}"/></ComboBoxItem>
-                      <ComboBoxItem Tag="dark"><TextBlock Text="{ex:Localize theme.option.dark}"/></ComboBoxItem>
+                      <ComboBoxItem Content="{ex:Localize theme.option.system}" Tag="system"/>
+                      <ComboBoxItem Content="{ex:Localize theme.option.light}" Tag="light"/>
+                      <ComboBoxItem Content="{ex:Localize theme.option.dark}" Tag="dark"/>
                     </ComboBox>
                   </DockPanel>
                 </Border>
@@ -296,11 +296,11 @@
                     <ComboBox x:Name="LogLevelComboBox"
                               DockPanel.Dock="Right"
                               Width="160">
-                      <ComboBoxItem Tag="all"><TextBlock Text="{ex:Localize loglevel.option.all}"/></ComboBoxItem>
-                      <ComboBoxItem Tag="info"><TextBlock Text="{ex:Localize loglevel.option.info}"/></ComboBoxItem>
-                      <ComboBoxItem Tag="debug"><TextBlock Text="{ex:Localize loglevel.option.debug}"/></ComboBoxItem>
-                      <ComboBoxItem Tag="warn"><TextBlock Text="{ex:Localize loglevel.option.warn}"/></ComboBoxItem>
-                      <ComboBoxItem Tag="error"><TextBlock Text="{ex:Localize loglevel.option.error}"/></ComboBoxItem>
+                      <ComboBoxItem Content="{ex:Localize loglevel.option.all}" Tag="all"/>
+                      <ComboBoxItem Content="{ex:Localize loglevel.option.info}" Tag="info"/>
+                      <ComboBoxItem Content="{ex:Localize loglevel.option.debug}" Tag="debug"/>
+                      <ComboBoxItem Content="{ex:Localize loglevel.option.warn}" Tag="warn"/>
+                      <ComboBoxItem Content="{ex:Localize loglevel.option.error}" Tag="error"/>
                     </ComboBox>
                   </DockPanel>
                 </Border>
