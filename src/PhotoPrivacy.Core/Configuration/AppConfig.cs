@@ -33,7 +33,7 @@ public sealed record QuarantineOptions(bool Enabled, string Directory);
 
 public sealed record AuditOptions(string LogDirectory, int RetainDays, bool DiagnosticMode, string LogLevel = "info");
 
-public sealed record UiOptions(bool HideMainWindowOnStartup, bool HideTrayIcon, string ThemeVariant);
+ public sealed record UiOptions(bool HideMainWindowOnStartup, bool HideTrayIcon, string ThemeVariant, string Locale = "zh-CN");
 
 public sealed record AppConfig(
     int SchemaVersion,
@@ -111,8 +111,9 @@ public sealed record AppConfig(
            RetainDays: 30,
            DiagnosticMode: false,
            LogLevel: "info"),
-        Ui: new UiOptions(
-            HideMainWindowOnStartup: false,
-            HideTrayIcon: false,
-            ThemeVariant: "system"));
+       Ui: new UiOptions(
+           HideMainWindowOnStartup: false,
+           HideTrayIcon: false,
+           ThemeVariant: "system",
+           Locale: "zh-CN"));
 }

@@ -183,3 +183,15 @@ _Avoid_: Retention throttle, cleanup retention
 **Temp File Route**:
 `FileTaskPipeline` 的备份-清除路由：当 ExifTool 原地清除且需要备份时，先把 sourcePath 复制到临时文件（`%TEMP%/PP_*` 前缀），ExifTool 操作 temp，清除后 AtomicCopy(sourcePath, backupPath) 再把 temp 移回 sourcePath。temp 加 `PP_` 前缀，Worker 启动扫描残留 `.codex-tmp` 清理。
 _Avoid_: Temp copy route, safe modify route
+
+**Locale Persist**:
+i18n 语言偏好的 config.json 持久化字段 `ui.locale`（如 "zh-CN"/"en"/"ja"/"ar"）。UI LocaleVariantComboBox SelectionChanged 触发 SwitchLocale + 防抖 500ms 写 config.json，与 ThemeVariant/LogLevel 同走 ConfigEditor 即时应用管线。首次启动从 config 读取，无 config 时 DetectSystemLocale 兜底。
+_Avoid_: Language setting, culture config
+
+**Hot Folder Guard**:
+AppConfigValidator 对空 hot_folder 的校验策略：非 dry_run 模式下 hot_folder 必须为非空绝对路径，否则抛 AppConfigValidationException 阻止 Worker 启动。静默跳过空路径会导致用户误以为 Worker 在工作但实际什么都没处理。
+_Avoid_: Empty folder fallback, silent skip
+
+**IPC Log Pull**:
+WorkerIpcMethods.GetRecentLogs IPC 方法，UI 主动拉取 Worker 最近 N 条审计日志事件（JSONL tail）。补位 AuditTailService FSW tail 的盲区：UI 重连后立即获取历史日志，不依赖 FSW 没有错过的事件。Worker 端读取审计日志文件尾部返回，UI 端合并到 ObservableCollection。
+_Avoid_: Log push, audit stream
