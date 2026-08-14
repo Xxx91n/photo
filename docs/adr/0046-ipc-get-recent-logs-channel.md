@@ -20,7 +20,7 @@ FSW tail 在正常工作时不丢事件，但有两个盲区：
 
 1. WorkerIpcContracts 新增 GetRecentLogs 常量
 2. WorkerIpcRequest 不变（method + id + v）
-3. WorkerIpcResponse.Data 扩展：新增 RecentLogsDto（List<LogEntry>）
+3. WorkerIpcResponse 新增 Logs 字段（RecentLogsDto? 类型），RecentLogsDto 包含 string[] Lines（JSONL 原始行）
 4. WorkerIpcServerHostedService.HandleRequest 新增 GetRecentLogs case
 5. Worker 端读取当天审计日志文件尾部 N 行返回
 6. UI 端 WorkerProcessManager 新增 GetRecentLogsAsync 方法
@@ -38,4 +38,4 @@ FSW tail 在正常工作时不丢事件，但有两个盲区：
 
 - UI 启动/重连后立即显示历史日志，不依赖 FSW 事件
 - GetRecentLogs 只读当天文件尾部，O(N) 无缓存，调用频率低（仅重连时）
-- WorkerStatusDto 不变，新数据通过 response.Data 扩展传递
+- WorkerStatusDto 不变，新数据通过 response.Logs 新字段传递（不侵 Data 语义）

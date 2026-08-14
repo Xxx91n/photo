@@ -7,7 +7,7 @@
 
 | # | 步骤 | 验收标准 | test |
 |---|------|---------|------|
-| 1 | UiOptions record 加 Locale 字段 | build 通过 | — |
+| 1 | ✅ UiOptions record 加 Locale 字段 | build 通过 | — |
 | 2 | AppConfigJson UiDto 加 locale JSON 属性 | 旧 config 缺该字段自动默认 | AppConfigLoaderTests |
 | 3 | ConfigEditCommand 加 Locale 参数 | build 通过 | — |
 | 4 | ConfigEditor.UpdateConfig 写入 Locale | json 输出含 locale | ConfigEditorRoundTripTests |
@@ -15,7 +15,7 @@
 | 6 | MainWindow.axaml 新增 LocaleVariantComboBox | ItemsSource 绑定 AvailableLocales | — |
 | 7 | MainWindow.axaml.cs SelectionChanged handler | 调用 SwitchLocale + 防抖写盘 | — |
 | 8 | MainWindow.InitializeRuntime 从 config 初始化 | ComboBox 显示当前 locale | — |
-| 9 | locale JSON 文件加 settings.locale + config.desc.locale 键 | 所有 4 locale 文件同步 | — |
+| 9 | locale JSON 文件加 config.desc.language 键（复用已有 settings.language） | 所有 4 locale 文件同步 | — |
 | 10 | build + test 全通过 | 0 error + 114+ Core test 通过 | — |
 
 ## 阶段二：Hot Folder 守卫 + 备份空值防御（ADR 0045）
