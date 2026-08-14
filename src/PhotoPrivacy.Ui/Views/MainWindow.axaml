@@ -267,6 +267,12 @@
                       <ComboBoxItem Content="中文" Tag="zh-CN"/>
                       <ComboBoxItem Content="English" Tag="en"/>
                       <ComboBoxItem Content="日本語" Tag="ja"/>
+                      <ComboBoxItem Content="한국어" Tag="ko"/>
+                      <ComboBoxItem Content="Deutsch" Tag="de"/>
+                      <ComboBoxItem Content="Français" Tag="fr"/>
+                      <ComboBoxItem Content="Español" Tag="es"/>
+                      <ComboBoxItem Content="Português" Tag="pt"/>
+                      <ComboBoxItem Content="Русский" Tag="ru"/>
                       <ComboBoxItem Content="العربية" Tag="ar"/>
                     </ComboBox>
                   </DockPanel>

@@ -1,0 +1,227 @@
+{
+  "app": {
+    "title": "PhotoPrivacy"
+  },
+  "nav": {
+    "config": "설정",
+    "logs": "로그",
+    "service": "서비스",
+    "service_manager": "서비스 관리자"
+  },
+  "btn": {
+    "pause": "⏸ 일시정지",
+    "resume": "▶ 재개",
+    "save": "구성 저장",
+    "clear_logs": "로그 지우기",
+    "browse": "찾아보기...",
+    "open_config_dir": "구성 디렉토리 열기",
+    "ellipsis": "…",
+    "add": "+",
+    "remove": "-"
+  },
+  "status": {
+    "running": "실행 중",
+    "paused": "일시정지",
+    "stopped": "중지",
+    "detecting": "감지 중…",
+    "exiftool_not_found": "ExifTool을 찾을 수 없음",
+    "auto_detected": "자동 감지됨",
+    "service_mode": "서비스 모드",
+    "tray_mode": "트레이 모드",
+    "service_running": "서비스 실행 중",
+    "service_stopped": "서비스 중지됨",
+    "tray_paused": "트레이 일시정지",
+    "tray_running": "트레이 실행 중",
+    "pause_service_unavailable": "일시정지(서비스 모드에서 사용 불가)"
+  },
+  "mode": {
+    "tray": "트레이 모드",
+    "service": "서비스 모드",
+    "background": "백그라운드 모드"
+  },
+  "settings": {
+    "exiftool_path": "ExifTool 경로",
+    "hot_folder": "감시 폴더",
+    "backup": "백업",
+    "backup_dir": "백업 디렉토리",
+    "theme": "테마",
+    "language": "언어",
+    "font": "글꼴",
+    "font_size": "글꼴 크기",
+    "hide_on_startup": "시작 시 창 숨김",
+    "hide_tray": "트레이 아이콘 숨김",
+    "quarantine": "격리",
+    "quarantine_dir": "격리 디렉토리",
+    "audit_log_dir": "감사 로그 디렉토리",
+    "log_level": "로그 수준",
+    "excluded_dirs": "제외 디렉토리",
+    "system_excluded": "시스템 자동 제외",
+    "enable_backup": "백업 활성화",
+    "enable_backup_full": "백업 활성화",
+    "audit_log_dir_label": "로그 저장 경로"
+  },
+  "service": {
+    "status": "서비스 상태",
+    "install": "서비스 설치",
+    "uninstall": "서비스 제거",
+    "start": "서비스 시작",
+    "stop": "서비스 중지",
+    "running": "실행 중",
+    "stopped": "중지됨",
+    "failed": "실패",
+    "section": {
+      "status": "현재 상태",
+      "actions": "작업"
+    },
+    "row": {
+      "install_start": "서비스 설치 및 시작",
+      "start_stop": "서비스 시작/중지",
+      "uninstall": "서비스 제거"
+    },
+    "desc": {
+      "install": "PhotoPrivacyWorker를 Windows 시스템 서비스로 등록",
+      "start_stop": "설치된 서비스의 실행 상태를 수동으로 제어",
+      "uninstall": "시스템에서 서비스 제거, 트레이 모드로 전환"
+    },
+    "btn": {
+      "install": "서비스 설치",
+      "start": "시작",
+      "stop": "중지",
+      "refresh": "새로 고침",
+      "uninstall": "서비스 제거"
+    },
+    "status_format_skip": "{0} | 건너뛰기: {1}",
+    "status_format_cancel": "{0} | 취소됨: {1}",
+    "status_format_fail": "{0} | 실패: {1}",
+    "uninstalling": "서비스 제거 중...",
+    "state": {
+      "not_installed": "설치되지 않음",
+      "start_pending": "시작 중",
+      "pause_pending": "일시정지 중",
+      "continue_pending": "재개 중",
+      "stop_pending": "중지 중",
+      "unknown": "알 수 없음",
+      "not_installed_short": "설치되지 않음"
+    },
+    "msg": {
+      "operation_success": "작업 성공",
+      "use_systemd": "Linux/macOS에서 서비스를 관리하려면 systemd 사용",
+      "must_use_worker": "서비스 설치에는 PhotoPrivacyWorker.exe가 필요",
+      "invalid_target": "서비스 대상은 PhotoPrivacyWorker.exe여야 함",
+      "path_empty": "경로를 비울 수 없음",
+      "path_invalid_chars": "경로에 잘못된 문자 포함: {0}",
+      "path_must_be_absolute": "경로는 절대 경로여야 함",
+      "elevation_cancelled": "사용자가 관리자 권한 승인을 취소함"
+    },
+    "exitcode": {
+      "0": "작업 성공",
+      "5": "권한이 거부되었습니다. 관리자 권한으로 실행해 주세요",
+      "1053": "서비스 시작 시간 초과, ExifTool 경로 및 구성 파일 확인",
+      "1055": "서비스 데이터베이스 잠김, 나중에 다시 시도",
+      "1056": "서비스가 이미 실행 중",
+      "1058": "서비스가 비활성화됨",
+      "1060": "서비스가 존재하지 않음, 먼저 설치",
+      "1062": "서비스가 실행 중이지 않으므로 중지할 필요 없음",
+      "1072": "서비스가 삭제로 표시됨, 시스템을 재부팅하고 재시도",
+      "1073": "서비스가 이미 존재, 자동으로 제거 후 재설치",
+      "unknown": "알 수 없는 오류(코드 {0})"
+    }
+  },
+  "msg": {
+    "saved": "구성 저장",
+    "save_failed": "저장 실패",
+    "exiftool_not_found": "ExifTool을 찾을 수 없음",
+    "worker_not_found": "작업자 실행 파일을 찾을 수 없음",
+    "tray_still_running": "트레이 작업자가 여전히 실행 중입니다. 서비스 시작이 취소되었으므로 나중에 다시 시도하십시오.",
+    "auto_saved": "✓ 자동 저장",
+    "auto_saved_worker_down": "✓ 자동 저장됨(작업자 미작동)",
+    "save_failed_exception": "✗ 저장 실패: {0}",
+    "invalid_exiftool_path": "✗ 잘못된 ExifTool 경로, 올바른 exiftool.exe를 선택하세요",
+    "saved_worker_down": "✓ 저장됨(작업자 미작동, 다음 시작 시 적용)",
+    "applied": "✓ 적용됨",
+    "apply_failed_exception": "✗ 적용 실패: {0}",
+    "config_apply_failed": "⚠ 구성 적용 실패",
+    "worker_not_found_detail": "작업자 실행 파일을 찾을 수 없음(PhotoPrivacyWorker)",
+    "tray_worker_running": "트레이 작업자가 여전히 실행 중입니다. 서비스 시작이 취소되었으므로 나중에 다시 시도하십시오."
+  },
+  "config": {
+    "section": {
+      "path": "경로 설정",
+      "behavior": "동작 설정",
+      "logs": "로그 설정",
+      "excluded": "감시 제외 목록"
+    },
+    "row": {
+      "enable_backup": "백업 활성화",
+      "enable_quarantine": "격리 활성화"
+    },
+    "desc": {
+      "exiftool_path": "Exiftool 실행 파일의 전체 경로",
+      "hot_folder": "이 디렉토리의 새 파일에서 메타데이터를 자동으로 정리",
+      "backup_enabled": "정리하기 전에 원본 파일을 백업 디렉토리에 복사",
+      "backup_dir": "빈 칸으로 두면 <hot_folder>/bak 사용",
+      "quarantine_enabled": "실패한 파일을 이 디렉토리로 이동하여 격리",
+      "quarantine_dir": "실패 파일을 저장할 경로",
+      "hide_on_startup": "시작 시 메인 창 팝업 없이 트레이에만 표시",
+      "hide_tray": "트레이 모드에서 트레이 아이콘 숨김, 백그라운드 처리만 유지",
+      "theme": "시스템 / 밝은 / 어두운 간 자유롭게 전환",
+      "language": "인터페이스 표시 언어 선택",
+      "log_level": "info=표준 로깅, debug=자세한 디버깅 로그",
+      "audit_log_dir": "감사 JSONL 파일이 저장될 디렉토리",
+      "system_excluded": "시스템 디렉토리는 파일 감시에서 자동 제외",
+      "user_excluded": "감시에서 제외할 추가 경로를 지정"
+    },
+    "label": {
+      "system_excluded": "시스템 자동 제외 디렉토리(읽기 전용)",
+      "user_excluded": "사용자 정의 제외 디렉토리"
+    }
+  },
+  "theme": {
+    "option": {
+      "system": "시스템 따라가기",
+      "light": "밝은",
+      "dark": "다크"
+    }
+  },
+  "loglevel": {
+    "option": {
+      "all": "모두(모든 항목)",
+      "info": "정보(표준)",
+      "debug": "디버그(자세한 로그)",
+      "warn": "경고(경고)",
+      "error": "오류(오류)"
+    }
+  },
+  "log": {
+    "section": {
+      "logs": "로그"
+    },
+    "btn": {
+      "clear": "지우기"
+    }
+  },
+  "tray": {
+    "pause": "일시정지",
+    "resume": "재개",
+    "open_window": "메인 창 열기",
+    "exit": "종료",
+    "tooltip": "PhotoPrivacy"
+  },
+  "dialog": {
+    "select_exiftool": "ExifTool 실행 파일 선택",
+    "select_hot_folder": "감시 폴더 선택",
+    "select_backup_dir": "백업 디렉토리 선택",
+    "select_log_dir": "로그 디렉토리 선택",
+    "select_quarantine_dir": "격리 디렉토리 선택",
+    "select_excluded_dir": "감시에서 제외할 디렉토리 추가"
+  },
+  "audit": {
+    "exiftool_started": "ExifTool 시작",
+    "service_started": "서비스 시작",
+    "file_cleaned": "정리됨",
+    "file_skipped": "생략됨",
+    "file_detected": "파일 감지",
+    "instance_conflict": "중복 실행 거부",
+    "file_failed": "정리 실패"
+  }
+}

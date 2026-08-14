@@ -1,0 +1,227 @@
+{
+  "app": {
+    "title": "PhotoPrivacy"
+  },
+  "nav": {
+    "config": "Paramètres",
+    "logs": "Journaux",
+    "service": "Service",
+    "service_manager": "Gestionnaire de service"
+  },
+  "btn": {
+    "pause": "⏸ Pause",
+    "resume": "▶ Reprendre",
+    "save": "Enregistrer la configuration",
+    "clear_logs": "Effacer les journaux",
+    "browse": "Parcourir...",
+    "open_config_dir": "Ouvrir le répertoire de configuration",
+    "ellipsis": "…",
+    "add": "+",
+    "remove": "-"
+  },
+  "status": {
+    "running": "En cours",
+    "paused": "En pause",
+    "stopped": "Arrêté",
+    "detecting": " Détection…",
+    "exiftool_not_found": "ExifTool non trouvé",
+    "auto_detected": "Détecté automatiquement",
+    "service_mode": "Mode Service",
+    "tray_mode": "Mode Icône",
+    "service_running": "Service en cours d'exécution",
+    "service_stopped": "Service arrêté",
+    "tray_paused": "Icône en pause",
+    "tray_running": "Icône en cours d'exécution",
+    "pause_service_unavailable": "Pause indisponible en mode service"
+  },
+  "mode": {
+    "tray": "Mode Icône",
+    "service": "Mode Service",
+    "background": "Mode Arrière-plan"
+  },
+  "settings": {
+    "exiftool_path": "Chemin ExifTool",
+    "hot_folder": "Dossier de surveillance",
+    "backup": "Sauvegarde",
+    "backup_dir": "Répertoire de sauvegarde",
+    "theme": "Thème",
+    "language": "Langue",
+    "font": "Police",
+    "font_size": "Taille de police",
+    "hide_on_startup": "Cacher la fenêtre au démarrage",
+    "hide_tray": "Cacher l'icône de la barre d'état",
+    "quarantine": "Quarantaine",
+    "quarantine_dir": "Répertoire de quarantaine",
+    "audit_log_dir": "Répertoire des journaux d'audit",
+    "log_level": "Niveau de journalisation",
+    "excluded_dirs": "Répertoires exclus",
+    "system_excluded": "Auto-exclu système",
+    "enable_backup": "Activer la sauvegarde",
+    "enable_backup_full": "Activer la sauvegarde",
+    "audit_log_dir_label": "Chemin de stockage des journaux"
+  },
+  "service": {
+    "status": "État du service",
+    "install": "Installer le service",
+    "uninstall": "Désinstaller le service",
+    "start": "Démarrer le service",
+    "stop": "Arrêter le service",
+    "running": "En cours d'exécution",
+    "stopped": "Arrêté",
+    "failed": "Échoué",
+    "section": {
+      "status": "STATUT ACTUEL",
+      "actions": "ACTIONS"
+    },
+    "row": {
+      "install_start": "Installer et démarrer le service",
+      "start_stop": "Démarrer / arrêter le service",
+      "uninstall": "Désinstaller le service"
+    },
+    "desc": {
+      "install": "Enregistrer PhotoPrivacyWorker en tant que service système Windows",
+      "start_stop": "Contrôler manuellement l'état d'exécution du service installé",
+      "uninstall": "Supprimer le service du système, passer en mode barre d'état"
+    },
+    "btn": {
+      "install": "Installer le service",
+      "start": "Démarrer",
+      "stop": "Arrêter",
+      "refresh": "Rafraîchir",
+      "uninstall": "Désinstaller le service"
+    },
+    "status_format_skip": "{0} | Sauté: {1}",
+    "status_format_cancel": "{0} | Annulé: {1}",
+    "status_format_fail": "{0} | Échoué: {1}",
+    "uninstalling": "Désinstallation du service...",
+    "state": {
+      "not_installed": "Non installé",
+      "start_pending": "Démarrage",
+      "pause_pending": "En pause",
+      "continue_pending": "Reprise",
+      "stop_pending": "Arrêt",
+      "unknown": "Inconnu",
+      "not_installed_short": "Non installé"
+    },
+    "msg": {
+      "operation_success": "Opération réussie",
+      "use_systemd": "Utiliser systemd pour gérer les services sur Linux/macOS",
+      "must_use_worker": "L'installation du service nécessite PhotoPrivacyWorker.exe",
+      "invalid_target": "La cible du service doit être PhotoPrivacyWorker.exe",
+      "path_empty": "Le chemin ne peut pas être vide",
+      "path_invalid_chars": "Le chemin contient des caractères invalides : {0}",
+      "path_must_be_absolute": "Le chemin doit être absolu",
+      "elevation_cancelled": "L'utilisateur a annulé l'autorisation d'administrateur"
+    },
+    "exitcode": {
+      "0": "Opération réussie",
+      "5": "Accès refusé, veuillez exécuter en tant qu'administrateur",
+      "1053": "Délai d'attente du démarrage du service, vérifiez le chemin ExifTool et le fichier de configuration",
+      "1055": "Base de données du service verrouillée, réessayez plus tard",
+      "1056": "Le service est déjà en cours d'exécution",
+      "1058": "Le service est désactivé",
+      "1060": "Le service n'existe pas, veuillez l'installer d'abord",
+      "1062": "Le service n'est pas en cours d'exécution, pas besoin d'arrêter",
+      "1072": "Service marqué pour suppression, veuillez redémarrer le système et réessayer",
+      "1073": "Le service existe déjà, désinstallation automatique puis réinstallation",
+      "unknown": "Erreur inconnue (code {0})"
+    }
+  },
+  "msg": {
+    "saved": "Configuration enregistrée",
+    "save_failed": "Échec de l'enregistrement",
+    "exiftool_not_found": "ExifTool introuvable",
+    "worker_not_found": "Exécutable du worker introuvable",
+    "tray_still_running": "Le Tray Worker est toujours en cours d'exécution. Le démarrage du service est annulé, veuillez réessayer plus tard.",
+    "auto_saved": "✓ Auto-enregistré",
+    "auto_saved_worker_down": "✓ Auto-enregistré (Worker non en cours d'exécution)",
+    "save_failed_exception": "✗ Échec de l'enregistrement : {0}",
+    "invalid_exiftool_path": "✗ Chemin ExifTool invalide, veuillez sélectionner le bon exiftool.exe",
+    "saved_worker_down": "✓ Enregistré (Worker non en cours d'exécution, prend effet au prochain démarrage)",
+    "applied": "✓ Appliqué",
+    "apply_failed_exception": "✗ Échec de l'application : {0}",
+    "config_apply_failed": "⚠ Échec de l'application de la configuration",
+    "worker_not_found_detail": "Exécutable du Worker introuvable (PhotoPrivacyWorker)",
+    "tray_worker_running": "Tray Worker est toujours en cours d'exécution. Le démarrage du service est annulé, veuillez réessayer plus tard."
+  },
+  "config": {
+    "section": {
+      "path": "Paramètres du chemin",
+      "behavior": "Paramètres de comportement",
+      "logs": "Paramètres des journaux",
+      "excluded": "Exclure la liste de surveillance"
+    },
+    "row": {
+      "enable_backup": "Activer la sauvegarde",
+      "enable_quarantine": "Activer la quarantaine"
+    },
+    "desc": {
+      "exiftool_path": "Chemin complet vers l'exécutable exiftool",
+      "hot_folder": "Nettoyer automatiquement les métadonnées des nouveaux fichiers dans ce répertoire",
+      "backup_enabled": "Copier les fichiers originaux vers le répertoire de sauvegarde avant le nettoyage",
+      "backup_dir": "Laisser vide pour utiliser <hot_folder>/bak",
+      "quarantine_enabled": "Déplacer les fichiers échoués dans ce répertoire pour isolation",
+      "quarantine_dir": "Chemin pour stocker les fichiers échoués",
+      "hide_on_startup": "Afficher dans la barre d'état uniquement après le démarrage, pas de fenêtre principale",
+      "hide_tray": "Cacher l'icône de la barre dans le mode barre, effectuer le traitement en arrière-plan uniquement",
+      "theme": "Changer librement entre système/claire/obscure",
+      "language": "Sélectionner la langue d'affichage de l'interface",
+      "log_level": "info=journalisation standard, debug=journalisation détaillée",
+      "audit_log_dir": "Répertoire où les fichiers JSONL d'audit sont stockés",
+      "system_excluded": "Les répertoires de log, sauvegarde et quarantaine sont exclus automatiquement de la surveillance des fichiers",
+      "user_excluded": "Ajouter des chemins supplémentaires à exclure de la surveillance"
+    },
+    "label": {
+      "system_excluded": "Répertoires auto-exclus du système (lecture seule)",
+      "user_excluded": "Répertoires d'exclusion définis par l'utilisateur"
+    }
+  },
+  "theme": {
+    "option": {
+      "system": "Suivre le système",
+      "light": "Clair",
+      "dark": "Sombre"
+    }
+  },
+  "loglevel": {
+    "option": {
+      "all": "TOUT (tout)",
+      "info": "INFO (standard)",
+      "debug": "DEBUG (verbose)",
+      "warn": "AVERTI (avertissements)",
+      "error": "ERREUR (erreurs)"
+    }
+  },
+  "log": {
+    "section": {
+      "logs": "Journaux"
+    },
+    "btn": {
+      "clear": "Effacer"
+    }
+  },
+  "tray": {
+    "pause": "Pause",
+    "resume": "Reprendre",
+    "open_window": "Ouvrir la fenêtre principale",
+    "exit": "Quitter",
+    "tooltip": "PhotoPrivacy"
+  },
+  "dialog": {
+    "select_exiftool": "Sélectionner l’exécutable ExifTool",
+    "select_hot_folder": "Sélectionner le dossier de surveillance",
+    "select_backup_dir": "Sélectionner le répertoire de sauvegarde",
+    "select_log_dir": "Sélectionner le répertoire des journaux",
+    "select_quarantine_dir": "Sélectionner le répertoire de quarantaine",
+    "select_excluded_dir": "Ajouter le répertoire à exclure de la surveillance"
+  },
+  "audit": {
+    "exiftool_started": "ExifTool démarré",
+    "service_started": "Service démarré",
+    "file_cleaned": "Nettoyé",
+    "file_skipped": "Sauté",
+    "file_detected": "Fichier détecté",
+    "instance_conflict": "Lancement en double rejeté",
+    "file_failed": "Échec du nettoyage"
+  }
+}
