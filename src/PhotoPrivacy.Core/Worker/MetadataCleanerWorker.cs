@@ -127,9 +127,13 @@ public sealed class MetadataCleanerWorker : BackgroundService
                 stoppingToken);
         }
 
-        foreach (var file in Directory.EnumerateFiles(config.Watch.HotFolder, "*", SearchOption.AllDirectories))
+        // ADR 0045: skip enumeration if hot folder is empty — prevents ArgumentException
+        if (!string.IsNullOrWhiteSpace(config.Watch.HotFolder) && Directory.Exists(config.Watch.HotFolder))
         {
-            EnqueueIfNeeded(file);
+            foreach (var file in Directory.EnumerateFiles(config.Watch.HotFolder, "*", SearchOption.AllDirectories))
+            {
+                EnqueueIfNeeded(file);
+            }
         }
 
         var once = ParseBool(GetValue("once"));

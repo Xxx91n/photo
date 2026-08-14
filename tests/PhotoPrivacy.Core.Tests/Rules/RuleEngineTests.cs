@@ -114,4 +114,18 @@ public sealed class RuleEngineTests
         Assert.False(decision.ShouldProcess);
         Assert.Equal("extension_not_allowed", decision.Reason);
     }
+    [Fact]
+    public void Decide_Should_Return_Null_BackupPath_When_HotFolder_Empty()
+    {
+        var cfg = AppConfig.Default with
+        {
+            Backup = AppConfig.Default.Backup with { Enabled = true },
+            Watch = AppConfig.Default.Watch with { HotFolder = "" }
+        };
+        var engine = new RuleEngine(cfg);
+        var decision = engine.Decide(@"D:hota.jpg");
+
+        Assert.Null(decision.BackupPath);
+    }
+
 }

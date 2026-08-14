@@ -27,6 +27,13 @@ public static class AppConfigValidator
             return;
         }
 
+        // ADR 0045: Hot folder must be configured for non-dry-run mode, otherwise
+        // the worker cannot scan/enqueue files and silently does nothing.
+        if (string.IsNullOrWhiteSpace(config.Watch.HotFolder))
+        {
+            throw new AppConfigValidationException("watch.hot_folder 未配置。请先设置监控目录。");
+        }
+
         if (!Path.IsPathFullyQualified(config.ExifTool.Path))
         {
             throw new AppConfigValidationException("exiftool.path must be absolute");

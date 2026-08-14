@@ -64,4 +64,20 @@ public sealed class AppConfigValidatorTests
         var ex = Record.Exception(() => AppConfigValidator.Validate(cfg));
         Assert.Null(ex);
     }
+    [Fact]
+    public void Validate_Should_Throw_When_HotFolder_Empty_And_Not_DryRun()
+    {
+        var cfg = AppConfig.Default with
+        {
+            ExifTool = AppConfig.Default.ExifTool with
+            {
+                DryRun = false,
+                Path = @"C:Program FilesExifToolexiftool.exe"
+            },
+            Watch = AppConfig.Default.Watch with { HotFolder = "" }
+        };
+
+        Assert.Throws<AppConfigValidationException>(() => AppConfigValidator.Validate(cfg));
+    }
+
 }
