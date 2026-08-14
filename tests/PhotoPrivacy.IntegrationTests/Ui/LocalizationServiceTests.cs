@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using PhotoPrivacy.Core.Constants;
+using PhotoPrivacy.Ui.Localization;
 
 namespace PhotoPrivacy.IntegrationTests.Ui;
 
@@ -9,6 +10,8 @@ namespace PhotoPrivacy.IntegrationTests.Ui;
 /// ADR 0047 test closure — verify all 10 locale JSON files have identical key sets
 /// after recursive flatten, so no language is missing keys at runtime.
 /// Reads both embedded resources and on-disk files in ExeLocaleDirectory.
+/// Plus runtime-switch tests that prove SwitchLocale actually mutates _currentStrings
+/// and raises CultureChanged (industry-template regression guard).
 /// </summary>
 public sealed class LocalizationServiceTests
 {
@@ -56,7 +59,7 @@ public sealed class LocalizationServiceTests
     [Fact]
     public void Embedded_Resources_Contain_All_Ten_Locales()
     {
-        var asm = typeof(PhotoPrivacy.Ui.Localization.LocalizationService).Assembly;
+        var asm = typeof(LocalizationService).Assembly;
         var resourceNames = asm.GetManifestResourceNames()
             .Where(n => n.Contains("Locales.", StringComparison.OrdinalIgnoreCase) && n.EndsWith(".json"))
             .ToList();
@@ -87,6 +90,109 @@ public sealed class LocalizationServiceTests
         }
     }
 
+    [Fact]
+    public void SwitchLocale_To_English_Changes_Translated_Strings()
+    {
+        var svc = LocalizationService.Instance;
+        try
+        {
+            svc.SwitchLocale("en");
+            svc.SwitchLocale("zh-CN");
+            var zhValue = svc.Get("nav.config");
+
+            svc.SwitchLocale("en");
+            var enValue = svc.Get("nav.config");
+
+            Assert.NotEqual(zhValue, enValue);
+            Assert.Equal("Settings", enValue);
+            Assert.Equal("配置", zhValue);
+        }
+        finally
+        {
+            svc.SwitchLocale("zh-CN"); // restore default for other tests sharing the singleton
+        }
+    }
+
+    [Fact]
+    public void SwitchLocale_Raises_CultureChanged_Event()
+    {
+        var svc = LocalizationService.Instance;
+        svc.SwitchLocale("zh-CN");
+        string? captured = null;
+        EventHandler<string> handler = (_, locale) => captured = locale;
+        svc.CultureChanged += handler;
+        try
+        {
+            svc.SwitchLocale("ja");
+            Assert.Equal("ja", captured);
+            Assert.Equal("ja", svc.CurrentLocale);
+        }
+        finally
+        {
+            svc.CultureChanged -= handler;
+            svc.SwitchLocale("zh-CN");
+        }
+    }
+
+    [Fact]
+    public void SwitchLocale_Same_Locale_Does_Not_Raise_Event_Twice()
+    {
+        var svc = LocalizationService.Instance;
+        svc.SwitchLocale("zh-CN");
+        var raised = 0;
+        EventHandler<string> handler = (_, _) => raised++;
+        svc.CultureChanged += handler;
+        try
+        {
+            svc.SwitchLocale("en");   // first switch: en != zh-CN -> raise
+            Assert.Equal(1, raised);
+            svc.SwitchLocale("en");   // same locale -> no raise (guard)
+            Assert.Equal(1, raised);
+            svc.SwitchLocale("ko");   // different -> raise
+            Assert.Equal(2, raised);
+        }
+        finally
+        {
+            svc.CultureChanged -= handler;
+            svc.SwitchLocale("zh-CN");
+        }
+    }
+
+    [Fact]
+    public void SwitchLocale_Raises_Indexer_PropertyChanged_For_Binding_Refresh()
+    {
+        // Industry-template regression guard: Avalonia's binding engine refreshes
+        // every TextBlock.Text bound via {ex:Localize key} (which is Binding to
+        // LocalizationService[key]) ONLY when the source raises PropertyChanged
+        // for the indexer "Item[]" / "Item". Without this, runtime language switch
+        // leaves AXAML text stale (the user-visible bug this test guards against).
+        var svc = LocalizationService.Instance;
+        svc.SwitchLocale("en"); // prime away from any prior state
+
+        var raisedItemArray = 0;
+        var raisedItem = 0;
+        var raisedCurrentLocale = 0;
+        System.ComponentModel.PropertyChangedEventHandler handler = (_, e) =>
+        {
+            if (e.PropertyName == "Item[]") raisedItemArray++;
+            if (e.PropertyName == "Item") raisedItem++;
+            if (e.PropertyName == nameof(LocalizationService.CurrentLocale)) raisedCurrentLocale++;
+        };
+        svc.PropertyChanged += handler;
+        try
+        {
+            svc.SwitchLocale("zh-CN"); // different from en -> must raise
+            Assert.Equal(1, raisedItemArray);
+            Assert.Equal(1, raisedItem);
+            Assert.Equal(1, raisedCurrentLocale);
+        }
+        finally
+        {
+            svc.PropertyChanged -= handler;
+            svc.SwitchLocale("zh-CN");
+        }
+    }
+
     private static HashSet<string> FlattenKeys(string json)
     {
         var node = JsonNode.Parse(json);
@@ -97,7 +203,7 @@ public sealed class LocalizationServiceTests
         }
         else
         {
-            var flat = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(json);
+            var flat = JsonSerializer.Deserialize<Dictionary<string, string>>(json);
             if (flat is not null)
                 foreach (var k in flat.Keys) dict[k] = flat[k];
         }

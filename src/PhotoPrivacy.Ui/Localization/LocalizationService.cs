@@ -56,6 +56,11 @@ public sealed class LocalizationService : System.ComponentModel.INotifyPropertyC
         }
 
         PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(CurrentLocale)));
+        // Notify indexer binding consumers (industry-standard WPF/Avalonia pattern for
+        // Binding("[\"key\"]") on an INPC source: refreshing the indexer "Item[]" is what
+        // makes every TextBlock/Button bound to this[string key] re-evaluate after SwitchLocale.
+        PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs("Item[]"));
+        PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs("Item"));
         CultureChanged?.Invoke(this, locale);
     }
 

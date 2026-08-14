@@ -37,6 +37,7 @@ public partial class MainWindow : Window
         nameof(MainWindowViewModel.HideGuiOnStartup),
         nameof(MainWindowViewModel.HideTrayIcon),
         nameof(MainWindowViewModel.ThemeVariant),
+        nameof(MainWindowViewModel.CurrentLocale),
         nameof(MainWindowViewModel.BackupDirectory),
         nameof(MainWindowViewModel.AuditLogDirectory),
         nameof(MainWindowViewModel.LogLevel),
