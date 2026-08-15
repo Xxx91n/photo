@@ -277,6 +277,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         string.Equals(_currentMode, "service", StringComparison.OrdinalIgnoreCase)
         || _currentMode.Contains("service", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Public snapshot of the last-known paused state, used by MainWindow's
+    /// CultureChanged handler to re-localize RuntimeStatus without IPC.
+    /// Mirrors the private IsRuntimePaused derived from the current
+    /// _runtimeStatus string content.
+    /// </summary>
+    public bool IsRuntimePausedSnapshot => IsRuntimePaused;
+
     private bool IsRuntimePaused =>
         _runtimeStatus.Contains("paused", StringComparison.OrdinalIgnoreCase)
         || _runtimeStatus.Contains("pause", StringComparison.OrdinalIgnoreCase);

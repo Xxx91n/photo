@@ -84,6 +84,14 @@ public partial class MainWindow : Window
            {
                viewModel?.RefreshLocaleDependent();
                RefreshI18nComboBoxItems();
+               // Refresh RuntimeStatus immediately so the left-top status text
+               // switches language without waiting for the ~1s background poll
+               // (PollRuntimeStatusAsync). Previously the status stayed in the
+               // old language until a poll cycle happened to re-assign it.
+               if (viewModel is not null && _options is not null)
+               {
+                   viewModel.RuntimeStatus = RunModeStatusTextSnapshot();
+               }
            }, DispatcherPriority.Normal);
         };
         viewModel?.ApplyLocaleFlowDirection();
@@ -823,6 +831,27 @@ public partial class MainWindow : Window
         var svc = LocalizationService.Instance;
         RefreshComboBoxItems(ThemeVariantComboBox, ThemeVariantTagToLocaleKey, svc);
         RefreshComboBoxItems(LogLevelComboBox, LogLevelTagToLocaleKey, svc);
+        // Force Avalonia ComboBox SelectionBoxItem to re-render: setting Content
+        // on ComboBoxItem does NOT propagate to the closed dropdown display
+        // (SelectionBoxItemPresenter caches the selected item's content). The
+        // industry pattern is to temporarily clear selection then restore it,
+        // which forces the ComboBox to re-evaluate its SelectionBoxItem.
+        ForceComboBoxSelectionBoxRefresh(ThemeVariantComboBox);
+        ForceComboBoxSelectionBoxRefresh(LogLevelComboBox);
+        // LocaleVariantComboBox items are native-language labels (not i18n keys),
+        // so they don't change on locale switch — no refresh needed.
+    }
+
+    private static void ForceComboBoxSelectionBoxRefresh(ComboBox? combo)
+    {
+        if (combo?.Items is null) return;
+        var selected = combo.SelectedItem;
+        if (selected is null) return;
+        // Temporarily clear selection to force SelectionBoxItem to drop its cached content
+        combo.SelectedItem = null;
+        // Restore selection — this forces ComboBox to re-render SelectionBoxItem
+        // with the updated ComboBoxItem.Content value.
+        combo.SelectedItem = selected;
     }
 
     private static void RefreshComboBoxItems(ComboBox? combo, Dictionary<string, string> tagToKey, LocalizationService svc)
@@ -837,6 +866,27 @@ public partial class MainWindow : Window
                 comboItem.Content = svc.Get(key);
             }
         }
+    }
+
+    /// <summary>
+    /// Snapshot of RuntimeStatus text using current locale. Called from
+    /// CultureChanged handler to refresh the left-top status text immediately
+    /// without blocking on IPC (doesn't call IsPausedAsync). Uses the
+    /// last-known paused state from the ViewModel's IsRuntimePausedSnapshot
+    /// (cheap, sync, no IPC) so we can re-apply the localized status string
+    /// in the new language without waiting for the ~1s background poll.
+    /// </summary>
+    private string RunModeStatusTextSnapshot()
+    {
+        if (_options is null)
+        {
+            var fallbackVm = DataContext as MainWindowViewModel;
+            return fallbackVm?.RuntimeStatus ?? string.Empty;
+        }
+
+        var vm = DataContext as MainWindowViewModel;
+        var isPaused = vm?.IsRuntimePausedSnapshot ?? false;
+        return BuildRuntimeStatusText(_options.RuntimeKind, _options.GetServiceRuntimeState(), isPaused);
     }
 
     private void SyncThemeVariantComboSelection(string variant)

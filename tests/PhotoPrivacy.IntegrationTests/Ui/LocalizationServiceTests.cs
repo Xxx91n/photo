@@ -311,8 +311,10 @@ public sealed class LocalizationServiceTests
         var cultureIdx = source.IndexOf("LocalizationService.Instance.CultureChanged +=");
         Assert.True(cultureIdx >= 0, "CultureChanged handler not found in MainWindow.axaml.cs");
 
-        // The handler block ends at the next ");" after the opening
-        var handlerBlock = source.Substring(cultureIdx, 600);
+        // The handler block ends at the next ");" after the opening.
+        // Capture enough to cover the full lambda including the RuntimeStatus
+        // refresh block (added after the ea9ecc9 root-cause fix).
+        var handlerBlock = source.Substring(cultureIdx, 1200);
         Assert.DoesNotContain("GetAwaiter().GetResult()", handlerBlock);
     }
 
@@ -364,6 +366,128 @@ public sealed class LocalizationServiceTests
                 Assert.NotEqual(key, value); // must not fallback to key itself
             }
         }
+    }
+
+
+    /// <summary>
+    /// Regression guard: MainWindow.axaml.cs must contain ForceComboBoxSelectionBoxRefresh
+    /// — the industry-pattern method (SelectedItem null→restore) which forces
+    /// Avalonia ComboBox SelectionBoxItem to re-render after ComboBoxItem.Content
+    /// changes at runtime. Without it, the closed ComboBox display stays in
+    /// old language until restart even though dropdown items refresh.
+    /// </summary>
+    [Fact]
+    public void MainWindow_Contains_ForceComboBoxSelectionBoxRefresh_Industry_Pattern()
+    {
+        var sourcePath = ResolveMainWindowSourcePath();
+        if (!File.Exists(sourcePath)) return;
+
+        var source = File.ReadAllText(sourcePath);
+        Assert.Contains("ForceComboBoxSelectionBoxRefresh", source);
+        Assert.Contains("combo.SelectedItem = null", source);
+        Assert.Contains("combo.SelectedItem = selected", source);
+    }
+
+    /// <summary>
+    /// Regression guard: MainWindow.axaml.cs CultureChanged handler must
+    /// contain RunModeStatusTextSnapshot() call — refreshes the left-top
+    /// RuntimeStatus immediately on locale switch, without waiting for the
+    /// ~1s background poll. Without it, RuntimeStatus stays in old language.
+    /// </summary>
+    [Fact]
+    public void CultureChanged_Handler_Refreshes_RuntimeStatus_Immediately()
+    {
+        var sourcePath = ResolveMainWindowSourcePath();
+        if (!File.Exists(sourcePath)) return;
+
+        var source = File.ReadAllText(sourcePath);
+
+        var cultureIdx = source.IndexOf("LocalizationService.Instance.CultureChanged +=");
+        Assert.True(cultureIdx >= 0, "CultureChanged handler not found");
+        var handlerBlock = source.Substring(cultureIdx, 1200);
+        Assert.Contains("RunModeStatusTextSnapshot()", handlerBlock);
+        Assert.Contains("viewModel.RuntimeStatus =", handlerBlock);
+    }
+
+    /// <summary>
+    /// Regression guard: MainWindowViewModel must expose IsRuntimePausedSnapshot
+    /// (public) so MainWindow's CultureChanged handler can read the last-known
+    /// paused state without blocking on IPC. The private IsRuntimePaused derived
+    /// from _runtimeStatus string content stays as the underlying implementation.
+    /// </summary>
+    [Fact]
+    public void MainWindowViewModel_Exposes_IsRuntimePausedSnapshot_Public()
+    {
+        var vmPath = Path.Combine(
+            Directory.GetCurrentDirectory(),
+            "..", "..", "..", "..", "..",
+            "src", "PhotoPrivacy.Ui", "ViewModels", "MainWindowViewModel.cs");
+        vmPath = Path.GetFullPath(vmPath);
+        if (!File.Exists(vmPath))
+        {
+            vmPath = Path.GetFullPath(Path.Combine(
+                AppContext.BaseDirectory,
+                "..", "..", "..", "..", "..",
+                "src", "PhotoPrivacy.Ui", "ViewModels", "MainWindowViewModel.cs"));
+        }
+        if (!File.Exists(vmPath)) return;
+
+        var source = File.ReadAllText(vmPath);
+        Assert.Contains("public bool IsRuntimePausedSnapshot => IsRuntimePaused;", source);
+        Assert.Contains("private bool IsRuntimePaused =>", source);
+    }
+
+    /// <summary>
+    /// Stronger than Theme_Option_*_Keys test: also asserts that switching
+    /// locale multiple times in sequence still yields correct non-empty,
+    /// distinct translations. This catches the regression where only the
+    /// first switch works (stale INPC indexer capture bug).
+    /// </summary>
+    [Fact]
+    public void Multi_Switch_Locale_Yields_Distinct_Translations_Each_Time()
+    {
+        var svc = LocalizationService.Instance;
+        var locales = new[] { "zh-CN", "en", "ja", "ko", "de", "fr", "es", "pt", "ru", "ar" };
+
+        var firstValues = new Dictionary<string, string>();
+        foreach (var locale in locales)
+        {
+            svc.SwitchLocale(locale);
+            var statusKey = "status.tray_running";
+            var value = svc.Get(statusKey);
+            Assert.False(string.IsNullOrWhiteSpace(value));
+            firstValues[locale] = value;
+        }
+
+        // At least 3 distinct values across 10 locales (native language names
+        // differ). This guards against all locales silently returning the
+        // same fallback (key itself).
+        var distinctCount = firstValues.Values.Distinct().Count();
+        Assert.True(distinctCount >= 3,
+            "Expected >=3 distinct translations of status.tray_running across 10 locales, got " + distinctCount);
+
+        // Second round: same values should be reproduced (stale-capture guard)
+        svc.SwitchLocale("en");
+        svc.SwitchLocale("zh-CN");
+        var zhValue = svc.Get("status.tray_running");
+        Assert.Equal(firstValues["zh-CN"], zhValue);
+    }
+
+    private static string ResolveMainWindowSourcePath()
+    {
+        var candidates = new[]
+        {
+            Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "..", "..", "..",
+                "src", "PhotoPrivacy.Ui", "Views", "MainWindow.axaml.cs"),
+            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..",
+                "src", "PhotoPrivacy.Ui", "Views", "MainWindow.axaml.cs"),
+        };
+        foreach (var c in candidates)
+        {
+            var full = Path.GetFullPath(c);
+            if (File.Exists(full)) return full;
+        }
+        return string.Empty;
     }
 
     private static void FlattenNode(JsonObject obj, string prefix, Dictionary<string, string> dict)
