@@ -16,13 +16,18 @@ public sealed class DesignSystemTests
         Assert.Contains("DurationNormal", source, StringComparison.Ordinal);
     }
 
+    // ponytail: regression guard — Avalonia.Fonts.Inter 12.1.1 lacks DemiBold(600) face;
+    // forcing it as app-level DefaultFontFamily makes Semi.Avalonia theme templates crash at
+    // Window.Show() initial measure with InvalidOperationException (regression introduced by
+    // commit 300d6bf, ADR 0048 stage 2). Lock the crash source out, keep the harmless mono scheme.
     [Fact]
-    public void DesignTokens_Should_Define_Font_Scheme()
+    public void DesignTokens_Should_Define_Mono_Font_Scheme_And_Not_Force_Inter_Default()
     {
         var path = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "Styling", "DesignTokens.axaml");
         var source = File.ReadAllText(path, Encoding.UTF8);
-        Assert.Contains("fonts:Inter#Inter", source, StringComparison.Ordinal);
         Assert.Contains("fonts:CascadiaCode#Cascadia Code", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("fonts:Inter#Inter", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("x:Key=\"DefaultFontFamily\" fonts:Inter", source, StringComparison.Ordinal);
     }
 
     [Theory]

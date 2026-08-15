@@ -78,11 +78,11 @@
     <Setter Property="BorderBrush" Value="{DynamicResource SemiColorBorder}" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="{DynamicResource RadiusMd}" />
-    <Setter Property="Padding" Value="{DynamicResource SpaceLg}" />
+<Setter Property="Padding" Value="16" /><!-- ponytail: literal Thickness, not DynamicResource Double; Avalonia ThicknessTypeConverter runs at compile, DynamicResource skips it -> InvalidCastException -->
   </Style>
 
   <Style Selector="Border.settings-row">
-    <Setter Property="Padding" Value="{DynamicResource SpaceLg}" />
+<Setter Property="Padding" Value="16" /><!-- ponytail: literal Thickness, not DynamicResource Double; Avalonia ThicknessTypeConverter runs at compile, DynamicResource skips it -> InvalidCastException -->
   </Style>
 
   <Style Selector="Border.row-divider">
