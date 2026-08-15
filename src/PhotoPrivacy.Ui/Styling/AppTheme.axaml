@@ -1,210 +1,128 @@
 <Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
   <Styles.Resources>
     <ResourceDictionary>
       <ResourceDictionary.ThemeDictionaries>
-        <ResourceDictionary x:Key="Light">
-          <Color x:Key="AppBg">#F9F9F9</Color>
-          <Color x:Key="SidebarBg">#FFFFFF</Color>
-          <Color x:Key="CardBg">#FFFFFF</Color>
-          <Color x:Key="CardBorder">#E5E5E5</Color>
-          <Color x:Key="Divider">#EFEFEF</Color>
-          <Color x:Key="TextPrimary">#111111</Color>
-          <Color x:Key="TextSecondary">#666666</Color>
-          <Color x:Key="TextTertiary">#AAAAAA</Color>
-          <Color x:Key="AccentBlue">#3B82F6</Color>
-          <Color x:Key="AccentGreen">#22C55E</Color>
-          <Color x:Key="AccentRed">#EF4444</Color>
-          <Color x:Key="AccentAmber">#F59E0B</Color>
-          <Color x:Key="AccentGray">#9CA3AF</Color>
-          <Color x:Key="BtnPrimaryBg">#111111</Color>
-          <Color x:Key="BtnPrimaryFg">#FFFFFF</Color>
-          <Color x:Key="BtnPrimaryHover">#333333</Color>
-          <Color x:Key="BtnGhostBorder">#D1D5DB</Color>
-          <Color x:Key="BtnGhostHover">#F3F4F6</Color>
-          <Color x:Key="BtnDangerFg">#EF4444</Color>
-          <Color x:Key="BtnDangerBorder">#FCA5A5</Color>
-        </ResourceDictionary>
-
-        <ResourceDictionary x:Key="Dark">
-          <Color x:Key="AppBg">#171717</Color>
-          <Color x:Key="SidebarBg">#111827</Color>
-          <Color x:Key="CardBg">#1F2937</Color>
-          <Color x:Key="CardBorder">#374151</Color>
-          <Color x:Key="Divider">#273244</Color>
-          <Color x:Key="TextPrimary">#E5E7EB</Color>
-          <Color x:Key="TextSecondary">#9CA3AF</Color>
-          <Color x:Key="TextTertiary">#6B7280</Color>
-          <Color x:Key="AccentBlue">#60A5FA</Color>
-          <Color x:Key="AccentGreen">#4ADE80</Color>
-          <Color x:Key="AccentRed">#F87171</Color>
-          <Color x:Key="AccentAmber">#FBBF24</Color>
-          <Color x:Key="AccentGray">#9CA3AF</Color>
-          <Color x:Key="BtnPrimaryBg">#E5E7EB</Color>
-          <Color x:Key="BtnPrimaryFg">#111827</Color>
-          <Color x:Key="BtnPrimaryHover">#D1D5DB</Color>
-          <Color x:Key="BtnGhostBorder">#4B5563</Color>
-          <Color x:Key="BtnGhostHover">#111827</Color>
-          <Color x:Key="BtnDangerFg">#FCA5A5</Color>
-          <Color x:Key="BtnDangerBorder">#B91C1C</Color>
-        </ResourceDictionary>
+        <ResourceDictionary x:Key="Light" />
+        <ResourceDictionary x:Key="Dark" />
       </ResourceDictionary.ThemeDictionaries>
-
-      <SolidColorBrush x:Key="AppBgBrush" Color="{DynamicResource AppBg}"/>
-      <SolidColorBrush x:Key="SidebarBgBrush" Color="{DynamicResource SidebarBg}"/>
-      <SolidColorBrush x:Key="CardBgBrush" Color="{DynamicResource CardBg}"/>
-      <SolidColorBrush x:Key="CardBorderBrush" Color="{DynamicResource CardBorder}"/>
-      <SolidColorBrush x:Key="DividerBrush" Color="{DynamicResource Divider}"/>
-      <SolidColorBrush x:Key="TextPrimaryBrush" Color="{DynamicResource TextPrimary}"/>
-      <SolidColorBrush x:Key="TextSecondaryBrush" Color="{DynamicResource TextSecondary}"/>
-      <SolidColorBrush x:Key="TextTertiaryBrush" Color="{DynamicResource TextTertiary}"/>
-      <SolidColorBrush x:Key="AccentBlueBrush" Color="{DynamicResource AccentBlue}"/>
-      <SolidColorBrush x:Key="AccentGreenBrush" Color="{DynamicResource AccentGreen}"/>
-      <SolidColorBrush x:Key="AccentRedBrush" Color="{DynamicResource AccentRed}"/>
-      <SolidColorBrush x:Key="AccentAmberBrush" Color="{DynamicResource AccentAmber}"/>
-      <SolidColorBrush x:Key="AccentGrayBrush" Color="{DynamicResource AccentGray}"/>
-      <SolidColorBrush x:Key="BtnPrimaryBgBrush" Color="{DynamicResource BtnPrimaryBg}"/>
-      <SolidColorBrush x:Key="BtnPrimaryFgBrush" Color="{DynamicResource BtnPrimaryFg}"/>
-      <SolidColorBrush x:Key="BtnPrimaryHoverBrush" Color="{DynamicResource BtnPrimaryHover}"/>
-      <SolidColorBrush x:Key="BtnGhostBorderBrush" Color="{DynamicResource BtnGhostBorder}"/>
-      <SolidColorBrush x:Key="BtnGhostHoverBrush" Color="{DynamicResource BtnGhostHover}"/>
-      <SolidColorBrush x:Key="BtnDangerFgBrush" Color="{DynamicResource BtnDangerFg}"/>
-      <SolidColorBrush x:Key="BtnDangerBorderBrush" Color="{DynamicResource BtnDangerBorder}"/>
+    <SolidColorBrush x:Key="AppBgBrush" Color="{DynamicResource SemiColorBackground0}" />
+    <SolidColorBrush x:Key="SidebarBgBrush" Color="{DynamicResource SemiColorNavBackground}" />
+    <SolidColorBrush x:Key="CardBgBrush" Color="{DynamicResource SemiColorBackground1}" />
+    <SolidColorBrush x:Key="DividerBrush" Color="{DynamicResource SemiColorBorder}" />
+    <SolidColorBrush x:Key="TextPrimaryBrush" Color="{DynamicResource SemiColorText0}" />
+    <SolidColorBrush x:Key="TextSecondaryBrush" Color="{DynamicResource SemiColorText1}" />
+    <SolidColorBrush x:Key="TextTertiaryBrush" Color="{DynamicResource SemiColorText2}" />
+    <SolidColorBrush x:Key="AccentRedBrush" Color="{DynamicResource SemiColorDanger}" />
     </ResourceDictionary>
   </Styles.Resources>
 
   <Style Selector="Window">
-    <Setter Property="Background" Value="{DynamicResource AppBgBrush}"/>
-    <Setter Property="FontFamily" Value="Segoe UI Variable, Inter, Noto Sans, sans-serif"/>
+    <Setter Property="Background" Value="{DynamicResource SemiColorBackground0}" />
   </Style>
 
   <Style Selector="TextBlock">
-    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+    <Setter Property="Foreground" Value="{DynamicResource SemiColorText0}" />
   </Style>
 
   <Style Selector="Button.primary">
-    <Setter Property="Background" Value="{DynamicResource BtnPrimaryBgBrush}"/>
-    <Setter Property="Foreground" Value="{DynamicResource BtnPrimaryFgBrush}"/>
-    <Setter Property="CornerRadius" Value="7"/>
-    <Setter Property="Padding" Value="14,7"/>
-    <Setter Property="FontSize" Value="13"/>
-    <Setter Property="FontWeight" Value="Medium"/>
-    <Setter Property="BorderThickness" Value="0"/>
-    <Setter Property="MinHeight" Value="36"/>
+    <Setter Property="Background" Value="{DynamicResource SemiColorPrimary}" />
+    <Setter Property="Foreground" Value="White" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusSm}" />
   </Style>
 
   <Style Selector="Button.primary:pointerover">
-    <Setter Property="Background" Value="{DynamicResource BtnPrimaryHoverBrush}"/>
+    <Setter Property="Background" Value="{DynamicResource SemiColorPrimaryPointerover}" />
   </Style>
 
   <Style Selector="Button.primary:disabled">
-    <Setter Property="Opacity" Value="0.35"/>
+    <Setter Property="Background" Value="{DynamicResource SemiColorPrimaryDisabled}" />
+    <Setter Property="Opacity" Value="0.5" />
   </Style>
 
   <Style Selector="Button.ghost">
-    <Setter Property="Background" Value="Transparent"/>
-    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
-    <Setter Property="BorderBrush" Value="{DynamicResource BtnGhostBorderBrush}"/>
-    <Setter Property="BorderThickness" Value="1"/>
-    <Setter Property="CornerRadius" Value="7"/>
-    <Setter Property="Padding" Value="14,7"/>
-    <Setter Property="FontSize" Value="13"/>
-    <Setter Property="MinHeight" Value="36"/>
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource SemiColorText0}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SemiColorBorder}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusSm}" />
   </Style>
 
   <Style Selector="Button.ghost:pointerover">
-    <Setter Property="Background" Value="{DynamicResource BtnGhostHoverBrush}"/>
+    <Setter Property="Background" Value="{DynamicResource SemiColorBackground1}" />
   </Style>
 
   <Style Selector="Button.danger">
-    <Setter Property="Background" Value="Transparent"/>
-    <Setter Property="Foreground" Value="{DynamicResource BtnDangerFgBrush}"/>
-    <Setter Property="BorderBrush" Value="{DynamicResource BtnDangerBorderBrush}"/>
-    <Setter Property="BorderThickness" Value="1"/>
-    <Setter Property="CornerRadius" Value="7"/>
-    <Setter Property="Padding" Value="14,7"/>
-    <Setter Property="FontSize" Value="13"/>
-    <Setter Property="MinHeight" Value="36"/>
+    <Setter Property="Foreground" Value="{DynamicResource SemiColorDanger}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SemiColorDanger}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusSm}" />
   </Style>
 
   <Style Selector="Button.nav">
-    <Setter Property="Background" Value="Transparent"/>
-    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
-    <Setter Property="HorizontalAlignment" Value="Stretch"/>
-    <Setter Property="HorizontalContentAlignment" Value="Left"/>
-    <Setter Property="Padding" Value="12,8"/>
-    <Setter Property="CornerRadius" Value="6"/>
-    <Setter Property="FontSize" Value="13"/>
-    <Setter Property="BorderThickness" Value="0"/>
-    <Setter Property="MinHeight" Value="36"/>
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource SemiColorText2}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusSm}" />
   </Style>
 
   <Style Selector="Button.nav:pointerover">
-    <Setter Property="Background" Value="{DynamicResource AppBgBrush}"/>
-    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+    <Setter Property="Background" Value="{DynamicResource SemiColorBackground1}" />
+    <Setter Property="Foreground" Value="{DynamicResource SemiColorText0}" />
   </Style>
 
   <Style Selector="Button.nav.active">
-    <Setter Property="Background" Value="{DynamicResource AppBgBrush}"/>
-    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
-    <Setter Property="FontWeight" Value="Medium"/>
+    <Setter Property="Background" Value="{DynamicResource SemiColorPrimaryLight}" />
+    <Setter Property="Foreground" Value="{DynamicResource SemiColorPrimary}" />
   </Style>
 
   <Style Selector="Button.nav-action">
-    <Setter Property="Background" Value="Transparent"/>
-    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
-    <Setter Property="BorderBrush" Value="{DynamicResource BtnGhostBorderBrush}"/>
-    <Setter Property="BorderThickness" Value="1"/>
-    <Setter Property="CornerRadius" Value="7"/>
-    <Setter Property="Padding" Value="10,6"/>
-    <Setter Property="FontSize" Value="12"/>
-    <Setter Property="MinHeight" Value="34"/>
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource SemiColorText2}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusSm}" />
   </Style>
 
   <Style Selector="Button.nav-action:pointerover">
-    <Setter Property="Background" Value="{DynamicResource BtnGhostHoverBrush}"/>
+    <Setter Property="Background" Value="{DynamicResource SemiColorBackground1}" />
+    <Setter Property="Foreground" Value="{DynamicResource SemiColorText0}" />
   </Style>
 
   <Style Selector="Border.settings-card">
-    <Setter Property="Background" Value="{DynamicResource CardBgBrush}"/>
-    <Setter Property="BorderBrush" Value="{DynamicResource CardBorderBrush}"/>
-    <Setter Property="BorderThickness" Value="1"/>
-    <Setter Property="CornerRadius" Value="10"/>
-    <Setter Property="Padding" Value="0"/>
-    <Setter Property="Margin" Value="0,0,0,12"/>
+    <Setter Property="Background" Value="{DynamicResource SemiColorBackground1}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SemiColorBorder}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusMd}" />
+    <Setter Property="Padding" Value="{DynamicResource SpaceLg}" />
   </Style>
 
   <Style Selector="Border.settings-row">
-    <Setter Property="Padding" Value="16,12"/>
+    <Setter Property="Padding" Value="{DynamicResource SpaceLg}" />
   </Style>
 
   <Style Selector="Border.row-divider">
-    <Setter Property="Height" Value="1"/>
-    <Setter Property="Background" Value="{DynamicResource DividerBrush}"/>
-    <Setter Property="Margin" Value="16,0"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource SemiColorBorder}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
   </Style>
 
   <Style Selector="TextBlock.section-header">
-    <Setter Property="FontSize" Value="12"/>
-    <Setter Property="FontWeight" Value="SemiBold"/>
-    <Setter Property="Foreground" Value="{DynamicResource TextTertiaryBrush}"/>
-    <Setter Property="Margin" Value="16,12,16,4"/>
+    <Setter Property="Foreground" Value="{DynamicResource SemiColorText0}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
   </Style>
 
   <Style Selector="TextBlock.row-label">
-    <Setter Property="FontSize" Value="13"/>
-    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+    <Setter Property="Foreground" Value="{DynamicResource SemiColorText0}" />
   </Style>
 
   <Style Selector="TextBlock.row-desc">
-    <Setter Property="FontSize" Value="11"/>
-    <Setter Property="Foreground" Value="{DynamicResource TextTertiaryBrush}"/>
+    <Setter Property="Foreground" Value="{DynamicResource SemiColorText2}" />
   </Style>
 
   <Style Selector="TextBox.inline-input">
-    <Setter Property="MinHeight" Value="34"/>
-    <Setter Property="Background" Value="{DynamicResource AppBgBrush}"/>
-    <Setter Property="BorderBrush" Value="{DynamicResource DividerBrush}"/>
-    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource SemiColorBorder}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusSm}" />
   </Style>
+
 </Styles>
