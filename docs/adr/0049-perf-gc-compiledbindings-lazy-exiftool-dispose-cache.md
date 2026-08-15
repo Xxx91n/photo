@@ -1,4 +1,4 @@
-# ADR 0047: 性能优化——GC调优 + CompiledBindings + R2R + Lazy ExifTool + Dispose加固 + 缓存容量
+# ADR 0049: 性能优化——GC调优 + CompiledBindings + R2R + Lazy ExifTool + Dispose加固 + 缓存容量
 
 **状态**: 计划中（grill 已确认待实施）
 **日期**: 2026-08-14

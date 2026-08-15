@@ -238,9 +238,20 @@ _Avoid_: hardcoded theme switching, Conditional compilation per theme
 _Avoid_: inline magic numbers in XAML
 
 **fonts: scheme**:
-Avalonia 字体引用方案，FontFamily="fonts:Inter#Inter" 跨平台一致。字体文件嵌入式打包到 Assets/Fonts/，不依赖系统字体安装。
-_Avoid_: system font fallback, relative font paths
+Avalonia 字体引用方案，FontFamily="fonts:Inter#Inter" 跨平台一致。字体方案必须通过 Program.cs 的 .WithInterFont() AppBuilder 扩展注册 Avalonia.Fonts.Inter NuGet 包的 InterFontCollection(EmbeddedFontCollection) 才生效；Inter 字体嵌在该 NuGet 包 dll 内，项目无 Assets/Fonts/ 目录。手写 DefaultFontFamily=fonts:Inter#Inter 而不调 .WithInterFont() 会让 collection 未注册，主题请求 SemiBold(600) 时抛 InvalidOperationException: Could not create glyphTypeface（见 commit db152c9）。回归 guard: DesignSystemTests.Inter_Font_Scheme_Must_Be_Registered_Via_WithInterFont。
+_Avoid_: 写 DefaultFontFamily=fonts:Inter#Inter 而又不调 .WithInterFont()；假设 Assets/Fonts/ 目录存在（实际不存在）
 
 **Source-lint Test**:
 编译时静态检查 test：验证 XAML 文件存在、无硬编码颜色值、fonts: scheme 引用正确、SemiTheme 正确引入、5 个社区主题文件存在。沿用已验证 pattern，不引 Avalonia.Headless。
 _Avoid_: runtime-only UI test, Avalonia.Headless（超时风险）
+**WithInterFont Registration**:
+AppBuilder 扩展方法，注册 Avalonia.Fonts.Inter 包内的 InterFontCollection(EmbeddedFontCollection)。是 fonts:Inter#Inter scheme 的唯一正确注册方式。缺少它则字体 collection 未注册，主题 fonts:Inter 请求任意 FontWeight(如 SemiBold=600) 时 Avalonia 无法创建 glyphTypeface → 启动崩溃 InvalidOperationException。见 commit db152c9，回归 guard DesignSystemTests.Inter_Font_Scheme_Must_Be_Registered_Via_WithInterFont 锁定 Program.cs 必含 .WithInterFont()。
+_Avoid_: 用 DefaultFontFamily 手赋 fonts:Inter#Inter 替代 .WithInterFont()；自己写 EmbeddedFontCollection 而不用官方扩展
+
+**IPC Probe Resilience**:
+WorkerIpcClient 探测 Worker 是否存活必须 catch System.Text.Json.JsonException（不只 OperationCanceled/IO/Timeout/Socket）。stale pipe 残留 1 字节坏 JSON 时，JsonSerializer 反序列化抛 JsonException，未捕获会杀 UI 进程导致 release 启动即崩。捕获后视为 Worker 不可用返回 false，绝不杀 UI。符合 ADR 0035 心智模型：IPC 探测失败应降级而非崩溃。见 commit a6ef02b。
+_Avoid_: IPC 探测只 catch IO/Timeout 而漏 JsonException；stale pipe 坏 JSON 导致 UI 进程崩溃
+
+**Padding Literal Quantization**:
+XAML Thickness 必须用字面量字符串如 Padding="16" 触发编译期 ThicknessTypeConverter，而非 DynamicResource Double 赋 Thickness（跳过 TypeConverter → InvalidCastException 导致布局测量阶段崩溃）。字面量化是 DesignTokens spacing ramp 的 XAML 消费形式。见 commit 92f7790。
+_Avoid_: DynamicResource Double 直接赋 Thickness 属性（TypeConverter 被跳过 → InvalidCastException）
