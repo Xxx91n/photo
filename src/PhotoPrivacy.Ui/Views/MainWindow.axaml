@@ -11,12 +11,12 @@
         MinHeight="480"
         Title="PhotoPrivacy"
         FlowDirection="{Binding UiFlowDirection}"
-        Background="{DynamicResource AppBgBrush}">
+        Background="{DynamicResource SemiColorBackground0}">
   <Grid ColumnDefinitions="200,*">
     <Border Grid.Column="0"
             Width="200"
-            Background="{DynamicResource SidebarBgBrush}"
-            BorderBrush="{DynamicResource DividerBrush}"
+            Background="{DynamicResource SemiColorNavBackground}"
+            BorderBrush="{DynamicResource SemiColorBorder}"
             BorderThickness="0,0,1,0">
       <DockPanel>
         <Border DockPanel.Dock="Top" Height="56" Padding="16,0">
@@ -24,24 +24,24 @@
             <TextBlock Text="PhotoPrivacy" FontSize="14" FontWeight="SemiBold"/>
             <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
               <Ellipse Width="6" Height="6" Fill="{Binding ModeColor}"/>
-              <TextBlock Text="{Binding ModeLabel}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
+              <TextBlock Text="{Binding ModeLabel}" FontSize="11" Foreground="{DynamicResource SemiColorText1}"/>
             </StackPanel>
           </StackPanel>
         </Border>
 
-        <Border DockPanel.Dock="Top" Height="1" Background="{DynamicResource DividerBrush}"/>
+        <Border DockPanel.Dock="Top" Height="1" Background="{DynamicResource SemiColorBorder}"/>
 
         <Border DockPanel.Dock="Top"
                 Margin="10,10,10,0"
                 Padding="12,10"
-                Background="{DynamicResource AppBgBrush}"
+                Background="{DynamicResource SemiColorBackground0}"
                 CornerRadius="8">
           <StackPanel Spacing="8">
             <StackPanel Orientation="Horizontal" Spacing="6">
               <Ellipse Width="8" Height="8" Fill="{Binding StatusDotColor}" VerticalAlignment="Center"/>
               <TextBlock Text="{Binding RuntimeStatus}" FontSize="12" FontWeight="Medium" VerticalAlignment="Center"/>
             </StackPanel>
-            <TextBlock Text="{Binding ExifToolVersion}" FontSize="11" Foreground="{DynamicResource TextTertiaryBrush}"/>
+            <TextBlock Text="{Binding ExifToolVersion}" FontSize="11" Foreground="{DynamicResource SemiColorText2}"/>
             <TextBlock Text="{Binding CurrentPage}" IsVisible="False"/>
           </StackPanel>
         </Border>
@@ -57,7 +57,7 @@
         </StackPanel>
 
         <StackPanel DockPanel.Dock="Bottom" Margin="8,0,8,12" Spacing="4">
-          <Border Height="1" Background="{DynamicResource DividerBrush}" Margin="0,0,0,4"/>
+          <Border Height="1" Background="{DynamicResource SemiColorBorder}" Margin="0,0,0,4"/>
           <Button x:Name="PauseResumeButton"
                   Classes="nav-action"
                   Content="{Binding PauseResumeLabel}"
@@ -72,7 +72,7 @@
 
     <Grid Grid.Column="1" x:Name="MainContentGrid">
       <Grid x:Name="ConfigPage" RowDefinitions="Auto,*" IsVisible="True">
-        <Border Padding="24,20,24,16" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1">
+        <Border Padding="24,20,24,16" BorderBrush="{DynamicResource SemiColorBorder}" BorderThickness="0,0,0,1">
           <TextBlock Text="{ex:Localize nav.config}" FontSize="16" FontWeight="SemiBold"/>
         </Border>
 
@@ -105,7 +105,7 @@
                       </DockPanel>
                       <TextBlock Text="{Binding ExifToolPathHint}"
                                  FontSize="11"
-                                 Foreground="{DynamicResource TextTertiaryBrush}"
+                                 Foreground="{DynamicResource SemiColorText2}"
                                  IsVisible="{Binding HasExifToolHint}"/>
                     </StackPanel>
                   </DockPanel>
@@ -342,7 +342,7 @@
                     <TextBlock Text="{ex:Localize config.desc.system_excluded}" Classes="row-desc"/>
                     <ListBox ItemsSource="{Binding SystemAutoExcludedDirectories}"
                              Height="80"
-                             BorderBrush="{DynamicResource DividerBrush}"
+                             BorderBrush="{DynamicResource SemiColorBorder}"
                              BorderThickness="1"/>
                   </StackPanel>
                 </Border>
@@ -358,7 +358,7 @@
                     <ListBox x:Name="UserExcludedDirectoriesListBox"
                              ItemsSource="{Binding UserExcludedDirectories}"
                              Height="80"
-                             BorderBrush="{DynamicResource DividerBrush}"
+                             BorderBrush="{DynamicResource SemiColorBorder}"
                              BorderThickness="1"/>
                     <StackPanel Orientation="Horizontal" Spacing="6">
                       <Button x:Name="AddExcludedDirectoryButton" Content="+" Classes="ghost" MinWidth="28" Padding="4,0"/>
@@ -370,22 +370,22 @@
             </Border>
 
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10" Margin="0,8,0,0">
-              <TextBlock Text="{Binding SaveStatus}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+              <TextBlock Text="{Binding SaveStatus}" FontSize="12" Foreground="{DynamicResource SemiColorText1}" VerticalAlignment="Center"/>
             </StackPanel>
           </StackPanel>
         </ScrollViewer>
       </Grid>
 
       <Grid x:Name="LogPage" RowDefinitions="Auto,*" IsVisible="False">
-        <Border Padding="24,20,24,16" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1">
+        <Border Padding="24,20,24,16" BorderBrush="{DynamicResource SemiColorBorder}" BorderThickness="0,0,0,1">
           <TextBlock Text="{ex:Localize nav.logs}" FontSize="16" FontWeight="SemiBold"/>
         </Border>
 
         <DockPanel Grid.Row="1" Margin="24,12,24,20">
           <Border DockPanel.Dock="Top"
                   Padding="16,8"
-                  Background="{DynamicResource SidebarBgBrush}"
-                  BorderBrush="{DynamicResource DividerBrush}"
+                  Background="{DynamicResource SemiColorNavBackground}"
+                  BorderBrush="{DynamicResource SemiColorBorder}"
                   BorderThickness="0,1,0,1">
             <DockPanel>
               <Button DockPanel.Dock="Right" x:Name="ClearLogsButton" Content="{ex:Localize log.btn.clear}" Classes="ghost" Height="28" FontSize="12"/>
@@ -394,7 +394,7 @@
 
           <ListBox x:Name="LogsList"
                    ItemsSource="{Binding LogEntries}"
-                   Background="{DynamicResource AppBgBrush}"
+                   Background="{DynamicResource SemiColorBackground0}"
                    BorderThickness="0"
                    Padding="4">
             <ListBox.ItemTemplate>
@@ -404,11 +404,11 @@
                              FontFamily="Cascadia Code,Consolas,monospace"
                              FontSize="11"
                              VerticalAlignment="Center"
-                             Foreground="{DynamicResource TextTertiaryBrush}"/>
+                             Foreground="{DynamicResource SemiColorText2}"/>
                   <Border Grid.Column="1"
                           CornerRadius="4"
                           Padding="6,2"
-                          Background="{DynamicResource SidebarBgBrush}"
+                          Background="{DynamicResource SemiColorNavBackground}"
                           Margin="0,0,8,0"
                           VerticalAlignment="Center"
                           HorizontalAlignment="Left">
@@ -419,13 +419,13 @@
                              FontFamily="Cascadia Code,Consolas,monospace"
                              FontSize="11"
                              VerticalAlignment="Center"
-                             Foreground="{DynamicResource TextSecondaryBrush}"
+                             Foreground="{DynamicResource SemiColorText1}"
                              TextTrimming="CharacterEllipsis"/>
                   <TextBlock Grid.Column="3"
                              Text="{Binding Message}"
                              FontSize="12"
                              VerticalAlignment="Center"
-                             Foreground="{DynamicResource TextPrimaryBrush}"
+                             Foreground="{DynamicResource SemiColorText0}"
                              TextTrimming="CharacterEllipsis"/>
                 </Grid>
               </DataTemplate>
@@ -435,7 +435,7 @@
       </Grid>
 
       <Grid x:Name="ServiceManagerTab" RowDefinitions="Auto,*" IsVisible="False">
-        <Border Padding="24,20,24,16" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,0,0,1">
+        <Border Padding="24,20,24,16" BorderBrush="{DynamicResource SemiColorBorder}" BorderThickness="0,0,0,1">
           <TextBlock Text="{ex:Localize nav.service_manager}" FontSize="16" FontWeight="SemiBold"/>
         </Border>
 
@@ -486,7 +486,7 @@
                 <Border Classes="settings-row">
                   <DockPanel LastChildFill="False">
                     <StackPanel DockPanel.Dock="Left" Spacing="2">
-                      <TextBlock Text="{ex:Localize service.row.uninstall}" Classes="row-label" Foreground="{DynamicResource AccentRedBrush}"/>
+                      <TextBlock Text="{ex:Localize service.row.uninstall}" Classes="row-label" Foreground="{DynamicResource SemiColorDanger}"/>
                       <TextBlock Text="{ex:Localize service.desc.uninstall}" Classes="row-desc"/>
                     </StackPanel>
                     <Button x:Name="UninstallServiceButton" DockPanel.Dock="Right" Content="{ex:Localize service.row.uninstall}" Classes="danger" VerticalAlignment="Center"/>
