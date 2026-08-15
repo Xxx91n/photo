@@ -3,6 +3,13 @@
              xmlns:semi="https://irihi.tech/semi"
              x:Class="PhotoPrivacy.Ui.App"
              RequestedThemeVariant="Default">
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="avares://PhotoPrivacy.Ui/Styling/DesignTokens.axaml" />
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </Application.Resources>
   <Application.Styles>
     <semi:SemiTheme Locale="zh-CN" />
     <semi:UrsaSemiTheme Locale="zh-CN" />
