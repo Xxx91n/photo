@@ -1,9 +1,11 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:semi="https://irihi.tech/semi"
              x:Class="PhotoPrivacy.Ui.App"
              RequestedThemeVariant="Default">
   <Application.Styles>
-    <FluentTheme />
+    <semi:SemiTheme Locale="zh-CN" />
+    <semi:UrsaSemiTheme Locale="zh-CN" />
     <StyleInclude Source="avares://PhotoPrivacy.Ui/Styling/AppTheme.axaml" />
   </Application.Styles>
 </Application>
