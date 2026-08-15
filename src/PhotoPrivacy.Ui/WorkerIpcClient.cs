@@ -75,6 +75,12 @@ public sealed class WorkerIpcClient
         {
             return false;
         }
+        catch (System.Text.Json.JsonException)
+        {
+            // ponytail: probe must never kill the UI. Worker returned malformed/truncated JSON
+            // (e.g. empty/1-byte response during shutdown race, stale pipe). Treat as "not alive".
+            return false;
+        }
     }
 
     public Task<WorkerIpcResponse?> ReloadConfigAsync(string endpointName, CancellationToken cancellationToken)
