@@ -62,7 +62,15 @@ public sealed class LocalizeExtension : MarkupExtension
         {
             foreach (var kvp in _bindings)
             {
-                kvp.Value.Ext.RefreshTarget(kvp.Key, kvp.Value.Prop);
+                try
+                {
+                    kvp.Value.Ext.RefreshTarget(kvp.Key, kvp.Value.Prop);
+                }
+                catch
+                {
+                    // ponytail: a single stale/disposed target must not abort
+                    // refresh of all other localized controls.
+                }
             }
         }
     }

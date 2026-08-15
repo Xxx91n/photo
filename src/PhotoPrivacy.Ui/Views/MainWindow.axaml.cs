@@ -1,4 +1,4 @@
-using Avalonia.Controls;
+﻿using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia;
@@ -74,16 +74,17 @@ public partial class MainWindow : Window
         LocalizationService.Instance.Initialize(); // auto-detect from system culture
         LocalizationService.Instance.CultureChanged += (_, locale) =>
         {
+           // ponytail: ADR 0035 — NEVER sync-over-async on UI thread.
+           // The previous blocking call pattern inside
+           // Dispatcher.UIThread.Post caused window freeze when Worker pipe
+           // was stale/broken. Status text is refreshed by the background
+           // poll loop (PollRuntimeStatusAsync) within ~1s; i18n switch
+           // must NOT block on IPC.
            Dispatcher.UIThread.Post(() =>
            {
                viewModel?.RefreshLocaleDependent();
                RefreshI18nComboBoxItems();
-               if (viewModel is not null && _options is not null)
-               {
-                    var paused = _options.IsPausedAsync(CancellationToken.None).GetAwaiter().GetResult();
-                    viewModel.RuntimeStatus = BuildRuntimeStatusText(_options.RuntimeKind, _options.GetServiceRuntimeState(), paused);
-               }
-           }, DispatcherPriority.Background);
+           }, DispatcherPriority.Normal);
         };
         viewModel?.ApplyLocaleFlowDirection();
 

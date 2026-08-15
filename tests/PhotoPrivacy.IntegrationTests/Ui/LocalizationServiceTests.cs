@@ -271,6 +271,101 @@ public sealed class LocalizationServiceTests
         return dict.Keys.ToHashSet();
     }
 
+
+    /// <summary>
+    /// ADR 0035 regression guard (ea9ecc9 root cause): the CultureChanged
+    /// handler in MainWindow.axaml.cs must NOT contain sync-over-async
+    /// (.GetAwaiter().GetResult()) on the UI thread — this caused window
+    /// freeze when the Worker IPC pipe was stale/broken during language
+    /// switch. Industry pattern: fire-and-forget + background poll for status.
+    /// </summary>
+    [Fact]
+    public void CultureChanged_Handler_Does_Not_Contain_SyncOverAsync()
+    {
+        // Lint-style regression guard: reads the source file and verifies
+        // the CultureChanged lambda block has no .GetAwaiter().GetResult().
+        var sourcePath = Path.Combine(
+            Directory.GetCurrentDirectory(),
+            "..", "..", "..", "..", "..",
+            "src", "PhotoPrivacy.Ui", "Views", "MainWindow.axaml.cs");
+        sourcePath = Path.GetFullPath(sourcePath);
+
+        if (!File.Exists(sourcePath))
+        {
+            // Fallback: try relative to test bin directory
+            sourcePath = Path.GetFullPath(Path.Combine(
+                AppContext.BaseDirectory,
+                "..", "..", "..", "..", "..",
+                "src", "PhotoPrivacy.Ui", "Views", "MainWindow.axaml.cs"));
+        }
+
+        if (!File.Exists(sourcePath))
+        {
+            // If source not available in CI, skip gracefully
+            return;
+        }
+
+        var source = File.ReadAllText(sourcePath);
+
+        // Find CultureChanged handler block and verify no sync-over-async inside it
+        var cultureIdx = source.IndexOf("LocalizationService.Instance.CultureChanged +=");
+        Assert.True(cultureIdx >= 0, "CultureChanged handler not found in MainWindow.axaml.cs");
+
+        // The handler block ends at the next ");" after the opening
+        var handlerBlock = source.Substring(cultureIdx, 600);
+        Assert.DoesNotContain("GetAwaiter().GetResult()", handlerBlock);
+    }
+
+    /// <summary>
+    /// Regression guard for ea9ecc9: all 3 theme.option.* keys must have
+    /// non-empty translations across all 10 locales, both in JSON files
+    /// and in BuiltIn fallback. This catches any locale JSON that was
+    /// accidentally truncated or missing the nested "theme.option" subtree.
+    /// </summary>
+    [Fact]
+    public void Theme_Option_Keys_All_Locales_Have_NonEmpty_Translation()
+    {
+        var svc = LocalizationService.Instance;
+        var themeKeys = new[] { "theme.option.system", "theme.option.light", "theme.option.dark" };
+        var locales = new[] { "ar", "de", "en", "es", "fr", "ja", "ko", "pt", "ru", "zh-CN" };
+
+        foreach (var locale in locales)
+        {
+            svc.SwitchLocale(locale);
+            foreach (var key in themeKeys)
+            {
+                var value = svc.Get(key);
+                Assert.False(string.IsNullOrWhiteSpace(value),
+                    $"Locale '{locale}' key '{key}': translation is empty/whitespace");
+                Assert.NotEqual(key, value); // must not fallback to key itself
+            }
+        }
+    }
+
+    /// <summary>
+    /// Regression guard for ea9ecc9: all 5 loglevel.option.* keys must have
+    /// non-empty translations across all 10 locales. Mirrors the theme test.
+    /// </summary>
+    [Fact]
+    public void LogLevel_Option_Keys_All_Locales_Have_NonEmpty_Translation()
+    {
+        var svc = LocalizationService.Instance;
+        var logKeys = new[] { "loglevel.option.all", "loglevel.option.info", "loglevel.option.debug", "loglevel.option.warn", "loglevel.option.error" };
+        var locales = new[] { "ar", "de", "en", "es", "fr", "ja", "ko", "pt", "ru", "zh-CN" };
+
+        foreach (var locale in locales)
+        {
+            svc.SwitchLocale(locale);
+            foreach (var key in logKeys)
+            {
+                var value = svc.Get(key);
+                Assert.False(string.IsNullOrWhiteSpace(value),
+                    $"Locale '{locale}' key '{key}': translation is empty/whitespace");
+                Assert.NotEqual(key, value); // must not fallback to key itself
+            }
+        }
+    }
+
     private static void FlattenNode(JsonObject obj, string prefix, Dictionary<string, string> dict)
     {
         foreach (var kvp in obj)
