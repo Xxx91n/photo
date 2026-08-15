@@ -316,6 +316,8 @@ public sealed class LocalizationServiceTests
         // refresh block (added after the ea9ecc9 root-cause fix).
         var handlerBlock = source.Substring(cultureIdx, 1200);
         Assert.DoesNotContain("GetAwaiter().GetResult()", handlerBlock);
+        Assert.DoesNotContain(".Result", handlerBlock);
+        Assert.DoesNotContain(".Wait()", handlerBlock);
     }
 
     /// <summary>
