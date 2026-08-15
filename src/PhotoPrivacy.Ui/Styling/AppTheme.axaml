@@ -1,23 +1,6 @@
 <Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-  <Styles.Resources>
-    <ResourceDictionary>
-      <ResourceDictionary.ThemeDictionaries>
-        <ResourceDictionary x:Key="Light" />
-        <ResourceDictionary x:Key="Dark" />
-      </ResourceDictionary.ThemeDictionaries>
-    <SolidColorBrush x:Key="AppBgBrush" Color="{DynamicResource SemiColorBackground0}" />
-    <SolidColorBrush x:Key="SidebarBgBrush" Color="{DynamicResource SemiColorNavBackground}" />
-    <SolidColorBrush x:Key="CardBgBrush" Color="{DynamicResource SemiColorBackground1}" />
-    <SolidColorBrush x:Key="DividerBrush" Color="{DynamicResource SemiColorBorder}" />
-    <SolidColorBrush x:Key="TextPrimaryBrush" Color="{DynamicResource SemiColorText0}" />
-    <SolidColorBrush x:Key="TextSecondaryBrush" Color="{DynamicResource SemiColorText1}" />
-    <SolidColorBrush x:Key="TextTertiaryBrush" Color="{DynamicResource SemiColorText2}" />
-    <SolidColorBrush x:Key="AccentRedBrush" Color="{DynamicResource SemiColorDanger}" />
-    </ResourceDictionary>
-  </Styles.Resources>
-
   <Style Selector="Window">
     <Setter Property="Background" Value="{DynamicResource SemiColorBackground0}" />
   </Style>

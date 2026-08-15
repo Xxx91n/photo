@@ -72,4 +72,21 @@ public sealed class DesignSystemTests
         Assert.DoesNotContain("FluentTheme", source, StringComparison.Ordinal);
     }
 
+
+    [Fact]
+    public void AppTheme_Should_Not_Contain_Dead_Legacy_Alias_Brushes()
+    {
+        var path = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "Styling", "AppTheme.axaml");
+        Assert.True(File.Exists(path), "AppTheme.axaml should exist");
+        var source = File.ReadAllText(path, Encoding.UTF8);
+        Assert.DoesNotContain("x:Key=\"AppBgBrush\"", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("x:Key=\"SidebarBgBrush\"", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("x:Key=\"CardBgBrush\"", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("x:Key=\"DividerBrush\"", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("x:Key=\"TextPrimaryBrush\"", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("x:Key=\"TextSecondaryBrush\"", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("x:Key=\"TextTertiaryBrush\"", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("x:Key=\"AccentRedBrush\"", source, StringComparison.Ordinal);
+    }
+
 }
