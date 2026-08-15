@@ -60,4 +60,16 @@ public sealed class DesignSystemTests
         Assert.Contains("BrushTransition", source, StringComparison.Ordinal);
         Assert.Contains("0:0:0.150", source, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void App_Should_Register_SemiTheme_Style()
+    {
+        var appPath = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "App.axaml");
+        Assert.True(File.Exists(appPath), "App.axaml should exist");
+        var source = File.ReadAllText(appPath, Encoding.UTF8);
+        Assert.Contains("semi:SemiTheme", source, StringComparison.Ordinal);
+        Assert.Contains("semi:UrsaSemiTheme", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("FluentTheme", source, StringComparison.Ordinal);
+    }
+
 }

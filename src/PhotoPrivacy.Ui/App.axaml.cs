@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Avalonia.Markup.Xaml.Styling;
 using Avalonia.Media.Imaging;
 using Avalonia.Styling;
 using Avalonia.Threading;
@@ -37,12 +38,14 @@ public partial class App : Application
                 var config = LoadConfigOrDefault(RuntimeOptions.ConfigPath);
                 if (config is not null)
                 {
-                    Application.Current!.RequestedThemeVariant = config.Ui.ThemeVariant switch
+                    var themeVariant = config.Ui.ThemeVariant switch
                     {
-                        "dark" => ThemeVariant.Dark,
+                        "dark" or "nord" or "catppuccin" or "dracula" or "tokyonight" or "onedarkpro" => ThemeVariant.Dark,
                         "light" => ThemeVariant.Light,
                         _ => ThemeVariant.Default
                     };
+                    Application.Current!.RequestedThemeVariant = themeVariant;
+                    ApplyCommunityThemeResources(config.Ui.ThemeVariant);
                 }
 
                 TrySetWindowIcon(window);
@@ -106,6 +109,36 @@ public partial class App : Application
         catch
         {
             // best-effort icon
+        }
+    }
+
+    private static void ApplyCommunityThemeResources(string themeName)
+    {
+        var themeFile = themeName switch
+        {
+            "nord" => "Themes/NordDark.axaml",
+            "catppuccin" => "Themes/Catppuccin.axaml",
+            "dracula" => "Themes/Dracula.axaml",
+            "tokyonight" => "Themes/TokyoNight.axaml",
+            "onedarkpro" => "Themes/OneDarkPro.axaml",
+            _ => null
+        };
+        if (themeFile is null) return;
+
+        try
+        {
+            var uri = new Uri($"avares://PhotoPrivacy.Ui/{themeFile}");
+            var include = new ResourceInclude(baseUri: null)
+            {
+                Source = uri
+            };
+            var resources = Application.Current!.Resources;
+            resources.MergedDictionaries.Clear();
+            resources.MergedDictionaries.Add(include);
+        }
+        catch
+        {
+            // best-effort: if theme resource fails to load, fall back to default Semi theme
         }
     }
 }

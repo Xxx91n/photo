@@ -7,22 +7,22 @@
 
 | 包 | 版本 | 用途 |
 |----|------|------|
-| Avalonia | 11.3.7 | UI 框架 |
-| Avalonia.Desktop | 11.3.7 | 桌面平台 |
-| Avalonia.Themes.Simple | 11.3.7 | 基础主题 |
-| Semi.Avalonia | 11.3.7 | Semi Design 主题 |
-| Irihi.Ursa | 11.3.7 | Ursa 控件库 |
-| Irihi.Ursa.Themes.Semi | 11.3.7 | Ursa Semi 主题 |
-| Material.Icons.Avalonia | latest | Material 图标 |
-| Avalonia.Fonts.Inter | 11.3.7 | Inter 字体 |
-| Avalonia.Fonts.CascadiaCode | 11.3.7 | Cascadia Code 字体 |
+| Avalonia | 12.1.1 | UI 框架 |
+| Avalonia.Desktop | 12.1.1 | 桌面平台 |
+| Avalonia.Themes.Simple | 12.1.1 | 基础主题 |
+| Semi.Avalonia | 12.1.0.1 | Semi Design 主题 |
+| Irihi.Ursa | 2.2.0 | Ursa 控件库 |
+| Irihi.Ursa.Themes.Semi | 2.2.0 | Ursa Semi 主题 |
+| Material.Icons.Avalonia | 3.0.2 | Material 图标 |
+| Avalonia.Fonts.Inter | 12.1.1 | Inter 字体 |
+| Fonts.Avalonia.CascadiaCode | 0.14.0 | Cascadia Code 字体 |
 
 ## 阶段 1: Avalonia 版本升级 + NuGet 包引入
 
 | 步骤 | 内容 | 验收标准 |
 |------|------|----------|
-| 1.1 | csproj: Avalonia 11.1.3 -> 11.3.7 全部包升级 | dotnet build 0 error |
-| 1.2 | 新增 Semi.Avalonia 11.3.7 | NuGet restore 成功 |
+| 1.1 | csproj: Avalonia 11.1.3 -> 12.1.1 全部包升级 | dotnet build 0 error |
+| 1.2 | 新增 Semi.Avalonia 12.1.0.1 | NuGet restore 成功 |
 | 1.3 | 新增 Irihi.Ursa + Irihi.Ursa.Themes.Semi | NuGet restore 成功 |
 | 1.4 | 新增 Material.Icons.Avalonia | NuGet restore 成功 |
 | 1.5 | 新增 Avalonia.Fonts.CascadiaCode | NuGet restore 成功 |

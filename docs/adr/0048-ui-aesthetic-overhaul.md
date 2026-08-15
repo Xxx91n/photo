@@ -25,8 +25,10 @@
 ### A1: UI 库基座 — Ursa.Avalonia + Semi.Avalonia
 Semi 提供完整 ControlTheme（替换 FluentTheme），Ursa 提供 50+ 企业控件。MIT 许可，跨平台 Win/Linux/macOS。.NET Foundation 项目。社区参考项目多。
 
-### A2: Avalonia 版本升级路径 — 升级到 11.3.7 稳定线
+### A2: Avalonia 版本升级路径 — 升级到 11.3.7+ 稳定线
 Semi.Avalonia 11.1.x EOL，必须 11.3.7+。全 solution 包版本统一升级。ThemeDictionaries 语义不变，CompiledBindings 默认开启不变，Style selector 语法不变。全量 test 闭环验证。
+
+> 实施落地版本：Avalonia 12.1.1 + Semi.Avalonia 12.1.0.1 + Ursa 2.2.0 + Material.Icons.Avalonia 3.0.2 + Fonts.Avalonia.CascadiaCode 0.14.0。grill 确认 11.3.7 时为 11.x 线最新稳定版；实施期 Avalonia 12.1.x 已稳定发布，沿用同一升级路径原则落地到 12.1.1。
 
 ### A3: 自定义 style 迁移策略 — 全面改用 Semi 命名
 20 个自定义 Color+Brush token（AppBgBrush/SidebarBgBrush 等）迁移到 Semi 的 SemiColor* 命名体系。AppTheme.axaml 只保留 Semi 没有的领域 class（settings-card/row-divider/nav 等）。MainWindow.axaml 所有 DynamicResource 引用更新。
@@ -65,14 +67,14 @@ AppBgBrush → SemiColorBackground（底层）。SidebarBgBrush → SemiColorBac
 - 不破坏此前 IPC/性能分支的 119 个 core tests
 - PowerShell 5.1 兼容
 - * text=auto eol=lf，LF 规范
-- 跨平台 Win/Linux/macOS 兼容（Semi.Avalonia 11.3.7+ 验证）
+- 跨平台 Win/Linux/macOS 兼容（Semi.Avalonia 12.1.x 验证）
 
 ## 调研引用
 
-- Semi.Avalonia: https://github.com/irihitech/Semi.Avalonia (11.3.7, MIT)
+- Semi.Avalonia: https://github.com/irihitech/Semi.Avalonia (12.1.x, MIT)
 - Ursa.Avalonia: https://github.com/irihitech/Ursa.Avalonia (.NET Foundation, MIT, 50+ controls)
 - Material.Icons.Avalonia: https://github.com/AvaloniaCommunity/Material.Icons.Avalonia
-- Avalonia 11.3 Theme Variants: https://docs.avaloniaui.net/docs/styling/theme-variants
+- Avalonia Theme Variants: https://docs.avaloniaui.net/docs/styling/theme-variants
 - Avalonia Custom Fonts: https://docs.avaloniaui.net/docs/styling/custom-fonts
 - Avalonia Control Transitions: https://docs.avaloniaui.net/docs/graphics-animation/control-transitions
 - Fluent 2 Layout (4px grid): https://fluent2.microsoft.design/layout

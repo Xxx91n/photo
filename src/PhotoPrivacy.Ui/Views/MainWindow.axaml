@@ -3,6 +3,7 @@
         xmlns:ex="using:PhotoPrivacy.Ui.Localization"
         xmlns:vm="using:PhotoPrivacy.Ui.ViewModels"
         xmlns:audit="using:PhotoPrivacy.Ui"
+         xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
         x:Class="PhotoPrivacy.Ui.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Width="920"
@@ -85,7 +86,7 @@
                 <Border Classes="settings-row">
                   <DockPanel LastChildFill="False">
                     <StackPanel DockPanel.Dock="Left" Spacing="2" VerticalAlignment="Center">
-                      <TextBlock Text="{ex:Localize settings.exiftool_path}" Classes="row-label"/>
+                      <StackPanel Orientation="Horizontal" Spacing="8"><materialIcons:MaterialIcon Kind="ImageMultiple" Width="16" Height="16" Foreground="{DynamicResource SemiColorPrimary}"/><TextBlock Text="{ex:Localize settings.exiftool_path}" Classes="row-label"/></StackPanel>
                       <TextBlock Text="{ex:Localize config.desc.exiftool_path}" Classes="row-desc"/>
                     </StackPanel>
                     <StackPanel DockPanel.Dock="Right" Spacing="6">
