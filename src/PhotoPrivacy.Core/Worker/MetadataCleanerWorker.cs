@@ -508,7 +508,9 @@ public sealed class MetadataCleanerWorker : BackgroundService
         _pipeline = new FileTaskPipeline(config, new RuleEngine(config), _bridge, new LocalFileOperations(), auditLogger, new FileProcessedRecordStore(config.Audit.LogDirectory));
         _maxParallelDrain = Math.Max(1, Math.Min(config.ExifTool.MaxParallelDrain, config.ExifTool.StayOpenPoolSize));
 
-        await _bridge.StartAsync(token);
+        // ponytail: M4 lazy - do NOT eager StartAsync here; WipeMetadataAsync calls
+        // EnsureStartedAsync internally, so ExifTool only spawns when first file arrives.
+        // This was originally `await _bridge.StartAsync(token);` which violated ADR 0047 M4.
 
         _watcher = new FswFolderWatcher(
             config,
