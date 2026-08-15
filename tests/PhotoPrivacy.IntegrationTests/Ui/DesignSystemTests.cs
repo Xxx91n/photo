@@ -16,18 +16,27 @@ public sealed class DesignSystemTests
         Assert.Contains("DurationNormal", source, StringComparison.Ordinal);
     }
 
-    // ponytail: regression guard — Avalonia.Fonts.Inter 12.1.1 lacks DemiBold(600) face;
-    // forcing it as app-level DefaultFontFamily makes Semi.Avalonia theme templates crash at
-    // Window.Show() initial measure with InvalidOperationException (regression introduced by
-    // commit 300d6bf, ADR 0048 stage 2). Lock the crash source out, keep the harmless mono scheme.
+    // ponytail: regression guard — Inter font scheme requires .WithInterFont() AppBuilder
+    // extension to register the InterFontCollection EmbedFontCollection. Hand-writing
+    // DefaultFontFamily=fonts:Inter#Inter in XAML WITHOUT calling .WithInterFont() leaves the
+    // fonts:Inter scheme unregistered, so any FontWeight the theme requests (e.g. SemiBold=600,
+    // logged as DemiBold) throws InvalidOperationException: Could not create glyphTypeface at
+    // Window.Show() initial measure (regression from commit 300d6bf, root-caused via exa
+    // search of official AppBuilderExtension.cs + InterFontCollection.cs + FontManagerTests).
+    // Lock BOTH halves: the XAML scheme must be present AND Program.cs must register the collection.
     [Fact]
-    public void DesignTokens_Should_Define_Mono_Font_Scheme_And_Not_Force_Inter_Default()
+    public void Inter_Font_Scheme_Must_Be_Registered_Via_WithInterFont()
     {
-        var path = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "Styling", "DesignTokens.axaml");
-        var source = File.ReadAllText(path, Encoding.UTF8);
-        Assert.Contains("fonts:CascadiaCode#Cascadia Code", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("fonts:Inter#Inter", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("x:Key=\"DefaultFontFamily\" fonts:Inter", source, StringComparison.Ordinal);
+        var tokensPath = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "Styling", "DesignTokens.axaml");
+        Assert.True(File.Exists(tokensPath), "DesignTokens.axaml should exist");
+        var tokens = File.ReadAllText(tokensPath, Encoding.UTF8);
+        Assert.Contains("fonts:Inter#Inter", tokens, StringComparison.Ordinal);
+        Assert.Contains("fonts:CascadiaCode#Cascadia Code", tokens, StringComparison.Ordinal);
+
+        var programPath = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "Program.cs");
+        Assert.True(File.Exists(programPath), "Program.cs should exist");
+        var program = File.ReadAllText(programPath, Encoding.UTF8);
+        Assert.Contains(".WithInterFont()", program, StringComparison.Ordinal);
     }
 
     [Theory]

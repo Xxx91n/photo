@@ -188,7 +188,8 @@ public static class UiProgram
     public static AppBuilder BuildAvaloniaApp()
     {
         var builder = AppBuilder.Configure<App>()
-            .UsePlatformDetect();
+            .UsePlatformDetect()
+            .WithInterFont();
 #if DEBUG
         builder = builder.LogToTrace();
 #endif

@@ -20,6 +20,7 @@
   <x:Double x:Key="DurationNormal">150</x:Double>
   <x:Double x:Key="DurationSlow">250</x:Double>
 
+  <FontFamily x:Key="DefaultFontFamily">fonts:Inter#Inter</FontFamily>
   <FontFamily x:Key="MonoFontFamily">fonts:CascadiaCode#Cascadia Code</FontFamily>
 
 </ResourceDictionary>
