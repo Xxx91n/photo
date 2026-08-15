@@ -212,3 +212,35 @@ _Avoid_: Flat locale keys, dot-separated keys
 **10-Language Expansion**:
 从 4 语言（zh-CN/en/ja/ar）扩展到 10 语言（+ko/de/fr/es/pt/ru），对齐 env-manager 支持范围。以 en.json 为基准，pwm pro 逐语言翻译，key 集合与 en.json 完全对齐校验（见 ADR 0047）。
 _Avoid_: 4-language limit, hardcoded language list
+
+**Semi.Avalonia**:
+Semi Design 的 Avalonia 实现，提供完整 ControlTheme 套件（Button/TextBox/ComboBox 等），替代 FluentTheme 作为 UI 主题基座。MIT 许可。
+_Avoid_: FluentTheme overlay, custom theme from scratch
+
+**Ursa.Avalonia**:
+.NET Foundation 支持的 Avalonia 控件扩展库，50+ 控件，MIT 许可。与 Semi.Avalonia 天然搭配。
+_Avoid_: hand-rolled custom controls when Semi/Ursa already provides them
+
+**Semi Token**:
+Semi.Avalonia 定义的语义色值（SemiColorBackground/Background1/Surface/Overlay/Primary/TextPrimary），替代自定义 Color+Brush。迁移后 AppTheme.axaml 不再保留硬编码色值。
+_Avoid_: AppBgBrush, hardcoded hex colors in XAML
+
+**Surface Depth**:
+4 层背景语义层级：Background < Background1 < Surface < Overlay。从浅到深递进，用于卡片、弹窗、模态框等视觉层次。
+_Avoid_: flat single-bg, arbitrary opacity stacking
+
+**Custom ThemeVariant**:
+通过 ThemeVariant.Create("Name", ThemeVariant.Inherit) 定义的社区主题（Nord/Catppuccin/Dracula/TokyoNight/OneDarkPro）。运行时 Application.Current.RequestedThemeVariant 切换，DynamicResource 自动传播。
+_Avoid_: hardcoded theme switching, Conditional compilation per theme
+
+**DesignTokens.axaml**:
+独立的设计 token 文件，定义 spacing ramp(4/8/12/16/24/32/48px)、radius ladder(2/4/8/12/16)、motion durations(75/150/250ms)。全局 DynamicResource 引用。
+_Avoid_: inline magic numbers in XAML
+
+**fonts: scheme**:
+Avalonia 字体引用方案，FontFamily="fonts:Inter#Inter" 跨平台一致。字体文件嵌入式打包到 Assets/Fonts/，不依赖系统字体安装。
+_Avoid_: system font fallback, relative font paths
+
+**Source-lint Test**:
+编译时静态检查 test：验证 XAML 文件存在、无硬编码颜色值、fonts: scheme 引用正确、SemiTheme 正确引入、5 个社区主题文件存在。沿用已验证 pattern，不引 Avalonia.Headless。
+_Avoid_: runtime-only UI test, Avalonia.Headless（超时风险）
