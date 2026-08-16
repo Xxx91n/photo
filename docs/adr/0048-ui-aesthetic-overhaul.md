@@ -33,8 +33,8 @@ Semi.Avalonia 11.1.x EOL，必须 11.3.7+。全 solution 包版本统一升级�
 ### A3: 自定义 style 迁移策略 — 全面改用 Semi 命名
 20 个自定义 Color+Brush token（AppBgBrush/SidebarBgBrush 等）迁移到 Semi 的 SemiColor* 命名体系。AppTheme.axaml 只保留 Semi 没有的领域 class（settings-card/row-divider/nav 等）。MainWindow.axaml 所有 DynamicResource 引用更新。
 
-### A4: 多主题实现策略 — custom ThemeVariant + per-variant ResourceDictionary
-每个社区主题（NordDark/CatppuccinMocha/Dracula/TokyoNight/OneDarkPro）注册为 custom ThemeVariant（ThemeVariant.Inherit fallback 到 Dark），配合独立 .axaml ResourceDictionary 覆盖 SemiColor* token。运行时 RequestedThemeVariant = customVariant 切换，DynamicResource 自动传播。
+### A4: 多主题实现策略 — per-variant ResourceDictionary override（不依赖 custom ThemeVariant）
+每个社区主题（NordDark/Catppuccin/Dracula 等）是独立 .axaml ResourceDictionary，直接覆写 SemiColor*/SemiBackground* 等 brush token。切换主题时在 MergedDictionaries 合并/退出对应 ResourceDictionary，DynamicResource 自动向所有 Semi 控件传播。RequestedThemeVariant 只在 Light/Dark/Default 三档内置 variant 之间切换（见 MainWindow.axaml.cs NormalizeThemeVariant switch），社区主题不注册 custom ThemeVariant——实际机制是 ResourceDictionary override，不是 ThemeVariant.Create。
 
 ### A5: 字体策略 — 全嵌入式打包 + fonts: scheme + typography token 系统
 正文用 fonts:Inter#Inter 全路径（Avalonia.Fonts.Inter NuGet），等宽用 fonts:CascadiaCode#Cascadia Code（新增 Avalonia.Fonts.CascadiaCode NuGet），CJK 回退加 NotoSans。定义 6+ typography roles 为 TextBlock style class（.display/.headline/.title/.body/.caption/.mono），每个 role 绑 FontSize + FontWeight + LetterSpacing token。

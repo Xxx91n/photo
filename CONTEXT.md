@@ -229,8 +229,8 @@ _Avoid_: AppBgBrush, hardcoded hex colors in XAML
 4 层背景语义层级：Background < Background1 < Surface < Overlay。从浅到深递进，用于卡片、弹窗、模态框等视觉层次。
 _Avoid_: flat single-bg, arbitrary opacity stacking
 
-**Custom ThemeVariant**:
-通过 ThemeVariant.Create("Name", ThemeVariant.Inherit) 定义的社区主题（Nord/Catppuccin/Dracula/TokyoNight/OneDarkPro）。运行时 Application.Current.RequestedThemeVariant 切换，DynamicResource 自动传播。
+**Community Theme ResourceDictionary Override**:
+社区主题（NordDark/Catppuccin/Dracula 等）是独立 .axaml ResourceDictionary，直接覆写 SemiColor*/SemiBackground* brush token。切换时在 Application.Resources.MergedDictionaries 合并/退出对应 ResourceDictionary，DynamicResource 自动向 Semi 控件传播。RequestedThemeVariant 只在 Light/Dark/Default 三档内置 variant 间切换（MainWindow.axaml.cs NormalizeThemeVariant switch），社区主题不注册 custom ThemeVariant——实际机制是 ResourceDictionary override，不是 ThemeVariant.Create（见 ADR 0048 A4 修正）。
 _Avoid_: hardcoded theme switching, Conditional compilation per theme
 
 **DesignTokens.axaml**:
