@@ -20,10 +20,7 @@ public sealed class WorkerProcessManager
     {
         if (await _ipcClient.IsAliveAsync(WorkerIpcEndpointNames.ServicePipe, cancellationToken))
         {
-            var serviceStatus = await _ipcClient.SendAsync(
-                WorkerIpcEndpointNames.ServicePipe,
-                new WorkerIpcRequest(WorkerIpcMethods.GetStatus),
-                cancellationToken);
+            var serviceStatus = await GetStatusSafeAsync(WorkerIpcEndpointNames.ServicePipe, cancellationToken);
 
             return new WorkerConnectionResult(
                 RuntimeKind: "service",
@@ -44,10 +41,7 @@ public sealed class WorkerProcessManager
 
         if (await _ipcClient.IsAliveAsync(WorkerIpcEndpointNames.BackgroundPipe, cancellationToken))
         {
-            var backgroundStatus = await _ipcClient.SendAsync(
-                WorkerIpcEndpointNames.BackgroundPipe,
-                new WorkerIpcRequest(WorkerIpcMethods.GetStatus),
-                cancellationToken);
+            var backgroundStatus = await GetStatusSafeAsync(WorkerIpcEndpointNames.BackgroundPipe, cancellationToken);
 
             return new WorkerConnectionResult(
                 RuntimeKind: "tray",
@@ -66,10 +60,7 @@ public sealed class WorkerProcessManager
         {
             if (await _ipcClient.IsAliveAsync(WorkerIpcEndpointNames.BackgroundPipe, cancellationToken))
             {
-                var status = await _ipcClient.SendAsync(
-                    WorkerIpcEndpointNames.BackgroundPipe,
-                    new WorkerIpcRequest(WorkerIpcMethods.GetStatus),
-                    cancellationToken);
+                var status = await GetStatusSafeAsync(WorkerIpcEndpointNames.BackgroundPipe, cancellationToken);
 
                 return new WorkerConnectionResult(
                     RuntimeKind: "tray",
@@ -91,6 +82,38 @@ public sealed class WorkerProcessManager
     public Task<WorkerIpcResponse?> GetStatusAsync(string endpointName, CancellationToken cancellationToken)
     {
         return _ipcClient.SendAsync(endpointName, new WorkerIpcRequest(WorkerIpcMethods.GetStatus), cancellationToken);
+    }
+
+    /// <summary>
+    /// ponytail: GetStatus with resilient IO downgrade. During first-launch the freshly spawned
+    /// Worker can hit a short "zombie window": .NET Host bound the pipe, IsAlive(Ping) succeeded,
+    /// but then config validation fails and the Worker exits — the next SendAsync(GetStatus) hits
+    /// IOException("Pipe is broken") / SocketException / TimeoutException. ConnectingOrLaunch must
+    /// treat these as "Worker not actually alive" (return null -> downgrade/continue) — NOT let the
+    /// exception escape to UiProgram.Start's GetAwaiter().GetResult and kill the whole UI process.
+    /// See ADR 0035 (IPC probe degrade-not-crash) and the release UI log 02:04:43 Fatal.
+    /// </summary>
+    private async Task<WorkerIpcResponse?> GetStatusSafeAsync(string endpointName, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _ipcClient.SendAsync(
+                endpointName,
+                new WorkerIpcRequest(WorkerIpcMethods.GetStatus),
+                cancellationToken);
+        }
+        catch (System.IO.IOException)
+        {
+            return null;
+        }
+        catch (System.Net.Sockets.SocketException)
+        {
+            return null;
+        }
+        catch (TimeoutException)
+        {
+            return null;
+        }
     }
 
     public Task<WorkerIpcResponse?> PauseAsync(string endpointName, CancellationToken cancellationToken)
