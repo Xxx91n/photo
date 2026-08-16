@@ -274,3 +274,18 @@ _Avoid_: PleasantUI 新依赖; 手写 drag handler（系统已接管）；把 `E
 **Unicode Status Symbol Cleanup**:
 locale JSON 用 `✓ ✗ ⚠`（U+2713/2717/26A0）Unicode 符号呈现保存成功/失败/警告，与 Material.Icons 信号语义混杂 → AI 感来源。本 ADR 0050 A2 把 10 语言 JSON 的 8 处 Unicode 符号清零（"✓ Auto-saved" 改为 "Auto-saved"），UI 侧用 Material.Icons（`Check/Close/Alert`）或纯文本呈现状态，避免 application text 混杂 Unicode 符号。回归 guard: LocalizationServiceTests.Unicode_Status_Symbols_Cleared。
 _Avoid_: 在 application text 中用 Unicode 符号替代 Material.Icons；（UI 上）混杂信号图标语义
+**Space Token Spend Cleanup**:
+view 内 Margin/Spacing ad-hoc 散值（如 Margin="12,0" Spacing="5"）是 AI 感 UI 第一根因"everything is evenly spaced"的来源。ADR 0051 A1 要求全局替换为 DesignTokens Space* token 引用（SpaceXxs→Xxxl = 2/4/8/12/16/24/32/48）。XAML Thickness 仍用字面量字符串触发 ThicknessTypeConverter（ADR 约束不变）。Reddit r/ClaudeCode 社区共识：专业 UI 的间距是 4/8px ramp 的分级节奏，而非处处相同。见 ADR 0051 A1。
+_Avoid_: 视图中散布 ad-hoc Margin/Spacing 字面量而不引用 Space* token；等距均匀布局
+
+**Elevation Shadow Ladder**:
+4 级 BoxShadow token（Elevation0 无投影 / Elevation1 1dp / Elevation2 2dp / Elevation4 4dp）在 DesignTokens.axaml 定义，配合 ADR 0050 Surface Depth 4-Layer 的 overlay 第 4 层给 sidebar/settings-card/popover 投影。之前只有 surface 背景分层无 shadow token 导致"扁平贴纸感"。Material surfaces/depth 规范 + avalonia-pro-max 反模式清单均要求 ≥3-4 层 surface + elevation shadow。见 ADR 0051 A1。
+_Avoid_: 无 elevation shadow 的平铺无深度区分；自写 BoxShadow 散值而非用 token
+
+**Button Transition Animation**:
+AppTheme.axaml Button 变体加 Transitions setter（BrushTransition 0.15s + TransformOperationsTransition 0.075s），:pressed 设 RenderTransform="scale(0.97)"（CSS 风格可过渡，WPF 风格 ScaleTransform 不能 transition）。修复"闪现弹回"根因：无 Transitions 时 :pressed 伪类松开瞬间硬切画笔。官方 easing 文档推荐按压 QuadraticEaseInOut、hover SineEaseOut。必须避免 BackEaseInOut/ElasticEaseInOut（issue #15704 触发 visibility 闪烁）。SukiUI 同款模式（100-350ms 全属性 + scale(0.97)），Semi.Avalonia 零动画硬切哲学不选。见 ADR 0051 A2。
+_Avoid_: Button 样式无 Transitions 导致 :pressed 闪现硬切；WPF 风格 ScaleTransform（不能 transition）；BackEaseInOut/ElasticEaseInOut
+
+**RequestAnimationFrame Middle-Click Scroll**:
+MiddleClickScrollBehavior.cs 的 DispatcherTimer 16ms 换为 TopLevel.RequestAnimationFrame（Avalonia 11.0+ 官方等价物 of CompositionTarget.Rendering，与渲染循环/显示器帧率同步），消除合并帧/抖动。帧率无关计算：delta * (frameTime.TotalMilliseconds / 16.67) 让高刷屏自动适配。常量对齐 Files.App 原版：DeadZone=12, SpeedFactor=0.12, MaxSpeedPerTick=32。TopLevel.GetTopLevel(sv) null 边界 fallback 到 DispatcherTimer。保持线性比例速度模型（松键即停，不加惯性）。见 ADR 0051 A3。
+_Avoid_: DispatcherTimer 16ms 非 vsync 对齐导致高刷屏抖动；偏离 Files.App 成熟常量值
