@@ -83,6 +83,34 @@
     <Setter Property="Foreground" Value="{DynamicResource SemiColorText0}" />
   </Style>
 
+  <!-- Self-drawn titlebar caption buttons (ADR 0050 A4). Square hit area,
+       transparent chrome, hover lifts to Semi neutral fill — same spec the
+       Fluent/WindowDrawnDecorations template uses for non-client buttons. -->
+  <Style Selector="Button.caption-btn">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="0" />
+    <Setter Property="Padding" Value="14,8" />
+    <Setter Property="Foreground" Value="{DynamicResource SemiColorText2}" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+
+  <Style Selector="Button.caption-btn:pointerover">
+    <Setter Property="Background" Value="{DynamicResource SemiColorBackground1}" />
+    <Setter Property="Foreground" Value="{DynamicResource SemiColorText0}" />
+  </Style>
+
+  <Style Selector="Button.caption-btn:pressed">
+    <Setter Property="Background" Value="{DynamicResource SemiColorBackground2}" />
+  </Style>
+
+  <!-- Close button hover turns danger red (industry convention, matches Windows.11/Fluent. -->
+  <Style Selector="Button.caption-btn.danger:pointerover">
+    <Setter Property="Background" Value="{DynamicResource SemiColorDanger}" />
+    <Setter Property="Foreground" Value="White" />
+  </Style>
+
   <!-- Elevated card with shadow (ADR 0050 A1). Lift the card above the
        window background using Semi's elevation token. -->
   <Style Selector="Border.settings-card">

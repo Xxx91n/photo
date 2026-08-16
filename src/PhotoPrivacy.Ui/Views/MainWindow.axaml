@@ -13,9 +13,35 @@
         MinHeight="480"
         Title="PhotoPrivacy"
         FlowDirection="{Binding UiFlowDirection}"
-        Background="{DynamicResource SemiColorBackground0}">
-  <Grid ColumnDefinitions="200,*">
-    <Border Grid.Column="0"
+        Background="{DynamicResource SemiColorBackground0}"
+        ExtendClientAreaToDecorationsHint="True"
+        WindowDecorations="None"
+        ExtendClientAreaTitleBarHeightHint="-1">
+  <Grid RowDefinitions="40,*">
+    <!-- ADR 0050 A4 — self-drawn titlebar (WindowDecorations=None + ExtendClientAreaToDecorationsHint) -->
+    <Border Grid.Row="0" Grid.ColumnSpan="2" Background="{DynamicResource SemiColorBackground0}"
+            WindowDecorationProperties.ElementRole="TitleBar">
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="12,0">
+          <TextBlock Text="PhotoPrivacy" Classes="headline" VerticalAlignment="Center"/>
+          <TextBlock Text="—" Classes="caption" Foreground="{DynamicResource SemiColorText2}" VerticalAlignment="Center"/>
+          <TextBlock Text="{Binding ModeLabel}" Classes="caption" Foreground="{DynamicResource SemiColorText2}" VerticalAlignment="Center"/>
+        </StackPanel>
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center" Margin="0,0,4,0">
+          <Button Classes="caption-btn" Click="OnMinimizeClick" Padding="14,8" Background="Transparent" BorderThickness="0">
+            <materialIcons:MaterialIcon Kind="WindowMinimize" Width="14" Height="14"/>
+          </Button>
+          <Button Classes="caption-btn" Click="OnMaximizeClick" Padding="14,8" Background="Transparent" BorderThickness="0">
+            <materialIcons:MaterialIcon Kind="WindowMaximize" Width="14" Height="14"/>
+          </Button>
+          <Button Classes="caption-btn danger" Click="OnCloseClick" Padding="14,8" Background="Transparent" BorderThickness="0">
+            <materialIcons:MaterialIcon Kind="WindowClose" Width="14" Height="14"/>
+          </Button>
+        </StackPanel>
+      </Grid>
+    </Border>
+    <Grid Grid.Row="1" ColumnDefinitions="200,*">
+      <Border Grid.Column="0"
             Width="200"
             Background="{DynamicResource SemiColorNavBackground}"
             BorderBrush="{DynamicResource SemiColorBorder}"
@@ -468,6 +494,7 @@
             </Border>
           </StackPanel>
         </ScrollViewer>
+      </Grid>
       </Grid>
     </Grid>
   </Grid>

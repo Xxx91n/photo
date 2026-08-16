@@ -380,6 +380,16 @@ public partial class MainWindow : Window
         base.OnClosed(e);
     }
 
+    // ADR 0050 A4 — self-drawn titlebar caption button handlers.
+    // WindowDrawnDecorations is bypassed by WindowDecorations="None" + ExtendClientAreaToDecorationsHint;
+    // we own the caption buttons and drive Window state directly (verified via Avalonia 12.1 docs + source).
+    private void OnMinimizeClick(object? sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+
+    private void OnMaximizeClick(object? sender, RoutedEventArgs e)
+        => WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+
+    private void OnCloseClick(object? sender, RoutedEventArgs e) => Close();
+
     private void OnPauseResumeClick(object? sender, RoutedEventArgs e)
     {
         if (_options is null)
