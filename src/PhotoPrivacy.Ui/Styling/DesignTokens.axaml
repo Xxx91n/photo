@@ -38,11 +38,8 @@
   <FontFamily x:Key="MonoFontFamily">fonts:CascadiaCode#Cascadia Code</FontFamily>
 
   <!-- Elevation shadow ladder (ADR 0051 A1). 4-level BoxShadow token for sidebar/card/popover depth. -->
-  <BoxShadows x:Key="Elevation0" />
+  <BoxShadows x:Key="Elevation0">0 0 0 0 Transparent</BoxShadows>
   <BoxShadows x:Key="Elevation1">0 1 2 0 #14000000</BoxShadows>
   <BoxShadows x:Key="Elevation2">0 2 4 0 #1F000000</BoxShadows>
   <BoxShadows x:Key="Elevation4">0 4 8 0 #29000000</BoxShadows>
-  <!-- TextOptions font rendering defaults (ADR 0051 A1). Avalonia 11.3+ PR #20107. -->
-  <x:String x:Key="DefaultTextHintingMode">Full</x:String>
-  <x:String x:Key="DefaultBaselinePixelAlignment">Aligned</x:String>
 </ResourceDictionary>
