@@ -20,6 +20,20 @@
   <x:Double x:Key="DurationNormal">150</x:Double>
   <x:Double x:Key="DurationSlow">250</x:Double>
 
+  <!-- Typography 6-role font sizes (ADR 0050 A1). Each role has its own Size +
+       FontWeight, consumed via .display/.headline/.title/.body/.caption/.mono style classes. -->
+  <x:Double x:Key="DisplayFontSize">20</x:Double>
+  <x:Double x:Key="HeadlineFontSize">18</x:Double>
+  <x:Double x:Key="TitleFontSize">16</x:Double>
+  <x:Double x:Key="BodyFontSize">14</x:Double>
+  <x:Double x:Key="CaptionFontSize">11</x:Double>
+  <x:Double x:Key="MonoFontSize">12</x:Double>
+
+  <!-- Surface 4th layer: Overlay (ADR 0050 A1). Alias SemiColorBackground2 to let dialog/popover
+       groove lift above cards (SemiColorSurface). Without this alias apps directly consume the
+       raw Semi key no longer; unify window/modal surfaces here. -->
+  <SolidColorBrush x:Key="SemiColorOverlay" Color="#80000000" />
+
   <FontFamily x:Key="DefaultFontFamily">fonts:Inter#Inter</FontFamily>
   <FontFamily x:Key="MonoFontFamily">fonts:CascadiaCode#Cascadia Code</FontFamily>
 

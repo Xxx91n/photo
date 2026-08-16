@@ -9,11 +9,15 @@
     <Setter Property="Foreground" Value="{DynamicResource SemiColorText0}" />
   </Style>
 
+  <!-- Button variant baseline (ADR 0050 A2). Padding 12,6 hits the Semi
+       "large-but-not-tall" baseline; removed inline Padding=4,0 / Height=28
+       scattered values that made buttons uneven heights. -->
   <Style Selector="Button.primary">
     <Setter Property="Background" Value="{DynamicResource SemiColorPrimary}" />
     <Setter Property="Foreground" Value="White" />
     <Setter Property="BorderThickness" Value="0" />
     <Setter Property="CornerRadius" Value="{DynamicResource RadiusSm}" />
+    <Setter Property="Padding" Value="12,6" />
   </Style>
 
   <Style Selector="Button.primary:pointerover">
@@ -31,6 +35,7 @@
     <Setter Property="BorderBrush" Value="{DynamicResource SemiColorBorder}" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="{DynamicResource RadiusSm}" />
+    <Setter Property="Padding" Value="12,6" />
   </Style>
 
   <Style Selector="Button.ghost:pointerover">
@@ -42,6 +47,7 @@
     <Setter Property="BorderBrush" Value="{DynamicResource SemiColorDanger}" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="{DynamicResource RadiusSm}" />
+    <Setter Property="Padding" Value="12,6" />
   </Style>
 
   <Style Selector="Button.nav">
@@ -49,6 +55,8 @@
     <Setter Property="Foreground" Value="{DynamicResource SemiColorText2}" />
     <Setter Property="BorderThickness" Value="0" />
     <Setter Property="CornerRadius" Value="{DynamicResource RadiusSm}" />
+    <Setter Property="HorizontalContentAlignment" Value="Left" />
+    <Setter Property="Padding" Value="12,8" />
   </Style>
 
   <Style Selector="Button.nav:pointerover">
@@ -66,6 +74,8 @@
     <Setter Property="Foreground" Value="{DynamicResource SemiColorText2}" />
     <Setter Property="BorderThickness" Value="0" />
     <Setter Property="CornerRadius" Value="{DynamicResource RadiusSm}" />
+    <Setter Property="HorizontalContentAlignment" Value="Left" />
+    <Setter Property="Padding" Value="12,8" />
   </Style>
 
   <Style Selector="Button.nav-action:pointerover">
@@ -73,11 +83,14 @@
     <Setter Property="Foreground" Value="{DynamicResource SemiColorText0}" />
   </Style>
 
+  <!-- Elevated card with shadow (ADR 0050 A1). Lift the card above the
+       window background using Semi's elevation token. -->
   <Style Selector="Border.settings-card">
     <Setter Property="Background" Value="{DynamicResource SemiColorBackground1}" />
     <Setter Property="BorderBrush" Value="{DynamicResource SemiColorBorder}" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="{DynamicResource RadiusMd}" />
+    <Setter Property="BoxShadow" Value="{DynamicResource SemiShadowElevated}" />
 <Setter Property="Padding" Value="16" /><!-- ponytail: literal Thickness, not DynamicResource Double; Avalonia ThicknessTypeConverter runs at compile, DynamicResource skips it -> InvalidCastException -->
   </Style>
 
@@ -88,6 +101,44 @@
   <Style Selector="Border.row-divider">
     <Setter Property="BorderBrush" Value="{DynamicResource SemiColorBorder}" />
     <Setter Property="BorderThickness" Value="0,0,0,1" />
+  </Style>
+
+  <!-- Typography 6-role system (ADR 0050 A1). Each class consumes its own FontSize token. -->
+  <Style Selector="TextBlock.display">
+    <Setter Property="FontSize" Value="{DynamicResource DisplayFontSize}" />
+    <Setter Property="FontWeight" Value="Bold" />
+    <Setter Property="Foreground" Value="{DynamicResource SemiColorText0}" />
+  </Style>
+
+  <Style Selector="TextBlock.headline">
+    <Setter Property="FontSize" Value="{DynamicResource HeadlineFontSize}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{DynamicResource SemiColorText0}" />
+  </Style>
+
+  <Style Selector="TextBlock.title">
+    <Setter Property="FontSize" Value="{DynamicResource TitleFontSize}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{DynamicResource SemiColorText0}" />
+  </Style>
+
+  <Style Selector="TextBlock.body">
+    <Setter Property="FontSize" Value="{DynamicResource BodyFontSize}" />
+    <Setter Property="FontWeight" Value="Normal" />
+    <Setter Property="Foreground" Value="{DynamicResource SemiColorText0}" />
+  </Style>
+
+  <Style Selector="TextBlock.caption">
+    <Setter Property="FontSize" Value="{DynamicResource CaptionFontSize}" />
+    <Setter Property="FontWeight" Value="Normal" />
+    <Setter Property="Foreground" Value="{DynamicResource SemiColorText2}" />
+  </Style>
+
+  <Style Selector="TextBlock.mono">
+    <Setter Property="FontFamily" Value="{DynamicResource MonoFontFamily}" />
+    <Setter Property="FontSize" Value="{DynamicResource MonoFontSize}" />
+    <Setter Property="FontWeight" Value="Normal" />
+    <Setter Property="Foreground" Value="{DynamicResource SemiColorText1}" />
   </Style>
 
   <Style Selector="TextBlock.section-header">

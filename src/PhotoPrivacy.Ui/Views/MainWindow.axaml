@@ -22,7 +22,7 @@
       <DockPanel>
         <Border DockPanel.Dock="Top" Height="56" Padding="16,0">
           <StackPanel VerticalAlignment="Center" Spacing="2">
-            <TextBlock Text="PhotoPrivacy" FontSize="14" FontWeight="SemiBold"/>
+            <TextBlock Text="PhotoPrivacy" Classes="headline"/>
             <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
               <Ellipse Width="6" Height="6" Fill="{Binding ModeColor}"/>
               <TextBlock Text="{Binding ModeLabel}" FontSize="11" Foreground="{DynamicResource SemiColorText1}"/>
@@ -40,7 +40,7 @@
           <StackPanel Spacing="8">
             <StackPanel Orientation="Horizontal" Spacing="6">
               <Ellipse Width="8" Height="8" Fill="{Binding StatusDotColor}" VerticalAlignment="Center"/>
-              <TextBlock Text="{Binding RuntimeStatus}" FontSize="12" FontWeight="Medium" VerticalAlignment="Center"/>
+              <TextBlock Text="{Binding RuntimeStatus}" Classes="caption" FontWeight="Medium" VerticalAlignment="Center"/>
             </StackPanel>
             <TextBlock Text="{Binding ExifToolVersion}" FontSize="11" Foreground="{DynamicResource SemiColorText2}"/>
             <TextBlock Text="{Binding CurrentPage}" IsVisible="False"/>
@@ -74,7 +74,7 @@
     <Grid Grid.Column="1" x:Name="MainContentGrid">
       <Grid x:Name="ConfigPage" RowDefinitions="Auto,*" IsVisible="True">
         <Border Padding="24,20,24,16" BorderBrush="{DynamicResource SemiColorBorder}" BorderThickness="0,0,0,1">
-          <TextBlock Text="{ex:Localize nav.config}" FontSize="16" FontWeight="SemiBold"/>
+          <TextBlock Text="{ex:Localize nav.config}" Classes="title"/>
         </Border>
 
         <ScrollViewer Grid.Row="1" Margin="24,16,24,20" VerticalScrollBarVisibility="Auto">
@@ -96,13 +96,7 @@
                                  Text="{Binding ExifToolPath}"
                                  Classes="inline-input"
                                  VerticalAlignment="Center"/>
-                        <Button x:Name="BrowseExifToolButton"
-                                DockPanel.Dock="Right"
-                                Content="…"
-                                MinWidth="28"
-                                Padding="4,0"
-                                Classes="ghost"
-                                VerticalAlignment="Center"/>
+                        <Button x:Name="BrowseExifToolButton" DockPanel.Dock="Right" MinWidth="32" Padding="0" Classes="ghost" VerticalAlignment="Center"><materialIcons:MaterialIcon Kind="FolderOpen" Width="16" Height="16"/></Button>
                       </DockPanel>
                       <TextBlock Text="{Binding ExifToolPathHint}"
                                  FontSize="11"
@@ -126,13 +120,7 @@
                                Text="{Binding HotFolderPath}"
                                Classes="inline-input"
                                VerticalAlignment="Center"/>
-                      <Button x:Name="BrowseHotFolderButton"
-                              DockPanel.Dock="Right"
-                              Content="…"
-                              MinWidth="28"
-                              Padding="4,0"
-                              Classes="ghost"
-                              VerticalAlignment="Center"/>
+                      <Button x:Name="BrowseHotFolderButton" DockPanel.Dock="Right" MinWidth="32" Padding="0" Classes="ghost" VerticalAlignment="Center"><materialIcons:MaterialIcon Kind="FolderOpen" Width="16" Height="16"/></Button>
                     </DockPanel>
                   </DockPanel>
                 </Border>
@@ -167,13 +155,7 @@
                                Text="{Binding BackupDirectory}"
                                Classes="inline-input"
                                VerticalAlignment="Center"/>
-                      <Button x:Name="BrowseBackupDirectoryButton"
-                              DockPanel.Dock="Right"
-                              Content="…"
-                              MinWidth="28"
-                              Padding="4,0"
-                              Classes="ghost"
-                              VerticalAlignment="Center"/>
+                      <Button x:Name="BrowseBackupDirectoryButton" DockPanel.Dock="Right" MinWidth="32" Padding="0" Classes="ghost" VerticalAlignment="Center"><materialIcons:MaterialIcon Kind="FolderOpen" Width="16" Height="16"/></Button>
                     </DockPanel>
                   </DockPanel>
                 </Border>
@@ -205,13 +187,7 @@
                                Text="{Binding QuarantineDirectory}"
                                Classes="inline-input"
                                VerticalAlignment="Center"/>
-                      <Button x:Name="BrowseQuarantineDirectoryButton"
-                              DockPanel.Dock="Right"
-                              Content="…"
-                              MinWidth="28"
-                              Padding="4,0"
-                              Classes="ghost"
-                              VerticalAlignment="Center"/>
+                      <Button x:Name="BrowseQuarantineDirectoryButton" DockPanel.Dock="Right" MinWidth="32" Padding="0" Classes="ghost" VerticalAlignment="Center"><materialIcons:MaterialIcon Kind="FolderOpen" Width="16" Height="16"/></Button>
                     </DockPanel>
                   </DockPanel>
                 </Border>
@@ -320,13 +296,7 @@
                                Text="{Binding AuditLogDirectory}"
                                Classes="inline-input"
                                VerticalAlignment="Center"/>
-                      <Button x:Name="BrowseAuditLogDirectoryButton"
-                              DockPanel.Dock="Right"
-                              Content="…"
-                              MinWidth="28"
-                              Padding="4,0"
-                              Classes="ghost"
-                              VerticalAlignment="Center"/>
+                      <Button x:Name="BrowseAuditLogDirectoryButton" DockPanel.Dock="Right" MinWidth="32" Padding="0" Classes="ghost" VerticalAlignment="Center"><materialIcons:MaterialIcon Kind="FolderOpen" Width="16" Height="16"/></Button>
                     </DockPanel>
                   </DockPanel>
                 </Border>
@@ -362,8 +332,8 @@
                              BorderBrush="{DynamicResource SemiColorBorder}"
                              BorderThickness="1"/>
                     <StackPanel Orientation="Horizontal" Spacing="6">
-                      <Button x:Name="AddExcludedDirectoryButton" Content="+" Classes="ghost" MinWidth="28" Padding="4,0"/>
-                      <Button x:Name="RemoveExcludedDirectoryButton" Content="-" Classes="ghost" MinWidth="28" Padding="4,0"/>
+                      <Button x:Name="AddExcludedDirectoryButton" Classes="ghost" MinWidth="32" Padding="0"><materialIcons:MaterialIcon Kind="Plus" Width="16" Height="16"/></Button>
+                      <Button x:Name="RemoveExcludedDirectoryButton" Classes="ghost" MinWidth="32" Padding="0"><materialIcons:MaterialIcon Kind="Minus" Width="16" Height="16"/></Button>
                     </StackPanel>
                   </StackPanel>
                 </Border>
@@ -379,7 +349,7 @@
 
       <Grid x:Name="LogPage" RowDefinitions="Auto,*" IsVisible="False">
         <Border Padding="24,20,24,16" BorderBrush="{DynamicResource SemiColorBorder}" BorderThickness="0,0,0,1">
-          <TextBlock Text="{ex:Localize nav.logs}" FontSize="16" FontWeight="SemiBold"/>
+          <TextBlock Text="{ex:Localize nav.logs}" Classes="title"/>
         </Border>
 
         <DockPanel Grid.Row="1" Margin="24,12,24,20">
@@ -389,7 +359,7 @@
                   BorderBrush="{DynamicResource SemiColorBorder}"
                   BorderThickness="0,1,0,1">
             <DockPanel>
-              <Button DockPanel.Dock="Right" x:Name="ClearLogsButton" Content="{ex:Localize log.btn.clear}" Classes="ghost" Height="28" FontSize="12"/>
+              <Button DockPanel.Dock="Right" x:Name="ClearLogsButton" Content="{ex:Localize log.btn.clear}" Classes="ghost"/>
             </DockPanel>
           </Border>
 
@@ -402,7 +372,7 @@
               <DataTemplate x:DataType="audit:AuditLogEntry">
                 <Grid ColumnDefinitions="68,108,*,1.6*" Height="32" Background="Transparent">
                   <TextBlock Text="{Binding TimeText}"
-                             FontFamily="Cascadia Code,Consolas,monospace"
+                             Classes="caption"
                              FontSize="11"
                              VerticalAlignment="Center"
                              Foreground="{DynamicResource SemiColorText2}"/>
@@ -417,7 +387,7 @@
                   </Border>
                   <TextBlock Grid.Column="2"
                              Text="{Binding SourcePathMasked}"
-                             FontFamily="Cascadia Code,Consolas,monospace"
+                             Classes="caption"
                              FontSize="11"
                              VerticalAlignment="Center"
                              Foreground="{DynamicResource SemiColorText1}"
@@ -437,7 +407,7 @@
 
       <Grid x:Name="ServiceManagerTab" RowDefinitions="Auto,*" IsVisible="False">
         <Border Padding="24,20,24,16" BorderBrush="{DynamicResource SemiColorBorder}" BorderThickness="0,0,0,1">
-          <TextBlock Text="{ex:Localize nav.service_manager}" FontSize="16" FontWeight="SemiBold"/>
+          <TextBlock Text="{ex:Localize nav.service_manager}" Classes="title"/>
         </Border>
 
         <ScrollViewer Grid.Row="1" Margin="24,16,24,20" VerticalScrollBarVisibility="Auto">
@@ -447,7 +417,7 @@
                 <TextBlock Text="{ex:Localize service.section.status}" Classes="section-header" Margin="16,12,16,8"/>
                 <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="16,0,16,12">
                   <Ellipse Width="10" Height="10" Fill="{Binding ServiceStatusDotColor}" VerticalAlignment="Center"/>
-                  <TextBlock Text="{Binding ServiceStatus}" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                  <TextBlock Text="{Binding ServiceStatus}" Classes="headline" VerticalAlignment="Center"/>
                 </StackPanel>
               </StackPanel>
             </Border>
