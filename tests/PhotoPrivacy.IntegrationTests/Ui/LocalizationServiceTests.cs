@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using PhotoPrivacy.Core.Constants;
@@ -514,5 +515,34 @@ public sealed class LocalizationServiceTests
         Assert.NotNull(stream);
         using var reader = new StreamReader(stream);
         return reader.ReadToEnd();
+    }
+
+    // ADR 0050 A2 — Unicode status symbols (✓ ✗ ⚠) were inline-mixed with localized
+    // text, making every locale look like AI-slop English with emoji cruft. All 10
+    // locale JSON files must now be free of those glyphs; status is conveyed by
+    // Material.Icons / type tokens instead. Regression guard.
+    [Theory]
+    [InlineData("ar")]
+    [InlineData("de")]
+    [InlineData("en")]
+    [InlineData("es")]
+    [InlineData("fr")]
+    [InlineData("ja")]
+    [InlineData("ko")]
+    [InlineData("pt")]
+    [InlineData("ru")]
+    [InlineData("zh-CN")]
+    public void Locale_Json_Must_Not_Contain_Unicode_Status_Symbols(string locale)
+    {
+        var path = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "Localization", "Locales", locale + ".json");
+        Assert.True(File.Exists(path), locale + ".json should exist");
+        var source = File.ReadAllText(path, Encoding.UTF8);
+        Assert.DoesNotContain("\u2713", source, StringComparison.Ordinal); // ✓ CHECK MARK
+        Assert.DoesNotContain("\u2717", source, StringComparison.Ordinal); // ✗ BALLOT X
+        Assert.DoesNotContain("\u26A0", source, StringComparison.Ordinal); // ⚠ WARNING SIGN
+        // Literal glyphs also banned (in case encoding slipped).
+        Assert.DoesNotContain("✓", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("✗", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("⚠", source, StringComparison.Ordinal);
     }
 }

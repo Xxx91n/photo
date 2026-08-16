@@ -103,4 +103,115 @@ public sealed class DesignSystemTests
         Assert.DoesNotContain("x:Key=\"AccentRedBrush\"", source, StringComparison.Ordinal);
     }
 
+    // ADR 0050 source-lint regression guards — UI polish surface depth + typography +
+    // button unification + Material.Icons caption buttons. These prevent silent drift
+    // back to inline FontSize / scattered Padding / emoji buttons that caused the "AI
+    // slop" visual regression. Each Fact checks one concrete invariant from the ADR.
+
+    [Fact]
+    public void Typography_6_Classes_Must_Exist()
+    {
+        var path = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "Styling", "AppTheme.axaml");
+        Assert.True(File.Exists(path), "AppTheme.axaml should exist");
+        var source = File.ReadAllText(path, Encoding.UTF8);
+        Assert.Contains("TextBlock.display", source, StringComparison.Ordinal);
+        Assert.Contains("TextBlock.headline", source, StringComparison.Ordinal);
+        Assert.Contains("TextBlock.title", source, StringComparison.Ordinal);
+        Assert.Contains("TextBlock.body", source, StringComparison.Ordinal);
+        Assert.Contains("TextBlock.caption", source, StringComparison.Ordinal);
+        Assert.Contains("TextBlock.mono", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Typography_FontSize_Tokens_Must_Be_Defined()
+    {
+        var path = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "Styling", "DesignTokens.axaml");
+        Assert.True(File.Exists(path), "DesignTokens.axaml should exist");
+        var source = File.ReadAllText(path, Encoding.UTF8);
+        Assert.Contains("DisplayFontSize", source, StringComparison.Ordinal);
+        Assert.Contains("HeadlineFontSize", source, StringComparison.Ordinal);
+        Assert.Contains("TitleFontSize", source, StringComparison.Ordinal);
+        Assert.Contains("BodyFontSize", source, StringComparison.Ordinal);
+        Assert.Contains("CaptionFontSize", source, StringComparison.Ordinal);
+        Assert.Contains("MonoFontSize", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Card_Elevation_Should_Be_Present()
+    {
+        var path = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "Styling", "AppTheme.axaml");
+        Assert.True(File.Exists(path), "AppTheme.axaml should exist");
+        var source = File.ReadAllText(path, Encoding.UTF8);
+        Assert.Contains("Border.settings-card", source, StringComparison.Ordinal);
+        Assert.Contains("BoxShadow", source, StringComparison.Ordinal);
+        Assert.Contains("SemiShadowElevated", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Button_Variants_Should_Set_Padding()
+    {
+        var path = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "Styling", "AppTheme.axaml");
+        Assert.True(File.Exists(path), "AppTheme.axaml should exist");
+        var source = File.ReadAllText(path, Encoding.UTF8);
+        // Each of the 4 variants must declare Padding so button heights stay uniform.
+        Assert.Contains("Button.primary", source, StringComparison.Ordinal);
+        Assert.Contains("Button.ghost", source, StringComparison.Ordinal);
+        Assert.Contains("Button.danger", source, StringComparison.Ordinal);
+        Assert.Contains("Button.nav", source, StringComparison.Ordinal);
+        Assert.Contains("Button.nav-action", source, StringComparison.Ordinal);
+        // Padding literal must appear at least 5 times (one per variant + caption-btn).
+        var paddingHits = System.Text.RegularExpressions.Regex.Matches(source, "Padding");
+        Assert.True(paddingHits.Count >= 5, $"Expected >=5 Padding setters, got {paddingHits.Count}");
+    }
+
+    [Fact]
+    public void MainWindow_No_Inline_Button_Padding_Four_Zero()
+    {
+        var path = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "Views", "MainWindow.axaml");
+        Assert.True(File.Exists(path), "MainWindow.axaml should exist");
+        var source = File.ReadAllText(path, Encoding.UTF8);
+        // The scattered inline Padding="4,0" on Browse buttons was the root visual inconsistency;
+        // they must now route through the variant style instead.
+        Assert.DoesNotContain("Padding=\"4,0\"", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Browse_Buttons_Use_MaterialIcons()
+    {
+        var path = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "Views", "MainWindow.axaml");
+        Assert.True(File.Exists(path), "MainWindow.axaml should exist");
+        var source = File.ReadAllText(path, Encoding.UTF8);
+        Assert.Contains("Kind=\"FolderOpen\"", source, StringComparison.Ordinal);
+        Assert.Contains("Kind=\"Plus\"", source, StringComparison.Ordinal);
+        Assert.Contains("Kind=\"Minus\"", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Caption_Buttons_Use_ElementRole_And_MaterialIcons()
+    {
+        var path = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "Views", "MainWindow.axaml");
+        Assert.True(File.Exists(path), "MainWindow.axaml should exist");
+        var source = File.ReadAllText(path, Encoding.UTF8);
+        Assert.Contains("ExtendClientAreaToDecorationsHint=\"True\"", source, StringComparison.Ordinal);
+        Assert.Contains("WindowDecorations=\"None\"", source, StringComparison.Ordinal);
+        Assert.Contains("WindowDecorationProperties.ElementRole=\"TitleBar\"", source, StringComparison.Ordinal);
+        Assert.Contains("Kind=\"WindowMinimize\"", source, StringComparison.Ordinal);
+        Assert.Contains("Kind=\"WindowMaximize\"", source, StringComparison.Ordinal);
+        Assert.Contains("Kind=\"WindowClose\"", source, StringComparison.Ordinal);
+        Assert.Contains("OnMinimizeClick", source, StringComparison.Ordinal);
+        Assert.Contains("OnMaximizeClick", source, StringComparison.Ordinal);
+        Assert.Contains("OnCloseClick", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MiddleClick_Behavior_Attached_To_ScrollViewer()
+    {
+        var path = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "Views", "MainWindow.axaml");
+        Assert.True(File.Exists(path), "MainWindow.axaml should exist");
+        var source = File.ReadAllText(path, Encoding.UTF8);
+        // At least 2 ScrollViewers (config + service manager pages) must attach the behavior.
+        var hits = System.Text.RegularExpressions.Regex.Matches(source, @"MiddleClickScrollBehavior\.IsEnabled=""True""");
+        Assert.True(hits.Count >= 2, $"Expected >=2 MiddleClickScrollBehavior attachments, got {hits.Count}");
+    }
+
 }
