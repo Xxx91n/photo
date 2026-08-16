@@ -255,3 +255,22 @@ _Avoid_: IPC 探测只 catch IO/Timeout 而漏 JsonException；stale pipe 坏 JS
 **Padding Literal Quantization**:
 XAML Thickness 必须用字面量字符串如 Padding="16" 触发编译期 ThicknessTypeConverter，而非 DynamicResource Double 赋 Thickness（跳过 TypeConverter → InvalidCastException 导致布局测量阶段崩溃）。字面量化是 DesignTokens spacing ramp 的 XAML 消费形式。见 commit 92f7790。
 _Avoid_: DynamicResource Double 直接赋 Thickness 属性（TypeConverter 被跳过 → InvalidCastException）
+**Surface Depth 4-Layer + Elevation Shadow**:
+4 层背景语义层级再加 `SemiElevation1/2/3` shadow token：Background < Background1 < Surface < Overlay。之前 ADR 0048 只到 surface 3 层缺 overlay，无 BoxShadow elevation 导致视觉"扁平贴纸"。本 ADR 0050 引入 Semi.Avalonia 12.1 的 elevation token 给 sidebar/settings-card/popover 投影，配合 overlay 第 4 层用于 dialog/modal 深度分离。见 ADR 0050 A1。
+_Avoid_: 平铺无深度区分；自写 BoxShadow 散值而非用 Semi elevation token
+
+**Typography 6 Role Class**:
+6 个 TextBlock style class：`.display` (20/Bold)、`.headline` (18/SemiBold)、`.title` (16/SemiBold)、`.body` (14/Normal)、`.caption` (11/Normal)、`.mono` (12/Normal, CascadiaCode)。绑 FontSize + FontWeight 到 design token，MainWindow.axaml 的 inline `FontSize=16 FontWeight=SemiBold` 散值迁移到这些 class。符合 Fluent/Avalonia "style class over inline" 行业原则。见 ADR 0050 A1。
+_Avoid_: inline `FontSize=N FontWeight=X` 在 TextBlock 上散布；自写 typography 但不绑 design token
+
+**Middle-Click Autoscroll Behavior (Files.App Port)**:
+Avalonia 无内置中键 pan/autoscroll，必须手写 attached behavior。本项目移植 Files.App MIT `ScrollViewerMiddleClickExtensions.cs` 为 `PhotoPrivacy.Ui.Behaviors.MiddleClickScrollBehavior`：PointerPressed 中键 → 锚定 + DispatcherTimer tick → `ScrollViewer.Offset` 更新；DeadZone 防误触；SpeedFactor + MaxSpeedPerTick 上限；Escape/中键再次/任意键 退出；4 方向 cursor 切换。没有 LOD 逻辑；所有 ScrollViewer 一行 `IsEnabled="True"` attached。见 ADR 0050 A3。
+_Avoid_: Avalonia 原生假设有中键 pan；自写未参考 Files.App 成熟实现的 minified 行为
+
+**WindowDrawnDecorations + ElementRole**:
+Avalonia 12.1 通过 PR #20770 引入 `WindowDrawnDecorations` 托管的 drawn decorations API，搭配 `WindowDecorationProperties.ElementRole` attached 属性：标记 `ElementRole="TitleBar"` 让系统自动处理 drag + 双击最大化（无需手写 drag handler）；`ElementRole="MinimizeButton/MaximizeButton/CloseButton"` 让系统自动处理 caption button click（无需手写 click handler）。配合 `ExtendClientAreaToDecorationsHint=True` + `WindowDecorations=None` 实现自绘现代化标题栏。跨平台：Win/macOS 完整支持，Linux "Limited support" 时 Avalonia 内部降级到原生不报错。本项目替代被排除的 PleasantUI 新依赖方案请见 ADR 0050 A4。
+_Avoid_: PleasantUI 新依赖; 手写 drag handler 与 click handler（重复造轮子）
+
+**Unicode Status Symbol Cleanup**:
+locale JSON 用 `✓ ✗ ⚠`（U+2713/2717/26A0）Unicode 符号呈现保存成功/失败/警告，与 Material.Icons 信号语义混杂 → AI 感来源。本 ADR 0050 A2 把 10 语言 JSON 的 8 处 Unicode 符号清零（"✓ Auto-saved" 改为 "Auto-saved"），UI 侧用 Material.Icons（`Check/Close/Alert`）或纯文本呈现状态，避免 application text 混杂 Unicode 符号。回归 guard: LocalizationServiceTests.Unicode_Status_Symbols_Cleared。
+_Avoid_: 在 application text 中用 Unicode 符号替代 Material.Icons；（UI 上）混杂信号图标语义
