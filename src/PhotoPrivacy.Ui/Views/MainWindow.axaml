@@ -45,7 +45,8 @@
             Width="200"
             Background="{DynamicResource SemiColorNavBackground}"
             BorderBrush="{DynamicResource SemiColorBorder}"
-            BorderThickness="0,0,1,0">
+            BorderThickness="0,0,1,0"
+            BoxShadow="{DynamicResource Elevation1}"><!-- ADR 0051 A1: sidebar depth — Elevation1 ladder token -->
       <DockPanel>
         <Border DockPanel.Dock="Top" Height="56" Padding="16,0">
           <StackPanel VerticalAlignment="Center" Spacing="{DynamicResource SpaceXxs}">
@@ -394,13 +395,15 @@
                    ItemsSource="{Binding LogEntries}"
                    Background="{DynamicResource SemiColorBackground0}"
                    BorderThickness="0"
-                   Padding="4">
+                   Padding="4"
+                   ><!-- ADR 0051 A1: BaselinePixelAlignment deferred — TextOptions static setters need code-behind in Avalonia 12.1.1 (no XxxProperty field exposed; TigerMajor on 12.2+ road). FontFeatures tabular numbers below is the fully XAML-compatible survivor. -->
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="audit:AuditLogEntry">
                 <Grid ColumnDefinitions="68,108,*,1.6*" Height="32" Background="Transparent">
                   <TextBlock Text="{Binding TimeText}"
                              Classes="caption"
                              FontSize="11"
+                             FontFeatures="+tnum"
                              VerticalAlignment="Center"
                              Foreground="{DynamicResource SemiColorText2}"/>
                   <Border Grid.Column="1"

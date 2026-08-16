@@ -147,7 +147,7 @@
     <Setter Property="BorderBrush" Value="{DynamicResource SemiColorBorder}" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="{DynamicResource RadiusMd}" />
-    <Setter Property="BoxShadow" Value="{DynamicResource SemiShadowElevated}" />
+    <Setter Property="BoxShadow" Value="{DynamicResource Elevation2}" />
 <Setter Property="Padding" Value="16" /><!-- ponytail: literal Thickness, not DynamicResource Double; Avalonia ThicknessTypeConverter runs at compile, DynamicResource skips it -> InvalidCastException -->
   </Style>
 
@@ -222,9 +222,9 @@
   <Style Selector="Button">
     <Setter Property="Transitions">
       <Transitions>
-        <BrushTransition Property="Background" Duration="0:0:0.150" />
-        <BrushTransition Property="BorderBrush" Duration="0:0:0.150" />
-        <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.075" />
+        <BrushTransition Property="Background" Duration="0:0:0.150" Easing="SineEaseOut" /><!-- ADR 0051 A2: hover ease -->
+        <BrushTransition Property="BorderBrush" Duration="0:0:0.150" Easing="SineEaseOut" />
+        <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.075" Easing="QuadraticEaseInOut" /><!-- ADR 0051 A2: press feedback ease (official docs recommendation) -->
       </Transitions>
     </Setter>
     <Setter Property="RenderTransform" Value="scale(1)" />

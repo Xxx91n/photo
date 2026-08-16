@@ -92,6 +92,7 @@ ADR 0050 完成了第一轮 UI 精雕（surface 4 层 overlay + typography 6 角
 
 - 零新依赖（全部基于现有 Semi.Avalonia + Inter + 官方 API）
 - 跨平台兼容（TextOptions 是尽力映射，跨平台差异无法完全消除）
+- TextOptions 限制（2026-08-17 实测）：Avalonia 12.1.1 binary 中 Avalonia.Media.TextOptions 是 readonly record struct，只暴露 SetTextHintingMode(Visual, TextHintingMode) 等 static method setter，未公开 TextHintingModeProperty / BaselinePixelAlignmentProperty 静态 AvaloniaProperty 字段。XAML attached property 写法 在 12.1.1 触发 AVLN2000 编译失败。FontFeatures +tnum (11.1+) 是兼容幸存者，已在 LogEntries.ListBox.TimeText 落地。TextHintingMode=None (大标题) 与 BaselinePixelAlignment=Aligned (静态正文) 的 spec intent 暂缓落地，等 Avalonia 12.2+ 暴露 XxxProperty 字段或改 code-behind OnLoaded 扫描 TextBlock 调 static setter（碎片化成本高，非 Ponytail 最短路径）。此限制不阻塞 ADR A1 BalanceItem (Space/Elevation/focus-visible/FontFallbacks) 完全落地。
 - 每阶段 commit 后才能进下一阶段（回溯需要）
 - 最终编译打包测活，验证进程存活
 - source-lint test guard 固化闭环
