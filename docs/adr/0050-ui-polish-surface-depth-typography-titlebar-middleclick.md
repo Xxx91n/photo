@@ -56,7 +56,7 @@ ADR 0048 已落地 Semi.Avalonia 12.1 + Ursa 2.2 + Material.Icons 3.0 + Inter �
 
 - `Grid RowDefinitions="40,*"` 顶行 = TitleBar Border 高 40，`WindowDecorationProperties.ElementRole="TitleBar"` 标记整段为 drag 区域 → 系统自动处理拖拽和双击最大化
 - 标题栏左：`TextBlock Text="PhotoPrivacy"` + 当前模式 label（复用现有 ModeLabel binding）
-- 右：3 个 Button 用 `ElementRole="MinimizeButton/MaximizeButton/CloseButton"` → 系统自动处理 click，**不需要手写 click handler**
+- 右：3 个 Button 用 `ElementRole="MinimizeButton/MaximizeButton/CloseButton"` 标记语义 + click handler 驱动 `WindowState`/`Close()`。注意：`ElementRole` 是 chrome hit-test 标记，caption button click 的"系统自动接管"只在 `WindowDrawnDecorations` ControlTheme 模板里对 `PART_MinimizeButton` 等 template part 才生效；本项目在 client area 自绘 Button（非那段 template），所以**需要手写 `OnMinimizeClick/OnMaximizeClick/OnCloseClick` click handler**（经 exa 取回 Avalonia 12.1 `WindowDrawnDecorations.cs` 验证）
 - 3 个 caption button Content 用 `<materialIcons:MaterialIcon Kind="WindowMinimize/WindowMaximize/WindowClose" Width=14 Height=14 />`
 - 全部走 theme token（`SemiColorBackground` / `SemiColorText2` / `SemiColorBorder`），light/dark/community variant 自适配
 - `:maximized` 伪类加 padding 0；`:fullscreen` 隐藏 caption button

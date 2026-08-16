@@ -111,6 +111,18 @@
     <Setter Property="Foreground" Value="White" />
   </Style>
 
+  <!-- ADR 0050 A4 — window-state pseudoclasses for self-drawn titlebar.
+       :maximized — drop titlebar padding so content fills to screen edge
+                     (no system frame to consume the gap under WindowDecorations=None).
+       :fullscreen — hide the caption buttons; a fullscreen window has no chrome anyway. -->
+  <Style Selector="Window:maximized Border.titlebar-host">
+    <Setter Property="Padding" Value="0" />
+  </Style>
+
+  <Style Selector="Window:fullscreen Button.caption-btn">
+    <Setter Property="IsVisible" Value="False" />
+  </Style>
+
   <!-- Elevated card with shadow (ADR 0050 A1). Lift the card above the
        window background using Semi's elevation token. -->
   <Style Selector="Border.settings-card">

@@ -268,8 +268,8 @@ Avalonia 无内置中键 pan/autoscroll，必须手写 attached behavior。本�
 _Avoid_: Avalonia 原生假设有中键 pan；自写未参考 Files.App 成熟实现的 minified 行为
 
 **WindowDrawnDecorations + ElementRole**:
-Avalonia 12.1 通过 PR #20770 引入 `WindowDrawnDecorations` 托管的 drawn decorations API，搭配 `WindowDecorationProperties.ElementRole` attached 属性：标记 `ElementRole="TitleBar"` 让系统自动处理 drag + 双击最大化（无需手写 drag handler）；`ElementRole="MinimizeButton/MaximizeButton/CloseButton"` 让系统自动处理 caption button click（无需手写 click handler）。配合 `ExtendClientAreaToDecorationsHint=True` + `WindowDecorations=None` 实现自绘现代化标题栏。跨平台：Win/macOS 完整支持，Linux "Limited support" 时 Avalonia 内部降级到原生不报错。本项目替代被排除的 PleasantUI 新依赖方案请见 ADR 0050 A4。
-_Avoid_: PleasantUI 新依赖; 手写 drag handler 与 click handler（重复造轮子）
+Avalonia 12.1 通过 PR #20770 引入 `WindowDrawnDecorations` 托管的 drawn decorations API，搭配 `WindowDecorationProperties.ElementRole` attached 属性：标记 `ElementRole="TitleBar"` 让系统自动处理 drag + 双击最大化（无需手写 drag handler）。注意：`ElementRole="MinimizeButton/MaximizeButton/CloseButton"` 是 chrome hit-test 的语义标记；caption button click 的"系统自动接管"只在 `WindowDrawnDecorations` ControlTheme 模板里（对名为 `PART_MinimizeButton` 等 template part 的 Button 订阅 Click）才生效。本项目在 client area 自绘 Button（非那段 template 上下文），所以仍需手写 `OnMinimizeClick/OnMaximizeClick/OnCloseClick` click handler 驱动 `WindowState`/`Close()`；`ElementRole` 在此仅作语义/无障碍标记，不替 click 逻辑。配合 `ExtendClientAreaToDecorationsHint=True` + `WindowDecorations=None` 实现自绘现代化标题栏，再加 `Window:maximized`/`Window:fullscreen` pseudoclass style 让标题栏 padding 0、fullscreen 隐藏 caption button。跨平台：Win/macOS 完整支持，Linux "Limited support" 时 Avalonia 内部降级到原生不报错。本项目替代被排除的 PleasantUI 新依赖方案请见 ADR 0050 A4。
+_Avoid_: PleasantUI 新依赖; 手写 drag handler（系统已接管）；把 `ElementRole` 自绘 caption button click 误当成自动接管
 
 **Unicode Status Symbol Cleanup**:
 locale JSON 用 `✓ ✗ ⚠`（U+2713/2717/26A0）Unicode 符号呈现保存成功/失败/警告，与 Material.Icons 信号语义混杂 → AI 感来源。本 ADR 0050 A2 把 10 语言 JSON 的 8 处 Unicode 符号清零（"✓ Auto-saved" 改为 "Auto-saved"），UI 侧用 Material.Icons（`Check/Close/Alert`）或纯文本呈现状态，避免 application text 混杂 Unicode 符号。回归 guard: LocalizationServiceTests.Unicode_Status_Symbols_Cleared。

@@ -195,12 +195,52 @@ public sealed class DesignSystemTests
         Assert.Contains("ExtendClientAreaToDecorationsHint=\"True\"", source, StringComparison.Ordinal);
         Assert.Contains("WindowDecorations=\"None\"", source, StringComparison.Ordinal);
         Assert.Contains("WindowDecorationProperties.ElementRole=\"TitleBar\"", source, StringComparison.Ordinal);
+        // ADR 0050 A4/plan-0050 4.3 — each caption button carries its semantic ElementRole.
+        Assert.Contains("ElementRole=\"MinimizeButton\"", source, StringComparison.Ordinal);
+        Assert.Contains("ElementRole=\"MaximizeButton\"", source, StringComparison.Ordinal);
+        Assert.Contains("ElementRole=\"CloseButton\"", source, StringComparison.Ordinal);
         Assert.Contains("Kind=\"WindowMinimize\"", source, StringComparison.Ordinal);
         Assert.Contains("Kind=\"WindowMaximize\"", source, StringComparison.Ordinal);
         Assert.Contains("Kind=\"WindowClose\"", source, StringComparison.Ordinal);
+        // Self-drawn caption buttons (client area, NOT WindowDrawnDecorations template parts)
+        // still need click handlers to drive WindowState/Close — the old ADR line claiming
+        // "no handler needed" was wrong; see ADR 0050 A4 followup note.
         Assert.Contains("OnMinimizeClick", source, StringComparison.Ordinal);
         Assert.Contains("OnMaximizeClick", source, StringComparison.Ordinal);
         Assert.Contains("OnCloseClick", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TitleBar_Uses_Semi_Tokens()
+    {
+        var path = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "Views", "MainWindow.axaml");
+        Assert.True(File.Exists(path), "MainWindow.axaml should exist");
+        var source = File.ReadAllText(path, Encoding.UTF8);
+        // The self-drawn titlebar must theme through Semi Color tokens, not inline hex.
+        Assert.Contains("{DynamicResource SemiColorBackground0}", source, StringComparison.Ordinal);
+        Assert.Contains("{DynamicResource SemiColorText2}", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Titlebar_State_Pseudoclasses_Defined()
+    {
+        var path = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "Styling", "AppTheme.axaml");
+        Assert.True(File.Exists(path), "AppTheme.axaml should exist");
+        var source = File.ReadAllText(path, Encoding.UTF8);
+        Assert.Contains("Window:maximized", source, StringComparison.Ordinal);
+        Assert.Contains("Window:fullscreen", source, StringComparison.Ordinal);
+        Assert.Contains("Border.titlebar-host", source, StringComparison.Ordinal);
+        // fullscreen hides caption buttons; maximized drops titlebar padding — match ADR A4 prose.
+        Assert.Contains("Button.caption-btn", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Behaviors_Namespace_Bound()
+    {
+        var path = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "Views", "MainWindow.axaml");
+        Assert.True(File.Exists(path), "MainWindow.axaml should exist");
+        var source = File.ReadAllText(path, Encoding.UTF8);
+        Assert.Contains("xmlns:behaviors=\"using:PhotoPrivacy.Ui.Behaviors\"", source, StringComparison.Ordinal);
     }
 
     [Fact]
