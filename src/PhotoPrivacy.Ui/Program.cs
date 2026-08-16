@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Media;
 using System.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using PhotoPrivacy.Core.Configuration;
@@ -189,7 +190,22 @@ public static class UiProgram
     {
         var builder = AppBuilder.Configure<App>()
             .UsePlatformDetect()
-            .WithInterFont();
+            .WithInterFont()
+            .With(new FontManagerOptions
+            {
+                DefaultFamilyName = "fonts:Inter#Inter",
+                FontFallbacks = new[]
+                {
+                    new FontFallback
+                    {
+                        FontFamily = new FontFamily("fonts:Inter#Inter")
+                    },
+                    new FontFallback
+                    {
+                        FontFamily = new FontFamily("avares://Avalonia.Fonts.Inter/Assets#Inter")
+                    }
+                }
+            });
 #if DEBUG
         builder = builder.LogToTrace();
 #endif

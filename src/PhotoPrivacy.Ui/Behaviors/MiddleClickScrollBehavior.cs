@@ -66,9 +66,9 @@ public sealed class MiddleClickScrollBehavior : AvaloniaObject
         }
     }
 
-    private const double DeadZone = 10.0;
+    private const double DeadZone = 12.0;
     private const double SpeedFactor = 0.12;
-    private const double MaxSpeedPerTick = 28.0;
+    private const double MaxSpeedPerTick = 32.0;
 
     private static readonly Cursor ScrollCursorAll = new(StandardCursorType.SizeAll);
     private static readonly Cursor ScrollCursorVertical = new(StandardCursorType.SizeNorthSouth);
@@ -88,6 +88,8 @@ public sealed class MiddleClickScrollBehavior : AvaloniaObject
         public bool HoldDetected;
         public DispatcherTimer? Timer;
         public ScrollViewer? ScrollViewer;
+        public TopLevel? TopLevel;
+        public bool RafRequested;
     }
 
     private static AutoScrollState? _state;
@@ -119,10 +121,22 @@ public sealed class MiddleClickScrollBehavior : AvaloniaObject
             IsActive = true,
             ActivationTimestamp = e.Timestamp,
             IgnoreActivationMiddleRelease = true,
-            HoldDetected = false,
-            Timer = new DispatcherTimer(TimeSpan.FromMilliseconds(16), DispatcherPriority.Background, ScrollTimer_Tick)
+            HoldDetected = false
         };
-        _state.Timer.Start();
+        // ADR 0051 A3: Use TopLevel.RequestAnimationFrame (vsync-aligned) instead of DispatcherTimer.
+        // Fallback to DispatcherTimer if TopLevel is null (ScrollViewer not attached to tree yet).
+        var topLevel = TopLevel.GetTopLevel(sv);
+        if (topLevel is not null)
+        {
+            _state.TopLevel = topLevel;
+            _state.RafRequested = true;
+            topLevel.RequestAnimationFrame(ScrollFrame);
+        }
+        else
+        {
+            _state.Timer = new DispatcherTimer(TimeSpan.FromMilliseconds(16), DispatcherPriority.Background, ScrollTimer_Tick);
+            _state.Timer.Start();
+        }
 
         sv.Cursor = GetAutoScrollCursor(sv);
         e.Handled = true;
@@ -218,9 +232,68 @@ public sealed class MiddleClickScrollBehavior : AvaloniaObject
         }
     }
 
+
+
+    // ADR 0051 A3: RequestAnimationFrame callback — vsync-aligned, frame-rate independent.
+    // delta * (frameTime.TotalMilliseconds / 16.67) scales velocity per frame for high-refresh displays.
+    private static void ScrollFrame(TimeSpan frameTime)
+    {
+        if (_state?.IsActive != true || _state.ScrollViewer is null)
+        {
+            _state = null;
+            return;
+        }
+
+        var sv = _state.ScrollViewer;
+        var frameScale = frameTime.TotalMilliseconds / 16.67;
+
+        var deltaY = _state.Current.Y - _state.Anchor.Y;
+        var deltaX = _state.Current.X - _state.Anchor.X;
+
+        double? newHorizontalOffset = null;
+        double? newVerticalOffset = null;
+        var offset = sv.Offset;
+
+        if (ScrollableVertical(sv) > 0)
+        {
+            var velocityY = CalculateVelocity(deltaY) * frameScale;
+            if (Math.Abs(velocityY) > 0)
+            {
+                var targetY = Math.Clamp(offset.Y + velocityY, 0, ScrollableVertical(sv));
+                if (!targetY.Equals(offset.Y))
+                    newVerticalOffset = targetY;
+            }
+        }
+
+        if (ScrollableHorizontal(sv) > 0)
+        {
+            var velocityX = CalculateVelocity(deltaX) * frameScale;
+            if (Math.Abs(velocityX) > 0)
+            {
+                var targetX = Math.Clamp(offset.X + velocityX, 0, ScrollableHorizontal(sv));
+                if (!targetX.Equals(offset.X))
+                    newHorizontalOffset = targetX;
+            }
+        }
+
+        if (newVerticalOffset.HasValue || newHorizontalOffset.HasValue)
+        {
+            sv.Offset = new Vector(
+                newHorizontalOffset ?? offset.X,
+                newVerticalOffset ?? offset.Y);
+        }
+
+        // Request next frame (RAF is one-shot, must re-request for continuous loop)
+        if (_state is { IsActive: true, TopLevel: { } tl, RafRequested: true })
+        {
+            tl.RequestAnimationFrame(ScrollFrame);
+        }
+    }
+
     private static void Stop()
     {
         if (_state is null) return;
+        _state.RafRequested = false;
         if (_state.Timer is { } t)
         {
             t.Stop();

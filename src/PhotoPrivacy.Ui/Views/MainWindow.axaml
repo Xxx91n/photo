@@ -22,12 +22,12 @@
     <Border Grid.Row="0" Grid.ColumnSpan="2" Classes="titlebar-host" Background="{DynamicResource SemiColorBackground0}"
             WindowDecorationProperties.ElementRole="TitleBar">
       <Grid ColumnDefinitions="*,Auto">
-        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="12,0">
+        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="{DynamicResource SpaceSm}" VerticalAlignment="Center" Margin="12,0">
           <TextBlock Text="PhotoPrivacy" Classes="headline" VerticalAlignment="Center"/>
           <TextBlock Text="—" Classes="caption" Foreground="{DynamicResource SemiColorText2}" VerticalAlignment="Center"/>
           <TextBlock Text="{Binding ModeLabel}" Classes="caption" Foreground="{DynamicResource SemiColorText2}" VerticalAlignment="Center"/>
         </StackPanel>
-        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center" Margin="0,0,4,0">
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="{DynamicResource SpaceXxs}" VerticalAlignment="Center" Margin="0,0,4,0">
           <Button Classes="caption-btn" Click="OnMinimizeClick" WindowDecorationProperties.ElementRole="MinimizeButton" Padding="14,8" Background="Transparent" BorderThickness="0">
             <materialIcons:MaterialIcon Kind="WindowMinimize" Width="14" Height="14"/>
           </Button>
@@ -48,9 +48,9 @@
             BorderThickness="0,0,1,0">
       <DockPanel>
         <Border DockPanel.Dock="Top" Height="56" Padding="16,0">
-          <StackPanel VerticalAlignment="Center" Spacing="2">
+          <StackPanel VerticalAlignment="Center" Spacing="{DynamicResource SpaceXxs}">
             <TextBlock Text="PhotoPrivacy" Classes="headline"/>
-            <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+            <StackPanel Orientation="Horizontal" Spacing="{DynamicResource SpaceSm}" VerticalAlignment="Center">
               <Ellipse Width="6" Height="6" Fill="{Binding ModeColor}"/>
               <TextBlock Text="{Binding ModeLabel}" FontSize="11" Foreground="{DynamicResource SemiColorText1}"/>
             </StackPanel>
@@ -64,8 +64,8 @@
                 Padding="12,10"
                 Background="{DynamicResource SemiColorBackground0}"
                 CornerRadius="8">
-          <StackPanel Spacing="8">
-            <StackPanel Orientation="Horizontal" Spacing="6">
+          <StackPanel Spacing="{DynamicResource SpaceSm}">
+            <StackPanel Orientation="Horizontal" Spacing="{DynamicResource SpaceSm}">
               <Ellipse Width="8" Height="8" Fill="{Binding StatusDotColor}" VerticalAlignment="Center"/>
               <TextBlock Text="{Binding RuntimeStatus}" Classes="caption" FontWeight="Medium" VerticalAlignment="Center"/>
             </StackPanel>
@@ -74,7 +74,7 @@
           </StackPanel>
         </Border>
 
-        <StackPanel DockPanel.Dock="Top" Margin="8,16,8,0" Spacing="2">
+        <StackPanel DockPanel.Dock="Top" Margin="8,16,8,0" Spacing="{DynamicResource SpaceXxs}">
           <Button x:Name="ConfigNavButton" Classes="nav active" Content="{ex:Localize nav.config}" Tag="config"/>
           <Button x:Name="LogNavButton" Classes="nav" Content="{ex:Localize nav.logs}" Tag="log"/>
           <Button x:Name="OpenServiceManagerTabButton"
@@ -84,7 +84,7 @@
                   IsVisible="{Binding ShowServiceManagerTab}"/>
         </StackPanel>
 
-        <StackPanel DockPanel.Dock="Bottom" Margin="8,0,8,12" Spacing="4">
+        <StackPanel DockPanel.Dock="Bottom" Margin="8,0,8,12" Spacing="{DynamicResource SpaceXs}">
           <Border Height="1" Background="{DynamicResource SemiColorBorder}" Margin="0,0,0,4"/>
           <Button x:Name="PauseResumeButton"
                   Classes="nav-action"
@@ -112,11 +112,11 @@
 
                 <Border Classes="settings-row">
                   <DockPanel LastChildFill="False">
-                    <StackPanel DockPanel.Dock="Left" Spacing="2" VerticalAlignment="Center">
-                      <StackPanel Orientation="Horizontal" Spacing="8"><materialIcons:MaterialIcon Kind="ImageMultiple" Width="16" Height="16" Foreground="{DynamicResource SemiColorPrimary}"/><TextBlock Text="{ex:Localize settings.exiftool_path}" Classes="row-label"/></StackPanel>
+                    <StackPanel DockPanel.Dock="Left" Spacing="{DynamicResource SpaceXxs}" VerticalAlignment="Center">
+                      <StackPanel Orientation="Horizontal" Spacing="{DynamicResource SpaceSm}"><materialIcons:MaterialIcon Kind="ImageMultiple" Width="16" Height="16" Foreground="{DynamicResource SemiColorPrimary}"/><TextBlock Text="{ex:Localize settings.exiftool_path}" Classes="row-label"/></StackPanel>
                       <TextBlock Text="{ex:Localize config.desc.exiftool_path}" Classes="row-desc"/>
                     </StackPanel>
-                    <StackPanel DockPanel.Dock="Right" Spacing="6">
+                    <StackPanel DockPanel.Dock="Right" Spacing="{DynamicResource SpaceSm}">
                       <DockPanel LastChildFill="False" VerticalAlignment="Center">
                         <TextBox DockPanel.Dock="Left"
                                  Width="280"
@@ -137,7 +137,7 @@
 
                 <Border Classes="settings-row">
                   <DockPanel LastChildFill="False">
-                    <StackPanel DockPanel.Dock="Left" Spacing="2" VerticalAlignment="Center">
+                    <StackPanel DockPanel.Dock="Left" Spacing="{DynamicResource SpaceXxs}" VerticalAlignment="Center">
                       <TextBlock Text="{ex:Localize settings.hot_folder}" Classes="row-label"/>
                       <TextBlock Text="{ex:Localize config.desc.hot_folder}" Classes="row-desc"/>
                     </StackPanel>
@@ -160,7 +160,7 @@
 
                 <Border Classes="settings-row">
                   <DockPanel LastChildFill="False">
-                    <StackPanel DockPanel.Dock="Left" Spacing="2">
+                    <StackPanel DockPanel.Dock="Left" Spacing="{DynamicResource SpaceXxs}">
                       <TextBlock Text="{ex:Localize config.row.enable_backup}" Classes="row-label"/>
                       <TextBlock Text="{ex:Localize config.desc.backup_enabled}" Classes="row-desc"/>
                     </StackPanel>
@@ -172,7 +172,7 @@
 
                 <Border Classes="settings-row" IsVisible="{Binding BackupEnabled}">
                   <DockPanel LastChildFill="False">
-                    <StackPanel DockPanel.Dock="Left" Spacing="2">
+                    <StackPanel DockPanel.Dock="Left" Spacing="{DynamicResource SpaceXxs}">
                       <TextBlock Text="{ex:Localize settings.backup_dir}" Classes="row-label"/>
                       <TextBlock Text="{ex:Localize config.desc.backup_dir}" Classes="row-desc"/>
                     </StackPanel>
@@ -192,7 +192,7 @@
 
                 <Border Classes="settings-row">
                   <DockPanel LastChildFill="False" VerticalAlignment="Center">
-                    <StackPanel DockPanel.Dock="Left" Spacing="2">
+                    <StackPanel DockPanel.Dock="Left" Spacing="{DynamicResource SpaceXxs}">
                       <TextBlock Text="{ex:Localize config.row.enable_quarantine}" Classes="row-label"/>
                       <TextBlock Text="{ex:Localize config.desc.quarantine_enabled}" Classes="row-desc"/>
                     </StackPanel>
@@ -204,7 +204,7 @@
 
                 <Border Classes="settings-row" IsVisible="{Binding QuarantineEnabled}">
                   <DockPanel LastChildFill="False" VerticalAlignment="Center">
-                    <StackPanel DockPanel.Dock="Left" Spacing="2">
+                    <StackPanel DockPanel.Dock="Left" Spacing="{DynamicResource SpaceXxs}">
                       <TextBlock Text="{ex:Localize settings.quarantine_dir}" Classes="row-label"/>
                       <TextBlock Text="{ex:Localize config.desc.quarantine_dir}" Classes="row-desc"/>
                     </StackPanel>
@@ -221,7 +221,7 @@
 
                 <Border Classes="settings-row">
                   <DockPanel LastChildFill="False">
-                    <StackPanel DockPanel.Dock="Left" Spacing="2">
+                    <StackPanel DockPanel.Dock="Left" Spacing="{DynamicResource SpaceXxs}">
                       <TextBlock Text="{ex:Localize settings.hide_on_startup}" Classes="row-label"/>
                       <TextBlock Text="{ex:Localize config.desc.hide_on_startup}" Classes="row-desc"/>
                     </StackPanel>
@@ -233,7 +233,7 @@
 
                 <Border Classes="settings-row">
                   <DockPanel LastChildFill="False">
-                    <StackPanel DockPanel.Dock="Left" Spacing="2">
+                    <StackPanel DockPanel.Dock="Left" Spacing="{DynamicResource SpaceXxs}">
                       <TextBlock Text="{ex:Localize settings.hide_tray}" Classes="row-label"/>
                       <TextBlock Text="{ex:Localize config.desc.hide_tray}" Classes="row-desc"/>
                     </StackPanel>
@@ -245,7 +245,7 @@
 
                 <Border Classes="settings-row">
                   <DockPanel LastChildFill="False">
-                    <StackPanel DockPanel.Dock="Left" Spacing="2">
+                    <StackPanel DockPanel.Dock="Left" Spacing="{DynamicResource SpaceXxs}">
                       <TextBlock Text="{ex:Localize settings.theme}" Classes="row-label"/>
                       <TextBlock Text="{ex:Localize config.desc.theme}" Classes="row-desc"/>
                     </StackPanel>
@@ -263,7 +263,7 @@
 
                 <Border Classes="settings-row">
                   <DockPanel LastChildFill="False">
-                    <StackPanel DockPanel.Dock="Left" Spacing="2">
+                    <StackPanel DockPanel.Dock="Left" Spacing="{DynamicResource SpaceXxs}">
                       <TextBlock Text="{ex:Localize settings.language}" Classes="row-label"/>
                       <TextBlock Text="{ex:Localize config.desc.language}" Classes="row-desc"/>
                     </StackPanel>
@@ -293,7 +293,7 @@
 
                 <Border Classes="settings-row">
                   <DockPanel LastChildFill="False">
-                    <StackPanel DockPanel.Dock="Left" Spacing="2">
+                    <StackPanel DockPanel.Dock="Left" Spacing="{DynamicResource SpaceXxs}">
                       <TextBlock Text="{ex:Localize settings.log_level}" Classes="row-label"/>
                       <TextBlock Text="{ex:Localize config.desc.log_level}" Classes="row-desc"/>
                     </StackPanel>
@@ -313,7 +313,7 @@
 
                 <Border Classes="settings-row">
                   <DockPanel LastChildFill="False">
-                    <StackPanel DockPanel.Dock="Left" Spacing="2">
+                    <StackPanel DockPanel.Dock="Left" Spacing="{DynamicResource SpaceXxs}">
                       <TextBlock Text="{ex:Localize settings.audit_log_dir_label}" Classes="row-label"/>
                       <TextBlock Text="{ex:Localize config.desc.audit_log_dir}" Classes="row-desc"/>
                     </StackPanel>
@@ -335,7 +335,7 @@
                 <TextBlock Text="{ex:Localize config.section.excluded}" Classes="section-header"/>
 
                 <Border Classes="settings-row">
-                  <StackPanel Spacing="4">
+                  <StackPanel Spacing="{DynamicResource SpaceXs}">
                     <TextBlock Text="{ex:Localize config.label.system_excluded}" Classes="row-label"/>
                     <TextBlock Text="{ex:Localize config.desc.system_excluded}" Classes="row-desc"/>
                     <ListBox ItemsSource="{Binding SystemAutoExcludedDirectories}"
@@ -348,8 +348,8 @@
                 <Border Classes="row-divider"/>
 
                 <Border Classes="settings-row">
-                  <StackPanel Spacing="8">
-                    <StackPanel Spacing="2">
+                  <StackPanel Spacing="{DynamicResource SpaceSm}">
+                    <StackPanel Spacing="{DynamicResource SpaceXxs}">
                       <TextBlock Text="{ex:Localize config.label.user_excluded}" Classes="row-label"/>
                       <TextBlock Text="{ex:Localize config.desc.user_excluded}" Classes="row-desc"/>
                     </StackPanel>
@@ -358,7 +358,7 @@
                              Height="80"
                              BorderBrush="{DynamicResource SemiColorBorder}"
                              BorderThickness="1"/>
-                    <StackPanel Orientation="Horizontal" Spacing="6">
+                    <StackPanel Orientation="Horizontal" Spacing="{DynamicResource SpaceSm}">
                       <Button x:Name="AddExcludedDirectoryButton" Classes="ghost" MinWidth="32" Padding="0"><materialIcons:MaterialIcon Kind="Plus" Width="16" Height="16"/></Button>
                       <Button x:Name="RemoveExcludedDirectoryButton" Classes="ghost" MinWidth="32" Padding="0"><materialIcons:MaterialIcon Kind="Minus" Width="16" Height="16"/></Button>
                     </StackPanel>
@@ -442,7 +442,7 @@
             <Border Classes="settings-card">
               <StackPanel>
                 <TextBlock Text="{ex:Localize service.section.status}" Classes="section-header" Margin="16,12,16,8"/>
-                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="16,0,16,12">
+                <StackPanel Orientation="Horizontal" Spacing="{DynamicResource SpaceSm}" VerticalAlignment="Center" Margin="16,0,16,12">
                   <Ellipse Width="10" Height="10" Fill="{Binding ServiceStatusDotColor}" VerticalAlignment="Center"/>
                   <TextBlock Text="{Binding ServiceStatus}" Classes="headline" VerticalAlignment="Center"/>
                 </StackPanel>
@@ -455,7 +455,7 @@
 
                 <Border Classes="settings-row">
                   <DockPanel LastChildFill="False">
-                    <StackPanel DockPanel.Dock="Left" Spacing="2">
+                    <StackPanel DockPanel.Dock="Left" Spacing="{DynamicResource SpaceXxs}">
                       <TextBlock Text="{ex:Localize service.row.install_start}" Classes="row-label"/>
                       <TextBlock Text="{ex:Localize service.desc.install}" Classes="row-desc"/>
                     </StackPanel>
@@ -467,11 +467,11 @@
 
                 <Border Classes="settings-row">
                   <DockPanel LastChildFill="False">
-                    <StackPanel DockPanel.Dock="Left" Spacing="2">
+                    <StackPanel DockPanel.Dock="Left" Spacing="{DynamicResource SpaceXxs}">
                       <TextBlock Text="{ex:Localize service.row.start_stop}" Classes="row-label"/>
                       <TextBlock Text="{ex:Localize service.desc.start_stop}" Classes="row-desc"/>
                     </StackPanel>
-                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8">
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="{DynamicResource SpaceSm}">
                       <Button x:Name="StartServiceButton" Content="{ex:Localize service.btn.start}" Classes="ghost" VerticalAlignment="Center"/>
                       <Button x:Name="StopServiceButton" Content="{ex:Localize service.btn.stop}" Classes="ghost" VerticalAlignment="Center"/>
                       <Button x:Name="RefreshServiceStatusButton" Content="{ex:Localize service.btn.refresh}" Classes="ghost" VerticalAlignment="Center"/>
@@ -483,7 +483,7 @@
 
                 <Border Classes="settings-row">
                   <DockPanel LastChildFill="False">
-                    <StackPanel DockPanel.Dock="Left" Spacing="2">
+                    <StackPanel DockPanel.Dock="Left" Spacing="{DynamicResource SpaceXxs}">
                       <TextBlock Text="{ex:Localize service.row.uninstall}" Classes="row-label" Foreground="{DynamicResource SemiColorDanger}"/>
                       <TextBlock Text="{ex:Localize service.desc.uninstall}" Classes="row-desc"/>
                     </StackPanel>

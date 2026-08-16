@@ -254,4 +254,85 @@ public sealed class DesignSystemTests
         Assert.True(hits.Count >= 2, $"Expected >=2 MiddleClickScrollBehavior attachments, got {hits.Count}");
     }
 
+    // === ADR 0051 test guards ===
+
+    [Fact]
+    public void Elevation_Token_Ladder_Must_Be_Defined()
+    {
+        var path = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "Styling", "DesignTokens.axaml");
+        var source = File.ReadAllText(path, Encoding.UTF8);
+        Assert.Contains("Elevation0", source);
+        Assert.Contains("Elevation1", source);
+        Assert.Contains("Elevation2", source);
+        Assert.Contains("Elevation4", source);
+    }
+
+    [Fact]
+    public void Button_Transitions_Must_Include_TransformOperationsTransition()
+    {
+        var path = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "Styling", "AppTheme.axaml");
+        var source = File.ReadAllText(path, Encoding.UTF8);
+        Assert.Contains("TransformOperationsTransition", source);
+        Assert.Contains("scale(0.97)", source);
+    }
+
+    [Fact]
+    public void Caption_Btn_Danger_Pressed_And_Inactive_Pseudoclasses_Defined()
+    {
+        var path = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "Styling", "AppTheme.axaml");
+        var source = File.ReadAllText(path, Encoding.UTF8);
+        Assert.Contains("Button.caption-btn.danger:pressed", source);
+        Assert.Contains("Window:inactive Button.caption-btn", source);
+    }
+
+    [Fact]
+    public void Caption_Btn_Padding_Must_Be_16_6()
+    {
+        var path = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "Styling", "AppTheme.axaml");
+        var source = File.ReadAllText(path, Encoding.UTF8);
+        // ADR 0051 A4: Win11 standard 32px height = Padding Value="16,6"
+        Assert.Contains("Value=\"16,6\"", source);
+        // Old 14,8 padding must be gone from caption-btn style
+        Assert.DoesNotContain("Padding=\"14,8\"", source);
+    }
+
+    [Fact]
+    public void Focus_Visible_Pseudoclass_Must_Be_Defined()
+    {
+        var path = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "Styling", "AppTheme.axaml");
+        var source = File.ReadAllText(path, Encoding.UTF8);
+        Assert.Contains(":focus-visible", source);
+    }
+
+    [Fact]
+    public void Program_Must_Have_FontManagerOptions_WithFallbacks()
+    {
+        var dir = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui");
+        var progPath = Path.Combine(dir, "Program.cs");
+        var source = File.ReadAllText(progPath, Encoding.UTF8);
+        Assert.Contains("FontManagerOptions", source);
+        Assert.Contains("FontFallbacks", source);
+    }
+
+    [Fact]
+    public void MiddleClick_Behavior_Must_Use_RequestAnimationFrame()
+    {
+        var path = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "Behaviors", "MiddleClickScrollBehavior.cs");
+        var source = File.ReadAllText(path, Encoding.UTF8);
+        Assert.Contains("RequestAnimationFrame", source);
+        // Constants must align Files.App: DeadZone=12, MaxSpeedPerTick=32
+        Assert.Contains("DeadZone = 12.0", source);
+        Assert.Contains("MaxSpeedPerTick = 32.0", source);
+    }
+
+    [Fact]
+    public void Spacing_Must_Reference_Space_Tokens()
+    {
+        var path = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "Views", "MainWindow.axaml");
+        var source = File.ReadAllText(path, Encoding.UTF8);
+        // At least 20 Spacing references should now use DynamicResource Space* tokens
+        var tokenHits = System.Text.RegularExpressions.Regex.Matches(source, @"Spacing=""{DynamicResource Space");
+        Assert.True(tokenHits.Count >= 20, $"Expected >=20 Spacing token references, got {tokenHits.Count}");
+    }
+
 }
