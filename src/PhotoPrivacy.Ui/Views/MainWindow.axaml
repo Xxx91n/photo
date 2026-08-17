@@ -36,7 +36,7 @@
         </StackPanel>
       </Grid>
     </Border>
-    <Grid Grid.Row="1" ColumnDefinitions="200,*">
+    <Grid Grid.Row="1" ColumnDefinitions="200,4,*" x:Name="MainRootGrid">
       <Border Grid.Column="0"
             Width="200"
             Background="{DynamicResource SemiColorNavBackground}"
@@ -111,7 +111,16 @@
       </DockPanel>
     </Border>
 
-    <Grid Grid.Column="1" x:Name="MainContentGrid">
+    <!-- ADR 0052 A5: GridSplitter — resizable sidebar (170-400) -->
+    <GridSplitter x:Name="SidebarSplitter" Grid.Column="1" Background="Transparent" ResizeDirection="Columns" Width="4" ResizeBehavior="PreviousAndNext" DragCompleted="OnSidebarSplitterDragCompleted">
+      <GridSplitter.Styles>
+        <Style Selector="GridSplitter:pointerover">
+          <Setter Property="Background" Value="{DynamicResource SemiColorBorder}" />
+        </Style>
+      </GridSplitter.Styles>
+    </GridSplitter>
+
+    <Grid Grid.Column="2" x:Name="MainContentGrid">
       <Grid x:Name="ConfigPage" RowDefinitions="Auto,*" IsVisible="True">
         <Border Padding="24,20,24,16" BorderBrush="{DynamicResource SemiColorBorder}" BorderThickness="0,0,0,1">
           <TextBlock Text="{ex:Localize nav.config}" Classes="title"/>

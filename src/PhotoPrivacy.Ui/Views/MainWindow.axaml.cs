@@ -1,5 +1,6 @@
 ﻿using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Avalonia.Input;
 using Avalonia.Threading;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -155,6 +156,7 @@ public partial class MainWindow : Window
             ApplyThemeVariantToApplication(viewModel.ThemeVariant);
             SyncThemeVariantComboSelection(viewModel.ThemeVariant);
             SyncThemeSwatchSelection(viewModel.ThemeVariant);
+            RestoreSidebarWidth(effectiveConfig.Ui.SidebarWidth);
             SyncLogLevelComboSelection(viewModel.LogLevel);
             SyncLocaleComboSelection(viewModel.CurrentLocale);
             viewModel.SaveStatus = string.Empty;
@@ -1547,6 +1549,42 @@ public partial class MainWindow : Window
         ScheduleDebouncedConfigApply();
     }
 
+
+    // ADR 0052 A5: Restore sidebar width from config
+    private void RestoreSidebarWidth(double width)
+    {
+        try
+        {
+            if (MainRootGrid is { } grid && grid.ColumnDefinitions.Count > 0)
+            {
+                var clamped = Math.Clamp(width, 170, 400);
+                grid.ColumnDefinitions[0].Width = new GridLength(clamped);
+            }
+        }
+        catch
+        {
+            // control not ready
+        }
+    }
+
+    // ADR 0052 A5: Wire GridSplitter drag completion for persistence
+    private void OnSidebarSplitterDragCompleted(object? sender, VectorEventArgs e)
+    {
+        try
+        {
+            if (MainRootGrid is { } grid && grid.ColumnDefinitions.Count > 0 && DataContext is MainWindowViewModel vm)
+            {
+                var width = Math.Clamp(grid.ColumnDefinitions[0].ActualWidth, 170, 400);
+                vm.SidebarWidth = width;
+                ScheduleDebouncedConfigApply();
+            }
+        }
+        catch
+        {
+            // best-effort
+        }
+    }
+
     private void ScheduleDebouncedConfigApply()
     {
         _configApplyDebounceCts?.Cancel();
@@ -1586,7 +1624,8 @@ public partial class MainWindow : Window
                 AuditLogDirectory: vm.AuditLogDirectory,
                 LogLevel: vm.LogLevel,
                 QuarantineEnabled: vm.QuarantineEnabled,
-                QuarantineDirectory: vm.QuarantineDirectory);
+                QuarantineDirectory: vm.QuarantineDirectory,
+                SidebarWidth: vm.SidebarWidth);
             ConfigEditor.UpdateConfig(_options.ConfigPath, command);
             try
             {
@@ -1641,7 +1680,8 @@ public partial class MainWindow : Window
                 AuditLogDirectory: vm.AuditLogDirectory,
                 LogLevel: vm.LogLevel,
                 QuarantineEnabled: vm.QuarantineEnabled,
-                QuarantineDirectory: vm.QuarantineDirectory);
+                QuarantineDirectory: vm.QuarantineDirectory,
+                SidebarWidth: vm.SidebarWidth);
             ConfigEditor.UpdateConfig(_options.ConfigPath, command);
 
             try

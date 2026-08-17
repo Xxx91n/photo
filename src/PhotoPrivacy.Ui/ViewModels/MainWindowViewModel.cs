@@ -176,6 +176,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         }
     }
 
+    // ADR 0052 A5: Sidebar width for persistence
+    private double _sidebarWidth = 200.0;
+    public double SidebarWidth
+    {
+        get => _sidebarWidth;
+        set => SetField(ref _sidebarWidth, value);
+    }
+
     public string CurrentLocale
     {
         get => _currentLocale;

@@ -71,6 +71,7 @@
   "ui": {
     "hide_main_window_on_startup": false,
     "hide_tray_icon": false,
-    "theme_variant": "system"
+    "theme_variant": "system",
+    "sidebar_width": 200.0
   }
 }

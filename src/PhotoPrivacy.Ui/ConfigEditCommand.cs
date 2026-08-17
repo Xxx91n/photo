@@ -13,4 +13,5 @@ public sealed record ConfigEditCommand(
     string AuditLogDirectory,
     string LogLevel,
     bool QuarantineEnabled,
-    string QuarantineDirectory);
+    string QuarantineDirectory,
+    double SidebarWidth = 200.0);
