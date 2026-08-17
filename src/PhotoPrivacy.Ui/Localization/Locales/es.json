@@ -45,6 +45,7 @@
     "backup": "Respaldar",
     "backup_dir": "Directorio de Respaldo",
     "theme": "Tema",
+    "theme_preset": "Preset de tema",
     "language": "Idioma",
     "font": "Fuente",
     "font_size": "Tamaño de Fuente",

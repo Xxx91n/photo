@@ -271,6 +271,49 @@
                     </ComboBox>
                   </DockPanel>
                 </Border>
+                <!-- ADR 0052 A3: Theme preset swatch grid — 5 community themes -->
+                <Border Classes="settings-row">
+                  <StackPanel Spacing="{DynamicResource SpaceSm}">
+                    <TextBlock Text="{ex:Localize settings.theme_preset}" Classes="row-label"/>
+                    <WrapPanel ItemSpacing="{DynamicResource SpaceSm}">
+                      <RadioButton x:Name="CatppuccinSwatch" Tag="catppuccin" GroupName="ThemePreset"
+                                   Click="OnThemePresetSwatchClick" Padding="8" CornerRadius="8">
+                        <StackPanel Orientation="Vertical" Spacing="4" HorizontalAlignment="Center">
+                          <Border Width="40" Height="28" CornerRadius="4" Background="#89B4FA"/>
+                          <TextBlock Text="Catppuccin" Classes="caption" HorizontalAlignment="Center"/>
+                        </StackPanel>
+                      </RadioButton>
+                      <RadioButton x:Name="DraculaSwatch" Tag="dracula" GroupName="ThemePreset"
+                                   Click="OnThemePresetSwatchClick" Padding="8" CornerRadius="8">
+                        <StackPanel Orientation="Vertical" Spacing="4" HorizontalAlignment="Center">
+                          <Border Width="40" Height="28" CornerRadius="4" Background="#BD93F9"/>
+                          <TextBlock Text="Dracula" Classes="caption" HorizontalAlignment="Center"/>
+                        </StackPanel>
+                      </RadioButton>
+                      <RadioButton x:Name="NordSwatch" Tag="nord" GroupName="ThemePreset"
+                                   Click="OnThemePresetSwatchClick" Padding="8" CornerRadius="8">
+                        <StackPanel Orientation="Vertical" Spacing="4" HorizontalAlignment="Center">
+                          <Border Width="40" Height="28" CornerRadius="4" Background="#88C0D0"/>
+                          <TextBlock Text="Nord" Classes="caption" HorizontalAlignment="Center"/>
+                        </StackPanel>
+                      </RadioButton>
+                      <RadioButton x:Name="OneDarkProSwatch" Tag="onedarkpro" GroupName="ThemePreset"
+                                   Click="OnThemePresetSwatchClick" Padding="8" CornerRadius="8">
+                        <StackPanel Orientation="Vertical" Spacing="4" HorizontalAlignment="Center">
+                          <Border Width="40" Height="28" CornerRadius="4" Background="#61AFEF"/>
+                          <TextBlock Text="One Dark Pro" Classes="caption" HorizontalAlignment="Center"/>
+                        </StackPanel>
+                      </RadioButton>
+                      <RadioButton x:Name="TokyoNightSwatch" Tag="tokyonight" GroupName="ThemePreset"
+                                   Click="OnThemePresetSwatchClick" Padding="8" CornerRadius="8">
+                        <StackPanel Orientation="Vertical" Spacing="4" HorizontalAlignment="Center">
+                          <Border Width="40" Height="28" CornerRadius="4" Background="#7AA2F7"/>
+                          <TextBlock Text="Tokyo Night" Classes="caption" HorizontalAlignment="Center"/>
+                        </StackPanel>
+                      </RadioButton>
+                    </WrapPanel>
+                  </StackPanel>
+                </Border>
 
                 <Border Classes="row-divider"/>
 

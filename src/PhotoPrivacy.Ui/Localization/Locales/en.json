@@ -45,6 +45,7 @@
     "backup": "Backup",
     "backup_dir": "Backup Directory",
     "theme": "Theme",
+    "theme_preset": "Theme Preset",
     "language": "Language",
     "font": "Font",
     "font_size": "Font Size",

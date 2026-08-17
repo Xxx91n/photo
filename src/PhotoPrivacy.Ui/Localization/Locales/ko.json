@@ -45,6 +45,7 @@
     "backup": "백업",
     "backup_dir": "백업 디렉토리",
     "theme": "테마",
+    "theme_preset": "테마 프리셋",
     "language": "언어",
     "font": "글꼴",
     "font_size": "글꼴 크기",

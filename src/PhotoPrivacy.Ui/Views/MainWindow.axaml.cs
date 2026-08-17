@@ -154,6 +154,7 @@ public partial class MainWindow : Window
 
             ApplyThemeVariantToApplication(viewModel.ThemeVariant);
             SyncThemeVariantComboSelection(viewModel.ThemeVariant);
+            SyncThemeSwatchSelection(viewModel.ThemeVariant);
             SyncLogLevelComboSelection(viewModel.LogLevel);
             SyncLocaleComboSelection(viewModel.CurrentLocale);
             viewModel.SaveStatus = string.Empty;
@@ -732,6 +733,27 @@ public partial class MainWindow : Window
         }
     }
 
+
+    // ADR 0052 A3: Theme preset swatch click — set ThemeVariant to preset ID, apply theme resources
+    private void OnThemePresetSwatchClick(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var tag = (sender as RadioButton)?.Tag?.ToString();
+            if (string.IsNullOrEmpty(tag)) return;
+            if (DataContext is MainWindowViewModel vm)
+            {
+                vm.ThemeVariant = tag;
+            }
+            ApplyThemeVariantToApplication(tag);
+            ScheduleDebouncedConfigApply();
+        }
+        catch
+        {
+            // prevent crash
+        }
+    }
+
     private void OnLogLevelSelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
         try
@@ -920,6 +942,28 @@ public partial class MainWindow : Window
             }
 
             ThemeVariantComboBox.SelectedIndex = 0;
+        }
+        catch
+        {
+            // control not yet ready
+        }
+    }
+
+
+    // ADR 0052 A3: Restore swatch checked state from config
+    private void SyncThemeSwatchSelection(string themeId)
+    {
+        try
+        {
+            var swatches = new[] { CatppuccinSwatch, DraculaSwatch, NordSwatch, OneDarkProSwatch, TokyoNightSwatch };
+            foreach (var sw in swatches)
+            {
+                if (sw is { } btn && string.Equals(btn.Tag?.ToString(), themeId, StringComparison.OrdinalIgnoreCase))
+                {
+                    btn.IsChecked = true;
+                    return;
+                }
+            }
         }
         catch
         {
