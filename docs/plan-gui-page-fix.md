@@ -55,14 +55,14 @@
 | 4.8 | 加载恢复 Math.Clamp(cfg.Ui.SidebarWidth, 170, 400) | 重启恢复宽度 | 加载 test |
 | 4.9 | commit | — | — |
 
-## 阶段 5: 目录默认路径 (A6)
+## 阶段 5: 目录默认路径 (A6) — UI 提示而非污染配置语义
 
 | 步骤 | 内容 | 验收标准 | test 闭环 |
 |------|------|----------|-----------|
 | 5.1 | DefaultPaths.cs 加 DefaultBackupDirectory → <hotFolder>/.pp_backup | 路径三端兼容 | 单元 test |
-| 5.2 | AppConfig.Default BackupDirectory 引用 DefaultPaths.DefaultBackupDirectory | 不再 string.Empty | 默认值 test |
-| 5.3 | config.sample.json 四目录填默认值 | JSON 解析无错 | schema test |
-| 5.4 | 配置页 TextBox 加 Watermark 绑定 XxxPathHint (显示默认路径) | 空时灰底提示 | 编译+视觉 |
+| 5.2 | AppConfig.Default.Backup.Directory **保持 string.Empty**（ADR 0045 动态 fallback）；DefaultPaths.DefaultBackupDirectory 仅作 UI Watermark 源 | RuleEngineTests.Decide_Should_Create_Bak_Path 通过（基于 HotFolder 动态解析） | RuleEngineTests |
+| 5.3 | config.sample.json 四目录**保持空字符串**（空=运行时动态解析，三端兼容） | JSON 解析无错 + 空 directory 不破坏 Validator | schema test |
+| 5.4 | 配置页 TextBox 加 Watermark 绑定 XxxPathHint (显示当前默认路径) | 空时灰底提示 default | 编译+视觉 |
 | 5.5 | 加 XxxPathHint 属性到 ViewModel (返回 DefaultPaths 值) | 绑定链路完整 | binding test |
 | 5.6 | commit | — | — |
 

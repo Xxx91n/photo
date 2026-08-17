@@ -77,12 +77,12 @@ ADR 0050/0051 完成了 surface depth / typography / 按钮过渡 / RAF 中键�
 
 ### A6: 配置目录默认路径 — DefaultBackupDirectory + Watermark 提示
 
-- DefaultPaths.cs 加 `DefaultBackupDirectory` → `<hotFolder>/.pp_backup`（空则 string.Empty）
-- AppConfig.Default 引用 DefaultPaths 作默认值（BackupDirectory 不再 string.Empty）
-- config.sample.json 填默认值（HotFolder/QuarantineDirectory/AuditLogDirectory/BackupDirectory 全部用 DefaultPaths 引用）
-- 配置页 TextBox 加 `Watermark` 绑定 XxxPathHint（显示当前默认路径，空时灰底提示）
+- DefaultPaths.cs 加 `DefaultBackupDirectory` → `<hotFolder>/.pp_backup`（空则 string.Empty）—— 三端兼容路径，仅用作 UI 提示与运行时 fallback 的显示源
+- AppConfig.Default.Backup.Directory **保持 string.Empty**（与 ADR 0045 一致）：运行时由 RuleEngine.ResolveBackupPath / MetadataCleanerWorker / AppConfigValidator 在 Directory 为空时动态 fallback 到 `<hotFolder>/bak`（BackupPathResolver.DefaultBackupDirName）。硬填 DefaultPaths.DefaultBackupDirectory 会破坏基于实际 HotFolder 的动态解析，并使备份落到与用户 hot_folder 无关的环境相关路径（MyPictures/.pp_backup）
+- config.sample.json 四目录（hot_folder / quarantine.directory / audit.log_directory / backup.directory）**保持空字符串**：空值即"运行时按实际 HotFolder 动态解析"，三端兼容由 DefaultPaths + BackupPathResolver 保证，而非在模板里硬编环境相关绝对路径
+- 配置页 TextBox 加 `Watermark` 绑定 XxxPathHint（显示当前默认路径，空时灰底提示）—— UI 层展示"留空将默认使用 <DefaultPaths>"，让用户直观看到将生效的路径，而不污染配置语义
 - Material.Icons 3.0 已有，Watermark 是 Avalonia TextBox 原生属性（零新依赖）
-- 约 15 行 C#（DefaultPaths + AppConfig.Default） + 30 行 XAML（Watermark 绑定） + config.sample.json 更新
+- 约 15 行 C#（DefaultPaths + ViewModel PathHint 属性） + 30 行 XAML（Watermark 绑定）；config.sample.json 不改（已为空）
 
 ### A7: 托盘菜单保持原生菜单 — 不加过渡动画，消除 hover 闪烁
 
