@@ -33,7 +33,7 @@ public sealed record QuarantineOptions(bool Enabled, string Directory);
 
 public sealed record AuditOptions(string LogDirectory, int RetainDays, bool DiagnosticMode, string LogLevel = "info");
 
- public sealed record UiOptions(bool HideMainWindowOnStartup, bool HideTrayIcon, string ThemeVariant, string Locale = "zh-CN", double SidebarWidth = 200.0);
+ public sealed record UiOptions(bool HideMainWindowOnStartup, bool HideTrayIcon, string ThemeVariant, string Locale = "zh-CN", double SidebarWidth = 200.0, string ThemeId = "catppuccin");
 
 public sealed record AppConfig(
     int SchemaVersion,
@@ -116,5 +116,6 @@ public sealed record AppConfig(
            HideTrayIcon: false,
            ThemeVariant: "system",
            Locale: "zh-CN",
-           SidebarWidth: 200.0));
+           SidebarWidth: 200.0,
+           ThemeId: "catppuccin"));
 }

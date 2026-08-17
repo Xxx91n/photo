@@ -72,6 +72,7 @@
     "hide_main_window_on_startup": false,
     "hide_tray_icon": false,
     "theme_variant": "system",
+    "theme_id": "catppuccin",
     "sidebar_width": 200.0
   }
 }

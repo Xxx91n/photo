@@ -128,6 +128,7 @@ public partial class MainWindow : Window
                 viewModel.HideGuiOnStartup = effectiveConfig.Ui.HideMainWindowOnStartup;
                 viewModel.HideTrayIcon = effectiveConfig.Ui.HideTrayIcon;
                 viewModel.ThemeVariant = NormalizeThemeVariant(effectiveConfig.Ui.ThemeVariant);
+                viewModel.ThemeId = string.IsNullOrWhiteSpace(effectiveConfig.Ui.ThemeId) ? "catppuccin" : effectiveConfig.Ui.ThemeId;
                 viewModel.CurrentLocale = string.IsNullOrWhiteSpace(effectiveConfig.Ui.Locale) ? "zh-CN" : effectiveConfig.Ui.Locale;
                 viewModel.BackupDirectory = effectiveConfig.Backup.Directory;
                 viewModel.AuditLogDirectory = effectiveConfig.Audit.LogDirectory;
@@ -150,12 +151,14 @@ public partial class MainWindow : Window
             else
             {
                 viewModel.ThemeVariant = "system";
+                viewModel.ThemeId = "catppuccin";
                 viewModel.CurrentLocale = "zh-CN";
             }
 
             ApplyThemeVariantToApplication(viewModel.ThemeVariant);
+            App.ApplyCommunityThemeResources(viewModel.ThemeId);
             SyncThemeVariantComboSelection(viewModel.ThemeVariant);
-            SyncThemeSwatchSelection(viewModel.ThemeVariant);
+            SyncThemeSwatchSelection(viewModel.ThemeId);
             RestoreSidebarWidth(effectiveConfig.Ui.SidebarWidth);
             SyncLogLevelComboSelection(viewModel.LogLevel);
             SyncLocaleComboSelection(viewModel.CurrentLocale);
@@ -736,7 +739,7 @@ public partial class MainWindow : Window
     }
 
 
-    // ADR 0052 A3: Theme preset swatch click — set ThemeVariant to preset ID, apply theme resources
+    // ADR 0052 A3: Theme preset swatch click — dual-axis: ThemeId (preset) independent of ThemeVariant (light/dark)
     private void OnThemePresetSwatchClick(object? sender, RoutedEventArgs e)
     {
         try
@@ -745,9 +748,9 @@ public partial class MainWindow : Window
             if (string.IsNullOrEmpty(tag)) return;
             if (DataContext is MainWindowViewModel vm)
             {
-                vm.ThemeVariant = tag;
+                vm.ThemeId = tag;
             }
-            ApplyThemeVariantToApplication(tag);
+            App.ApplyCommunityThemeResources(tag);
             ScheduleDebouncedConfigApply();
         }
         catch
@@ -1625,7 +1628,8 @@ public partial class MainWindow : Window
                 LogLevel: vm.LogLevel,
                 QuarantineEnabled: vm.QuarantineEnabled,
                 QuarantineDirectory: vm.QuarantineDirectory,
-                SidebarWidth: vm.SidebarWidth);
+                SidebarWidth: vm.SidebarWidth,
+                ThemeId: vm.ThemeId);
             ConfigEditor.UpdateConfig(_options.ConfigPath, command);
             try
             {
@@ -1681,7 +1685,8 @@ public partial class MainWindow : Window
                 LogLevel: vm.LogLevel,
                 QuarantineEnabled: vm.QuarantineEnabled,
                 QuarantineDirectory: vm.QuarantineDirectory,
-                SidebarWidth: vm.SidebarWidth);
+                SidebarWidth: vm.SidebarWidth,
+                ThemeId: vm.ThemeId);
             ConfigEditor.UpdateConfig(_options.ConfigPath, command);
 
             try
@@ -1785,7 +1790,10 @@ public partial class MainWindow : Window
                 vm.HideGuiOnStartup = cfg.Ui.HideMainWindowOnStartup;
                 vm.HideTrayIcon = cfg.Ui.HideTrayIcon;
                 vm.ThemeVariant = normalizedThemeVariant;
+                vm.ThemeId = string.IsNullOrWhiteSpace(cfg.Ui.ThemeId) ? "catppuccin" : cfg.Ui.ThemeId;
                 SyncThemeVariantComboSelection(vm.ThemeVariant);
+                App.ApplyCommunityThemeResources(vm.ThemeId);
+                SyncThemeSwatchSelection(vm.ThemeId);
                 vm.BackupDirectory = cfg.Backup.Directory;
                 vm.AuditLogDirectory = cfg.Audit.LogDirectory;
                 vm.LogLevel = cfg.Audit.LogLevel;

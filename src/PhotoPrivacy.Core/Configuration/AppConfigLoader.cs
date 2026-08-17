@@ -70,7 +70,8 @@ public static class AppConfigLoader
                 HideMainWindowOnStartup: dto.Ui.HideMainWindowOnStartup,
                 HideTrayIcon: dto.Ui.HideTrayIcon,
                 ThemeVariant: dto.Ui.ThemeVariant,
-                Locale: dto.Ui.Locale ?? "zh-CN"));
+                Locale: dto.Ui.Locale ?? "zh-CN",
+                ThemeId: string.IsNullOrWhiteSpace(dto.Ui.ThemeId) ? "catppuccin" : dto.Ui.ThemeId));
     }
 
     private static string ResolveExifToolPath(string nestedPath, string? legacyPath, bool hasNestedExifToolPath)
@@ -262,6 +263,9 @@ public static class AppConfigLoader
 
         [JsonPropertyName("theme_variant")]
         public string ThemeVariant { get; init; } = AppConfig.Default.Ui.ThemeVariant;
+
+        [JsonPropertyName("theme_id")]
+        public string ThemeId { get; init; } = AppConfig.Default.Ui.ThemeId;
 
         [JsonPropertyName("locale")]
         public string? Locale { get; init; }

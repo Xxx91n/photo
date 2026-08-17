@@ -14,4 +14,5 @@ public sealed record ConfigEditCommand(
     string LogLevel,
     bool QuarantineEnabled,
     string QuarantineDirectory,
-    double SidebarWidth = 200.0);
+    double SidebarWidth = 200.0,
+    string ThemeId = "catppuccin");

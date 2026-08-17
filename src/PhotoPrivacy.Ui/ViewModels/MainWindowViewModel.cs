@@ -176,6 +176,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         }
     }
 
+    // ADR 0052 A3: Theme preset ID (independent of variant axis) — atomcode research: dual-axis design
+    private string _themeId = "catppuccin";
+    public string ThemeId
+    {
+        get => _themeId;
+        set => SetField(ref _themeId, value);
+    }
+
     // ADR 0052 A5: Sidebar width for persistence
     private double _sidebarWidth = 200.0;
     public double SidebarWidth

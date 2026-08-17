@@ -112,7 +112,7 @@ public partial class App : Application
         }
     }
 
-    private static void ApplyCommunityThemeResources(string themeName)
+    internal static void ApplyCommunityThemeResources(string themeName)
     {
         var themeFile = themeName switch
         {
