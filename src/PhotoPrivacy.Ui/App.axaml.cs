@@ -38,14 +38,21 @@ public partial class App : Application
                 var config = LoadConfigOrDefault(RuntimeOptions.ConfigPath);
                 if (config is not null)
                 {
+                    // Dual-axis separation (ADR 0052 A3, commit cab8d55):
+                    //   theme_variant (axis: system/light/dark) -> RequestedThemeVariant
+                    //   theme_id (axis: catppuccin/dracula/nord/tokyonight/onedarkpro) -> ResourceDictionary swap
+                    // Legacy compatibility: old configs that stored a preset ID inside theme_variant
+                    // (e.g. "catppuccin") are mapped to Dark so upgrades do not flip to Light.
                     var themeVariant = config.Ui.ThemeVariant switch
                     {
-                        "dark" or "nord" or "catppuccin" or "dracula" or "tokyonight" or "onedarkpro" => ThemeVariant.Dark,
+                        "system" or "" or null => ThemeVariant.Default,
                         "light" => ThemeVariant.Light,
+                        "dark" or "nord" or "catppuccin" or "dracula" or "tokyonight" or "onedarkpro" => ThemeVariant.Dark,
                         _ => ThemeVariant.Default
                     };
                     Application.Current!.RequestedThemeVariant = themeVariant;
-                    ApplyCommunityThemeResources(config.Ui.ThemeVariant);
+                    var startupThemeId = string.IsNullOrWhiteSpace(config.Ui.ThemeId) ? "catppuccin" : config.Ui.ThemeId;
+                    ApplyCommunityThemeResources(startupThemeId);
                 }
 
                 TrySetWindowIcon(window);
