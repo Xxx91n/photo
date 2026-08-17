@@ -289,3 +289,31 @@ _Avoid_: Button 样式无 Transitions 导致 :pressed 闪现硬切；WPF 风格 
 **RequestAnimationFrame Middle-Click Scroll**:
 MiddleClickScrollBehavior.cs 的 DispatcherTimer 16ms 换为 TopLevel.RequestAnimationFrame（Avalonia 11.0+ 官方等价物 of CompositionTarget.Rendering，与渲染循环/显示器帧率同步），消除合并帧/抖动。帧率无关计算：delta * (frameTime.TotalMilliseconds / 16.67) 让高刷屏自动适配。常量对齐 Files.App 原版：DeadZone=12, SpeedFactor=0.12, MaxSpeedPerTick=32。TopLevel.GetTopLevel(sv) null 边界 fallback 到 DispatcherTimer。保持线性比例速度模型（松键即停，不加惯性）。见 ADR 0051 A3。
 _Avoid_: DispatcherTimer 16ms 非 vsync 对齐导致高刷屏抖动；偏离 Files.App 成熟常量值
+
+**Sidebar Nav Item (44px Icon+Text)**:
+企业级桌面侧栏导航项标准：44px 高、icon(20px)+text、4px 左侧 accent bar active 指示。Material Design 3 Navigation drawer / Fluent 2 NavViewItem / Apple HIG sidebar 均遵此规格。项目 Button.nav 三按钮（Config/Logs/ServiceManager）统一 Padding、加 Material.Icons（Settings/FileDocumentOutline/ServerNetwork）、active 态左侧 accent bar。见 ADR 0052 A1。
+_Avoid_: 纯文字无图标、Padding 不统一、无 active indicator
+
+**Exponential Scroll Smoothing**:
+中键滚动指数平滑速度模型：`v += (targetV - v) * (1 - exp(-k*dt))`，k≈15 s⁻¹（半衰期 ~46ms），dt 钳制 ≤100ms，`|v|<1` 停机。消除三路"flash"根因：死区阶跃（targetV 瞬间 0→v）、松键急停（无减速）、高刷帧率依赖。Lembcke《Improved Lerp Smoothing》帧率无关数学 + LibreScroll 摩擦衰减 + SmoothScroll.Avalonia 停机阈值综合。见 ADR 0052 A2。
+_Avoid_: 线性阶跃速度模型；DispatcherTimer 而非 RAF；松键硬切停机
+
+**Theme Swatch Grid**:
+主题选择控件用色板网格（RadioButton + WrapPanel，每个 swatch 显示该主题 primary 色 + name）替代纯 ComboBox。明暗切换（system/light/dark）保留独立 ComboBox。当前 5 主题文件（Catppuccin/Dracula/NordDark/OneDarkPro/TokyoNight）已有但无 UI 入口，加 swatch grid + `ui.theme_id` 持久化后可点选。MD3 角色补强（SurfaceDim/Bright + ContainerLow/High + OnColor），深色 #121212 基调去饱和 Primary 70-80%。见 ADR 0052 A3。
+_Avoid_: 主题文件存在但无 UI 入口；硬编码色值而非语义角色 token；高饱和 Primary
+
+**Titlebar Content Dedup**:
+自绘标题栏只放窗口控制按钮（min/max/close），左侧留空作拖拽区（ElementRole="TitleBar" 自动）。应用名+模式标签+状态点只在侧边栏头部。Window.Title 绑定 ModeLabel 作 OS 任务栏/Alt-Tab 上下文。VS Code/Discord/Slack 同款：标题栏不重复 sidebar 信息。见 ADR 0052 A4。
+_Avoid_: 标题栏显示 AppTitle + ModeLabel 与 sidebar 头部重复；自绘 drag handler（ElementRole 已接管）
+
+**Resizable Sidebar (GridSplitter)**:
+侧边栏宽度可拖拽：ColumnDefinitions `200,4,*`，中间 4px 列放 Avalonia 内置 GridSplitter，Column[0] MinWidth=170 MaxWidth=400（GridSplitter 自动遵守）。DragCompleted → Math.Clamp(170,400) → 防抖 500ms 写 `ui.sidebar_width`（复用 ADR 0037 防抖链路）。UiOptions 加 `SidebarWidth=200` 字段持久化。v2rayN 同款模式。见 ADR 0052 A5。
+_Avoid_: 固定 200px 不可调；GridSplitter 无 Min/Max 约束；拖完不持久化
+
+**Default Path Watermark**:
+配置页 TextBox 加 `Watermark` 属性绑定 XxxPathHint，显示当前默认检测路径（DefaultPaths.cs 三端兼容值）。DefaultPaths 加 DefaultBackupDirectory → `<hotFolder>/.pp_backup`。AppConfig.Default 引用 DefaultPaths 而非 string.Empty。config.sample.json 填默认值。Avalonia TextBox Watermark 是原生属性，零新依赖。见 ADR 0052 A6。
+_Avoid_: 配置目录 TextBox 空 string 默认值；无 Watermark 提示用户当前默认
+
+**Native Tray Menu (Immutable)**:
+Avalonia 11 的 NativeMenuItem 是纯数据类（INativeMenuItemExporterEvents），无视觉模板/无样式键，不可应用 Avalonia Transitions。全局 Button:pressed scale(0.97) 只作用于视觉树内 Button，托盘菜单不在视觉树。macOS/Linux 是平台原生菜单（NSMenu/DBus）完全不可样式化；Windows 是 TrayPopupRoot + MenuFlyoutPresenter（管理型 popup），PR #21426 试图换原生 Win32 菜单未合并。行业惯例（VS Code/Files.app）都不在原生菜单做按钮过渡。见 ADR 0052 A7。
+_Avoid_: 尝试给 NativeMenuItem 加 Avalonia 样式/Transitions；为跨平台一致而弃用原生菜单
