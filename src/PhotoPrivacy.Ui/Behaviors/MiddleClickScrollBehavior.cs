@@ -69,6 +69,11 @@ public sealed class MiddleClickScrollBehavior : AvaloniaObject
     private const double DeadZone = 12.0;
     private const double SpeedFactor = 0.12;
     private const double MaxSpeedPerTick = 32.0;
+    // ADR 0052 A2: Exponential smoothing — v += (targetV - v) * (1 - exp(-k*dt))
+    private const double SmoothingRate = 15.0;     // k ≈ 15 s⁻¹ (half-life ~46ms)
+    private const double MaxDeltaTimeMs = 100.0;   // dt clamp (窗口暂停/大延迟保护)
+    private const double StopThreshold = 1.0;       // |v| < 1 → 停机
+    private const double DeadZoneHysteresisFactor = 0.5; // 进入死区后阈值缩半防边界抖动
 
     private static readonly Cursor ScrollCursorAll = new(StandardCursorType.SizeAll);
     private static readonly Cursor ScrollCursorVertical = new(StandardCursorType.SizeNorthSouth);
@@ -90,6 +95,12 @@ public sealed class MiddleClickScrollBehavior : AvaloniaObject
         public ScrollViewer? ScrollViewer;
         public TopLevel? TopLevel;
         public bool RafRequested;
+        // ADR 0052 A2: exponential smoothing velocity state
+        public double VelocityY;
+        public double VelocityX;
+        public bool InDeadZoneY;
+        public bool InDeadZoneX;
+        public TimeSpan? LastFrameTime;
     }
 
     private static AutoScrollState? _state;
@@ -245,7 +256,14 @@ public sealed class MiddleClickScrollBehavior : AvaloniaObject
         }
 
         var sv = _state.ScrollViewer;
-        var frameScale = frameTime.TotalMilliseconds / 16.67;
+
+        // ADR 0052 A2: dt from frame time (clamped ≤100ms), exponential smoothing
+        var dtMs = frameTime.TotalMilliseconds;
+        if (_state.LastFrameTime.HasValue)
+            dtMs = Math.Min(frameTime.TotalMilliseconds - _state.LastFrameTime.Value.TotalMilliseconds, MaxDeltaTimeMs);
+        _state.LastFrameTime = frameTime;
+        var dtSec = Math.Max(dtMs, 0) / 1000.0;
+        var smoothFactor = 1.0 - Math.Exp(-SmoothingRate * dtSec);
 
         var deltaY = _state.Current.Y - _state.Anchor.Y;
         var deltaX = _state.Current.X - _state.Anchor.X;
@@ -256,10 +274,13 @@ public sealed class MiddleClickScrollBehavior : AvaloniaObject
 
         if (ScrollableVertical(sv) > 0)
         {
-            var velocityY = CalculateVelocity(deltaY) * frameScale;
-            if (Math.Abs(velocityY) > 0)
+            var targetVY = CalculateVelocityWithHysteresis(deltaY, ref _state.InDeadZoneY);
+            _state.VelocityY += (targetVY - _state.VelocityY) * smoothFactor;
+            if (Math.Abs(_state.VelocityY) < StopThreshold)
+                _state.VelocityY = 0;
+            else
             {
-                var targetY = Math.Clamp(offset.Y + velocityY, 0, ScrollableVertical(sv));
+                var targetY = Math.Clamp(offset.Y + _state.VelocityY * dtSec * 60.0, 0, ScrollableVertical(sv));
                 if (!targetY.Equals(offset.Y))
                     newVerticalOffset = targetY;
             }
@@ -267,10 +288,13 @@ public sealed class MiddleClickScrollBehavior : AvaloniaObject
 
         if (ScrollableHorizontal(sv) > 0)
         {
-            var velocityX = CalculateVelocity(deltaX) * frameScale;
-            if (Math.Abs(velocityX) > 0)
+            var targetVX = CalculateVelocityWithHysteresis(deltaX, ref _state.InDeadZoneX);
+            _state.VelocityX += (targetVX - _state.VelocityX) * smoothFactor;
+            if (Math.Abs(_state.VelocityX) < StopThreshold)
+                _state.VelocityX = 0;
+            else
             {
-                var targetX = Math.Clamp(offset.X + velocityX, 0, ScrollableHorizontal(sv));
+                var targetX = Math.Clamp(offset.X + _state.VelocityX * dtSec * 60.0, 0, ScrollableHorizontal(sv));
                 if (!targetX.Equals(offset.X))
                     newHorizontalOffset = targetX;
             }
@@ -319,6 +343,20 @@ public sealed class MiddleClickScrollBehavior : AvaloniaObject
     {
         if (Math.Abs(delta) <= DeadZone) return 0;
         var adjustedDelta = delta - Math.Sign(delta) * DeadZone;
+        return Math.Clamp(adjustedDelta * SpeedFactor, -MaxSpeedPerTick, MaxSpeedPerTick);
+    }
+
+    // ADR 0052 A2: Dead zone hysteresis — once inside dead zone, threshold halves to prevent boundary jitter
+    private static double CalculateVelocityWithHysteresis(double delta, ref bool inDeadZone)
+    {
+        var effectiveDeadZone = inDeadZone ? DeadZone * DeadZoneHysteresisFactor : DeadZone;
+        if (Math.Abs(delta) <= effectiveDeadZone)
+        {
+            inDeadZone = true;
+            return 0;
+        }
+        inDeadZone = false;
+        var adjustedDelta = delta - Math.Sign(delta) * effectiveDeadZone;
         return Math.Clamp(adjustedDelta * SpeedFactor, -MaxSpeedPerTick, MaxSpeedPerTick);
     }
 }
