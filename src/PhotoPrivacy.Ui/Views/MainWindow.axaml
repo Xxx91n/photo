@@ -1,4 +1,4 @@
-<Window xmlns="https://github.com/avaloniaui"
+<Window Title="{Binding ModeLabel}" xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ex="using:PhotoPrivacy.Ui.Localization"
         xmlns:vm="using:PhotoPrivacy.Ui.ViewModels"
@@ -11,7 +11,7 @@
         Height="600"
         MinWidth="740"
         MinHeight="480"
-        Title="PhotoPrivacy"
+
         FlowDirection="{Binding UiFlowDirection}"
         Background="{DynamicResource SemiColorBackground0}"
         ExtendClientAreaToDecorationsHint="True"
@@ -22,11 +22,7 @@
     <Border Grid.Row="0" Grid.ColumnSpan="2" Classes="titlebar-host" Background="{DynamicResource SemiColorBackground0}"
             WindowDecorationProperties.ElementRole="TitleBar">
       <Grid ColumnDefinitions="*,Auto">
-        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="{DynamicResource SpaceSm}" VerticalAlignment="Center" Margin="12,0">
-          <TextBlock Text="PhotoPrivacy" Classes="headline" VerticalAlignment="Center"/>
-          <TextBlock Text="—" Classes="caption" Foreground="{DynamicResource SemiColorText2}" VerticalAlignment="Center"/>
-          <TextBlock Text="{Binding ModeLabel}" Classes="caption" Foreground="{DynamicResource SemiColorText2}" VerticalAlignment="Center"/>
-        </StackPanel>
+        <Grid Grid.Column="0" />
         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="{DynamicResource SpaceXxs}" VerticalAlignment="Center" Margin="0,0,4,0">
           <Button Classes="caption-btn" Click="OnMinimizeClick" WindowDecorationProperties.ElementRole="MinimizeButton" Padding="14,8" Background="Transparent" BorderThickness="0">
             <materialIcons:MaterialIcon Kind="WindowMinimize" Width="14" Height="14"/>
@@ -76,13 +72,29 @@
         </Border>
 
         <StackPanel DockPanel.Dock="Top" Margin="8,16,8,0" Spacing="{DynamicResource SpaceXxs}">
-          <Button x:Name="ConfigNavButton" Classes="nav active" Content="{ex:Localize nav.config}" Tag="config"/>
-          <Button x:Name="LogNavButton" Classes="nav" Content="{ex:Localize nav.logs}" Tag="log"/>
-          <Button x:Name="OpenServiceManagerTabButton"
+          <Button x:Name="ConfigNavButton" Classes="nav active" Tag="config" Height="44" HorizontalContentAlignment="Stretch">
+            <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+              <materialIcons:MaterialIcon Kind="Settings" Width="20" Height="20"/>
+              <TextBlock Text="{ex:Localize nav.config}" Classes="body" VerticalAlignment="Center"/>
+            </StackPanel>
+          </Button>
+          <Button x:Name="LogNavButton" Classes="nav" Tag="log" Height="44" HorizontalContentAlignment="Stretch">
+            <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+              <materialIcons:MaterialIcon Kind="FileDocumentOutline" Width="20" Height="20"/>
+              <TextBlock Text="{ex:Localize nav.logs}" Classes="body" VerticalAlignment="Center"/>
+            </StackPanel>
+          </Button>
+                    <Button x:Name="OpenServiceManagerTabButton"
                   Classes="nav"
-                  Content="{ex:Localize nav.service_manager}"
                   Tag="service"
-                  IsVisible="{Binding ShowServiceManagerTab}"/>
+                  Height="44"
+                  HorizontalContentAlignment="Stretch"
+                  IsVisible="{Binding ShowServiceManagerTab}">
+            <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+              <materialIcons:MaterialIcon Kind="ServerNetwork" Width="20" Height="20"/>
+              <TextBlock Text="{ex:Localize nav.service_manager}" Classes="body" VerticalAlignment="Center"/>
+            </StackPanel>
+          </Button>
         </StackPanel>
 
         <StackPanel DockPanel.Dock="Bottom" Margin="8,0,8,12" Spacing="{DynamicResource SpaceXs}">
