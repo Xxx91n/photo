@@ -20,6 +20,12 @@ public static class DefaultPaths
     /// </summary>
     public static string DefaultAuditLogDirectory => string.IsNullOrEmpty(DefaultHotFolder) ? string.Empty : System.IO.Path.Combine(DefaultHotFolder, "_audit");
 
+    /// <summary>
+    /// Default backup directory: <hotFolder>/.pp_backup. Empty when hotFolder is empty.
+    /// ADR 0052 A6: Backup before metadata cleaning.
+    /// </summary>
+    public static string DefaultBackupDirectory => string.IsNullOrEmpty(DefaultHotFolder) ? string.Empty : System.IO.Path.Combine(DefaultHotFolder, ".pp_backup");
+
     private static string ResolveDefaultHotFolder()
     {
         var pictures = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);

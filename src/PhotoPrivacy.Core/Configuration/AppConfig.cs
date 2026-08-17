@@ -99,7 +99,7 @@ public sealed record AppConfig(
             BackoffSeconds: [1, 3, 10]),
        Backup: new BackupOptions(
            Enabled: true,
-           Directory: string.Empty,
+           Directory: DefaultPaths.DefaultBackupDirectory,
            Suffix: ".bak",
            MaxSizeMb: 5000,
            RetainDays: 30),

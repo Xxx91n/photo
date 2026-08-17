@@ -214,6 +214,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         set => SetField(ref _logLevel, value);
     }
 
+    // ADR 0052 A6: Path hint properties for Watermark display
+    public string HotFolderPathHint => PhotoPrivacy.Core.Constants.DefaultPaths.DefaultHotFolder;
+    public string BackupDirectoryHint => PhotoPrivacy.Core.Constants.DefaultPaths.DefaultBackupDirectory;
+    public string QuarantineDirectoryHint => PhotoPrivacy.Core.Constants.DefaultPaths.DefaultQuarantineDirectory;
+    public string AuditLogDirectoryHint => PhotoPrivacy.Core.Constants.DefaultPaths.DefaultAuditLogDirectory;
+
     public string ExifToolPathHint
     {
         get => _exifToolPathHint;

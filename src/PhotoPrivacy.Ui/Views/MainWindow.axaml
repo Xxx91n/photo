@@ -167,6 +167,7 @@
                       <TextBox DockPanel.Dock="Left"
                                Width="280"
                                Text="{Binding HotFolderPath}"
+                               Watermark="{Binding HotFolderPathHint}"
                                Classes="inline-input"
                                VerticalAlignment="Center"/>
                       <Button x:Name="BrowseHotFolderButton" DockPanel.Dock="Right" MinWidth="32" Padding="0" Classes="ghost" VerticalAlignment="Center"><materialIcons:MaterialIcon Kind="FolderOpen" Width="16" Height="16"/></Button>
@@ -202,6 +203,7 @@
                       <TextBox DockPanel.Dock="Left"
                                Width="280"
                                Text="{Binding BackupDirectory}"
+                               Watermark="{Binding BackupDirectoryHint}"
                                Classes="inline-input"
                                VerticalAlignment="Center"/>
                       <Button x:Name="BrowseBackupDirectoryButton" DockPanel.Dock="Right" MinWidth="32" Padding="0" Classes="ghost" VerticalAlignment="Center"><materialIcons:MaterialIcon Kind="FolderOpen" Width="16" Height="16"/></Button>
@@ -234,6 +236,7 @@
                       <TextBox DockPanel.Dock="Left"
                                Width="280"
                                Text="{Binding QuarantineDirectory}"
+                               Watermark="{Binding QuarantineDirectoryHint}"
                                Classes="inline-input"
                                VerticalAlignment="Center"/>
                       <Button x:Name="BrowseQuarantineDirectoryButton" DockPanel.Dock="Right" MinWidth="32" Padding="0" Classes="ghost" VerticalAlignment="Center"><materialIcons:MaterialIcon Kind="FolderOpen" Width="16" Height="16"/></Button>
