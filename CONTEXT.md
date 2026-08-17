@@ -299,7 +299,7 @@ _Avoid_: 纯文字无图标、Padding 不统一、无 active indicator
 _Avoid_: 线性阶跃速度模型；DispatcherTimer 而非 RAF；松键硬切停机
 
 **Theme Swatch Grid**:
-主题选择控件用色板网格（RadioButton + WrapPanel，每个 swatch 显示该主题 primary 色 + name）替代纯 ComboBox。明暗切换（system/light/dark）保留独立 ComboBox。当前 5 主题文件（Catppuccin/Dracula/NordDark/OneDarkPro/TokyoNight）已有但无 UI 入口，加 swatch grid + `ui.theme_id` 持久化后可点选。MD3 角色补强（SurfaceDim/Bright + ContainerLow/High + OnColor），深色 #121212 基调去饱和 Primary 70-80%。见 ADR 0052 A3。
+主题选择控件用色板网格（RadioButton + WrapPanel，每个 swatch 显示该主题 primary 色 + name）替代纯 ComboBox。双轴独立：`theme_id`（预设轴 → `MergedDictionaries` StyleInclude swap）与 `theme_variant`（明暗轴 → `RequestedThemeVariant` Default/Light/Dark）互不覆盖；持久化只存原始两轴，派生值不回写（VS Code #196119 教训，commit cab8d55 修正）。明暗切换（system/light/dark）保留独立 ComboBox。当前 5 主题文件（Catppuccin/Dracula/NordDark/OneDarkPro/TokyoNight）已有但无 UI 入口，加 swatch grid + `ui.theme_id` 持久化后可点选。MD3 角色补强（SurfaceDim/Bright + ContainerLow/High + OnColor），深色 #121212 基调去饱和 Primary 70-80%。见 ADR 0052 A3。
 _Avoid_: 主题文件存在但无 UI 入口；硬编码色值而非语义角色 token；高饱和 Primary
 
 **Titlebar Content Dedup**:

@@ -43,13 +43,19 @@ ADR 0050/0051 完成了 surface depth / typography / 按钮过渡 / RAF 中键�
 - 参考：Lembcke《Improved Lerp Smoothing》帧率无关数学 + LibreScroll 摩擦衰减 + SmoothScroll.Avalonia 停机阈值 2.0
 - 约 40 行改动（MiddleClickScrollBehavior.cs 速度更新段 + 死区逻辑）
 
-### A3: 主题色板网格 — swatch grid + 明暗 ComboBox + theme_id 持久化 + MD3 角色补强
+### A3: 主题色板网格 — swatch grid + 双轴独立(ThemeId 预设 / ThemeVariant 明暗) + theme_id 持久化 + MD3 角色补强
 
+- atomcode 调研依据（commit a707f57 之后审计）：VS Code settings.json + Obsidian theme registry + Muselly theme handler + Avalonia ReActiveTheme 4 源/18 信源交叉验证，行业标准是**双轴独立**：
+  - `theme_id`（预设轴：catppuccin/dracula/nord/tokyonight/onedarkpro） → 资源层 `MergedDictionaries` StyleInclude swap（`App.ApplyCommunityThemeResources`）
+  - `theme_variant`（变体轴：system/light/dark） → `RequestedThemeVariant` 只接受 Default/Light/Dark 三档
+  - 持久化只存原始两轴（`ui.theme_id` + `ui.theme_variant`），派生值不回写（VS Code issue #196119 教训）
 - 当前 5 主题文件存在（Catppuccin/Dracula/NordDark/OneDarkPro/TokyoNight）但无 UI 入口，仅 system/light/dark ComboBox
-- 设置页加色板网格（RadioButton + WrapPanel，每个 swatch 显示该主题 primary 色 + name）
-- 保留 system/light/dark ComboBox 作明暗切换（独立于主题预设）
-- `UiOptions` 加 `string ThemeId = "catppuccin"` 字段，持久化到 `config.json ui.theme_id`
-- 加载时恢复：`theme_id` 选预设主题文件，`theme_variant` 选 system/light/dark
+- 设置页加色板网格（RadioButton + WrapPanel，每个 swatch 显示该主题 primary 色 + name），Tag=预设 ID
+- 保留 system/light/dark ComboBox 作明暗切换（独立于主题预设 — 双轴分离核心约束）
+- `UiOptions` record 加 `string ThemeId = "catppuccin"` 字段（位置参数最后，带默认值），持久化到 `config.json ui.theme_id`
+- 加载时恢复：`ThemeId` → `App.ApplyCommunityThemeResources(themeId)` 选预设主题文件；`ThemeVariant` → `RequestedThemeVariant` 选 system/light/dark；两轴独立，互不覆盖
+- swatch click handler：`vm.ThemeId = tag` + `App.ApplyCommunityThemeResources(tag)`，**不再覆盖 `RequestedThemeVariant`**；明暗 ComboBox SelectionChanged 只改 `RequestedThemeVariant`，不动 `ThemeId`
+- 实现修正史：commit `a707f57` 原偏差——把预设 ID（catppuccin/dracula）塞进 `ThemeVariant` 字段，破坏双轴独立；commit `cab8d55` 修正为双轴分离，18 代码点 9 文件（AppConfig/AppConfigLoader/AppConfigJson/ConfigEditCommand/ConfigEditor/MainWindowViewModel/MainWindow.axaml.cs/App.axaml.cs/config.sample.json）
 - MD3 角色补强：5 主题文件各加 `SemiColorSurfaceDim`/`Bright`+`ContainerLow`/`High`+`OnColor` 语义角色
 - 深色 #121212 基调，Primary 去饱和到 70-80%（隐私工具低饱和基调，Apple/Fluent 2 共识）
 - 约 80 行 XAML（swatch grid） + 15 行 C#（ThemeId 字段+加载/保存） + 5 主题文件角色补强

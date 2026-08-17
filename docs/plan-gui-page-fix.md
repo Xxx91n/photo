@@ -36,7 +36,7 @@
 | 3.2 | ConfigEditCommand + ConfigEditor.UpdateConfig 映射 ui.theme_id | 持久化链路完整 | 配置读写测试 |
 | 3.3 | config.sample.json 加 ui.theme_id 默认值 | JSON 解析无错 | schema test |
 | 3.4 | 设置页加色板网格 (RadioButton+WrapPanel, 5 主题 swatch) | swatch 渲染可见 | 编译+视觉 |
-| 3.5 | swatch RadioButton checked → 切换主题文件 (DynamicResource 覆盖) | 点击 swatch 主题立即变 | 交互测试 |
+| 3.5 | swatch RadioButton checked → ThemeId=tag + ApplyCommunityThemeResources(tag) 切主题文件(双轴独立，不覆盖 ThemeVariant) | 点击 swatch 主题立即变，明暗 ComboBox 选中态不变 | ThemeVariantSource 交互测试 |
 | 3.6 | 5 主题文件各加 SemiColorSurfaceDim/Bright + ContainerLow/High + OnColor | MD3 角色完整 | grep token in 主题文件 |
 | 3.7 | 深色基调 #121212 + Primary 去饱和到 70-80% | 视觉低饱和 | 视觉检查 |
 | 3.8 | commit | — | — |
