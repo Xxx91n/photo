@@ -55,7 +55,7 @@ ADR 0050/0051 完成了 surface depth / typography / 按钮过渡 / RAF 中键�
 - `UiOptions` record 加 `string ThemeId = "catppuccin"` 字段（位置参数最后，带默认值），持久化到 `config.json ui.theme_id`
 - 加载时恢复：`ThemeId` → `App.ApplyCommunityThemeResources(themeId)` 选预设主题文件；`ThemeVariant` → `RequestedThemeVariant` 选 system/light/dark；两轴独立，互不覆盖
 - swatch click handler：`vm.ThemeId = tag` + `App.ApplyCommunityThemeResources(tag)`，**不再覆盖 `RequestedThemeVariant`**；明暗 ComboBox SelectionChanged 只改 `RequestedThemeVariant`，不动 `ThemeId`
-- 实现修正史：commit `a707f57` 原偏差——把预设 ID（catppuccin/dracula）塞进 `ThemeVariant` 字段，破坏双轴独立；commit `cab8d55` 修正为双轴分离，18 代码点 9 文件（AppConfig/AppConfigLoader/AppConfigJson/ConfigEditCommand/ConfigEditor/MainWindowViewModel/MainWindow.axaml.cs/App.axaml.cs/config.sample.json）
+- 实现修正史：commit `a707f57` 原偏差——把预设 ID（catppuccin/dracula）塞进 `ThemeVariant` 字段，破坏双轴独立；commit `cab8d55` 修正为双轴分离，18 代码点 9 文件（AppConfig/AppConfigLoader/AppConfigJson/ConfigEditCommand/ConfigEditor/MainWindowViewModel/MainWindow.axaml.cs/App.axaml.cs/config.sample.json）；追加 commit `dd7000d` 修复 `cab8d55` 遗漏的 `App.axaml.cs` 启动路径（`ThemeVariant` switch 仍含预设 ID + `ApplyCommunityThemeResources(config.Ui.ThemeVariant)` 应为 `ThemeId`），至此双轴分离在启动+运行+持久化三路径全部落地
 - MD3 角色补强：5 主题文件各加 `SemiColorSurfaceDim`/`Bright`+`ContainerLow`/`High`+`OnColor` 语义角色
 - 深色 #121212 基调，Primary 去饱和到 70-80%（隐私工具低饱和基调，Apple/Fluent 2 共识）
 - 约 80 行 XAML（swatch grid） + 15 行 C#（ThemeId 字段+加载/保存） + 5 主题文件角色补强
