@@ -29,6 +29,23 @@
 改为 `catch (Exception ex)` + `UiDiagnosticLog.Write` 输出失败信息。
 
 **不改结构**：index-replace Fallback-C（Avalonia #9691 认证）保持不变，slot 1 fallback 到空 ResourceDictionary 已正确。
+### Bug1 真正根因（运行时日志确认 + atomcode 源码级调研）
+
+**崩溃日志**：`ui-20260818.log` 第 19 行：
+```
+[FATAL] UnhandledException: System.Collections.Generic.KeyNotFoundException:
+  Static resource 'SystemControlTransparentBrush' not found.
+  at Avalonia.Controls.DataGrid.MeasureOverride(Size availableSize)
+```
+
+**根因**：`Avalonia.Controls.DataGrid/Themes/Fluent.xaml` 有 4 处 `<StaticResource ResourceKey="SystemControlTransparentBrush"/>` 引用但**从不定义**该资源。该资源定义在 `Avalonia.Themes.Fluent` 的 `FluentControlResources.xaml` 中。本项目用 Semi.Avalonia 基座（官方定位为"完全独立、无需 FluentTheme"），因此 `SystemControlTransparentBrush` 不存在 → DataGrid 首次渲染时 `ApplyTemplate` → `SetParent` → `StaticResource` 一次性查找失败 → `KeyNotFoundException` → 闪退。
+
+**这是 Avalonia 官方已知遗留 bug**（PR #8163："We had a lot of StaticResource usage in DataGrid Fluent theme, as it was ported from WindowsCommunityToolkit"），v12 只修了颜色部分，4 处 brush 引用未动。Material.Avalonia issue #295 同机制崩溃。
+
+**修复**：安装 `Semi.Avalonia.DataGrid 12.1.0.1` NuGet 包，用 `<semi:DataGridSemiTheme />` 替换 `<StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml" />`。Semi DataGrid 主题自包含（ThemeDictionaries Light/Dark + Shared.axaml，零 Fluent 依赖），完美匹配 Semi 基座。
+
+**来源**：Avalonia v11 + v12 两份 Fluent.xaml 源码直接抓取验证、FluentControlResources.xaml（150KB 引用确认）、官方 theme-variants 文档、Semi.Avalonia.DataGrid NuGet README + 源码、Material.Avalonia issue #295 社区实证、PR #8163。
+
 
 ### Bug2: 侧栏按钮等宽 — Grid Auto,* 替换 StackPanel（方案 A）
 

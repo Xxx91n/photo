@@ -15,7 +15,7 @@
     <semi:SemiTheme Locale="zh-CN" />
     <semi:UrsaSemiTheme Locale="zh-CN" />
     <materialIcons:MaterialIconStyles />
-    <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml" />
+    <semi:DataGridSemiTheme />
     <StyleInclude Source="avares://PhotoPrivacy.Ui/Styling/AppTheme.axaml" />
   </Application.Styles>
 </Application>
