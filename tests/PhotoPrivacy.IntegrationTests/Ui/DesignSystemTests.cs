@@ -362,6 +362,28 @@ public sealed class DesignSystemTests
     }
 
     [Fact]
+    public void MiddleClick_Behavior_Must_Have_Watchdog_And_WallClock()
+    {
+        // ADR 0055 A2 regression guard: RAF primary + Render-priority watchdog + wall-clock Stopwatch dt.
+        // Watchdog steps when RAF stalls >32ms (maximize layout storm); wall-clock dt keeps
+        // exponential curve correct at any sample rate. Without either, maximize-window scroll breaks.
+        var path = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "Behaviors", "MiddleClickScrollBehavior.cs");
+        var source = File.ReadAllText(path, Encoding.UTF8);
+        // Watchdog present
+        Assert.Contains("Watchdog_Tick", source, StringComparison.Ordinal);
+        Assert.Contains("DispatcherPriority.Render, Watchdog_Tick", source, StringComparison.Ordinal);
+        // Wall-clock Stopwatch for dt
+        Assert.Contains("Stopwatch", source, StringComparison.Ordinal);
+        Assert.Contains("StepScroll", source, StringComparison.Ordinal);
+        // Stall threshold constant
+        Assert.Contains("WatchdogStallMs = 32.0", source);
+        // Stop() must clean up watchdog + clock (no leak)
+        Assert.Contains("_state.Watchdog", source, StringComparison.Ordinal);
+        Assert.Contains("_state.Clock", source, StringComparison.Ordinal);
+    }
+
+
+    [Fact]
     public void Spacing_Must_Reference_Space_Tokens()
     {
         var path = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "Views", "MainWindow.axaml");
