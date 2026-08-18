@@ -24,6 +24,7 @@
     "paused": "已暂停",
     "stopped": "已停止",
     "detecting": "检测中…",
+    "connecting": "Worker 连接中...",
     "exiftool_not_found": "未找到 ExifTool",
     "auto_detected": "已自动检测到",
     "service_mode": "服务模式",

@@ -24,6 +24,7 @@
     "paused": "متوقف مؤقتاً",
     "stopped": "متوقف",
     "detecting": "جاري الكشف…",
+    "connecting": "Worker يتصل...",
     "exiftool_not_found": "ExifTool غير موجود",
     "auto_detected": "تم الكشف تلقائياً",
     "service_mode": "وضع الخدمة",

@@ -115,7 +115,10 @@ public partial class MainWindow : Window
             // PollVersionAsync (background thread) will detect the real version within 1s and post via Dispatcher.UIThread
             viewModel.ExifToolVersion = LocalizationService.Instance.Get("status.detecting");
             viewModel.ShowDetailedEvents = false;
-            viewModel.RuntimeStatus = BuildRuntimeStatusText(options.RuntimeKind, options.GetServiceRuntimeState(), false);
+            // ADR 0053 M1: Show "Worker connecting…" if ConnectionState is Connecting (Worker not yet connected).
+            viewModel.RuntimeStatus = options.ConnectionState is { State: ConnectionState.Connecting }
+                ? LocalizationService.Instance.Get("status.connecting")
+                : BuildRuntimeStatusText(options.RuntimeKind, options.GetServiceRuntimeState(), false);
             viewModel.ShowServiceManagerTab = OperatingSystem.IsWindows();
             viewModel.ServiceStatus = _serviceManager.GetStatusText();
 

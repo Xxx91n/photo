@@ -24,6 +24,7 @@
     "paused": "Pausado",
     "stopped": "Parado",
     "detecting": "Detectando…",
+    "connecting": "Worker conectando...",
     "exiftool_not_found": "ExifTool não encontrado",
     "auto_detected": "Detecção automática",
     "service_mode": "Modo de Serviço",

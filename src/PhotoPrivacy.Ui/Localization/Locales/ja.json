@@ -24,6 +24,7 @@
     "paused": "一時停止中",
     "stopped": "停止中",
     "detecting": "検出中…",
+    "connecting": "Worker接続中...",
     "exiftool_not_found": "ExifTool が見つかりません",
     "auto_detected": "自動検出されました",
     "service_mode": "サービスモード",

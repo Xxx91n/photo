@@ -5,6 +5,7 @@ namespace PhotoPrivacy.Ui;
 
 public enum ConnectionState
 {
+    Connecting,
     Connected,
     Reconnecting,
     Disconnected
@@ -26,7 +27,7 @@ public sealed class ConnectionStateService : INotifyPropertyChanged, IDisposable
     public ConnectionState State
     {
         get => _state;
-        private set
+        internal set
         {
             if (_state != value)
             {

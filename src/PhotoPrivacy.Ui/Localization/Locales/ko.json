@@ -24,6 +24,7 @@
     "paused": "일시정지",
     "stopped": "중지",
     "detecting": "감지 중…",
+    "connecting": "Worker 연결 중...",
     "exiftool_not_found": "ExifTool을 찾을 수 없음",
     "auto_detected": "자동 감지됨",
     "service_mode": "서비스 모드",

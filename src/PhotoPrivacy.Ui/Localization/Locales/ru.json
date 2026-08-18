@@ -24,6 +24,7 @@
     "paused": "Приостановлено",
     "stopped": "Остановлено",
     "detecting": "Определение…",
+    "connecting": "Worker подключение...",
     "exiftool_not_found": "ExifTool не найден",
     "auto_detected": "Автоопределено",
     "service_mode": "Режим сервиса",
