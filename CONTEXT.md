@@ -317,3 +317,40 @@ _Avoid_: 配置目录 TextBox 空 string 默认值；无 Watermark 提示用户�
 **Native Tray Menu (Immutable)**:
 Avalonia 11 的 NativeMenuItem 是纯数据类（INativeMenuItemExporterEvents），无视觉模板/无样式键，不可应用 Avalonia Transitions。全局 Button:pressed scale(0.97) 只作用于视觉树内 Button，托盘菜单不在视觉树。macOS/Linux 是平台原生菜单（NSMenu/DBus）完全不可样式化；Windows 是 TrayPopupRoot + MenuFlyoutPresenter（管理型 popup），PR #21426 试图换原生 Win32 菜单未合并。行业惯例（VS Code/Files.app）都不在原生菜单做按钮过渡。见 ADR 0052 A7。
 _Avoid_: 尝试给 NativeMenuItem 加 Avalonia 样式/Transitions；为跨平台一致而弃用原生菜单
+
+**Two-Phase Async Startup**:
+`Program.cs Main` 不再 `GetAwaiter().GetResult()` 阻塞 Worker 连接。采用 Avalonia 官方 `Start(AppMain, args)` Manual lifetime：`window.Show()` 立即首帧 → `_ = Task.Run(ConnectWorkerAsync)` 后台异步连接。ViewModel 首显 "Worker 连接中…"，Worker 就绪后 `Dispatcher.UIThread.Post` 回填 Connected。Avalonia issue #17610 官方确认 `async Main` 在 macOS 不支持；必须同步入口 + 后台 Task + Dispatcher 回填。见 ADR 0053 M1。
+_Avoid_: `static async Task Main`；任何 `Main()` 内的 `GetResult` /`.Result`/`.Wait()`
+
+**Channel<T> File Pipeline**:
+`MetadataCleanerWorker.ExecuteAsync` 用 `Channel.CreateBounded<string>(4096, FullMode = BoundedChannelFullMode.Wait)` 作生产-消费队列。FSW 事件 `WriteAsync` 满则异步等待（背压），消费端 `await foreach (var path in reader.ReadAllAsync(token))`。MS Learn QueueService 模式；IAsyncEnumerable 实测少分配 101KB、memory flat。本项目 `JsonLineAuditLogger` 已在用此模式（审计日志），M3 将核心文件管线补齐。见 ADR 0053 M3。
+_Avoid_: `GetFiles()` 全量加载；同步 `foreach (EnumerateFiles)` + `SemaphoreSlim` 仅限流无背压
+
+**Wipe Strategy Resolver**:
+按扩展名分格式族（JPEG/TIFF/RAW/HEIC/PNG/MOV-MP4/PDF/EPS）返回不同 `IWipeStrategy`。各族安全默认见 ADR 0053 决策 6a 表格。替换原 `ExifToolCommandBuilder.BuildWipeTaskBlock` 唯一 `-all=` 的上帝路径。JPEG 黄金删除命令（ExifTool FAQ #32 官方）：`-all= --icc_profile:all -tagsfromfile @ -colorspacetags`（双横线排除 + ColorSpaceTags 回填保色）。RAW 仅删子目录不删 IFD0（官方 "not recommended to remove all from RAW"）。PDF 永不真正删除（增量更新持久），记 `RequiresUserWarning = true` + UI 强制警告 + 提示 qpdf --linearize。未知扩展拒绝处理 `WipeResult.UnknownFormat`。
+_Avoid_: 全格式统一 `-all=`（PDF 误导已清、RAW 毁渲染、JPEG 遗 APP14 和文件时间戳）
+
+**Expert Mode Gate**:
+`RulesPanelViewModel.IsExpertMode` (ToggleSwitch) + 确认弹窗（文案参考 BleachBit 5.1 Expert mode "enables advanced features and relaxes guardrails"）。非专家模式危险列（ICC_Profile / MakerNotes / Adobe / Time / CommonIFD0）静默置灰且按默认运行 + infobar "To bypass protection, enable expert mode." 专家模式解锁可编辑。"Reset warning confirmations" 按钮恢复所有已记住的确认弹窗。见 ADR 0053 M6b。
+_Avoid_: 默认放任用户改危险列；任何 ICC/MakerNotes/Adobe/Time/CommonIFD0 在非专家模式可勾选
+
+**Format Rules Store**:
+自定义清理规则持久化到 `config/rules.json`。防抖写盘 500ms CTS（延续 ADR 0037 即时写盘心智）。每行 `FormatRuleRow` 记录扩展名、格式族、各元数据组 strip bool、EffectiveArgs 计算串。"恢复默认" 按钮必须弹二次确认（参考 BleachBit "Reset warning confirmations" + ExifToolGUI V6 "Defaults: This removes all your current settings."）。见 ADR 0053 M6e。
+_Avoid_: 配置仅内存修改无显式保存按钮；"恢复默认" 直接覆盖不弹确认（用户误点丢自定义）
+
+**ItemsRepeater (retired)**:
+Avalonia 11.0 已通过 PR #14989 把 `ItemsRepeater` 移出主包并标记 retired，官方明确 "fix the DataGrid rather than continue investing ItemsRepeater"。本项目**禁用 ItemsRepeater**，所有矩阵/列表场景用 `Avalonia.Controls.DataGrid` 或 `ListBox`（自带虚拟化 + 选择/键盘导航）。见 ADR 0053 M4 + M6c。
+_Avoid_: 引入 ItemsRepeater 包；任何出于"性能"目的迁移 ListBox → ItemsRepeater 的提议
+
+**Per-Format Warning**:
+面板上每行按格式族显警告图标（参考 ExifCleaner 已知限制表）：
+- PDF（红）：原始元数据永不真正删除，建议 qpdf --linearize 二次清理
+- EPS/PS（黄）：仅 XMP + 部分原生 PostScript 标签可删
+- HEIC ExifTool < v13.18（橙）：删 ICC 破 Apple Preview（13.18+ 已自动保 ICC）
+- 未知扩展：拒绝处理，audit "wipe_skipped_unknown"
+见 ADR 0053 M6f。
+_Avoid_: 静默通过不警告；按相同回执处理所有格式
+
+**Safe Color-Space Tags Wipe**:
+ExifTool FAQ #32 官方推荐的安全全删模式：`-all= --icc_profile:all -tagsfromfile @ -colorspacetags`。`--icc_profile:all`（双横线排除语法）从 `-all=` 中排除 ICC_Profile，`-tagsfromfile @ -colorspacetags` 从同一个文件回填 ColorSpaceTags 保色。RAW 不适用（ICC 残留安全且 Mac 标签需保留）。HEIC 使用同样排除语法。见 ADR 0053 M6a。
+_Avoid_: `-all=` 后无任何 ColorSpaceTags 回填导致图像色变；任一向 RAW/HEIC/PNG 应用全 ICC 删除
