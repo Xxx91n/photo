@@ -1,0 +1,253 @@
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
+using PhotoPrivacy.Core.Configuration;
+using PhotoPrivacy.Core.ExifTool;
+
+namespace PhotoPrivacy.Ui.ViewModels;
+
+/// <summary>
+/// ADR 0053 M6b-M6f: Rules Panel ViewModel with Expert mode gate.
+/// BleachBit 5.1 pattern: ToggleSwitch + confirmation dialog, dangerous columns disabled in non-expert.
+/// </summary>
+public sealed class RulesPanelViewModel : INotifyPropertyChanged
+{
+    private readonly FormatRulesStore _store;
+    private bool _isExpertMode;
+    private string _searchFilter = string.Empty;
+    private string _saveStatus = string.Empty;
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    public bool IsExpertMode
+    {
+        get => _isExpertMode;
+        set
+        {
+            if (_isExpertMode != value)
+            {
+                _isExpertMode = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(CanEditDangerousColumns));
+            }
+        }
+    }
+
+    public bool CanEditDangerousColumns => _isExpertMode;
+
+    public string SearchFilter
+    {
+        get => _searchFilter;
+        set
+        {
+            if (_searchFilter != value)
+            {
+                _searchFilter = value;
+                OnPropertyChanged();
+                ApplyFilter();
+            }
+        }
+    }
+
+    public string SaveStatus
+    {
+        get => _saveStatus;
+        set => SetField(ref _saveStatus, value);
+    }
+
+    public ObservableCollection<FormatRuleRow> Rules { get; } = new();
+    private readonly List<FormatRuleRow> _allRules = new();
+
+    public RulesPanelViewModel(FormatRulesStore store)
+    {
+        _store = store;
+        LoadRules();
+    }
+
+    private void LoadRules()
+    {
+        var defaults = _store.Load();
+        _allRules.Add(new FormatRuleRow("JPEG", WipeFormatFamily.Jpeg, "jpg jpeg jpe", stripAll: true, preserveIcc: true)
+        {
+            IsDangerous = false,
+            IsEnabled = true,
+        });
+        _allRules.Add(new FormatRuleRow("RAW", WipeFormatFamily.Raw, "cr2 cr3 arw nef orf", stripExif: true, stripXmp: true, stripIptc: true)
+        {
+            IsDangerous = false,
+            IsEnabled = true,
+        });
+        _allRules.Add(new FormatRuleRow("Video", WipeFormatFamily.Video, "mov mp4 m4v", stripAll: true, stripTime: true)
+        {
+            IsDangerous = true,
+            IsEnabled = defaults.GetValueOrDefault("raw_strip_exif_xmp_iptc"),
+        });
+        _allRules.Add(new FormatRuleRow("PDF", WipeFormatFamily.Pdf, "pdf", stripAll: true)
+        {
+            IsDangerous = true,
+            RequiresUserWarning = true,
+            IsEnabled = _isExpertMode,
+        });
+        _allRules.Add(new FormatRuleRow("EPS/PS", WipeFormatFamily.Eps, "eps ps ai", stripAll: true)
+        {
+            IsDangerous = true,
+            RequiresUserWarning = true,
+            IsEnabled = _isExpertMode,
+        });
+        ApplyFilter();
+    }
+
+    private void ApplyFilter()
+    {
+        Rules.Clear();
+        foreach (var row in _allRules)
+        {
+            if (string.IsNullOrEmpty(_searchFilter) ||
+                row.Extensions.Contains(_searchFilter, StringComparison.OrdinalIgnoreCase) ||
+                row.FamilyName.Contains(_searchFilter, StringComparison.OrdinalIgnoreCase))
+            {
+                Rules.Add(row);
+            }
+        }
+    }
+
+    public void SaveCustomRules()
+    {
+        var rules = new Dictionary<string, bool>();
+        foreach (var row in _allRules)
+        {
+            rules[$"{row.FamilyName.ToLowerInvariant()}_strip_all"] = row.StripAll;
+        }
+        _store.Save(rules);
+        SaveStatus = "Saved";
+    }
+
+    public void ResetToDefaults()
+    {
+        _store.ResetToDefaults();
+        LoadRules();
+        SaveStatus = "Reset to defaults";
+    }
+
+    private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+        => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+
+    private bool SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
+    {
+        if (Equals(field, value)) return false;
+        field = value;
+        OnPropertyChanged(propertyName);
+        return true;
+    }
+}
+
+public sealed class FormatRuleRow : INotifyPropertyChanged
+{
+    private bool _stripAll;
+    private bool _preserveIcc;
+    private bool _stripExif;
+    private bool _stripXmp;
+    private bool _stripIptc;
+    private bool _stripTime;
+    private bool _isEnabled = true;
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    public string FamilyName { get; }
+    public WipeFormatFamily Family { get; }
+    public string Extensions { get; }
+    public bool IsDangerous { get; set; }
+    public bool RequiresUserWarning { get; set; }
+
+    public bool IsEnabled
+    {
+        get => _isEnabled;
+        set
+        {
+            if (_isEnabled != value)
+            {
+                _isEnabled = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsEnabled)));
+            }
+        }
+    }
+
+    public bool StripAll
+    {
+        get => _stripAll;
+        set => SetField(ref _stripAll, value);
+    }
+
+    public bool PreserveIcc
+    {
+        get => _preserveIcc;
+        set => SetField(ref _preserveIcc, value);
+    }
+
+    public bool StripExif
+    {
+        get => _stripExif;
+        set => SetField(ref _stripExif, value);
+    }
+
+    public bool StripXmp
+    {
+        get => _stripXmp;
+        set => SetField(ref _stripXmp, value);
+    }
+
+    public bool StripIptc
+    {
+        get => _stripIptc;
+        set => SetField(ref _stripIptc, value);
+    }
+
+    public bool StripTime
+    {
+        get => _stripTime;
+        set => SetField(ref _stripTime, value);
+    }
+
+    public string WarningLevel => (Family, RequiresUserWarning) switch
+    {
+        (WipeFormatFamily.Pdf, true) => "PDF",
+        (WipeFormatFamily.Eps, true) => "EPS",
+        _ => "",
+    };
+
+    public FormatRuleRow(string familyName, WipeFormatFamily family, string extensions,
+        bool stripAll = false, bool preserveIcc = false, bool stripExif = false,
+        bool stripXmp = false, bool stripIptc = false, bool stripTime = false)
+    {
+        FamilyName = familyName;
+        Family = family;
+        Extensions = extensions;
+        _stripAll = stripAll;
+        _preserveIcc = preserveIcc;
+        _stripExif = stripExif;
+        _stripXmp = stripXmp;
+        _stripIptc = stripIptc;
+        _stripTime = stripTime;
+    }
+
+    public string EffectiveArgs => Family switch
+    {
+        WipeFormatFamily.Jpeg => "-all= --icc_profile:all -tagsfromfile @ -colorspacetags",
+        WipeFormatFamily.Tiff => "-all= -CommonIFD0=",
+        WipeFormatFamily.Raw => "-exif:all= -xmp:all= -iptc:all= -icc_profile:all=",
+        WipeFormatFamily.Heic => "-all= --icc_profile:all",
+        WipeFormatFamily.Png => "-all=",
+        WipeFormatFamily.Video => "-All= -Time:All=",
+        WipeFormatFamily.Pdf => "-all=",
+        WipeFormatFamily.Eps => "-all=",
+        _ => "",
+    };
+
+    private bool SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
+    {
+        if (Equals(field, value)) return false;
+        field = value;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        return true;
+    }
+}
