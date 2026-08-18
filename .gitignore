@@ -35,5 +35,5 @@ tmp/
 .omx/
 
 # ExifTool upstream source (reference only, do not commit)
-exiftool/
+/exiftool/
 .codex-tmp/

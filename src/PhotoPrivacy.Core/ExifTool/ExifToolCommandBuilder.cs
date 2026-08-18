@@ -39,12 +39,32 @@ public static class ExifToolCommandBuilder
         return $"-fast\n-json\n{targetPath}\n-echo1\nPROBE_DONE_{id}\n-execute\n";
     }
 
+    /// <summary>
+    /// ADR 0053 M6a: Build wipe task block using per-format safe defaults via WipeStrategyResolver.
+    /// Unknown extensions are rejected (audit wipe_skipped_unknown).
+    /// </summary>
     public static string BuildWipeTaskBlock(string targetPath, string taskId)
     {
         ValidatePathForExifToolProtocol(targetPath);
 
+        var wipe = WipeStrategyResolver.Resolve(targetPath);
+        if (wipe.SkipReason is not null)
+        {
+            // Unknown format — return a no-op probe block so the task completes cleanly
+            // with a warning echo. The caller should audit wipe_skipped_unknown.
+            var noOp = new StringBuilder();
+            noOp.Append("-echo1\n");
+            noOp.Append($"SKIP_{taskId}\n");
+            noOp.Append("-execute\n");
+            return noOp.ToString();
+        }
+
         var sb = new StringBuilder();
-        sb.Append("-all=\n");
+        // Per-format effective args (e.g. "-all= --icc_profile:all -tagsfromfile @ -colorspacetags" for JPEG)
+        foreach (var arg in wipe.EffectiveArgs.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            sb.Append(arg + "\n");
+        }
         sb.Append("-overwrite_original\n");
         sb.Append(targetPath + "\n");
         sb.Append("-echo1\n");
