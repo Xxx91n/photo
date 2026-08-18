@@ -150,7 +150,7 @@ public partial class MainWindow : Window
             }
 
             ApplyThemeVariantToApplication(viewModel.ThemeVariant);
-            App.ApplyCommunityThemeResources(viewModel.ThemeId);
+            App.ApplyCommunityThemeResources(viewModel.ThemeId, applyDark: string.Equals(NormalizeThemeVariant(viewModel.ThemeVariant), "dark", StringComparison.OrdinalIgnoreCase));
             SyncThemeVariantComboSelection(viewModel.ThemeVariant);
             SyncThemeSwatchSelection(viewModel.ThemeId);
             RestoreSidebarWidth(effectiveConfig.Ui.SidebarWidth);
@@ -747,6 +747,11 @@ public partial class MainWindow : Window
             }
 
             ApplyThemeVariantToApplication(variant);
+            // Re-apply community theme with new variant (light removes dark-only resources)
+            if (DataContext is MainWindowViewModel tvm)
+            {
+                App.ApplyCommunityThemeResources(tvm.ThemeId, applyDark: string.Equals(variant, "dark", StringComparison.OrdinalIgnoreCase));
+            }
         }
         catch
         {
@@ -766,7 +771,7 @@ public partial class MainWindow : Window
             {
                 vm.ThemeId = tag;
             }
-            App.ApplyCommunityThemeResources(tag);
+            App.ApplyCommunityThemeResources(tag, applyDark: DataContext is MainWindowViewModel mvm && string.Equals(NormalizeThemeVariant(mvm.ThemeVariant), "dark", StringComparison.OrdinalIgnoreCase));
             ScheduleDebouncedConfigApply();
         }
         catch
@@ -1808,7 +1813,7 @@ public partial class MainWindow : Window
                 vm.ThemeVariant = normalizedThemeVariant;
                 vm.ThemeId = string.IsNullOrWhiteSpace(cfg.Ui.ThemeId) ? "catppuccin" : cfg.Ui.ThemeId;
                 SyncThemeVariantComboSelection(vm.ThemeVariant);
-                App.ApplyCommunityThemeResources(vm.ThemeId);
+                App.ApplyCommunityThemeResources(vm.ThemeId, applyDark: string.Equals(NormalizeThemeVariant(vm.ThemeVariant), "dark", StringComparison.OrdinalIgnoreCase));
                 SyncThemeSwatchSelection(vm.ThemeId);
                 vm.BackupDirectory = cfg.Backup.Directory;
                 vm.AuditLogDirectory = cfg.Audit.LogDirectory;

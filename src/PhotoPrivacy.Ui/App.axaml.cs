@@ -52,7 +52,7 @@ public partial class App : Application
                     };
                     Application.Current!.RequestedThemeVariant = themeVariant;
                     var startupThemeId = string.IsNullOrWhiteSpace(config.Ui.ThemeId) ? "catppuccin" : config.Ui.ThemeId;
-                    ApplyCommunityThemeResources(startupThemeId);
+                    ApplyCommunityThemeResources(startupThemeId, applyDark: themeVariant != ThemeVariant.Light);
                 }
 
                 TrySetWindowIcon(window);
@@ -119,29 +119,49 @@ public partial class App : Application
         }
     }
 
-    internal static void ApplyCommunityThemeResources(string themeName)
+    internal static void ApplyCommunityThemeResources(string themeName, bool applyDark)
     {
-        var themeFile = themeName switch
-        {
-            "nord" => "Themes/NordDark.axaml",
-            "catppuccin" => "Themes/Catppuccin.axaml",
-            "dracula" => "Themes/Dracula.axaml",
-            "tokyonight" => "Themes/TokyoNight.axaml",
-            "onedarkpro" => "Themes/OneDarkPro.axaml",
-            _ => null
-        };
-        if (themeFile is null) return;
-
         try
         {
-            var uri = new Uri($"avares://PhotoPrivacy.Ui/{themeFile}");
-            var include = new ResourceInclude(baseUri: null)
-            {
-                Source = uri
-            };
             var resources = Application.Current!.Resources;
-            resources.MergedDictionaries.Clear();
-            resources.MergedDictionaries.Add(include);
+            // AtomCode research 2026-08-18: index-replace Fallback-C (Avalonia #9691)
+            // Do NOT call MergedDictionaries.Clear() — that disconnects resources and
+            // crashes DataGrid rendering (root cause of Rules page crash).
+            // DesignTokens stays at index 0; community theme occupies index 1.
+            while (resources.MergedDictionaries.Count > 2)
+            {
+                resources.MergedDictionaries.RemoveAt(resources.MergedDictionaries.Count - 1);
+            }
+            while (resources.MergedDictionaries.Count < 2)
+            {
+                resources.MergedDictionaries.Add(new ResourceDictionary());
+            }
+
+            if (!applyDark)
+            {
+                // Light mode: replace slot 1 with empty dict so Semi Light theme renders.
+                resources.MergedDictionaries[1] = new ResourceDictionary();
+                return;
+            }
+
+            var themeFile = themeName switch
+            {
+                "nord" => "Themes/NordDark.axaml",
+                "catppuccin" => "Themes/Catppuccin.axaml",
+                "dracula" => "Themes/Dracula.axaml",
+                "tokyonight" => "Themes/TokyoNight.axaml",
+                "onedarkpro" => "Themes/OneDarkPro.axaml",
+                _ => null
+            };
+            if (themeFile is null)
+            {
+                resources.MergedDictionaries[1] = new ResourceDictionary();
+                return;
+            }
+
+            var uri = new Uri("avares://PhotoPrivacy.Ui/" + themeFile);
+            var include = new ResourceInclude(baseUri: null) { Source = uri };
+            resources.MergedDictionaries[1] = include;
         }
         catch
         {
