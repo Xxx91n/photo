@@ -290,20 +290,26 @@ public sealed class DesignSystemTests
     [Fact]
     public void Button_Transitions_Easing_Must_Be_Specified()
     {
-        // ADR 0051 A2: BrushTransition SineEaseOut (hover/press color), TransformOperationsTransition QuadraticEaseInOut (press feedback).
+        // atomcode 2026-08-18: BrushTransition SineEaseOut (hover/press color) is the industry standard.
+        // Removed TransformOperationsTransition + QuadraticEaseInOut per atomcode research:
+        // scale(0.97) is SukiUI style (flashy), VS Code / Windows 11 Settings use pure color change.
+        // WCAG 2.2 SC 2.3.3: scale = motion animation (vestibular trigger), color change is not.
         var path = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "Styling", "AppTheme.axaml");
         var source = File.ReadAllText(path, Encoding.UTF8);
         Assert.Contains("SineEaseOut", source, StringComparison.Ordinal);
-        Assert.Contains("QuadraticEaseInOut", source, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void Button_Transitions_Must_Include_TransformOperationsTransition()
+    public void Button_Transitions_Must_Not_Include_Scale_Pressed()
     {
+        // atomcode 2026-08-18: scale(0.97) pressed removed per industry standard.
+        // VS Code / Windows 11 Settings = pure color transition (BrushTransition only).
+        // SukiUI scale(0.95/0.97) + hover scale(1.03) = flashy, not enterprise-grade.
         var path = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "Styling", "AppTheme.axaml");
         var source = File.ReadAllText(path, Encoding.UTF8);
-        Assert.Contains("TransformOperationsTransition", source);
-        Assert.Contains("scale(0.97)", source);
+        Assert.Contains("BrushTransition", source);
+        Assert.DoesNotContain("scale(0.97)", source);
+        Assert.DoesNotContain("TransformOperationsTransition", source);
     }
 
     [Fact]

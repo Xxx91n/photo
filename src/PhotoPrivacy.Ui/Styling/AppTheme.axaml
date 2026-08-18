@@ -219,22 +219,18 @@
     <Setter Property="CornerRadius" Value="{DynamicResource RadiusSm}" />
   </Style>
 
-  <!-- ADR 0051 A2: Button transition animation — SukiUI style scale(0.97) pressed feedback.
-       Global Button base gets BrushTransition + TransformOperationsTransition; :pressed sets scale(0.97).
-       CSS-style RenderTransform (scale()) is transitionable; WPF-style ScaleTransform is NOT. -->
+  <!-- atomcode 2026-08-18: industry-standard button feedback = color transition only.
+       Removed SukiUI pressed scale + RenderTransform transition (ADR 0051 A2).
+       NN/g + Fluent 2: pressed = slight color change 100-150ms; scale is WCAG 2.2 SC 2.3.3 motion.
+       Avalonia Fluent default uses 2% pressed scale but for enterprise privacy tool, pure color
+       is the VS Code / Windows 11 Settings standard. :focus-visible already has border outline. -->
   <Style Selector="Button">
     <Setter Property="Transitions">
       <Transitions>
-        <BrushTransition Property="Background" Duration="0:0:0.150" Easing="SineEaseOut" /><!-- ADR 0051 A2: hover ease -->
+        <BrushTransition Property="Background" Duration="0:0:0.150" Easing="SineEaseOut" />
         <BrushTransition Property="BorderBrush" Duration="0:0:0.150" Easing="SineEaseOut" />
-        <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.075" Easing="QuadraticEaseInOut" /><!-- ADR 0051 A2: press feedback ease (official docs recommendation) -->
       </Transitions>
     </Setter>
-    <Setter Property="RenderTransform" Value="scale(1)" />
-  </Style>
-
-  <Style Selector="Button:pressed">
-    <Setter Property="RenderTransform" Value="scale(0.97)" />
   </Style>
 
   <Style Selector="ListBoxItem">

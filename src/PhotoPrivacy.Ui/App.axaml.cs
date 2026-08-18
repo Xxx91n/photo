@@ -163,9 +163,10 @@ public partial class App : Application
             var include = new ResourceInclude(baseUri: null) { Source = uri };
             resources.MergedDictionaries[1] = include;
         }
-        catch
+        catch (Exception ex)
         {
             // best-effort: if theme resource fails to load, fall back to default Semi theme
+            UiDiagnosticLog.Write($"ApplyCommunityThemeResources failed for themeName={themeName}, applyDark={applyDark}: {ex.Message}");
         }
     }
 }
