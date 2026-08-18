@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -74,6 +75,9 @@ public sealed class MiddleClickScrollBehavior : AvaloniaObject
     private const double MaxDeltaTimeMs = 100.0;   // dt clamp (窗口暂停/大延迟保护)
     private const double StopThreshold = 1.0;       // |v| < 1 → 停机
     private const double DeadZoneHysteresisFactor = 0.5; // 进入死区后阈值缩半防边界抖动
+    // ADR 0055 A2: Watchdog steps when RAF stall exceeds this threshold (ms).
+    // 32ms ≈ 2 frames at 60Hz — RAF healthy means <16ms between frames.
+    private const double WatchdogStallMs = 32.0;
 
     private static readonly Cursor ScrollCursorAll = new(StandardCursorType.SizeAll);
     private static readonly Cursor ScrollCursorVertical = new(StandardCursorType.SizeNorthSouth);
@@ -101,6 +105,11 @@ public sealed class MiddleClickScrollBehavior : AvaloniaObject
         public bool InDeadZoneY;
         public bool InDeadZoneX;
         public TimeSpan? LastFrameTime;
+        // ADR 0055 A2: wall-clock Stopwatch for time-based dt (correct at any sample rate)
+        public Stopwatch? Clock;
+        // ADR 0055 A2: Render-priority watchdog timer — steps when RAF stalls >32ms
+        public DispatcherTimer? Watchdog;
+        public long LastStepMs;
     }
 
     private static AutoScrollState? _state;
@@ -134,6 +143,10 @@ public sealed class MiddleClickScrollBehavior : AvaloniaObject
             IgnoreActivationMiddleRelease = true,
             HoldDetected = false
         };
+        // ADR 0055 A2: Wall-clock Stopwatch for time-based dt
+        _state.Clock = Stopwatch.StartNew();
+        _state.LastStepMs = 0;
+
         // ADR 0051 A3: Use TopLevel.RequestAnimationFrame (vsync-aligned) instead of DispatcherTimer.
         // Fallback to DispatcherTimer if TopLevel is null (ScrollViewer not attached to tree yet).
         var topLevel = TopLevel.GetTopLevel(sv);
@@ -142,6 +155,9 @@ public sealed class MiddleClickScrollBehavior : AvaloniaObject
             _state.TopLevel = topLevel;
             _state.RafRequested = true;
             topLevel.RequestAnimationFrame(ScrollFrame);
+            // ADR 0055 A2: Render-priority watchdog — steps when RAF stalls >32ms (maximize layout storm)
+            _state.Watchdog = new DispatcherTimer(TimeSpan.FromMilliseconds(16), DispatcherPriority.Render, Watchdog_Tick);
+            _state.Watchdog.Start();
         }
         else
         {
@@ -245,8 +261,9 @@ public sealed class MiddleClickScrollBehavior : AvaloniaObject
 
 
 
-    // ADR 0051 A3: RequestAnimationFrame callback — vsync-aligned, frame-rate independent.
-    // delta * (frameTime.TotalMilliseconds / 16.67) scales velocity per frame for high-refresh displays.
+    // ADR 0055 A2: RAF callback — thin wrapper. Reads wall-clock dt from Stopwatch,
+    // then delegates to StepScroll. RAF is one-shot so we re-request here.
+    // ADR 0051 A3: vsync-aligned, frame-rate independent.
     private static void ScrollFrame(TimeSpan frameTime)
     {
         if (_state?.IsActive != true || _state.ScrollViewer is null)
@@ -255,13 +272,43 @@ public sealed class MiddleClickScrollBehavior : AvaloniaObject
             return;
         }
 
+        StepScroll(GetWallClockMs());
+
+        // Request next frame (RAF is one-shot, must re-request for continuous loop)
+        if (_state is { IsActive: true, TopLevel: { } tl, RafRequested: true })
+        {
+            tl.RequestAnimationFrame(ScrollFrame);
+        }
+    }
+
+    // ADR 0055 A2: Watchdog tick — Render priority. Steps only when RAF stalled
+    // (>32ms since last step). When RAF is healthy, watchdog fires but LastStepMs
+    // is recent so it no-ops (near-zero overhead). When RAF stalls (maximize
+    // layout storm), watchdog keeps animation alive.
+    private static void Watchdog_Tick(object? sender, EventArgs e)
+    {
+        if (_state?.IsActive != true || _state.ScrollViewer is null) return;
+        var nowMs = GetWallClockMs();
+        if (nowMs - _state.LastStepMs > WatchdogStallMs)
+        {
+            StepScroll(nowMs);
+        }
+    }
+
+    // ADR 0055 A2: Core scroll step — wall-clock dt, exponential smoothing.
+    // Called by both RAF (primary) and watchdog (fallback). Idempotent: safe to
+    // call from either driver; dt is always wall-clock so curve is correct at
+    // any sample rate.
+    private static void StepScroll(long nowMs)
+    {
+        if (_state?.IsActive != true || _state.ScrollViewer is null) return;
         var sv = _state.ScrollViewer;
 
-        // ADR 0052 A2: dt from frame time (clamped ≤100ms), exponential smoothing
-        var dtMs = frameTime.TotalMilliseconds;
-        if (_state.LastFrameTime.HasValue)
-            dtMs = Math.Min(frameTime.TotalMilliseconds - _state.LastFrameTime.Value.TotalMilliseconds, MaxDeltaTimeMs);
-        _state.LastFrameTime = frameTime;
+        // Wall-clock dt (clamped ≤100ms), exponential smoothing
+        var dtMs = _state.LastStepMs > 0
+            ? Math.Min(nowMs - _state.LastStepMs, MaxDeltaTimeMs)
+            : 16.0;
+        _state.LastStepMs = nowMs;
         var dtSec = Math.Max(dtMs, 0) / 1000.0;
         var smoothFactor = 1.0 - Math.Exp(-SmoothingRate * dtSec);
 
@@ -306,12 +353,12 @@ public sealed class MiddleClickScrollBehavior : AvaloniaObject
                 newHorizontalOffset ?? offset.X,
                 newVerticalOffset ?? offset.Y);
         }
+    }
 
-        // Request next frame (RAF is one-shot, must re-request for continuous loop)
-        if (_state is { IsActive: true, TopLevel: { } tl, RafRequested: true })
-        {
-            tl.RequestAnimationFrame(ScrollFrame);
-        }
+    private static long GetWallClockMs()
+    {
+        if (_state?.Clock is { } c && c.IsRunning) return c.ElapsedMilliseconds;
+        return 0;
     }
 
     private static void Stop()
@@ -321,6 +368,15 @@ public sealed class MiddleClickScrollBehavior : AvaloniaObject
         if (_state.Timer is { } t)
         {
             t.Stop();
+        }
+        // ADR 0055 A2: stop watchdog timer + null cleanup (prevent leak)
+        if (_state.Watchdog is { } wd)
+        {
+            wd.Stop();
+        }
+        if (_state.Clock is { } c)
+        {
+            c.Stop();
         }
         if (_state.ScrollViewer is { } sv)
         {
