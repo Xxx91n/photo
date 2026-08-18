@@ -184,6 +184,13 @@
       "system": "Seguir sistema",
       "light": "Claro",
       "dark": "Oscuro"
+    },
+    "preset": {
+      "catppuccin": "Catppuccin",
+      "dracula": "Drácula",
+      "nord": "Nord",
+      "onedarkpro": "One Dark Pro",
+      "tokyonight": "Tokyo Night"
     }
   },
   "loglevel": {

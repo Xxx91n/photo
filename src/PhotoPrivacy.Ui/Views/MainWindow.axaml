@@ -298,35 +298,35 @@
                                    Click="OnThemePresetSwatchClick" Padding="8" CornerRadius="8">
                         <StackPanel Orientation="Vertical" Spacing="4" HorizontalAlignment="Center">
                           <Border Width="40" Height="28" CornerRadius="4" Background="#89B4FA"/>
-                          <TextBlock Text="Catppuccin" Classes="caption" HorizontalAlignment="Center"/>
+                          <TextBlock Text="{ex:Localize preset.catppuccin}" Classes="caption" HorizontalAlignment="Center"/>
                         </StackPanel>
                       </RadioButton>
                       <RadioButton x:Name="DraculaSwatch" Tag="dracula" GroupName="ThemePreset"
                                    Click="OnThemePresetSwatchClick" Padding="8" CornerRadius="8">
                         <StackPanel Orientation="Vertical" Spacing="4" HorizontalAlignment="Center">
                           <Border Width="40" Height="28" CornerRadius="4" Background="#BD93F9"/>
-                          <TextBlock Text="Dracula" Classes="caption" HorizontalAlignment="Center"/>
+                          <TextBlock Text="{ex:Localize preset.dracula}" Classes="caption" HorizontalAlignment="Center"/>
                         </StackPanel>
                       </RadioButton>
                       <RadioButton x:Name="NordSwatch" Tag="nord" GroupName="ThemePreset"
                                    Click="OnThemePresetSwatchClick" Padding="8" CornerRadius="8">
                         <StackPanel Orientation="Vertical" Spacing="4" HorizontalAlignment="Center">
                           <Border Width="40" Height="28" CornerRadius="4" Background="#88C0D0"/>
-                          <TextBlock Text="Nord" Classes="caption" HorizontalAlignment="Center"/>
+                          <TextBlock Text="{ex:Localize preset.nord}" Classes="caption" HorizontalAlignment="Center"/>
                         </StackPanel>
                       </RadioButton>
                       <RadioButton x:Name="OneDarkProSwatch" Tag="onedarkpro" GroupName="ThemePreset"
                                    Click="OnThemePresetSwatchClick" Padding="8" CornerRadius="8">
                         <StackPanel Orientation="Vertical" Spacing="4" HorizontalAlignment="Center">
                           <Border Width="40" Height="28" CornerRadius="4" Background="#61AFEF"/>
-                          <TextBlock Text="One Dark Pro" Classes="caption" HorizontalAlignment="Center"/>
+                          <TextBlock Text="{ex:Localize preset.onedarkpro}" Classes="caption" HorizontalAlignment="Center"/>
                         </StackPanel>
                       </RadioButton>
                       <RadioButton x:Name="TokyoNightSwatch" Tag="tokyonight" GroupName="ThemePreset"
                                    Click="OnThemePresetSwatchClick" Padding="8" CornerRadius="8">
                         <StackPanel Orientation="Vertical" Spacing="4" HorizontalAlignment="Center">
                           <Border Width="40" Height="28" CornerRadius="4" Background="#7AA2F7"/>
-                          <TextBlock Text="Tokyo Night" Classes="caption" HorizontalAlignment="Center"/>
+                          <TextBlock Text="{ex:Localize preset.tokyonight}" Classes="caption" HorizontalAlignment="Center"/>
                         </StackPanel>
                       </RadioButton>
                     </WrapPanel>

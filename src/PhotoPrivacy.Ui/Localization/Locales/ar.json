@@ -100,6 +100,13 @@
       "system": "اتبع النظام",
       "light": "فاتح",
       "dark": "داكن"
+    },
+    "preset": {
+      "catppuccin": "كاتبتشين",
+      "dracula": "دراكولا",
+      "nord": "نورد",
+      "onedarkpro": "وان دارك برو",
+      "tokyonight": "طوكيو الليل"
     }
   },
   "loglevel": {
