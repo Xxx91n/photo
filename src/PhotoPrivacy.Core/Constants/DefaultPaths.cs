@@ -21,15 +21,18 @@ public static class DefaultPaths
     public static string DefaultAuditLogDirectory => string.IsNullOrEmpty(DefaultHotFolder) ? string.Empty : System.IO.Path.Combine(DefaultHotFolder, "_audit");
 
     /// <summary>
-    /// Default backup directory: <hotFolder>/.pp_backup. Empty when hotFolder is empty.
+    /// Default backup directory: <hotFolder>/bak — aligned with BackupPathResolver.DefaultBackupDirName.
+    /// ADR 0055 A4: Previously .pp_backup which mismatched actual backup dir "bak" (UI Watermark misled users).
     /// ADR 0052 A6: Backup before metadata cleaning.
     /// </summary>
-    public static string DefaultBackupDirectory => string.IsNullOrEmpty(DefaultHotFolder) ? string.Empty : System.IO.Path.Combine(DefaultHotFolder, ".pp_backup");
+    public static string DefaultBackupDirectory => string.IsNullOrEmpty(DefaultHotFolder) ? string.Empty : System.IO.Path.Combine(DefaultHotFolder, "bak");
 
+    // ADR 0055 A4: App-local hot folder (BaseDirectory/hot) — three-platform compatible,
+    // does NOT select user's system pictures (prevents accidental damage to user photos).
+    // AppConfig.Default.HotFolder stays string.Empty (ADR 0045 dynamic fallback semantics unchanged).
     private static string ResolveDefaultHotFolder()
     {
-        var pictures = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
-        return string.IsNullOrEmpty(pictures) ? string.Empty : pictures;
+        return System.IO.Path.Combine(AppContext.BaseDirectory, "hot");
     }
 
     private static string ResolveExifToolPath()
