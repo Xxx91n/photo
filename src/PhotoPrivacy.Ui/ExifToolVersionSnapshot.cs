@@ -2,23 +2,26 @@ namespace PhotoPrivacy.Ui;
 
 public sealed class ExifToolVersionSnapshot
 {
-    private readonly Func<string> _readVersion;
-    private string _lastValue = "unknown";
+    private readonly Func<CancellationToken, Task<string>> _readVersionAsync;
+    private string _lastValue = "";
 
-    public ExifToolVersionSnapshot(Func<string> readVersion)
+    public ExifToolVersionSnapshot(Func<CancellationToken, Task<string>> readVersionAsync)
     {
-        _readVersion = readVersion;
+        _readVersionAsync = readVersionAsync;
     }
 
-    public string ReadInitial()
+    public async Task<string?> TryReadChangedAsync(CancellationToken token)
     {
-        _lastValue = Normalize(_readVersion());
-        return _lastValue;
-    }
+        string current;
+        try
+        {
+            current = Normalize(await _readVersionAsync(token).ConfigureAwait(false));
+        }
+        catch
+        {
+            current = "unknown";
+        }
 
-    public string? TryReadChanged()
-    {
-        var current = Normalize(_readVersion());
         if (string.Equals(current, _lastValue, StringComparison.Ordinal))
         {
             return null;

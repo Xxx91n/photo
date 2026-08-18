@@ -100,17 +100,8 @@ public partial class MainWindow : Window
         if (viewModel is not null)
         {
             viewModel.CurrentMode = MapModeLabel(options.RuntimeKind);
-            _versionSnapshot = new ExifToolVersionSnapshot(() =>
-            {
-                try
-                {
-                    return options.GetExifToolVersionAsync(CancellationToken.None).GetAwaiter().GetResult();
-                }
-                catch
-                {
-                    return "unknown";
-                }
-            });
+            // ADR 0053 M2: async delegate — eliminates sync-over-async in version snapshot
+            _versionSnapshot = new ExifToolVersionSnapshot(options.GetExifToolVersionAsync);
             // ponytail: fire-and-forget initial version read — avoids UI-thread deadlock from sync-over-async
             // PollVersionAsync (background thread) will detect the real version within 1s and post via Dispatcher.UIThread
             viewModel.ExifToolVersion = LocalizationService.Instance.Get("status.detecting");
@@ -399,7 +390,8 @@ public partial class MainWindow : Window
 
     private void OnCloseClick(object? sender, RoutedEventArgs e) => Close();
 
-    private void OnPauseResumeClick(object? sender, RoutedEventArgs e)
+    // ADR 0053 M2: async void to eliminate sync-over-async on UI thread.
+    private async void OnPauseResumeClick(object? sender, RoutedEventArgs e)
     {
         if (_options is null)
         {
@@ -411,19 +403,19 @@ public partial class MainWindow : Window
             return;
         }
 
-        var isPaused = _options.IsPausedAsync(CancellationToken.None).GetAwaiter().GetResult();
+        var isPaused = await _options.IsPausedAsync(CancellationToken.None).ConfigureAwait(true);
         if (isPaused)
         {
-            _options.ResumeAsync(CancellationToken.None).GetAwaiter().GetResult();
+            await _options.ResumeAsync(CancellationToken.None).ConfigureAwait(true);
         }
         else
         {
-            _options.PauseAsync(CancellationToken.None).GetAwaiter().GetResult();
+            await _options.PauseAsync(CancellationToken.None).ConfigureAwait(true);
         }
 
         if (DataContext is MainWindowViewModel vm)
         {
-            var latestPaused = _options.IsPausedAsync(CancellationToken.None).GetAwaiter().GetResult();
+            var latestPaused = await _options.IsPausedAsync(CancellationToken.None).ConfigureAwait(true);
             vm.RuntimeStatus = BuildRuntimeStatusText(_options.RuntimeKind, _options.GetServiceRuntimeState(), latestPaused);
         }
 
@@ -1836,7 +1828,7 @@ public partial class MainWindow : Window
         while (!token.IsCancellationRequested)
         {
             await Task.Delay(TimeSpan.FromSeconds(1), token);
-            var changed = _versionSnapshot.TryReadChanged();
+            var changed = await _versionSnapshot.TryReadChangedAsync(token).ConfigureAwait(false);
             if (changed is null)
             {
                 continue;
