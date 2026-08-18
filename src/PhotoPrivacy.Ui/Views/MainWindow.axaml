@@ -71,29 +71,33 @@
           </StackPanel>
         </Border>
 
-        <StackPanel DockPanel.Dock="Top" Margin="8,16,8,0" Spacing="{DynamicResource SpaceXxs}">
-          <Button x:Name="ConfigNavButton" Classes="nav active" Tag="config" Height="44" HorizontalContentAlignment="Stretch">
+        <StackPanel DockPanel.Dock="Top" Margin="8,16,8,0" Spacing="4">
+          <Button x:Name="ConfigNavButton" Classes="nav active" Tag="config" Height="40" HorizontalContentAlignment="Stretch">
             <Grid ColumnDefinitions="Auto,*" HorizontalAlignment="Stretch">
               <materialIcons:MaterialIcon Grid.Column="0" Kind="Settings" Width="20" Height="20" VerticalAlignment="Center"/>
               <TextBlock Grid.Column="1" Text="{ex:Localize nav.config}" Classes="body" VerticalAlignment="Center" HorizontalAlignment="Stretch" TextTrimming="CharacterEllipsis" Margin="12,0,0,0"/>
             </Grid>
           </Button>
-          <Button x:Name="LogNavButton" Classes="nav" Tag="log" Height="44" HorizontalContentAlignment="Stretch">
+          <Button x:Name="LogNavButton" Classes="nav" Tag="log" Height="40" HorizontalContentAlignment="Stretch">
             <Grid ColumnDefinitions="Auto,*" HorizontalAlignment="Stretch">
               <materialIcons:MaterialIcon Grid.Column="0" Kind="FileDocumentOutline" Width="20" Height="20" VerticalAlignment="Center"/>
               <TextBlock Grid.Column="1" Text="{ex:Localize nav.logs}" Classes="body" VerticalAlignment="Center" HorizontalAlignment="Stretch" TextTrimming="CharacterEllipsis" Margin="12,0,0,0"/>
             </Grid>
           </Button>
-          <Button x:Name="RulesNavButton" Classes="nav" Tag="rules" Height="44" HorizontalContentAlignment="Stretch">
+          <Button x:Name="RulesNavButton" Classes="nav" Tag="rules" Height="40" HorizontalContentAlignment="Stretch">
             <Grid ColumnDefinitions="Auto,*" HorizontalAlignment="Stretch">
               <materialIcons:MaterialIcon Grid.Column="0" Kind="ShieldCheckOutline" Width="20" Height="20" VerticalAlignment="Center"/>
               <TextBlock Grid.Column="1" Text="{ex:Localize nav.rules}" Classes="body" VerticalAlignment="Center" HorizontalAlignment="Stretch" TextTrimming="CharacterEllipsis" Margin="12,0,0,0"/>
             </Grid>
           </Button>
-                    <Button x:Name="OpenServiceManagerTabButton"
+        </StackPanel>
+
+        <StackPanel DockPanel.Dock="Bottom" Margin="8,0,8,12" Spacing="4">
+          <Border Height="1" Background="{DynamicResource SemiColorBorder}" Margin="0,0,0,4"/>
+          <Button x:Name="OpenServiceManagerTabButton"
                   Classes="nav"
                   Tag="service"
-                  Height="44"
+                  Height="40"
                   HorizontalContentAlignment="Stretch"
                   IsVisible="{Binding ShowServiceManagerTab}">
             <Grid ColumnDefinitions="Auto,*" HorizontalAlignment="Stretch">
@@ -101,10 +105,6 @@
               <TextBlock Grid.Column="1" Text="{ex:Localize nav.service_manager}" Classes="body" VerticalAlignment="Center" HorizontalAlignment="Stretch" TextTrimming="CharacterEllipsis" Margin="12,0,0,0"/>
             </Grid>
           </Button>
-        </StackPanel>
-
-        <StackPanel DockPanel.Dock="Bottom" Margin="8,0,8,12" Spacing="{DynamicResource SpaceXs}">
-          <Border Height="1" Background="{DynamicResource SemiColorBorder}" Margin="0,0,0,4"/>
           <Button x:Name="PauseResumeButton"
                   Classes="nav-action"
                   Content="{Binding PauseResumeLabel}"
