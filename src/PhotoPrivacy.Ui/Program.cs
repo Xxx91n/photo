@@ -78,10 +78,36 @@ public static class UiProgram
             cancellationToken: showPipeCts.Token);
         UiDiagnosticLog.Write("Show-window IPC server started");
 
-        // ADR 0053 M1: Start(AppMain) Manual lifetime — Avalonia starts, MainWindow shows immediately.
-        // AppMain callback fires after OnFrameworkInitializationCompleted, connecting Worker in background.
-        UiDiagnosticLog.Write("Avalonia Start(AppMain) starting");
-        BuildAvaloniaApp().Start(AppMain, args);
+        // ADR 0053 M1: Fire-and-forget Worker connect BEFORE entering Avalonia lifetime.
+        // StartWithClassicDesktopLifetime runs the message loop (doesn't block UI thread—
+        // it IS the message loop). Worker connects in background, posts result to UI thread
+        // when ready via Dispatcher.UIThread.Post.
+        UiDiagnosticLog.Write("Firing background Worker connect (fire-and-forget)");
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var connectResult = await App.RuntimeOptions.ConnectOrLaunchWorkerAsync(CancellationToken.None)
+                    .ConfigureAwait(false);
+                UiDiagnosticLog.Write($"Worker connect result. runtime={connectResult.RuntimeKind}, endpoint={connectResult.EndpointName}, showTray={connectResult.ShouldShowTrayIcon}");
+
+                Dispatcher.UIThread.Post(() =>
+                {
+                    App.RuntimeOptions.RuntimeKind = connectResult.RuntimeKind;
+                    App.RuntimeOptions.WorkerEndpointName = connectResult.EndpointName;
+                    App.RuntimeOptions.UseTrayIcon = connectResult.ShouldShowTrayIcon &&
+                        !App.RuntimeOptions.HideTrayIcon;
+                    UiDiagnosticLog.Write($"RuntimeOptions updated. RuntimeKind={App.RuntimeOptions.RuntimeKind}, Endpoint={App.RuntimeOptions.WorkerEndpointName}");
+                });
+            }
+            catch (Exception ex)
+            {
+                UiDiagnosticLog.Write($"[FATAL] Background Worker connect failed: {ex}");
+            }
+        });
+
+        UiDiagnosticLog.Write("Avalonia StartWithClassicDesktopLifetime starting");
+        BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
         UiDiagnosticLog.Write("Avalonia lifetime exited");
 
         showPipeCts.Cancel();
@@ -102,46 +128,6 @@ public static class UiProgram
         UiDiagnosticLog.Shutdown();
         Log.CloseAndFlush();
         return 0;
-    }
-
-    // ADR 0053 M1: AppMain is called by Avalonia after OnFrameworkInitializationCompleted.
-    // MainWindow is already visible with Connecting state — now connect Worker in background.
-    private static void AppMain(Application app, string[] args)
-    {
-        UiDiagnosticLog.Write("AppMain entered — firing background Worker connect");
-
-        // Fire-and-forget: connect Worker on thread pool, post result to UI thread when done.
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                var connectResult = await App.RuntimeOptions.ConnectOrLaunchWorkerAsync(CancellationToken.None)
-                    .ConfigureAwait(false);
-                UiDiagnosticLog.Write($"Worker connect result. runtime={connectResult.RuntimeKind}, endpoint={connectResult.EndpointName}, showTray={connectResult.ShouldShowTrayIcon}");
-
-                // Update RuntimeOptions with actual connection result on UI thread.
-                Dispatcher.UIThread.Post(() =>
-                {
-                    App.RuntimeOptions.RuntimeKind = connectResult.RuntimeKind;
-                    App.RuntimeOptions.WorkerEndpointName = connectResult.EndpointName;
-                    App.RuntimeOptions.UseTrayIcon = connectResult.ShouldShowTrayIcon &&
-                        !App.RuntimeOptions.HideTrayIcon;
-                    // ConnectionState will be promoted by heartbeat timer within ~1s.
-                    UiDiagnosticLog.Write($"RuntimeOptions updated on UI thread. RuntimeKind={App.RuntimeOptions.RuntimeKind}, Endpoint={App.RuntimeOptions.WorkerEndpointName}");
-                });
-            }
-            catch (Exception ex)
-            {
-                UiDiagnosticLog.Write($"[FATAL] Background Worker connect failed: {ex}");
-                Dispatcher.UIThread.Post(() =>
-                {
-                    // ConnectionState stays Reconnecting — heartbeat will retry.
-                });
-            }
-        });
-
-        // ADR 0053 M1: Start(AppMain) uses classic desktop lifetime by default.
-        // ShutdownMode.OnMainWindowClose is the default — no explicit set needed.
     }
 
     private static AppConfig LoadConfigOrDefault(string configPath)
