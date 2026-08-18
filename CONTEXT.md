@@ -354,3 +354,19 @@ _Avoid_: 静默通过不警告；按相同回执处理所有格式
 **Safe Color-Space Tags Wipe**:
 ExifTool FAQ #32 官方推荐的安全全删模式：`-all= --icc_profile:all -tagsfromfile @ -colorspacetags`。`--icc_profile:all`（双横线排除语法）从 `-all=` 中排除 ICC_Profile，`-tagsfromfile @ -colorspacetags` 从同一个文件回填 ColorSpaceTags 保色。RAW 不适用（ICC 残留安全且 Mac 标签需保留）。HEIC 使用同样排除语法。见 ADR 0053 M6a。
 _Avoid_: `-all=` 后无任何 ColorSpaceTags 回填导致图像色变；任一向 RAW/HEIC/PNG 应用全 ICC 删除
+
+**Nav Group Split**:
+侧栏导航按行业心智模型分两组：主导航组（配置/日志/规则）在顶部 DockPanel.Dock=Top，utility 组（服务管理器+暂停/恢复）在底部 DockPanel.Dock=Bottom+分隔线。动态 IsVisible 项在底部组隐藏时整组消失，主导航位置稳定。所有导航项 Height=40 Padding=12,0 HorizontalContentAlignment=Stretch 全宽命中区。符合 MD3 NavigationDrawer + Fluent NavigationView FooterMenuItems 双规范。见 ADR 0055 A1。
+_Avoid_: 动态可见项混在主导航组内隐藏留空位；nav-action 类按钮与 nav 类按钮 Height/Padding 不一致
+
+**RAF Watchdog**:
+TopLevel.RequestAnimationFrame (RAF) 在窗口最大化时被节流到实际渲染速率（Avalonia MediaContext.cs 源码：等待合成器提交期间 clock.Pulse 被跳过）。看门狗定时器以 DispatcherPriority.Render 16ms 同时运行，RAF 停摆 >32ms（2 帧）时保底步进。dt 统一走 Stopwatch 墙钟，使指数平滑成为时间基动画——采样频率降低时曲线仍正确而非"冻结后大跳"。见 ADR 0055 A2。
+_Avoid_: 纯 DispatcherTimer Background 优先级在布局风暴中饥饿；纯 RAF 无看门狗在最大化过渡期冻结
+
+**Theme Preset i18n**:
+主题色板 5 个预设名称（Catppuccin/Dracula/Nord/OneDarkPro/TokyoNight）的 i18n key 前缀为 preset.。XAML 中 TextBlock Text 必须绑定 {ex:Localize preset.xxx} 而非硬编码字符串。设置标题用 settings.theme_preset。10 语言全覆盖。见 ADR 0055 A3。
+_Avoid_: swatch TextBlock Text="Catppuccin" 硬编码；LocalizationService 缺 theme.preset / preset.* key
+
+**App-Local Hot Folder**:
+默认热目录是软件运行目录下的 hot/（Path.Combine(AppContext.BaseDirectory, "hot")），三端兼容。非系统图片目录（MyPictures）。AppConfig.Default.HotFolder 保持 string.Empty（ADR 0045 dynamic fallback 语义）：空值即运行时按实际 HotFolder 动态解析。DefaultPaths.DefaultBackupDirectory 子目录名对齐 BackupPathResolver.DefaultBackupDirName（bak），非 .pp_backup。见 ADR 0055 A4。
+_Avoid_: DefaultHotFolder 指向系统 MyPictures（选中用户图片导致损坏）；DefaultPaths 子目录名与 BackupPathResolver.DefaultBackupDirName 不一致导致 UI Watermark 误导
