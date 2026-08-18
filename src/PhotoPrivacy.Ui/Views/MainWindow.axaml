@@ -84,6 +84,12 @@
               <TextBlock Text="{ex:Localize nav.logs}" Classes="body" VerticalAlignment="Center"/>
             </StackPanel>
           </Button>
+          <Button x:Name="RulesNavButton" Classes="nav" Tag="rules" Height="44" HorizontalContentAlignment="Stretch">
+            <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+              <materialIcons:MaterialIcon Kind="ShieldCheckOutline" Width="20" Height="20"/>
+              <TextBlock Text="{ex:Localize nav.rules}" Classes="body" VerticalAlignment="Center"/>
+            </StackPanel>
+          </Button>
                     <Button x:Name="OpenServiceManagerTabButton"
                   Classes="nav"
                   Tag="service"
@@ -501,6 +507,66 @@
           </ListBox>
         </DockPanel>
       </Grid>
+
+    <!-- ADR 0053 M6c: Per-Format Rules Panel with DataGrid matrix -->
+    <Grid Grid.Column="2" x:Name="RulesPage" RowDefinitions="Auto,*" IsVisible="False">
+      <Border Padding="24,20,24,16" BorderBrush="{DynamicResource SemiColorBorder}" BorderThickness="0,0,0,1">
+        <StackPanel Spacing="8">
+          <TextBlock Text="{ex:Localize rules.panel.title}" Classes="h2" />
+          <TextBlock Text="{ex:Localize rules.panel.subtitle}" Classes="caption" Opacity="0.7" />
+        </StackPanel>
+      </Border>
+      <ScrollViewer Grid.Row="1" Padding="24,16" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Spacing="16">
+          <Border Classes="settings-card">
+            <StackPanel Spacing="8">
+              <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                <materialIcons:MaterialIcon Kind="ShieldAccountOutline" Width="20" Height="20"/>
+                <TextBlock Text="{ex:Localize rules.expert.mode}" Classes="body" VerticalAlignment="Center"/>
+                <ToggleSwitch x:Name="ExpertModeToggle" IsChecked="{Binding RulesPanel.IsExpertMode, Mode=TwoWay}" OnContent="" OffContent="" />
+              </StackPanel>
+              <Border x:Name="ExpertModeInfobar" Background="{DynamicResource SemiColorWarningBg}" CornerRadius="6" Padding="12,8" IsVisible="{Binding !RulesPanel.IsExpertMode}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <materialIcons:MaterialIcon Kind="AlertOutline" Width="16" Height="16" Foreground="{DynamicResource SemiColorWarning}"/>
+                  <TextBlock Text="{ex:Localize rules.expert.infobar}" Classes="caption" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                </StackPanel>
+              </Border>
+            </StackPanel>
+          </Border>
+          <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Stretch">
+            <TextBox x:Name="RulesSearchBox" Text="{Binding RulesPanel.SearchFilter, Mode=TwoWay}" Watermark="{ex:Localize rules.search.placeholder}" MinWidth="260" />
+            <Button x:Name="SaveRulesButton" Classes="nav-action" Click="OnSaveRulesClick" Content="{ex:Localize rules.btn.save}" />
+            <Button x:Name="ResetRulesButton" Classes="nav-action" Click="OnResetRulesClick" Content="{ex:Localize rules.btn.reset}" />
+            <TextBlock x:Name="RulesSaveStatus" Text="{Binding RulesPanel.SaveStatus}" Classes="caption" VerticalAlignment="Center" Margin="8,0,0,0" Opacity="0.6" />
+          </StackPanel>
+          <DataGrid x:Name="RulesDataGrid"
+                    ItemsSource="{Binding RulesPanel.Rules}"
+                    AutoGenerateColumns="False"
+                    IsReadOnly="False"
+                    GridLinesVisibility="All"
+                    FrozenColumnCount="1"
+                    SelectionMode="Single"
+                    MinHeight="280"
+                    HeadersVisibility="Column"
+                    CanUserSortColumns="True"
+                    FontSize="13">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="{ex:Localize rules.col.family}" Binding="{Binding FamilyName}" Width="90" IsReadOnly="True"/>
+              <DataGridTextColumn Header="{ex:Localize rules.col.extensions}" Binding="{Binding Extensions}" Width="140" IsReadOnly="True"/>
+              <DataGridCheckBoxColumn Header="{ex:Localize rules.col.enabled}" Binding="{Binding IsEnabled}" Width="60"/>
+              <DataGridCheckBoxColumn Header="{ex:Localize rules.col.strip_all}" Binding="{Binding StripAll}" Width="60"/>
+              <DataGridCheckBoxColumn Header="{ex:Localize rules.col.preserve_icc}" Binding="{Binding PreserveIcc}" Width="70"/>
+              <DataGridCheckBoxColumn Header="{ex:Localize rules.col.strip_exif}" Binding="{Binding StripExif}" Width="60"/>
+              <DataGridCheckBoxColumn Header="{ex:Localize rules.col.strip_xmp}" Binding="{Binding StripXmp}" Width="60"/>
+              <DataGridCheckBoxColumn Header="{ex:Localize rules.col.strip_iptc}" Binding="{Binding StripIptc}" Width="60"/>
+              <DataGridCheckBoxColumn Header="{ex:Localize rules.col.strip_time}" Binding="{Binding StripTime}" Width="60"/>
+              <DataGridTextColumn Header="{ex:Localize rules.col.warning}" Binding="{Binding WarningLevel}" Width="70" IsReadOnly="True"/>
+              <DataGridTextColumn Header="{ex:Localize rules.col.effective_args}" Binding="{Binding EffectiveArgs}" Width="*" IsReadOnly="True"/>
+            </DataGrid.Columns>
+          </DataGrid>
+        </StackPanel>
+      </ScrollViewer>
+    </Grid>
 
       <Grid x:Name="ServiceManagerTab" RowDefinitions="Auto,*" IsVisible="False">
         <Border Padding="24,20,24,16" BorderBrush="{DynamicResource SemiColorBorder}" BorderThickness="0,0,0,1">

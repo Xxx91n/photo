@@ -6,7 +6,8 @@
     "config": "Einstellungen",
     "logs": "Protokolle",
     "service": "Dienst",
-    "service_manager": "Dienstmanager"
+    "service_manager": "Dienstmanager",
+    "rules": "Regeln"
   },
   "btn": {
     "pause": "⏸ Pause",
@@ -225,5 +226,35 @@
     "file_detected": "Datei erkannt",
     "instance_conflict": "Doppelstart abgelehnt",
     "file_failed": "Bereinigung fehlgeschlagen"
+  },
+  "rules": {
+    "panel": {
+      "title": "Format-spezifische Bereinigungsregeln",
+      "subtitle": "Metadaten-Bereinigungsstrategie pro Formatfamilie konfigurieren; Expertenmodus schaltet gefährliche Optionen frei"
+    },
+    "expert": {
+      "mode": "Expertenmodus",
+      "infobar": "Zum Aufheben des Schutzes aktivieren Sie den Expertenmodus. Der Expertenmodus lockert Schutzmaßnahmen — mit Vorsicht verwenden."
+    },
+    "search": {
+      "placeholder": "Erweiterungen oder Formatfamilie suchen, z.B. jpg, raw, mp4…"
+    },
+    "btn": {
+      "save": "Benutzerregeln speichern",
+      "reset": "Auf Standard zurücksetzen"
+    },
+    "col": {
+      "family": "Familie",
+      "extensions": "Erweiterungen",
+      "enabled": "Aktiviert",
+      "strip_all": "Alle löschen",
+      "preserve_icc": "ICC erhalten",
+      "strip_exif": "EXIF",
+      "strip_xmp": "XMP",
+      "strip_iptc": "IPTC",
+      "strip_time": "Zeit",
+      "warning": "Warnung",
+      "effective_args": "Generierte Args"
+    }
   }
 }

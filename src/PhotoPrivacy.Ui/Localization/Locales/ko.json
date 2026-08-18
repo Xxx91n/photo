@@ -6,7 +6,8 @@
     "config": "설정",
     "logs": "로그",
     "service": "서비스",
-    "service_manager": "서비스 관리자"
+    "service_manager": "서비스 관리자",
+    "rules": "규칙"
   },
   "btn": {
     "pause": "⏸ 일시정지",
@@ -225,5 +226,35 @@
     "file_detected": "파일 감지",
     "instance_conflict": "중복 실행 거부",
     "file_failed": "정리 실패"
+  },
+  "rules": {
+    "panel": {
+      "title": "형식별 정리 규칙",
+      "subtitle": "형식 패밀리별 메타데이터 정리 전략 구성, 전문가 모드에서 위험 옵션 잠금 해제"
+    },
+    "expert": {
+      "mode": "전문가 모드",
+      "infobar": "보호를 해제하려면 전문가 모드를 활성화하세요. 가드레일이 완화됩니다, 주의해서 조작하세요."
+    },
+    "search": {
+      "placeholder": "확장자 또는 형식 패밀리 검색 (jpg, raw, mp4…)"
+    },
+    "btn": {
+      "save": "사용자 규칙 저장",
+      "reset": "기본값으로 재설정"
+    },
+    "col": {
+      "family": "패밀리",
+      "extensions": "확장자",
+      "enabled": "활성화",
+      "strip_all": "전체 삭제",
+      "preserve_icc": "ICC 보존",
+      "strip_exif": "EXIF",
+      "strip_xmp": "XMP",
+      "strip_iptc": "IPTC",
+      "strip_time": "시간",
+      "warning": "경고",
+      "effective_args": "생성 인수"
+    }
   }
 }

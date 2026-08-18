@@ -6,7 +6,8 @@
     "config": "Settings",
     "logs": "Logs",
     "service": "Service",
-    "service_manager": "Service Manager"
+    "service_manager": "Service Manager",
+    "rules": "Rules"
   },
   "btn": {
     "pause": "⏸ Pause",
@@ -225,5 +226,35 @@
     "file_detected": "File detected",
     "instance_conflict": "Duplicate launch rejected",
     "file_failed": "Cleaning failed"
+  },
+  "rules": {
+    "panel": {
+      "title": "Per-Format Wipe Rules",
+      "subtitle": "Configure metadata wipe strategy per format family; expert mode unlocks dangerous options"
+    },
+    "expert": {
+      "mode": "Expert mode",
+      "infobar": "To bypass protection, enable expert mode. Expert mode relaxes guardrails — use extra caution."
+    },
+    "search": {
+      "placeholder": "Search extensions or format family, e.g. jpg, raw, mp4…"
+    },
+    "btn": {
+      "save": "Save custom rules",
+      "reset": "Reset to defaults"
+    },
+    "col": {
+      "family": "Family",
+      "extensions": "Extensions",
+      "enabled": "Enabled",
+      "strip_all": "Strip all",
+      "preserve_icc": "Preserve ICC",
+      "strip_exif": "EXIF",
+      "strip_xmp": "XMP",
+      "strip_iptc": "IPTC",
+      "strip_time": "Time",
+      "warning": "Warning",
+      "effective_args": "Effective args"
+    }
   }
 }

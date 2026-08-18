@@ -191,6 +191,7 @@ public partial class MainWindow : Window
         RefreshServiceStatusButton.Click += OnRefreshServiceStatusClick;
         ConfigNavButton.Click += OnNavigateClick;
         LogNavButton.Click += OnNavigateClick;
+        RulesNavButton.Click += OnNavigateClick;
         if (this.FindControl<Button>("OpenServiceManagerTabButton") is { } openServiceManagerTabButton)
         {
             openServiceManagerTabButton.Click += OnNavigateClick;
@@ -673,9 +674,11 @@ public partial class MainWindow : Window
     {
         var normalized = string.Equals(page, "log", StringComparison.OrdinalIgnoreCase)
             ? "log"
-            : string.Equals(page, "service", StringComparison.OrdinalIgnoreCase)
-                ? "service"
-                : "config";
+            : string.Equals(page, "rules", StringComparison.OrdinalIgnoreCase)
+                ? "rules"
+                : string.Equals(page, "service", StringComparison.OrdinalIgnoreCase)
+                    ? "service"
+                    : "config";
 
         if (DataContext is MainWindowViewModel vm)
         {
@@ -689,10 +692,12 @@ public partial class MainWindow : Window
         ConfigPage.IsVisible = string.Equals(normalized, "config", StringComparison.Ordinal);
         LogPage.IsVisible = string.Equals(normalized, "log", StringComparison.Ordinal);
         ServiceManagerTab.IsVisible = showServicePage;
+        RulesPage.IsVisible = string.Equals(normalized, "rules", StringComparison.Ordinal);
 
         SetNavButtonActive(ConfigNavButton, string.Equals(normalized, "config", StringComparison.Ordinal));
         SetNavButtonActive(LogNavButton, string.Equals(normalized, "log", StringComparison.Ordinal));
         SetNavButtonActive(OpenServiceManagerTabButton, string.Equals(normalized, "service", StringComparison.Ordinal));
+        SetNavButtonActive(RulesNavButton, string.Equals(normalized, "rules", StringComparison.Ordinal));
     }
 
     private static void SetNavButtonActive(Button button, bool isActive)
@@ -708,6 +713,22 @@ public partial class MainWindow : Window
         }
 
         button.Classes.Remove("active");
+    }
+
+    private void OnSaveRulesClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel vm)
+        {
+            vm.RulesPanel.SaveCustomRules();
+        }
+    }
+
+    private void OnResetRulesClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel vm)
+        {
+            vm.RulesPanel.ResetToDefaults();
+        }
     }
 
     private void OnThemeVariantSelectionChanged(object? sender, SelectionChangedEventArgs e)

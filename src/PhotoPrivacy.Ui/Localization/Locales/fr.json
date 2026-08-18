@@ -6,7 +6,8 @@
     "config": "Paramètres",
     "logs": "Journaux",
     "service": "Service",
-    "service_manager": "Gestionnaire de service"
+    "service_manager": "Gestionnaire de service",
+    "rules": "Règles"
   },
   "btn": {
     "pause": "⏸ Pause",
@@ -225,5 +226,35 @@
     "file_detected": "Fichier détecté",
     "instance_conflict": "Lancement en double rejeté",
     "file_failed": "Échec du nettoyage"
+  },
+  "rules": {
+    "panel": {
+      "title": "Règles de nettoyage par format",
+      "subtitle": "Configurer la stratégie de nettoyage des métadonnées par famille de format ; mode expert débloque les options dangereuses"
+    },
+    "expert": {
+      "mode": "Mode expert",
+      "infobar": "Pour contourner la protection, activez le mode expert. Le mode expert assouplit les garde-fous — agissez avec prudence."
+    },
+    "search": {
+      "placeholder": "Rechercher extensions ou famille de format, ex. jpg, raw, mp4…"
+    },
+    "btn": {
+      "save": "Enregistrer les règles",
+      "reset": "Réinitialiser"
+    },
+    "col": {
+      "family": "Famille",
+      "extensions": "Extensions",
+      "enabled": "Activé",
+      "strip_all": "Tout effacer",
+      "preserve_icc": "Préserver ICC",
+      "strip_exif": "EXIF",
+      "strip_xmp": "XMP",
+      "strip_iptc": "IPTC",
+      "strip_time": "Temps",
+      "warning": "Avertissement",
+      "effective_args": "Args générés"
+    }
   }
 }

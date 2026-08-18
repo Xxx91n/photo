@@ -2,6 +2,8 @@ using System.Collections.ObjectModel;
 using PhotoPrivacy.Ui.Localization;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using PhotoPrivacy.Core.Configuration;
+using System.IO;
 
 namespace PhotoPrivacy.Ui.ViewModels;
 
@@ -154,6 +156,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         get => _currentPage;
         set => SetField(ref _currentPage, value);
     }
+
+    public RulesPanelViewModel RulesPanel { get; } =
+        new RulesPanelViewModel(new FormatRulesStore(Path.Combine(AppContext.BaseDirectory, "config")));
 
     public string ThemeVariant
     {

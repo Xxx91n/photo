@@ -6,7 +6,8 @@
     "config": "配置",
     "logs": "日志",
     "service": "服务管理",
-    "service_manager": "服务管理器"
+    "service_manager": "服务管理器",
+    "rules": "规则"
   },
   "btn": {
     "pause": "⏸ 暂停",
@@ -225,5 +226,35 @@
     "file_detected": "检测到文件",
     "instance_conflict": "重复启动被拒",
     "file_failed": "清理失败"
+  },
+  "rules": {
+    "panel": {
+      "title": "格式清理规则",
+      "subtitle": "按文件格式族配置元数据清理策略，专业模式可解锁危险选项"
+    },
+    "expert": {
+      "mode": "专业模式",
+      "infobar": "要解除保护，请启用专业模式。专业模式将放松安全护栏，请谨慎操作。"
+    },
+    "search": {
+      "placeholder": "搜索扩展名或格式族，如 jpg、raw、mp4…"
+    },
+    "btn": {
+      "save": "保存自定义规则",
+      "reset": "恢复默认"
+    },
+    "col": {
+      "family": "格式族",
+      "extensions": "扩展名",
+      "enabled": "启用",
+      "strip_all": "全部清除",
+      "preserve_icc": "保留 ICC",
+      "strip_exif": "EXIF",
+      "strip_xmp": "XMP",
+      "strip_iptc": "IPTC",
+      "strip_time": "时间",
+      "warning": "警告",
+      "effective_args": "生成参数"
+    }
   }
 }

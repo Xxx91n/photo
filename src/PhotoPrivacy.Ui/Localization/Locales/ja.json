@@ -6,7 +6,8 @@
     "config": "設定",
     "logs": "ログ",
     "service": "サービス管理",
-    "service_manager": "サービスマネージャー"
+    "service_manager": "サービスマネージャー",
+    "rules": "ルール"
   },
   "btn": {
     "pause": "⏸ 一時停止",
@@ -225,5 +226,35 @@
     "file_detected": "ファイル検出",
     "instance_conflict": "重複起動が拒否されました",
     "file_failed": "クリーン失敗"
+  },
+  "rules": {
+    "panel": {
+      "title": "形式別クリーンアップルール",
+      "subtitle": "形式ファミリーごとにメタデータクリーンアップ戦略を設定。エキスパートモードで危険なオプションを解放"
+    },
+    "expert": {
+      "mode": "エキスパートモード",
+      "infobar": "保護を解除するにはエキスパートモードを有効にしてください。ガードレールが緩和されます、慎重に操作してください。"
+    },
+    "search": {
+      "placeholder": "拡張子または形式ファミリーを検索（jpg、raw、mp4…）"
+    },
+    "btn": {
+      "save": "カスタムルールを保存",
+      "reset": "デフォルトに戻す"
+    },
+    "col": {
+      "family": "ファミリー",
+      "extensions": "拡張子",
+      "enabled": "有効",
+      "strip_all": "全削除",
+      "preserve_icc": "ICC 保持",
+      "strip_exif": "EXIF",
+      "strip_xmp": "XMP",
+      "strip_iptc": "IPTC",
+      "strip_time": "時間",
+      "warning": "警告",
+      "effective_args": "生成引数"
+    }
   }
 }

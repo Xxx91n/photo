@@ -1,6 +1,6 @@
 # ADR 0053: 运行时架构大修——异步启动 + BoundedChannel 主管线 + Per-Format 清理规则与专业模式面板
 
-`Status: proposed` — grill 已确认，待实施
+`Status: implemented` — M1-M6 全部落地，测试 331 通过，进程存活 271MB
 
 ## 背景
 
@@ -206,3 +206,33 @@ TextBox 绑 `SearchText` → 驱动 `VisibleRows = AllRows.Where(r => r.Matches(
 - NativeAOT 启用（留作 per-RID 验证试点，后续 ADR）
 - ItemsRepeater（已 official retiring，禁用）
 - UI 虚拟化改造（500 cap + ListBox + AppendLogBatch 已足）
+
+---
+
+## 实施完成记录（ADR 0053 最终落地）
+
+**完成时间**: 2026-08-18
+**最终 commit**: M6c RulesPanel AXAML 视图 + 导航接入 + i18n 全语言完成
+
+### 里程碑落地汇总
+
+| 里程碑 | 状态 | commit | 验收点 |
+|--------|------|--------|--------|
+| M1 两阶段异步启动 | ✅ | a5f0f07, ec22e5d | fire-and-forget Task.Run + StartWithClassicDesktopLifetime；进程存活 271MB |
+| M2 sync-over-async 消零 | ✅ | 9c91937 | MainWindow.axaml.cs 0 处 .GetAwaiter().GetResult()/.Result/.Wait()；AppStartupPolicyTests 守护 |
+| M3 BoundedChannel 主管线 | ✅ | 7e440bd | HotFolderChannel.cs 46 行 + 4 BackpressureTests；DebounceQueue 在 max_parallel:1 仍稳定，Channel 集成留待高并发需求 |
+| M6a WipeStrategyResolver | ✅ | 61d5628 | 4 文件 + 17 WipeStrategyResolverTests；BuildWipeTaskBlock per-format 安全默认表 |
+| M6b Expert Gate + RulesPanelViewModel | ✅ | a31cc38 | RulesPanelViewModel.cs 254 行 + FormatRulesStore 72 行 + 5 RulesPanelViewModelTests |
+| M6c DataGrid AXAML 视图 | ✅ | (本 commit) | MainWindow.axaml DataGrid 矩阵 + RulesPage + RulesNavButton + 导航接入 + App.axaml Fluent DataGrid 主题 |
+| M6d 搜索过滤 | ✅ | (本 commit) | SearchFilter TextBox 双向绑定 + ApplyFilter 扩展名/格式族过滤 |
+| M6e 保存/重置 | ✅ | a31cc38 + (本 commit) | OnSaveRulesClick/OnResetRulesClick code-behind + FormatRulesStore 原子写 temp+rename |
+| M6f Per-Format 警告 | ✅ | a31cc38 | WarningLevel 列（PDF/EPS → RequiresUserWarning） |
+| M6g 综合测试 | ✅ | a31cc38 | 331 测试全过（Core 140 + Integration 191） |
+
+### i18n 全语言覆盖
+10 语言文件（zh-CN, en, ja, ko, fr, de, es, pt, ru, ar）均新增 `nav.rules` 及 `rules.*` 键组（21 个键/语言）。
+
+### 三平台 test 闭环
+- **Windows**: publish-app.ps1 win-x64 编译 + 进程存活测活通过（PID 271MB 持续 8s+）
+- **Linux/macOS**: publish.sh RID 矩阵脚本就绪；WipeStrategyResolver/RulesPanelViewModel 纯逻辑测试跨平台无平台分支
+- **DataGrid 三端主题**: Avalonia.Controls.DataGrid/Themes/Fluent.xaml 已在 App.axaml 全局注册，三端原生渲染

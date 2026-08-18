@@ -6,7 +6,8 @@
     "config": "Configurações",
     "logs": "Logs",
     "service": "Serviço",
-    "service_manager": "Gerenciador de Serviço"
+    "service_manager": "Gerenciador de Serviço",
+    "rules": "Regras"
   },
   "btn": {
     "pause": "⏸ Pausar",
@@ -225,5 +226,35 @@
     "file_detected": "Arquivo detectado",
     "instance_conflict": "Lançamento duplicado rejeitado",
     "file_failed": "Limpeza falhou"
+  },
+  "rules": {
+    "panel": {
+      "title": "Regras de limpeza por formato",
+      "subtitle": "Configure a estratégia de limpeza de metadados por família de formato; modo especialista desbloqueia opções perigosas"
+    },
+    "expert": {
+      "mode": "Modo especialista",
+      "infobar": "Para contornar a proteção, ative o modo especialista. O modo especialista afrouxa proteções — use com cautela."
+    },
+    "search": {
+      "placeholder": "Pesquisar extensões ou família de formato, ex. jpg, raw, mp4…"
+    },
+    "btn": {
+      "save": "Salvar regras personalizadas",
+      "reset": "Restaurar padrão"
+    },
+    "col": {
+      "family": "Família",
+      "extensions": "Extensões",
+      "enabled": "Ativado",
+      "strip_all": "Remover tudo",
+      "preserve_icc": "Preservar ICC",
+      "strip_exif": "EXIF",
+      "strip_xmp": "XMP",
+      "strip_iptc": "IPTC",
+      "strip_time": "Tempo",
+      "warning": "Aviso",
+      "effective_args": "Args gerados"
+    }
   }
 }
