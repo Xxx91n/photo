@@ -368,5 +368,5 @@ _Avoid_: 纯 DispatcherTimer Background 优先级在布局风暴中饥饿；纯 
 _Avoid_: swatch TextBlock Text="Catppuccin" 硬编码；LocalizationService 缺 theme.preset / preset.* key
 
 **App-Local Hot Folder**:
-默认热目录是软件运行目录下的 hot/（Path.Combine(AppContext.BaseDirectory, "hot")），三端兼容。非系统图片目录（MyPictures）。AppConfig.Default.HotFolder 保持 string.Empty（ADR 0045 dynamic fallback 语义）：空值即运行时按实际 HotFolder 动态解析。DefaultPaths.DefaultBackupDirectory 子目录名对齐 BackupPathResolver.DefaultBackupDirName（bak），非 .pp_backup。见 ADR 0055 A4。
+默认热目录是软件运行目录下的 hot/（Path.Combine(AppContext.BaseDirectory, "hot")），三端兼容。非系统图片目录（MyPictures）。AppConfig.Default.Watch.HotFolder 引用 DefaultPaths.DefaultHotFolder（即 BaseDirectory/hot），AppConfig.Default.Backup.Directory 保持 string.Empty（ADR 0045 dynamic fallback 语义）：空值即运行时按实际 HotFolder 通过 BackupPathResolver 动态解析。DefaultPaths.DefaultBackupDirectory 子目录名对齐 BackupPathResolver.DefaultBackupDirName（bak），非 .pp_backup。见 ADR 0055 A4。
 _Avoid_: DefaultHotFolder 指向系统 MyPictures（选中用户图片导致损坏）；DefaultPaths 子目录名与 BackupPathResolver.DefaultBackupDirName 不一致导致 UI Watermark 误导

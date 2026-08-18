@@ -104,7 +104,6 @@ public sealed class MiddleClickScrollBehavior : AvaloniaObject
         public double VelocityX;
         public bool InDeadZoneY;
         public bool InDeadZoneX;
-        public TimeSpan? LastFrameTime;
         // ADR 0055 A2: wall-clock Stopwatch for time-based dt (correct at any sample rate)
         public Stopwatch? Clock;
         // ADR 0055 A2: Render-priority watchdog timer — steps when RAF stalls >32ms
