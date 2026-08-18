@@ -7,10 +7,12 @@ namespace PhotoPrivacy.Core.Pipeline;
 /// FSW events → DebounceQueue (dedup/debounce) → HotFolderChannel (backpressure) → consumer.
 /// FullMode=Wait means if the channel is full (4096 pending), producers await instead of OOM.
 /// </summary>
+// ponytail: M3 Channel not yet integrated into MetadataCleanerWorker — DebounceQueue stable at max_parallel:1.
+// Ceiling: high-concurrency workload >1 parallel ExifTool. Upgrade: integrate into MetadataCleanerWorker.ExecuteAsync as producer/consumer.
+// ADR 0053 declares this as deferred (milestone acceptance met with BackpressureTests only).
 public sealed class HotFolderChannel : IAsyncDisposable
 {
     private readonly Channel<string> _channel;
-    private readonly CancellationTokenSource _completionCts = new();
 
     public HotFolderChannel(int capacity = 4096)
     {
@@ -33,13 +35,11 @@ public sealed class HotFolderChannel : IAsyncDisposable
     public void Complete()
     {
         _channel.Writer.TryComplete();
-        _completionCts.Cancel();
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
         _channel.Writer.TryComplete();
-        _completionCts.Dispose();
-        await Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 }
