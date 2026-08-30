@@ -636,7 +636,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnOpenConfigDirClick(object? sender, RoutedEventArgs e)
+    private async void OnOpenConfigDirClick(object? sender, RoutedEventArgs e)
     {
         if (_options is null)
         {
@@ -649,7 +649,25 @@ public partial class MainWindow : Window
             return;
         }
 
-        OpenDirectory(path);
+        var launcher = TopLevel.GetTopLevel(this)?.Launcher;
+        if (launcher is null)
+        {
+            UiDiagnosticLog.Write("OpenConfigDir skipped: TopLevel.Launcher unavailable");
+            return;
+        }
+
+        try
+        {
+            var launched = await launcher.LaunchDirectoryInfoAsync(new DirectoryInfo(path));
+            if (!launched)
+            {
+                UiDiagnosticLog.Write($"OpenConfigDir failed: launcher refused {path}");
+            }
+        }
+        catch (Exception ex)
+        {
+            UiDiagnosticLog.Write($"OpenConfigDir failed: {ex.Message}");
+        }
     }
 
     private void OnRefreshServiceStatusClick(object? sender, RoutedEventArgs e)
@@ -1938,41 +1956,6 @@ public partial class MainWindow : Window
                 {
                     vm.ExifToolVersion = LocalizationService.Instance.Get("status.exiftool_not_found");
                 }
-            });
-        }
-    }
-
-    private static void OpenDirectory(string path)
-    {
-        if (OperatingSystem.IsWindows())
-        {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = "explorer.exe",
-                Arguments = path,
-                UseShellExecute = true
-            });
-            return;
-        }
-
-        if (OperatingSystem.IsLinux())
-        {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = "xdg-open",
-                Arguments = path,
-                UseShellExecute = true
-            });
-            return;
-        }
-
-        if (OperatingSystem.IsMacOS())
-        {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = "open",
-                Arguments = path,
-                UseShellExecute = true
             });
         }
     }
