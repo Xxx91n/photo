@@ -245,11 +245,21 @@ public partial class MainWindow : Window
                     return (DataContext as MainWindowViewModel)?.LogLevel ?? "info";
                 return Dispatcher.UIThread.Invoke(() => (DataContext as MainWindowViewModel)?.LogLevel ?? "info");
             },
-            onExifToolExePathDetected: exePath => _ = ApplyExifToolVersionFromIpcAsync());
+            onExifToolExePathDetected: exePath => _ = ApplyExifToolVersionFromIpcAsync(),
+            backfillFetcher: token =>
+            {
+                // 票号05: backfill 协调已收口在 AuditTailService 内部（ADR 0046 语义保持：
+                // 失败静默重试不杀 UI）。这里只是薄适配器：惰性读 endpoint + 自兜底 IO 异常。
+                var endpoint = _options?.WorkerEndpointName;
+                if (string.IsNullOrWhiteSpace(endpoint))
+                {
+                    return Task.FromResult<string[]?>(null);
+                }
+                return FetchBackfillLinesAsync(endpoint, token);
+            });
 
         _auditTail.Start();
         _ = ApplyExifToolVersionFromIpcAsync();
-        _ = BackfillRecentLogsAsync();
 
         _versionPollCts = new CancellationTokenSource();
         _versionPollTask = Task.Run(() => PollVersionAsync(_versionPollCts.Token), _versionPollCts.Token);
@@ -440,57 +450,30 @@ public partial class MainWindow : Window
         if (DataContext is MainWindowViewModel vm)
         {
             vm.ClearLogs();
-            _auditTail?.SkipToCurrentEnd();
+            // 票号05: ADR 0037 — drain pending + 水位移尾，但保留原始行去重记忆，
+            // 防止清空后 backfill/尾读把已清空的历史行重新送回 UI。
+            _auditTail?.NotifyLogsCleared();
         }
     }
 
     /// <summary>
-    /// ADR 0046: Backfill recent audit log lines from Worker via IPC on UI startup/reconnect.
-    /// Fills the gap that FileSystemWatcher-based AuditTailService misses between Worker writes and UI connect.
+    /// 票号05: thin adapter over the single IPC entry (票号04). Worker-reachable → raw audit
+    /// lines for backfill; unreachable/timeout → null (AuditTailService retries silently).
     /// </summary>
-    private async Task BackfillRecentLogsAsync()
+    private async Task<string[]?> FetchBackfillLinesAsync(string endpoint, CancellationToken token)
     {
-        if (_options is null)
-            return;
-
         try
         {
-            var endpoint = _options.WorkerEndpointName;
-            var response = await _workerIpc.GetRecentLogsAsync(endpoint, CancellationToken.None);
-            if (response is not null && response.Ok && response.Logs is { Lines: { Length: > 0 } lines })
-            {
-                if (DataContext is MainWindowViewModel vm)
-                {
-                    await Dispatcher.UIThread.InvokeAsync(() =>
-                    {
-                        var logLevel = vm.LogLevel;
-                        var batch = new List<AuditLogEntry>();
-                        foreach (var line in lines)
-                        {
-                            if (string.IsNullOrWhiteSpace(line))
-                                continue;
-
-                            var entry = AuditTailService.ParseAuditLine(line, logLevel);
-                            if (entry is not null)
-                            {
-                                batch.Add(entry);
-                            }
-                        }
-                        if (batch.Count > 0)
-                        {
-                            vm.AppendLogBatch(batch);
-                        }
-                    });
-                }
-            }
+            var response = await _workerIpc.GetRecentLogsAsync(endpoint, token).ConfigureAwait(false);
+            return response is { Ok: true, Logs.Lines: { Length: > 0 } lines } ? lines : null;
         }
-        catch (TaskCanceledException)
+        catch (OperationCanceledException)
         {
-            // shutdown — ignore
+            throw; // shutdown — let the backfill loop exit
         }
         catch
         {
-            // best-effort — don't block startup
+            return null; // ADR 0035: unreachable worker must degrade silently
         }
     }
 
