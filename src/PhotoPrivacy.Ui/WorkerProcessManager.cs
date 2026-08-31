@@ -3,6 +3,10 @@ using PhotoPrivacy.Ipc;
 
 namespace PhotoPrivacy.Ui;
 
+/// <summary>
+/// Worker 进程启动与连接编排。issue 04（C3a）：IPC 方法全部收敛到 WorkerIpcClient，
+/// 本类不再声明任何 IPC 方法，只保留进程启动职责（BuildBackgroundLaunchStartInfo / 连接重试）。
+/// </summary>
 public sealed class WorkerProcessManager
 {
     private readonly WorkerIpcClient _ipcClient;
@@ -20,7 +24,7 @@ public sealed class WorkerProcessManager
     {
         if (await _ipcClient.IsAliveAsync(WorkerIpcEndpointNames.ServicePipe, cancellationToken))
         {
-            var serviceStatus = await GetStatusSafeAsync(WorkerIpcEndpointNames.ServicePipe, cancellationToken);
+            var serviceStatus = await _ipcClient.ProbeStatusSafeAsync(WorkerIpcEndpointNames.ServicePipe, cancellationToken);
 
             return new WorkerConnectionResult(
                 RuntimeKind: "service",
@@ -41,7 +45,7 @@ public sealed class WorkerProcessManager
 
         if (await _ipcClient.IsAliveAsync(WorkerIpcEndpointNames.BackgroundPipe, cancellationToken))
         {
-            var backgroundStatus = await GetStatusSafeAsync(WorkerIpcEndpointNames.BackgroundPipe, cancellationToken);
+            var backgroundStatus = await _ipcClient.ProbeStatusSafeAsync(WorkerIpcEndpointNames.BackgroundPipe, cancellationToken);
 
             return new WorkerConnectionResult(
                 RuntimeKind: "tray",
@@ -60,7 +64,7 @@ public sealed class WorkerProcessManager
         {
             if (await _ipcClient.IsAliveAsync(WorkerIpcEndpointNames.BackgroundPipe, cancellationToken))
             {
-                var status = await GetStatusSafeAsync(WorkerIpcEndpointNames.BackgroundPipe, cancellationToken);
+                var status = await _ipcClient.ProbeStatusSafeAsync(WorkerIpcEndpointNames.BackgroundPipe, cancellationToken);
 
                 return new WorkerConnectionResult(
                     RuntimeKind: "tray",
@@ -77,72 +81,6 @@ public sealed class WorkerProcessManager
             EndpointName: WorkerIpcEndpointNames.BackgroundPipe,
             ShouldShowTrayIcon: true,
             Status: null);
-    }
-
-    public Task<WorkerIpcResponse?> GetStatusAsync(string endpointName, CancellationToken cancellationToken)
-    {
-        return _ipcClient.SendAsync(endpointName, new WorkerIpcRequest(WorkerIpcMethods.GetStatus), cancellationToken);
-    }
-
-    /// <summary>
-    /// ponytail: GetStatus with resilient IO downgrade. During first-launch the freshly spawned
-    /// Worker can hit a short "zombie window": .NET Host bound the pipe, IsAlive(Ping) succeeded,
-    /// but then config validation fails and the Worker exits — the next SendAsync(GetStatus) hits
-    /// IOException("Pipe is broken") / SocketException / TimeoutException. ConnectingOrLaunch must
-    /// treat these as "Worker not actually alive" (return null -> downgrade/continue) — NOT let the
-    /// exception escape to UiProgram.Start's GetAwaiter().GetResult and kill the whole UI process.
-    /// See ADR 0035 (IPC probe degrade-not-crash) and the release UI log 02:04:43 Fatal.
-    /// </summary>
-    private async Task<WorkerIpcResponse?> GetStatusSafeAsync(string endpointName, CancellationToken cancellationToken)
-    {
-        try
-        {
-            return await _ipcClient.SendAsync(
-                endpointName,
-                new WorkerIpcRequest(WorkerIpcMethods.GetStatus),
-                cancellationToken);
-        }
-        catch (System.IO.IOException)
-        {
-            return null;
-        }
-        catch (System.Net.Sockets.SocketException)
-        {
-            return null;
-        }
-        catch (TimeoutException)
-        {
-            return null;
-        }
-    }
-
-    public Task<WorkerIpcResponse?> PauseAsync(string endpointName, CancellationToken cancellationToken)
-    {
-        return _ipcClient.SendAsync(endpointName, new WorkerIpcRequest(WorkerIpcMethods.Pause), cancellationToken);
-    }
-
-    public Task<WorkerIpcResponse?> ResumeAsync(string endpointName, CancellationToken cancellationToken)
-    {
-        return _ipcClient.SendAsync(endpointName, new WorkerIpcRequest(WorkerIpcMethods.Resume), cancellationToken);
-    }
-
-    public Task<WorkerIpcResponse?> ShutdownAsync(string endpointName, CancellationToken cancellationToken)
-    {
-        return _ipcClient.SendAsync(endpointName, new WorkerIpcRequest(WorkerIpcMethods.Shutdown), cancellationToken);
-    }
-
-    public Task<WorkerIpcResponse?> ReloadConfigAsync(string endpointName, CancellationToken cancellationToken)
-    {
-        return _ipcClient.SendAsync(endpointName, new WorkerIpcRequest(WorkerIpcMethods.ReloadConfig), cancellationToken);
-    }
-
-    /// <summary>
-    /// ADR 0046: Pull recent audit log lines from the worker via IPC.
-    /// Used by UI to backfill missed log entries on reconnect.
-    /// </summary>
-    public Task<WorkerIpcResponse?> GetRecentLogsAsync(string endpointName, CancellationToken cancellationToken)
-    {
-        return _ipcClient.SendAsync(endpointName, new WorkerIpcRequest(WorkerIpcMethods.GetRecentLogs), cancellationToken);
     }
 
     /// <summary>

@@ -23,6 +23,7 @@ public partial class MainWindow : Window
     private BackgroundUiOptions? _options;
     private readonly ServiceManager _serviceManager = new();
     private readonly WorkerProcessManager _workerManager = new(new WorkerIpcClient());
+    private readonly WorkerIpcClient _workerIpc = new();
     private CancellationTokenSource? _serviceModePollCts;
     private Task? _serviceModePollTask;
     private bool _isSwitchingMode;
@@ -444,7 +445,7 @@ public partial class MainWindow : Window
         try
         {
             var endpoint = _options.WorkerEndpointName;
-            var response = await _workerManager.GetRecentLogsAsync(endpoint, CancellationToken.None);
+            var response = await _workerIpc.GetRecentLogsAsync(endpoint, CancellationToken.None);
             if (response is not null && response.Ok && response.Logs is { Lines: { Length: > 0 } lines })
             {
                 if (DataContext is MainWindowViewModel vm)
@@ -1472,18 +1473,17 @@ public partial class MainWindow : Window
 
         try
         {
-            var status = await _workerManager.GetStatusAsync(endpoint, token);
+            var status = await _workerIpc.GetStatusAsync(endpoint, token);
             if (status is null)
             {
                 return true;
             }
 
-            await _workerManager.ShutdownAsync(endpoint, token);
+            await _workerIpc.ShutdownAsync(endpoint, token);
 
-            var aliveProbe = new WorkerIpcClient();
             for (var i = 0; i < 15; i++)
             {
-                if (!await aliveProbe.IsAliveAsync(PhotoPrivacy.Ipc.WorkerIpcEndpointNames.BackgroundPipe, token))
+                if (!await _workerIpc.IsAliveAsync(PhotoPrivacy.Ipc.WorkerIpcEndpointNames.BackgroundPipe, token))
                 {
                     return true;
                 }
@@ -1654,7 +1654,7 @@ public partial class MainWindow : Window
             ConfigEditor.UpdateConfig(_options.ConfigPath, command);
             try
             {
-                await _workerManager.ReloadConfigAsync(_options.WorkerEndpointName, CancellationToken.None);
+                await _workerIpc.ReloadConfigAsync(_options.WorkerEndpointName, CancellationToken.None);
             }
             catch
             {
@@ -1712,7 +1712,7 @@ public partial class MainWindow : Window
 
             try
             {
-                await _workerManager.ReloadConfigAsync(_options.WorkerEndpointName, CancellationToken.None);
+                await _workerIpc.ReloadConfigAsync(_options.WorkerEndpointName, CancellationToken.None);
             }
             catch
             {
@@ -1780,7 +1780,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        await _workerManager.ReloadConfigAsync(_options.WorkerEndpointName, token);
+        await _workerIpc.ReloadConfigAsync(_options.WorkerEndpointName, token);
     }
 
     private void ApplyRuntimeConfigToUiState()
