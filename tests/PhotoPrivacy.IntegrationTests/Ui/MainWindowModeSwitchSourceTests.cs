@@ -10,7 +10,7 @@ public sealed class MainWindowModeSwitchSourceTests
         var sourcePath = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "Views", "MainWindow.axaml.cs");
         var source = File.ReadAllText(sourcePath, Encoding.UTF8);
 
-        Assert.DoesNotContain("await _workerManager.ShutdownAsync(previousEndpoint, token);", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("await _workerIpc.ShutdownAsync(previousEndpoint, token);", source, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -20,6 +20,6 @@ public sealed class MainWindowModeSwitchSourceTests
         var source = File.ReadAllText(sourcePath, Encoding.UTF8);
 
         Assert.Contains("private async Task<bool> ShutdownTrayWorkerForServiceSwitchAsync", source, StringComparison.Ordinal);
-        Assert.Contains("await _workerManager.ShutdownAsync(endpoint, token);", source, StringComparison.Ordinal);
+        Assert.Contains("await _workerIpc.ShutdownAsync(endpoint, token);", source, StringComparison.Ordinal);
     }
 }
