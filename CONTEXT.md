@@ -370,3 +370,23 @@ _Avoid_: swatch TextBlock Text="Catppuccin" 硬编码；LocalizationService 缺 
 **App-Local Hot Folder**:
 默认热目录是软件运行目录下的 hot/（Path.Combine(AppContext.BaseDirectory, "hot")），三端兼容。非系统图片目录（MyPictures）。AppConfig.Default.Watch.HotFolder 引用 DefaultPaths.DefaultHotFolder（即 BaseDirectory/hot），AppConfig.Default.Backup.Directory 保持 string.Empty（ADR 0045 dynamic fallback 语义）：空值即运行时按实际 HotFolder 通过 BackupPathResolver 动态解析。DefaultPaths.DefaultBackupDirectory 子目录名对齐 BackupPathResolver.DefaultBackupDirName（bak），非 .pp_backup。见 ADR 0055 A4。
 _Avoid_: DefaultHotFolder 指向系统 MyPictures（选中用户图片导致损坏）；DefaultPaths 子目录名与 BackupPathResolver.DefaultBackupDirName 不一致导致 UI Watermark 误导
+
+**Button Size Ladder**:
+按钮尺寸单一权威在 `AppTheme.axaml`：内容区按钮 Height=32 Padding=12,6（primary/ghost/danger），侧栏 nav/nav-action Height=40 Padding=12,0，纯图标按钮用 `Button.icon`（32×32 Padding=0）。视图 XAML 禁止行内 Padding/Height/MinWidth 覆盖按钮尺寸；回归 guard 五个 source-lint test（DesignSystemTests.cs)。FontSize 只允许 token 梯度 11/12/14/16/18/20，禁任意值如 11.5。见 ADR 0056 票 01。
+_Avoid_: 在 MainWindow.axaml/RulesPanel 行内 Padding/MinWidth 覆盖按钮；FontSize="11.5" / "13" 等非 token 值
+
+**Launcher Open**:
+打开目录一律走 `TopLevel.Launcher.LaunchDirectoryInfoAsync`（Avalonia 原生，跨三平台），禁止 UseShellExecute=true 的 explorer/xdg-open/open 分支。回归 guard: UiLauncherSourceTests。见 ADR 0056 票 02。
+_Avoid_: UseShellExecute=true; Process.Start explorer
+
+**Typed WorkerIpcClient (单入口)**:
+UI↔Worker 所有 IPC 方法只经 `WorkerIpcClient`（Ping/GetStatus/Pause/Resume/Shutdown/ReloadConfig/GetRecentLogs/GetExifToolVersion + ProbeStatusSafeAsync 容错降级）。WorkerProcessManager 只管进程启停编排，禁持任何 IPC 方法。回归 guard: WorkerProcessManagerTests + ConnectOrLaunchAsync_Status_Probe 守卫。见 ADR 0056 票 04。
+_Avoid_: WorkerProcessManager 里复述 IPC 方法；UI 直建 transport
+
+**AuditTail Backfill Coordinator**:
+日志双通道（FSW 实时 tail + IPC backfill 历史）协调逻辑唯一驻留在 `AuditTailService`：backfillFetcher(null=Worker 不可达静默重试)→MergeBackfillLines(去重排序)→_gate 锁内原子认领水位；清空日志 `NotifyLogsCleared()` drain 双 pending 队列并保留 512 条 FIFO 去重记忆。半行停滞检测：长度不变+半行未变两轮即交付。见 ADR 0056 票 05。
+_Avoid_: MainWindow 再建 BackfillRecentLogsAsync;尾读类组件外置去重
+
+**ServiceModeController**:
+服务模式编排（Install/Uninstall/Start/Stop/Switch*/Poll*/Shutdown*/Ensure*）唯一承载体（src/PhotoPrivacy.Ui/Services/ServiceModeController.cs），MainWindow 只剩转发器。依赖缝：IServiceManagerOps/IUiHost/IViewModelView，测试用 FakeOps/FakeHost/FakeView 注入。exiftool 版本探测仅经 IPC GetExifToolVersion，UI 零 spawn。见 ADR 0056 票 06。
+_Avoid_: MainWindow.axaml.cs 再出现编排方法实现体；UI Process.Start(exiftool);自创启动协调类回潮 ADR 0053 未实现的 StartupCoordinator 词
