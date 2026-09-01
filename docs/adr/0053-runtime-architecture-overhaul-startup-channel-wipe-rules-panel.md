@@ -236,3 +236,17 @@ TextBox 绑 `SearchText` → 驱动 `VisibleRows = AllRows.Where(r => r.Matches(
 - **Windows**: publish-app.ps1 win-x64 编译 + 进程存活测活通过（PID 271MB 持续 8s+）
 - **Linux/macOS**: publish.sh RID 矩阵脚本就绪；WipeStrategyResolver/RulesPanelViewModel 纯逻辑测试跨平台无平台分支
 - **DataGrid 三端主题**: Avalonia.Controls.DataGrid/Themes/Fluent.xaml 已在 App.axaml 全局注册，三端原生渲染
+
+---
+
+## Errata（2026-09-01，票 08 / backlog B08：StartupCoordinator 措辞更正）
+
+本文 M2 与实施路线图 M2 行提到的 `StartupCoordinator` 类**从未在代码中实现**（全仓 grep 0 命中，取证见 ADR 0056「对 ADR 0053 的认账修正」）。按 ADR 惯例不篡改历史正文，以本补遗更正：
+
+- M2 所称 `StartupCoordinator`（Worker 连接、版本轮询、服务模式切换生命周期）的实际承载：
+  - 服务模式编排 → **`ServiceModeController`**（`src/PhotoPrivacy.Ui/Services/ServiceModeController.cs`，ADR 0056 票 06 落地，FakeOps/FakeHost/FakeView 三缝注入；exiftool 版本探测经 IPC GetExifToolVersion，UI 零 spawn）。
+  - Worker 连接 → `Program.cs` fire-and-forget + `MainWindow.axaml.cs` InitializeRuntimeAsync，未单独成类（现状，非概念承诺）。
+- 实施路线图 M2 行的 commit 标题 refactor(ui): MainWindow MVVM split — StartupCoordinator + ViewModel commands 为计划措辞；实际落地 commit 为 9c91937（sync-over-async 消零），其中不含任何名为 StartupCoordinator 的类。
+- 术语以 CONTEXT.md「ServiceModeController」词条为准。
+
+依据：docs/backlog/B08-adr53-errata.md；docs/adr/0056-architecture-recovery.md。
