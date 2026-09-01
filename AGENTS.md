@@ -109,13 +109,13 @@ semgrep scan --config p/csharp --config p/security-audit --json ./src
 dotnet build PhotoPrivacy.sln
 
 # 运行所有测试
-dotnet vstest tests\PhotoPrivacy.Core.Tests\bin\Debug\net10.0\PhotoPrivacy.Core.Tests.dll tests\PhotoPrivacy.IntegrationTests\bin\Debug\net10.0\PhotoPrivacy.IntegrationTests.dll /Platform:x64
+dotnet vstest tests\PhotoPrivacy.Core.Tests\bin\Debug\net10.0\PhotoPrivacy.Core.Tests.dll tests\PhotoPrivacy.IntegrationTests\bin\Debug\net10.0\PhotoPrivacy.IntegrationTests.dll --settings:test.runsettings /Platform:x64
 
 # 运行单元测试
-dotnet vstest tests\PhotoPrivacy.Core.Tests\bin\Debug\net10.0\PhotoPrivacy.Core.Tests.dll
+dotnet vstest tests\PhotoPrivacy.Core.Tests\bin\Debug\net10.0\PhotoPrivacy.Core.Tests.dll --settings:test.runsettings
 
 # 运行集成测试
-dotnet vstest tests\PhotoPrivacy.IntegrationTests\bin\Debug\net10.0\PhotoPrivacy.IntegrationTests.dll
+dotnet vstest tests\PhotoPrivacy.IntegrationTests\bin\Debug\net10.0\PhotoPrivacy.IntegrationTests.dll --settings:test.runsettings
 
 # 发布（仅打包，不含测试验证）
 .\scripts\publish-app.ps1   # 输出到 release/<rid>/（Windows）
