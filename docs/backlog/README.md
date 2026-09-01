@@ -15,7 +15,7 @@
 | B07 | UseShellExecute 守卫白名单 | ✅ 白名单+负向自证 | arc-recovery/06-shell-execute-guard |
 | B08 | ADR 0053 errata | ✅ Errata 段 + CONTEXT 同步 | arc-recovery/08-adr53-errata |
 
-## 第二轮观察项（待用户裁定是否立票）
+## 第二轮观察项 — 2026-09-01 用户裁决全部立票
 
 1. smoke.ps1 改 DLL-first（去 dotnet run 编译噪声；现状已被管道排空兜底，非紧急）
 2. ServiceManager.cs:126 sc.exe 同步 `WaitForExit()` 无超时（票01 登记的邻域观察）
@@ -24,3 +24,13 @@
 5. 流程产物持久化：.scratch 曾被 GitButler 操作清空（ADR 0058 事故 1）——评估流程文件入 docs/ 或动栈前快照
 
 执行约定：沿用 WORKFLOW §4.2（GitButler 独立分支、单槽串行测试门禁）；每票完成须带 source-lint 或行为测试锁定。
+
+### B09–B13
+
+| 编号 | 标题 | 优先级 |
+|---|---|---|
+| B09 | smoke.ps1 DLL-first + 失败输出捕获 | 高 |
+| B10 | ServiceManager 同步 WaitForExit 超时 | 中 |
+| B11 | UDS 跨平台传输测量 | 低 |
+| B12 | 流程产物持久化策略 | 高 |
+| B13 | PublishApp 失败诊断（可并入 B09） | 低 |
