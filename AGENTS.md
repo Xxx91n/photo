@@ -167,7 +167,7 @@ dotnet vstest tests\PhotoPrivacy.IntegrationTests\bin\Debug\net10.0\PhotoPrivacy
 
 9. **禁止"应用配置"手动按钮** — 配置变更必须防抖即时写盘（500ms），不依赖用户手动点击（见 ADR 0037）
 10. **清空日志必须重置 AuditTailService 读取偏移** — 仅清内存 ObservableCollection 不够，restart 后旧日志会重新填充（见 ADR 0037）
-11. **GetRecentLogs Backfill 必须 fire-and-forget** — UI 启动时 BackfillRecentLogsAsync 用 `_ = BackfillRecentLogsAsync()`，不阻塞 UI 线程；失败静默忽略（best-effort 补位，FSW 仍正常工作）（见 ADR 0046）
+11. **GetRecentLogs Backfill 由 AuditTailService 统一收口** — 历史补位逻辑（backfillFetcher fetch → MergeBackfillLines 去重排序 → 锁内原子认领水位）驻留在 `AuditTailService`，fire-and-forget 不阻塞 UI 线程；Worker 不可达按 null 契约静默重试，失败不杀 UI（见 ADR 0037/0046/0056）
 ---
 
 ## 6. 禁止事项
