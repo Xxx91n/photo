@@ -8,21 +8,6 @@ namespace PhotoPrivacy.IntegrationTests.Ui;
 /// </summary>
 public sealed class AuditTailServiceBackfillTests
 {
-    private static readonly string RepoRoot = ResolveRepoRoot();
-
-    private static string ResolveRepoRoot()
-    {
-        var current = AppContext.BaseDirectory;
-        for (var i = 0; i < 8; i++)
-        {
-            current = Path.GetFullPath(Path.Combine(current, ".."));
-            if (File.Exists(Path.Combine(current, "PhotoPrivacy.sln")))
-            {
-                return current;
-            }
-        }
-        throw new InvalidOperationException("PhotoPrivacy.sln not found above test base directory");
-    }
 
     private static string Line(string id, string iso) =>
         $"{{\"event_type\":\"file_processing_succeeded\",\"level\":\"INFO\",\"timestamp_utc\":\"{iso}\",\"source_path_masked\":\"D:/hot/***/{id}.jpg\",\"message\":\"{id}\",\"data\":null}}";
@@ -256,14 +241,14 @@ public sealed class AuditTailServiceBackfillTests
     public void MainWindow_Source_Should_Not_Reference_BackfillRecentLogs()
     {
         var source = File.ReadAllText(
-            Path.Combine(RepoRoot, "src", "PhotoPrivacy.Ui", "Views", "MainWindow.axaml.cs"));
+            Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views", "MainWindow.axaml.cs"));
         Assert.DoesNotContain("BackfillRecentLogs", source, StringComparison.Ordinal);
     }
 
     [Fact]
     public void AuditTailService_Source_Should_Own_Backfill_Fetcher_And_Merge()
     {
-        var source = File.ReadAllText(Path.Combine(RepoRoot, "src", "PhotoPrivacy.Ui", "AuditTailService.cs"));
+        var source = File.ReadAllText(Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "AuditTailService.cs"));
         Assert.Contains("backfillFetcher", source, StringComparison.Ordinal);
         Assert.Contains("MergeBackfillLines", source, StringComparison.Ordinal);
         Assert.Contains("NotifyLogsCleared", source, StringComparison.Ordinal);

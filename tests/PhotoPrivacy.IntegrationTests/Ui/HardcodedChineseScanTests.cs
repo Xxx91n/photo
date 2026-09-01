@@ -11,34 +11,17 @@ namespace PhotoPrivacy.IntegrationTests.Ui;
 /// </summary>
 public sealed class HardcodedChineseScanTests
 {
-    private static readonly string UiSourceRoot = ResolveUiSourceRoot();
 
     private static readonly HashSet<string> ExcludedCsFiles = new()
     {
         "LocalizationService.cs"   // BuiltInZhCN/BuiltInEn dictionaries are legitimate fallback
     };
 
-    private static string ResolveUiSourceRoot()
-    {
-        var dir = AppContext.BaseDirectory;
-        var current = dir;
-        for (var i = 0; i < 8; i++)
-        {
-            current = Path.GetFullPath(Path.Combine(current, ".."));
-            if (Directory.Exists(Path.Combine(current, ".git")) ||
-                File.Exists(Path.Combine(current, "PhotoPrivacy.sln")))
-            {
-                return Path.Combine(current, "src", "PhotoPrivacy.Ui");
-            }
-        }
-        return Path.GetFullPath(Path.Combine(dir, "..", "..", "..", "..", "..", "src", "PhotoPrivacy.Ui"));
-    }
-
     [Fact]
     public void No_Hardcoded_Chinese_In_Cs_Source_Outside_Comments()
     {
-        Assert.True(Directory.Exists(UiSourceRoot), $"Ui source root not found: {UiSourceRoot}");
-        var csFiles = Directory.GetFiles(UiSourceRoot, "*.cs", SearchOption.AllDirectories)
+        Assert.True(Directory.Exists(SourceLint.UiSourceRoot), $"Ui source root not found: {SourceLint.UiSourceRoot}");
+        var csFiles = Directory.GetFiles(SourceLint.UiSourceRoot, "*.cs", SearchOption.AllDirectories)
             .Where(f => !f.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar) &&
                         !f.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar) &&
                         !f.EndsWith(".g.cs") && !f.EndsWith(".GlobalUsings.g.cs") &&
@@ -55,9 +38,7 @@ public sealed class HardcodedChineseScanTests
             var lines = File.ReadAllLines(file);
             foreach (var raw in lines)
             {
-                var line = raw;
-                var commentIdx = line.IndexOf("//");
-                if (commentIdx >= 0) line = line[..commentIdx];
+                var line = SourceLint.StripLineComment(raw);
 
                 foreach (Match m in stringLiteralPattern.Matches(line))
                 {
@@ -78,8 +59,8 @@ public sealed class HardcodedChineseScanTests
     [Fact]
     public void No_Hardcoded_Chinese_In_Axaml_Outside_Language_Picker()
     {
-        Assert.True(Directory.Exists(UiSourceRoot), $"Ui source root not found: {UiSourceRoot}");
-        var axamlFiles = Directory.GetFiles(UiSourceRoot, "*.axaml", SearchOption.AllDirectories)
+        Assert.True(Directory.Exists(SourceLint.UiSourceRoot), $"Ui source root not found: {SourceLint.UiSourceRoot}");
+        var axamlFiles = Directory.GetFiles(SourceLint.UiSourceRoot, "*.axaml", SearchOption.AllDirectories)
             .Where(f => !f.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar) &&
                         !f.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar))
             .ToList();

@@ -23,7 +23,7 @@ public sealed class UiAvailabilityTests
     [Fact]
     public void UiProgram_Source_Should_Not_Enable_Trace_In_Release_By_Default()
     {
-        var sourcePath = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "Program.cs");
+        var sourcePath = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Program.cs");
         var source = File.ReadAllText(sourcePath);
 
         Assert.Contains("#if DEBUG", source, StringComparison.Ordinal);

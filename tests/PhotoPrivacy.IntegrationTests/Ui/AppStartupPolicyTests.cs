@@ -8,7 +8,7 @@ public sealed class AppStartupPolicyTests
     [Fact]
     public void App_Source_Should_Not_Always_Hide_Window_Based_On_HideMainWindowOnStartup_Alone()
     {
-        var sourcePath = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "App.axaml.cs");
+        var sourcePath = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "App.axaml.cs");
         var source = File.ReadAllText(sourcePath, Encoding.UTF8);
 
         Assert.DoesNotContain("if (RuntimeOptions.HideMainWindowOnStartup)", source, StringComparison.Ordinal);
@@ -23,7 +23,7 @@ public sealed class AppStartupPolicyTests
     [Fact]
     public void Program_Start_Method_Should_Not_Block_On_Worker_Connect()
     {
-        var sourcePath = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "Program.cs");
+        var sourcePath = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Program.cs");
         var source = File.ReadAllText(sourcePath, Encoding.UTF8);
 
         // ADR 0053 M1: Worker connects fire-and-forget via Task.Run, then StartWithClassicDesktopLifetime.
@@ -47,7 +47,7 @@ public sealed class AppStartupPolicyTests
     [Fact]
     public void MainWindow_Should_Have_Zero_SyncOverAsync()
     {
-        var sourcePath = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "Views", "MainWindow.axaml.cs");
+        var sourcePath = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views", "MainWindow.axaml.cs");
         var source = File.ReadAllText(sourcePath, Encoding.UTF8);
 
         Assert.DoesNotContain("GetAwaiter().GetResult()", source, StringComparison.Ordinal);

@@ -534,7 +534,7 @@ public sealed class LocalizationServiceTests
     [InlineData("zh-CN")]
     public void Locale_Json_Must_Not_Contain_Unicode_Status_Symbols(string locale)
     {
-        var path = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "Localization", "Locales", locale + ".json");
+        var path = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Localization", "Locales", locale + ".json");
         Assert.True(File.Exists(path), locale + ".json should exist");
         var source = File.ReadAllText(path, Encoding.UTF8);
         Assert.DoesNotContain("\u2713", source, StringComparison.Ordinal); // ✓ CHECK MARK
