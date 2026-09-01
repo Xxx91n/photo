@@ -42,7 +42,7 @@ ADR 0053 M2 宣称的 `StartupCoordinator`（Worker 连接、版本轮询、服�
 
 1. `PublishApp_Should_Copy_Tray_Assets_To_Publish_Root` 的 publish-app.ps1 300s 预算在单机 Release 自包含构建即超 300s——建议加长预算或归入长时间冒烟 benchmark；与 dotnet 并行构建无锁冲突真实分离。
 2. `EndToEndSmokeTests.cs` 无超时 WaitForExitAsync + watcher 进程不被清理，`ReleaseReadinessScriptValidationTests` 按进程名杀链——建议立一张"测试宿主守护"票（test.runsettings + MaxCpuCount=1 + Blame 收集超时）。
-3. FSW InternalBufferSize 默认 8KB，日志风暴有缓冲溢出丢事件风险——可选：提升至 64KB 并显式订阅 Error 事件全量重读。
+3. ~~FSW InternalBufferSize 默认 8KB~~ **勘误（2026-09-01 票03取证）**：监控目录 watcher 自 37837d5 起即 64KB；8KB 默认值仅适用于 AuditTailService 的审计 tail watcher。本项已由 backlog B03/票03 闭环（Error 并发合并守卫 + 64KB 落位锁定测试）。
 4. `AuditTailService._backfillSucceeded` 无锁 bool——当前单 fetcher 线程安全，未来多 fetcher 需收进 `_gate`。
 5. `WorkerIpcClient` 每 SendAsync 新建 transport 实例（原实现）——未来如需高频轮询可另票做连接复用/单例化。
 6. source-lint 系列 helper 与 HardcodedChineseScanTests 同形重复——可在独立票抽公共断言 helper。
