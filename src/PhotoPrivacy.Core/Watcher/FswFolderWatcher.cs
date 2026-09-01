@@ -17,6 +17,8 @@ public sealed class FswFolderWatcher : IFolderWatcher
 
     private FileSystemWatcher? _fsw;
     private PollingFallbackScanner? _poller;
+    private readonly SemaphoreSlim _recoveryGate = new(1, 1);
+    private int _recoveryQueued;
 
     public FswFolderWatcher(
         AppConfig config,
@@ -76,6 +78,8 @@ public sealed class FswFolderWatcher : IFolderWatcher
     {
         var watcher = _factory.Create(_config.Watch.HotFolder);
         watcher.IncludeSubdirectories = _config.Watch.IncludeSubdirectories;
+        // B03: the FSW buffer lives in the non-paged pool - only the hot-folder watcher
+        // is raised to 64KB (config default); the audit-log tail watcher keeps the 8KB default.
         watcher.InternalBufferSize = _config.Watch.InternalBufferSize;
         watcher.NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.DirectoryName;
 
@@ -88,6 +92,38 @@ public sealed class FswFolderWatcher : IFolderWatcher
     }
 
     private async Task RecoverAsync(Exception ex)
+    {
+        if (!_recoveryGate.Wait(0))
+        {
+            // A recovery pass is already rebuilding the watcher; a second concurrent
+            // Stop/Start would leak watchers/pollers and duplicate event delivery.
+            // Overflow errors need no per-error queueing - every pass rescans the whole
+            // tree - so just ask the running pass for one follow-up rescan.
+            Interlocked.Exchange(ref _recoveryQueued, 1);
+            return;
+        }
+
+        try
+        {
+            var cause = ex;
+            while (true)
+            {
+                Interlocked.Exchange(ref _recoveryQueued, 0);
+                await RecoverCoreAsync(cause);
+                cause = new IOException("FileSystemWatcher error (coalesced follow-up rescan)");
+                if (Interlocked.CompareExchange(ref _recoveryQueued, 0, 0) == 0)
+                {
+                    break;
+                }
+            }
+        }
+        finally
+        {
+            _recoveryGate.Release();
+        }
+    }
+
+    private async Task RecoverCoreAsync(Exception ex)
     {
         await _audit.WriteAsync(
             new AuditEvent("fsw_error", AuditLevel.Warn, DateTimeOffset.UtcNow, Guid.NewGuid().ToString("N"), _config.Watch.HotFolder, ex.Message, null),
