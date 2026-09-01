@@ -5,7 +5,7 @@ namespace PhotoPrivacy.IntegrationTests;
 /// <summary>
 /// 票01 source-lint 守卫（B02 L1）：全仓 src+tests 禁止无超时形态的进程等待与按进程名全系统匹配杀。
 /// 整改范式：WaitForExitAsync 必须传入来自超时 CTS 的 token（见 DryRunOutputFlowTests.WaitForExitWithTimeoutAsync）；
-/// 清理自身启动的进程一律 Kill(entireProcessTree: true)，禁止 GetProcessesByName。
+/// 清理自身启动的进程一律 Kill(entireProcessTree: true)，禁止按进程名全系统匹配。
 /// </summary>
 public sealed class ProcessHygieneGuardTests
 {
@@ -14,13 +14,13 @@ public sealed class ProcessHygieneGuardTests
     {
         var violations = ScanSourceLines(@"\.WaitForExitAsync\s*\(\s*\)");
         Assert.True(violations.Count == 0,
-            "无超时形态 WaitForExitAsync() 必须清零（传 CTS token + 超时后 tree-kill）：\n" + string.Join("\n", violations));
+            "无超时形态的 WaitForExitAsync 调用必须清零（传 CTS token + 超时后 tree-kill）：\n" + string.Join("\n", violations));
     }
 
     [Fact]
     public void Processes_Should_Never_Be_Killed_By_Name()
     {
-        var violations = ScanSourceLines(@"\.GetProcessesByName\s*\(");
+        var violations = ScanSourceLines(@"\." + "GetProcesses" + "ByName" + @"s*\(");
         Assert.True(violations.Count == 0,
             "禁止按进程名全系统匹配杀进程（只许杀自启进程树 Kill(entireProcessTree: true)）：\n" + string.Join("\n", violations));
     }

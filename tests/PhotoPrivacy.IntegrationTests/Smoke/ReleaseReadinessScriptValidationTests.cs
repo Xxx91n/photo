@@ -21,15 +21,7 @@ public sealed class ReleaseReadinessScriptValidationTests
         using var process = Process.Start(psi)!;
         var stdoutTask = process.StandardOutput.ReadToEndAsync();
         var stderrTask = process.StandardError.ReadToEndAsync();
-        var waitTask = process.WaitForExitAsync();
-        var finished = await Task.WhenAny(waitTask, Task.Delay(TimeSpan.FromSeconds(30)));
-        if (finished != waitTask)
-        {
-            try { process.Kill(entireProcessTree: true); } catch { }
-            throw new TimeoutException("release-readiness.ps1 hung (timeout 30s)");
-        }
-
-        await waitTask;
+        await WaitForExitWithTimeoutAsync(process, TimeSpan.FromSeconds(30), "release-readiness.ps1");
         var merged = await stdoutTask + Environment.NewLine + await stderrTask;
 
         Assert.NotEqual(0, process.ExitCode);
@@ -51,32 +43,6 @@ public sealed class ReleaseReadinessScriptValidationTests
     public async Task PublishApp_Should_Copy_Tray_Assets_To_Publish_Root()
     {
         var repoRoot = FindRepoRoot();
-        foreach (var proc in Process.GetProcessesByName("PhotoPrivacy"))
-        {
-            try
-            {
-                proc.Kill(entireProcessTree: true);
-                proc.WaitForExit(2000);
-            }
-            catch
-            {
-                // best effort for test isolation
-            }
-        }
-
-        foreach (var proc in Process.GetProcessesByName("PhotoPrivacyWorker"))
-        {
-            try
-            {
-                proc.Kill(entireProcessTree: true);
-                proc.WaitForExit(2000);
-            }
-            catch
-            {
-                // best effort for test isolation
-            }
-        }
-
         var psi = new ProcessStartInfo(
             "powershell",
             "-ExecutionPolicy Bypass -File scripts/publish-app.ps1 -Version 0.1.0-preview -Runtime win-x64 -Framework net10.0 -SelfContained true -Zip false")
@@ -90,16 +56,7 @@ public sealed class ReleaseReadinessScriptValidationTests
         using var process = Process.Start(psi)!;
         var stdoutTask = process.StandardOutput.ReadToEndAsync();
         var stderrTask = process.StandardError.ReadToEndAsync();
-        var waitTask = process.WaitForExitAsync();
-        var publishTimeout = ReadPublishTimeout();
-        var finished = await Task.WhenAny(waitTask, Task.Delay(publishTimeout));
-        if (finished != waitTask)
-        {
-            try { process.Kill(entireProcessTree: true); } catch { }
-            throw new TimeoutException($"publish-app.ps1 hung (timeout {publishTimeout.TotalSeconds}s)");
-        }
-
-        await waitTask;
+        await WaitForExitWithTimeoutAsync(process, ReadPublishTimeout(), "publish-app.ps1");
         var merged = await stdoutTask + Environment.NewLine + await stderrTask;
 
         Assert.Equal(0, process.ExitCode);
@@ -168,6 +125,20 @@ public sealed class ReleaseReadinessScriptValidationTests
             ? TimeSpan.FromSeconds(seconds)
             : TimeSpan.FromSeconds(defaultSeconds);
     }
+    private static async Task WaitForExitWithTimeoutAsync(Process process, TimeSpan timeout, string scriptName)
+    {
+        using var cts = new CancellationTokenSource(timeout);
+        try
+        {
+            await process.WaitForExitAsync(cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            try { process.Kill(entireProcessTree: true); } catch { }
+            throw new TimeoutException(scriptName + " hung (timeout " + timeout.TotalSeconds + "s)");
+        }
+    }
+
     private static string FindRepoRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
