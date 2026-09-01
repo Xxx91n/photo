@@ -30,6 +30,9 @@ public sealed class AuditTailService
     private Task? _backfillTask;
     private string _currentAuditFilePath;
     private long _lastPosition;
+    // B04: all reads/writes of this flag take _gate — reads via the BackfillSucceeded
+    // getter, the write inside EnqueueBackfillLines' _gate section (atomic with the
+    // delivery claim). No lock-free access remains, so future concurrent fetchers are safe.
     private bool _backfillSucceeded;
     // Stall detection for the tail: the held partial line from the previous poll plus the
     // file length at that time. Same length + same partial line = writer stopped appending,
@@ -400,12 +403,26 @@ public sealed class AuditTailService
         return 0;
     }
 
+    /// <summary>Reads <c>_backfillSucceeded</c> under _gate (B04): the flag is only
+    /// meaningful in relation to _gate-guarded delivery, so observe it under the same lock.</summary>
+    private bool BackfillSucceeded
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _backfillSucceeded;
+            }
+        }
+    }
+
     private async Task BackfillLoopAsync(CancellationToken token)
     {
         // ADR 0046: fetch once when the worker becomes reachable; failures stay silent.
-        // `_backfillSucceeded` is set atomically under _gate together with the position
-        // watermark so the tail can never re-deliver lines the backfill already showed.
-        while (!token.IsCancellationRequested && !_backfillSucceeded)
+        // `_backfillSucceeded` is set atomically under _gate together with the backfill
+        // delivery claim so the tail can never re-deliver lines the backfill already
+        // showed; the loop reads it through BackfillSucceeded (also under _gate, B04).
+        while (!token.IsCancellationRequested && !BackfillSucceeded)
         {
             string[]? lines = null;
             try
@@ -424,12 +441,12 @@ public sealed class AuditTailService
             if (lines is not null)
             {
                 // Fetcher contract: non-null = worker reachable (empty array allowed);
-                // null = unreachable/failed — retry silently.
+                // null = unreachable/failed — retry silently. EnqueueBackfillLines sets
+                // `_backfillSucceeded` under _gate on success (B04), so no unlocked write here.
                 EnqueueBackfillLines(lines);
-                _backfillSucceeded = true;
             }
 
-            if (!_backfillSucceeded && !token.IsCancellationRequested)
+            if (!BackfillSucceeded && !token.IsCancellationRequested)
             {
                 try
                 {
@@ -472,6 +489,11 @@ public sealed class AuditTailService
                 ClaimLine(line);
                 _backfillPendingEntries.Enqueue(entry);
             }
+
+            // B04: success flag under the same _gate section as the delivery claim — set
+            // only after every fetched line is recorded (dedup memory), so a future
+            // concurrent fetcher can never observe "succeeded" mid-delivery.
+            _backfillSucceeded = true;
         }
     }
 
