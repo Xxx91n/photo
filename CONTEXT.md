@@ -388,5 +388,5 @@ _Avoid_: WorkerProcessManager 里复述 IPC 方法；UI 直建 transport
 _Avoid_: MainWindow 再建 BackfillRecentLogsAsync;尾读类组件外置去重
 
 **ServiceModeController**:
-服务模式编排（Install/Uninstall/Start/Stop/Switch*/Poll*/Shutdown*/Ensure*）唯一承载体（src/PhotoPrivacy.Ui/Services/ServiceModeController.cs），MainWindow 只剩转发器。依赖缝：IServiceManagerOps/IUiHost/IViewModelView，测试用 FakeOps/FakeHost/FakeView 注入。exiftool 版本探测仅经 IPC GetExifToolVersion，UI 零 spawn。见 ADR 0056 票 06。
-_Avoid_: MainWindow.axaml.cs 再出现编排方法实现体；UI Process.Start(exiftool);自创启动协调类回潮 ADR 0053 未实现的 StartupCoordinator 词
+服务模式编排（Install/Uninstall/Start/Stop/Switch*/Poll*/Shutdown*/Ensure*）唯一承载体（src/PhotoPrivacy.Ui/Services/ServiceModeController.cs），MainWindow 只剩转发器。依赖缝：IServiceManagerOps/IUiHost/IViewModelView，测试用 FakeOps/FakeHost/FakeView 注入。exiftool 版本探测仅经 IPC GetExifToolVersion，UI 零 spawn。见 ADR 0056 票 06。ADR 0053 M2 曾误称该类为 `StartupCoordinator`（该类从未实现），已由 ADR 0053 文末 Errata 段更正为 ServiceModeController。
+_Avoid_: MainWindow.axaml.cs 再出现编排方法实现体；UI Process.Start(exiftool);自创启动协调类回潮（ADR 0053 M2 误称 StartupCoordinator，已由其文末 Errata 更正为 ServiceModeController）
