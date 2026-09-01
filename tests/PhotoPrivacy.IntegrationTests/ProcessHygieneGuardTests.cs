@@ -27,7 +27,7 @@ public sealed class ProcessHygieneGuardTests
 
     private static List<string> ScanSourceLines(string pattern)
     {
-        var repoRoot = FindRepoRoot();
+        var repoRoot = SourceLint.RepoRoot;
         var regex = new Regex(pattern, RegexOptions.Compiled, TimeSpan.FromSeconds(5));
         var violations = new List<string>();
 
@@ -61,19 +61,4 @@ public sealed class ProcessHygieneGuardTests
         return violations;
     }
 
-    private static string FindRepoRoot()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null)
-        {
-            if (File.Exists(Path.Combine(dir.FullName, "PhotoPrivacy.sln")))
-            {
-                return dir.FullName;
-            }
-
-            dir = dir.Parent;
-        }
-
-        throw new DirectoryNotFoundException("Cannot locate repository root from test runtime directory.");
-    }
 }
