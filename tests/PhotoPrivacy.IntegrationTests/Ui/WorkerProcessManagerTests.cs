@@ -1,4 +1,4 @@
-﻿using PhotoPrivacy.Ui;
+﻿﻿using PhotoPrivacy.Ui;
 
 namespace PhotoPrivacy.IntegrationTests.Ui;
 
@@ -33,36 +33,57 @@ public sealed class WorkerProcessManagerTests
     }
 
     [Fact]
-    public void ConnectOrLaunchAsync_GetStatus_Must_Be_IO_Resilient_Against_Pipe_Broken_Race()
+    public void WorkerProcessManager_Source_Should_Not_Declare_Ipc_Methods()
     {
-        // ponytail: regression guard for first-launch crash (release UI log 02:04:43 [FATAL]
-        // Pipe is broken @ WorkerProcessManager.cs:line 69). When the freshly launched Worker
-        // binds the pipe (IsAlive(Ping) succeeds) but then exits mid-GetStatus, SendAsync throws
-        // IOException("Pipe is broken"). ConnectOrLaunchAsync MUST catch that and downgrade,
-        // NOT let it escape to UiProgram.Start's GetAwaiter().GetResult and kill the whole UI.
+        // issue 04 checkpoint A: WorkerProcessManager keeps process-launch duty only.
+        // Every protocol method name (WorkerIpcMethods list) must be absent from the class —
+        // all IPC calls live in WorkerIpcClient (single typed entry point).
         var sourcePath = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "WorkerProcessManager.cs");
         var source = File.ReadAllText(sourcePath, System.Text.Encoding.UTF8);
 
-        // The resilient helper must exist and catch IO/Socket/Timeout.
-        Assert.Contains("private async Task<WorkerIpcResponse?> GetStatusSafeAsync", source, StringComparison.Ordinal);
-        Assert.Contains("catch (System.IO.IOException)", source, StringComparison.Ordinal);
-        Assert.Contains("catch (System.Net.Sockets.SocketException)", source, StringComparison.Ordinal);
-        Assert.Contains("catch (TimeoutException)", source, StringComparison.Ordinal);
+        var ipcMethodNames = new[]
+        {
+            "Ping", "GetStatus", "Pause", "Resume", "Shutdown", "ReloadConfig", "GetRecentLogs", "GetExifToolVersion"
+        };
 
-        // All three GetStatus call sites in ConnectOrLaunchAsync must go through the safe helper.
-        // Service pipe + background pipe (pre-launch) + background pipe (post-launch retry loop) = 3.
-        var safeCallCount = System.Text.RegularExpressions.Regex.Matches(
-            source,
-            @"GetStatusSafeAsync\(",
-            System.Text.RegularExpressions.RegexOptions.None,
-            System.TimeSpan.FromSeconds(5)).Count;
-        // 3 call sites + 1 method declaration named "GetStatusSafeAsync(" => count is 4 usages total.
-        // The method declaration signature itself contains "GetStatusSafeAsync(" so >= 4.
-        Assert.True(safeCallCount >= 4, $"GetStatusSafeAsync should appear >=4 times (3 call sites + 1 decl), found {safeCallCount}");
-        // The only remaining raw SendAsync(GetStatus) must be the sibling GetStatusAsync public method,
-        // not inside ConnectOrLaunchAsync. Verify by substring (it is a single-line return).
-        Assert.Contains("GetStatusSafeAsync(WorkerIpcEndpointNames.ServicePipe, cancellationToken)", source, StringComparison.Ordinal);
-        Assert.Contains("GetStatusSafeAsync(WorkerIpcEndpointNames.BackgroundPipe, cancellationToken)", source, StringComparison.Ordinal);
+        foreach (var method in ipcMethodNames)
+        {
+            Assert.DoesNotContain(method, source, StringComparison.Ordinal);
+        }
     }
 
+    [Fact]
+    public void ConnectOrLaunchAsync_Status_Probe_Must_Stay_IO_Resilient_Via_Client()
+    {
+        // ponytail: regression guard for first-launch crash (release UI log 02:04:43 [FATAL]
+        // Pipe is broken). The freshly launched Worker can bind the pipe (IsAlive(Ping)
+        // succeeds) then exit mid-GetStatus — SendAsync throws IOException("Pipe is broken").
+        // The resilient downgrade now lives in WorkerIpcClient.ProbeStatusSafeAsync (issue 04
+        // moved it out of WorkerProcessManager); ConnectOrLaunchAsync must route all status
+        // probes through it and declare no direct IPC sends of its own.
+        var wpmSource = File.ReadAllText(
+            Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "WorkerProcessManager.cs"),
+            System.Text.Encoding.UTF8);
+        var clientSource = File.ReadAllText(
+            Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "WorkerIpcClient.cs"),
+            System.Text.Encoding.UTF8);
+
+        // The client owns the resilient probe: IO/Socket/Timeout degrade to null, never crash.
+        Assert.Contains("public async Task<WorkerIpcResponse?> ProbeStatusSafeAsync", clientSource, StringComparison.Ordinal);
+        Assert.Contains("catch (System.IO.IOException)", clientSource, StringComparison.Ordinal);
+        Assert.Contains("catch (System.Net.Sockets.SocketException)", clientSource, StringComparison.Ordinal);
+        Assert.Contains("catch (TimeoutException)", clientSource, StringComparison.Ordinal);
+
+        // All three status probes in ConnectOrLaunchAsync (service pipe, background pipe
+        // pre-launch, background pipe post-launch retry loop) go through the safe helper.
+        var safeCallCount = System.Text.RegularExpressions.Regex.Matches(
+            wpmSource,
+            @"ProbeStatusSafeAsync\(",
+            System.Text.RegularExpressions.RegexOptions.None,
+            System.TimeSpan.FromSeconds(5)).Count;
+        Assert.True(safeCallCount >= 3, $"ProbeStatusSafeAsync should appear >=3 times in WorkerProcessManager (3 call sites), found {safeCallCount}");
+
+        // No direct IPC sends remain in WorkerProcessManager.
+        Assert.DoesNotContain("SendAsync(", wpmSource, StringComparison.Ordinal);
+    }
 }

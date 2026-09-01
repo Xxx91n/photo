@@ -52,6 +52,7 @@ public static class UiProgram
 
         var workerPath = ResolveWorkerExecutablePath();
         var workerManager = new WorkerProcessManager(new WorkerIpcClient());
+        var workerIpc = new WorkerIpcClient();
         var serviceManager = new ServiceManager();
 
         // ADR 0053 M1: Set initial RuntimeOptions with placeholder endpoint (Connecting state).
@@ -66,6 +67,7 @@ public static class UiProgram
             configPath: configPath,
             config: config,
             workerManager: workerManager,
+            workerIpc: workerIpc,
             serviceManager: serviceManager);
 
         // ConnectionState starts in Connecting — heartbeat timer will promote to Connected/Reconnecting.
@@ -170,6 +172,7 @@ public static class UiProgram
         string configPath,
         AppConfig config,
         WorkerProcessManager workerManager,
+        WorkerIpcClient workerIpc,
         ServiceManager serviceManager)
     {
         options.RuntimeKind = modeKind;
@@ -181,31 +184,31 @@ public static class UiProgram
         options.ConfigPath = configPath;
         options.AuditDirectory = config.Audit.LogDirectory;
         options.GetServiceRuntimeState = serviceManager.GetRuntimeState;
-        options.IsWorkerAliveAsync = token => new WorkerIpcClient().IsAliveAsync(options.WorkerEndpointName, token);
+        options.IsWorkerAliveAsync = token => workerIpc.IsAliveAsync(options.WorkerEndpointName, token);
         options.IsPausedAsync = async token =>
         {
-            var res = await workerManager.GetStatusAsync(options.WorkerEndpointName, token).ConfigureAwait(false);
+            var res = await workerIpc.GetStatusAsync(options.WorkerEndpointName, token).ConfigureAwait(false);
             return res?.Data?.IsPaused ?? false;
         };
-        options.PauseAsync = async token => { await workerManager.PauseAsync(options.WorkerEndpointName, token).ConfigureAwait(false); };
-        options.ResumeAsync = async token => { await workerManager.ResumeAsync(options.WorkerEndpointName, token).ConfigureAwait(false); };
+        options.PauseAsync = async token => { await workerIpc.PauseAsync(options.WorkerEndpointName, token).ConfigureAwait(false); };
+        options.ResumeAsync = async token => { await workerIpc.ResumeAsync(options.WorkerEndpointName, token).ConfigureAwait(false); };
         options.ShutdownWorkerAsync = async token =>
         {
             if (string.Equals(options.RuntimeKind, "tray", StringComparison.OrdinalIgnoreCase))
             {
-                await workerManager.ShutdownAsync(options.WorkerEndpointName, token).ConfigureAwait(false);
+                await workerIpc.ShutdownAsync(options.WorkerEndpointName, token).ConfigureAwait(false);
             }
         };
         options.ExitApplicationAsync = async token =>
         {
             if (string.Equals(options.RuntimeKind, "tray", StringComparison.OrdinalIgnoreCase))
             {
-                await workerManager.ShutdownAsync(options.WorkerEndpointName, token).ConfigureAwait(false);
+                await workerIpc.ShutdownAsync(options.WorkerEndpointName, token).ConfigureAwait(false);
             }
         };
         options.GetExifToolVersionAsync = async token =>
         {
-            var res = await workerManager.GetStatusAsync(options.WorkerEndpointName, token).ConfigureAwait(false);
+            var res = await workerIpc.GetStatusAsync(options.WorkerEndpointName, token).ConfigureAwait(false);
             return res?.Data?.ExifToolVersion ?? "unknown";
         };
         options.ConnectOrLaunchWorkerAsync = token => workerManager.ConnectOrLaunchAsync(
