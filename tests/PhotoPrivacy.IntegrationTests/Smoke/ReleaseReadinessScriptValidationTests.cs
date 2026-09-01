@@ -91,11 +91,12 @@ public sealed class ReleaseReadinessScriptValidationTests
         var stdoutTask = process.StandardOutput.ReadToEndAsync();
         var stderrTask = process.StandardError.ReadToEndAsync();
         var waitTask = process.WaitForExitAsync();
-        var finished = await Task.WhenAny(waitTask, Task.Delay(TimeSpan.FromSeconds(300)));
+        var publishTimeout = ReadPublishTimeout();
+        var finished = await Task.WhenAny(waitTask, Task.Delay(publishTimeout));
         if (finished != waitTask)
         {
             try { process.Kill(entireProcessTree: true); } catch { }
-            throw new TimeoutException("publish-app.ps1 hung (timeout 300s)");
+            throw new TimeoutException($"publish-app.ps1 hung (timeout {publishTimeout.TotalSeconds}s)");
         }
 
         await waitTask;
@@ -107,6 +108,66 @@ public sealed class ReleaseReadinessScriptValidationTests
         Assert.True(File.Exists(assetPath), $"missing tray asset: {assetPath}\n{merged}");
     }
 
+    [Fact]
+    public void ReadPublishTimeout_Should_Default_To_900s_When_Env_Unset()
+    {
+        var original = Environment.GetEnvironmentVariable(PublishTimeoutEnvVar);
+        try
+        {
+            Environment.SetEnvironmentVariable(PublishTimeoutEnvVar, null);
+            Assert.Equal(TimeSpan.FromSeconds(900), ReadPublishTimeout());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(PublishTimeoutEnvVar, original);
+        }
+    }
+
+    [Fact]
+    public void ReadPublishTimeout_Should_Honor_Positive_Env_Override()
+    {
+        var original = Environment.GetEnvironmentVariable(PublishTimeoutEnvVar);
+        try
+        {
+            Environment.SetEnvironmentVariable(PublishTimeoutEnvVar, "600");
+            Assert.Equal(TimeSpan.FromSeconds(600), ReadPublishTimeout());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(PublishTimeoutEnvVar, original);
+        }
+    }
+
+    [Theory]
+    [InlineData("abc")]
+    [InlineData("0")]
+    [InlineData("-5")]
+    public void ReadPublishTimeout_Should_Fall_Back_To_900s_On_Invalid_Env(string raw)
+    {
+        var original = Environment.GetEnvironmentVariable(PublishTimeoutEnvVar);
+        try
+        {
+            Environment.SetEnvironmentVariable(PublishTimeoutEnvVar, raw);
+            Assert.Equal(TimeSpan.FromSeconds(900), ReadPublishTimeout());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(PublishTimeoutEnvVar, original);
+        }
+    }
+
+    // 参数读点（backlog B01）：publish 冒烟预算默认 900s，环境变量 PHOTOPRIVACY_PUBLISH_TIMEOUT_SECONDS 可覆盖。
+    // 根因：本机 Release 自包含发布实测 5–6 分钟，300s 硬编码在多窗口并行构建时必超时。
+    internal const string PublishTimeoutEnvVar = "PHOTOPRIVACY_PUBLISH_TIMEOUT_SECONDS";
+
+    internal static TimeSpan ReadPublishTimeout()
+    {
+        const int defaultSeconds = 900;
+        var raw = Environment.GetEnvironmentVariable(PublishTimeoutEnvVar);
+        return int.TryParse(raw, out var seconds) && seconds > 0
+            ? TimeSpan.FromSeconds(seconds)
+            : TimeSpan.FromSeconds(defaultSeconds);
+    }
     private static string FindRepoRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
