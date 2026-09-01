@@ -393,4 +393,25 @@ public sealed class DesignSystemTests
         Assert.True(tokenHits.Count >= 20, $"Expected >=20 Spacing token references, got {tokenHits.Count}");
     }
 
+    // ponytail: regression guard for architecture-recovery ticket 03 — IFolderWatcher was a
+    // shallow abstraction (single implementation FswFolderWatcher, sole consumer MetadataCleanerWorker
+    // news the concrete class directly; zero call sites went through the interface). The interface
+    // was deleted; the two REAL test seams in the same file (IRecoveryScanner, IFileSystemWatcherFactory)
+    // each have genuine test-double consumers and were preserved in WatcherInterfaces.cs. This guard
+    // locks the decision: no IFolderWatcher may reappear, and both real seams must stay intact.
+    [Fact]
+    public void Watcher_Shallow_Abstraction_IFolderWatcher_Must_Not_Reappear()
+    {
+        var watcherDir = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Core", "Watcher");
+        Assert.True(Directory.Exists(watcherDir), "Watcher directory should exist");
+        Assert.False(File.Exists(Path.Combine(watcherDir, "IFolderWatcher.cs")), "IFolderWatcher.cs must stay deleted");
+        foreach (var file in Directory.GetFiles(watcherDir, "*.cs"))
+        {
+            var source = File.ReadAllText(file, Encoding.UTF8);
+            Assert.DoesNotContain("IFolderWatcher", source, StringComparison.Ordinal);
+        }
+        var interfacesFile = File.ReadAllText(Path.Combine(watcherDir, "WatcherInterfaces.cs"), Encoding.UTF8);
+        Assert.Contains("IRecoveryScanner", interfacesFile, StringComparison.Ordinal);
+        Assert.Contains("IFileSystemWatcherFactory", interfacesFile, StringComparison.Ordinal);
+    }
 }

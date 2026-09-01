@@ -5,7 +5,7 @@ using PhotoPrivacy.Core.Configuration;
 
 namespace PhotoPrivacy.Core.Watcher;
 
-public sealed class FswFolderWatcher : IFolderWatcher
+public sealed class FswFolderWatcher
 {
     private readonly AppConfig _config;
     private readonly IRecoveryScanner _scanner;
