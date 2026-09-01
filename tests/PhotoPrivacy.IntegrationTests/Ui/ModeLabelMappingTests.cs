@@ -1,8 +1,12 @@
-using PhotoPrivacy.Ui.Views;
-using PhotoPrivacy.Ui;
+﻿using PhotoPrivacy.Ui;
+using PhotoPrivacy.Ui.Services;
 
 namespace PhotoPrivacy.IntegrationTests.Ui;
 
+/// <summary>
+/// issue 06: MapModeLabel/BuildRuntimeStatusText 已从 MainWindow 抽取为
+/// ServiceModeController 公共静态方法，本测试直调新家断言语义不变。
+/// </summary>
 public sealed class ModeLabelMappingTests
 {
     [Theory]
@@ -11,7 +15,7 @@ public sealed class ModeLabelMappingTests
     [InlineData("other", "other")]
     public void MapModeLabel_Should_Return_Expected_Label(string input, string expected)
     {
-        var label = MainWindowMapModeLabelAccessor.Map(input);
+        var label = ServiceModeController.MapModeLabel(input);
 
         Assert.Equal(expected, label);
     }
@@ -27,25 +31,8 @@ public sealed class ModeLabelMappingTests
         bool isPaused,
         string expected)
     {
-        var text = MainWindowMapModeLabelAccessor.BuildRuntimeStatusText(runtimeKind, state, isPaused);
+        var text = ServiceModeController.BuildRuntimeStatusText(runtimeKind, state, isPaused);
 
         Assert.Equal(expected, text);
-    }
-}
-
-internal static class MainWindowMapModeLabelAccessor
-{
-    public static string Map(string runtimeKind)
-    {
-        var type = typeof(MainWindow);
-        var method = type.GetMethod("MapModeLabel", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
-        return (string)(method!.Invoke(null, new object[] { runtimeKind })!);
-    }
-
-    public static string BuildRuntimeStatusText(string runtimeKind, ServiceRuntimeState state, bool isPaused)
-    {
-        var type = typeof(MainWindow);
-        var method = type.GetMethod("BuildRuntimeStatusText", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
-        return (string)(method!.Invoke(null, new object[] { runtimeKind, state, isPaused })!);
     }
 }

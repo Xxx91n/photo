@@ -9,6 +9,7 @@ using Avalonia.Styling;
 using PhotoPrivacy.Core.Configuration;
 using PhotoPrivacy.Core.Watcher;
 using PhotoPrivacy.Ui.Localization;
+using PhotoPrivacy.Ui.Services;
 using PhotoPrivacy.Ui.ViewModels;
 
 namespace PhotoPrivacy.Ui.Views;
@@ -16,17 +17,15 @@ namespace PhotoPrivacy.Ui.Views;
 public partial class MainWindow : Window
 {
     private AuditTailService? _auditTail;
-    private TrayHost? _trayHost;
+    internal TrayHost? _trayHost;
     private ExifToolVersionSnapshot? _versionSnapshot;
     private CancellationTokenSource? _versionPollCts;
     private Task? _versionPollTask;
-    private BackgroundUiOptions? _options;
-    private readonly ServiceManager _serviceManager = new();
-    private readonly WorkerProcessManager _workerManager = new(new WorkerIpcClient());
+    internal BackgroundUiOptions? _options;
     private readonly WorkerIpcClient _workerIpc = new();
+    internal readonly ServiceModeController _serviceModeController;
     private CancellationTokenSource? _serviceModePollCts;
     private Task? _serviceModePollTask;
-    private bool _isSwitchingMode;
     private string _exifToolHint = string.Empty;
     private CancellationTokenSource? _saveStatusResetCts;
     private CancellationTokenSource? _configApplyDebounceCts;
@@ -61,6 +60,17 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        _serviceModeController = CreateServiceModeController();
+    }
+
+    private ServiceModeController CreateServiceModeController()
+    {
+        return new ServiceModeController(
+            new ServiceManagerOps(new ServiceManager()),
+            new WorkerProcessManager(new WorkerIpcClient()),
+            _workerIpc,
+            new MainWindowUiHost(this),
+            new MainWindowViewModelView(this));
     }
 
     public void InitializeRuntime(BackgroundUiOptions options)
@@ -100,7 +110,7 @@ public partial class MainWindow : Window
 
         if (viewModel is not null)
         {
-            viewModel.CurrentMode = MapModeLabel(options.RuntimeKind);
+            viewModel.CurrentMode = ServiceModeController.MapModeLabel(options.RuntimeKind);
             // ADR 0053 M2: async delegate — eliminates sync-over-async in version snapshot
             _versionSnapshot = new ExifToolVersionSnapshot(options.GetExifToolVersionAsync);
             // ponytail: fire-and-forget initial version read — avoids UI-thread deadlock from sync-over-async
@@ -110,9 +120,9 @@ public partial class MainWindow : Window
             // ADR 0053 M1: Show "Worker connecting…" if ConnectionState is Connecting (Worker not yet connected).
             viewModel.RuntimeStatus = options.ConnectionState is { State: ConnectionState.Connecting }
                 ? LocalizationService.Instance.Get("status.connecting")
-                : BuildRuntimeStatusText(options.RuntimeKind, options.GetServiceRuntimeState(), false);
+                : ServiceModeController.BuildRuntimeStatusText(options.RuntimeKind, options.GetServiceRuntimeState(), false);
             viewModel.ShowServiceManagerTab = OperatingSystem.IsWindows();
-            viewModel.ServiceStatus = _serviceManager.GetStatusText();
+            viewModel.ServiceStatus = _serviceModeController.StatusText;
 
             if (effectiveConfig is not null)
             {
@@ -178,7 +188,8 @@ public partial class MainWindow : Window
             PauseResumeButton.IsEnabled = !isServiceMode;
             PauseResumeButton.Content = isServiceMode ? LocalizationService.Instance.Get("status.pause_service_unavailable") : viewModel.PauseResumeLabel;
 
-            UpdateServiceButtons(viewModel);
+            _serviceModeController.Attach(options);
+            _serviceModeController.UpdateServiceButtons();
         }
 
         if (!OperatingSystem.IsWindows())
@@ -234,10 +245,10 @@ public partial class MainWindow : Window
                     return (DataContext as MainWindowViewModel)?.LogLevel ?? "info";
                 return Dispatcher.UIThread.Invoke(() => (DataContext as MainWindowViewModel)?.LogLevel ?? "info");
             },
-            onExifToolExePathDetected: exePath => _ = ResolveExifToolVersionAsync(exePath ?? exifToolPathFromConfig));
+            onExifToolExePathDetected: exePath => _ = ApplyExifToolVersionFromIpcAsync());
 
         _auditTail.Start();
-        _ = ResolveExifToolVersionAsync(exifToolPathFromConfig);
+        _ = ApplyExifToolVersionFromIpcAsync();
         _ = BackfillRecentLogsAsync();
 
         _versionPollCts = new CancellationTokenSource();
@@ -270,7 +281,7 @@ public partial class MainWindow : Window
 
         _serviceModePollCts = new CancellationTokenSource();
         _serviceModePollTask = Task.Run(
-            () => PollServiceModeTransitionAsync(_serviceModePollCts.Token),
+            () => _serviceModeController.PollServiceModeTransitionAsync(_serviceModePollCts.Token),
             _serviceModePollCts.Token);
         UiDiagnosticLog.Write("MainWindow.InitializeRuntime end");
         EnsureWindowVisibleFallback(options);
@@ -418,7 +429,7 @@ public partial class MainWindow : Window
         if (DataContext is MainWindowViewModel vm)
         {
             var latestPaused = await _options.IsPausedAsync(CancellationToken.None).ConfigureAwait(true);
-            vm.RuntimeStatus = BuildRuntimeStatusText(_options.RuntimeKind, _options.GetServiceRuntimeState(), latestPaused);
+            vm.RuntimeStatus = ServiceModeController.BuildRuntimeStatusText(_options.RuntimeKind, _options.GetServiceRuntimeState(), latestPaused);
         }
 
         _trayHost?.Refresh();
@@ -674,8 +685,8 @@ public partial class MainWindow : Window
     {
         if (DataContext is MainWindowViewModel vm)
         {
-            vm.ServiceStatus = _serviceManager.GetStatusText();
-            UpdateServiceButtons(vm);
+            vm.ServiceStatus = _serviceModeController.StatusText;
+            _serviceModeController.UpdateServiceButtons();
         }
     }
 
@@ -963,7 +974,7 @@ public partial class MainWindow : Window
 
         var vm = DataContext as MainWindowViewModel;
         var isPaused = vm?.IsRuntimePausedSnapshot ?? false;
-        return BuildRuntimeStatusText(_options.RuntimeKind, _options.GetServiceRuntimeState(), isPaused);
+        return ServiceModeController.BuildRuntimeStatusText(_options.RuntimeKind, _options.GetServiceRuntimeState(), isPaused);
     }
 
     private void SyncThemeVariantComboSelection(string variant)
@@ -1083,200 +1094,21 @@ public partial class MainWindow : Window
         };
     }
 
-    private async void OnInstallServiceClick(object? sender, RoutedEventArgs e)
-    {
-        var workerExecutablePath = ResolveServiceWorkerExecutablePath(_options);
-        if (_options is null || string.IsNullOrWhiteSpace(workerExecutablePath))
-        {
-            if (DataContext is MainWindowViewModel vmMissingWorker)
-            {
-                vmMissingWorker.ServiceStatus = LocalizationService.Instance.Get("msg.worker_not_found_detail");
-                UpdateServiceButtons(vmMissingWorker);
-            }
+    // ===== issue 06: 服务编排已抽取到 Services/ServiceModeController.cs =====
+    // MainWindow 只保留点击转发 + IUiHost/IViewModelView 状态应用；编排状态机可单测。
+    // 原编排方法族（OnInstallServiceClick 实现体、SwitchToDefaultModeAsync、
+    // ShutdownTrayWorkerForServiceSwitchAsync 等）实现体已迁移，源断言 guard 同步迁移。
 
-            return;
-        }
+    private void OnInstallServiceClick(object? sender, RoutedEventArgs e) => _ = _serviceModeController.InstallAsync();
 
-        SetServiceButtonsBusy(isBusy: true);
+    private void OnUninstallServiceClick(object? sender, RoutedEventArgs e) => _ = _serviceModeController.UninstallAsync();
 
-        ServiceCommandResult result;
-        try
-        {
-            result = await Task.Run(() => _serviceManager.Install(workerExecutablePath, _options.ConfigPath), CancellationToken.None);
-        }
-        catch (Exception ex)
-        {
-            result = ServiceCommandResult.Failed(ex.Message);
-        }
+    private void OnStartServiceClick(object? sender, RoutedEventArgs e) => _ = _serviceModeController.StartAsync();
 
-        ApplyServiceResult(result);
+    private void OnStopServiceClick(object? sender, RoutedEventArgs e) => _ = _serviceModeController.StopAsync();
 
-        if (DataContext is MainWindowViewModel vm)
-        {
-            vm.CurrentMode = MapModeLabel(_options?.RuntimeKind ?? "tray");
-        }
 
-        if (ImmediateModeSwitchPolicy.ShouldSwitchAfterInstall(result))
-        {
-            _ = Task.Run(async () =>
-            {
-                try { await SwitchToServiceModeAfterInstallAsync(CancellationToken.None); }
-                catch (Exception ex) { UiDiagnosticLog.Write($"SwitchToServiceMode failed: {ex.Message}"); }
-            });
-        }
-
-        SetServiceButtonsBusy(isBusy: false);
-    }
-
-    private async void OnUninstallServiceClick(object? sender, RoutedEventArgs e)
-    {
-        SetServiceButtonsBusy(isBusy: true);
-        if (DataContext is MainWindowViewModel vmBusy)
-        {
-            vmBusy.ServiceStatus = $"{_serviceManager.GetStatusText()} | {LocalizationService.Instance.Get("service.uninstalling")}";
-        }
-
-        ServiceCommandResult result;
-        try
-        {
-            result = await Task.Run(() => _serviceManager.Uninstall(), CancellationToken.None);
-        }
-        catch (Exception ex)
-        {
-            result = ServiceCommandResult.Failed(ex.Message);
-        }
-
-        ApplyServiceResult(result);
-
-        if (DataContext is MainWindowViewModel vm)
-        {
-            vm.CurrentMode = MapModeLabel(_options?.RuntimeKind ?? "tray");
-        }
-
-        if (ImmediateModeSwitchPolicy.ShouldSwitchAfterUninstall(result))
-        {
-            _ = Task.Run(async () =>
-            {
-                try { await EnsureTrayWorkerAfterServiceUninstallAsync(CancellationToken.None); }
-                catch (Exception ex) { UiDiagnosticLog.Write($"EnsureTrayWorker failed: {ex.Message}"); }
-            });
-        }
-
-        SetServiceButtonsBusy(isBusy: false);
-    }
-
-    private async void OnStartServiceClick(object? sender, RoutedEventArgs e)
-    {
-        var configPath = _options?.ConfigPath;
-        var workerExecutablePath = ResolveServiceWorkerExecutablePath(_options);
-        if (string.IsNullOrWhiteSpace(workerExecutablePath))
-        {
-            ApplyServiceResult(ServiceCommandResult.Failed(LocalizationService.Instance.Get("msg.worker_not_found_detail")));
-            return;
-        }
-
-        SetServiceButtonsBusy(isBusy: true);
-
-        var requiresTrayShutdown = _options is not null && string.Equals(
-            _options.WorkerEndpointName,
-            PhotoPrivacy.Ipc.WorkerIpcEndpointNames.BackgroundPipe,
-            StringComparison.Ordinal);
-
-        if (requiresTrayShutdown)
-        {
-            var trayShutdownDone = await ShutdownTrayWorkerForServiceSwitchAsync(CancellationToken.None);
-            if (!trayShutdownDone)
-            {
-                ApplyServiceResult(ServiceCommandResult.Failed(LocalizationService.Instance.Get("msg.tray_worker_running")));
-                SetServiceButtonsBusy(isBusy: false);
-                return;
-            }
-        }
-
-        ServiceCommandResult result;
-        try
-        {
-            result = await Task.Run(() => _serviceManager.Start(workerExecutablePath, configPath), CancellationToken.None);
-        }
-        catch (Exception ex)
-        {
-            result = ServiceCommandResult.Failed(ex.Message);
-        }
-
-        ApplyServiceResult(result);
-
-        if (DataContext is MainWindowViewModel vm)
-        {
-            vm.CurrentMode = MapModeLabel(_options?.RuntimeKind ?? "tray");
-        }
-
-        if (result.Status == ServiceCommandStatus.Success)
-        {
-            _ = Task.Run(async () =>
-            {
-                try { await SwitchToServiceModeAfterInstallAsync(CancellationToken.None); }
-                catch (Exception ex) { UiDiagnosticLog.Write($"SwitchToServiceMode failed: {ex.Message}"); }
-            });
-        }
-
-        SetServiceButtonsBusy(isBusy: false);
-    }
-
-    private async void OnStopServiceClick(object? sender, RoutedEventArgs e)
-    {
-        SetServiceButtonsBusy(isBusy: true);
-
-        ServiceCommandResult result;
-        try
-        {
-            result = await Task.Run(() => _serviceManager.Stop(), CancellationToken.None);
-        }
-        catch (Exception ex)
-        {
-            result = ServiceCommandResult.Failed(ex.Message);
-        }
-
-        ApplyServiceResult(result);
-
-        if (_options is not null)
-        {
-            var state = _serviceManager.GetRuntimeState();
-            if (state != ServiceRuntimeState.NotInstalled)
-            {
-                _options.RuntimeKind = "service";
-                _options.UseTrayIcon = false;
-            }
-        }
-
-        if (DataContext is MainWindowViewModel vm)
-        {
-            vm.CurrentMode = MapModeLabel(_options?.RuntimeKind ?? "service");
-        }
-
-        SetServiceButtonsBusy(isBusy: false);
-    }
-
-    private void ApplyServiceResult(ServiceCommandResult result)
-    {
-        if (DataContext is not MainWindowViewModel vm)
-        {
-            return;
-        }
-
-        var status = _serviceManager.GetStatusText();
-        vm.ServiceStatus = result.Status switch
-        {
-            ServiceCommandStatus.Success => $"{status} | {result.Message}",
-            ServiceCommandStatus.Skipped => LocalizationService.Instance.Get("service.status_format_skip", status, result.Message),
-            ServiceCommandStatus.ElevationCancelled => LocalizationService.Instance.Get("service.status_format_cancel", status, result.Message),
-            ServiceCommandStatus.Failed => LocalizationService.Instance.Get("service.status_format_fail", status, result.Message),
-            _ => status
-        };
-
-        UpdateServiceButtons(vm);
-    }
-
-    private async Task ExitApplicationAsync()
+    internal async Task ExitApplicationAsync()
     {
         if (_options is not null)
         {
@@ -1291,295 +1123,6 @@ public partial class MainWindow : Window
         else
         {
             Close();
-        }
-    }
-
-    private void UpdateServiceButtons(MainWindowViewModel vm)
-    {
-        if (!OperatingSystem.IsWindows())
-        {
-            InstallServiceButton.IsEnabled = false;
-            UninstallServiceButton.IsEnabled = false;
-            StartServiceButton.IsEnabled = false;
-            StopServiceButton.IsEnabled = false;
-            return;
-        }
-
-        var state = _serviceManager.GetRuntimeState();
-        var buttonState = ServiceUiPolicy.BuildButtonState(state);
-        InstallServiceButton.IsEnabled = buttonState.InstallEnabled;
-        UninstallServiceButton.IsEnabled = buttonState.UninstallEnabled;
-        StartServiceButton.IsEnabled = buttonState.StartEnabled;
-        StopServiceButton.IsEnabled = buttonState.StopEnabled;
-
-        vm.ServiceStatus = _serviceManager.GetStatusText();
-        if (_options is not null)
-        {
-            var paused = false;
-            var shouldReadTrayPauseStatus =
-                !_isSwitchingMode
-                && string.Equals(_options.RuntimeKind, "tray", StringComparison.OrdinalIgnoreCase)
-                && string.Equals(
-                    _options.WorkerEndpointName,
-                    PhotoPrivacy.Ipc.WorkerIpcEndpointNames.BackgroundPipe,
-                    StringComparison.Ordinal);
-
-            // ponytail: skip sync-over-async pause read on UI thread — causes deadlock when Worker IPC stalls.
-            // RuntimeStatus is updated by background poll tasks; initial state defaults to false.
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    var p = await _options.IsPausedAsync(CancellationToken.None).ConfigureAwait(false);
-                    await Dispatcher.UIThread.InvokeAsync(() =>
-                    {
-                        if (DataContext is MainWindowViewModel vm)
-                            vm.RuntimeStatus = BuildRuntimeStatusText(_options.RuntimeKind, state, p);
-                    });
-                }
-                catch { }
-            });
-
-            vm.RuntimeStatus = BuildRuntimeStatusText(_options.RuntimeKind, state, paused);
-        }
-    }
-
-    private async Task PollServiceModeTransitionAsync(CancellationToken token)
-    {
-        while (!token.IsCancellationRequested)
-        {
-            await Task.Delay(TimeSpan.FromSeconds(3), token);
-
-            if (_options is null || _isSwitchingMode)
-            {
-                continue;
-            }
-
-            var state = _options.GetServiceRuntimeState();
-
-            if (string.Equals(_options.RuntimeKind, "tray", StringComparison.OrdinalIgnoreCase)
-                && !await _options.IsWorkerAliveAsync(token))
-            {
-                await SwitchToDefaultModeAsync(token);
-                return;
-            }
-
-            if (string.Equals(_options.RuntimeKind, "service", StringComparison.OrdinalIgnoreCase)
-                && ServiceUiPolicy.ShouldSwitchFromServiceShellToTray(state))
-            {
-                await SwitchToDefaultModeAsync(token);
-                return;
-            }
-
-            if (string.Equals(_options.RuntimeKind, "tray", StringComparison.OrdinalIgnoreCase)
-                && ServiceUiPolicy.ShouldSwitchFromTrayToServiceShell(state))
-            {
-                await SwitchToDefaultModeAsync(token);
-                return;
-            }
-
-            Dispatcher.UIThread.Post(() =>
-            {
-                if (DataContext is MainWindowViewModel vm)
-                {
-                    UpdateServiceButtons(vm);
-                }
-            });
-        }
-    }
-
-    private async Task SwitchToDefaultModeAsync(CancellationToken token, Func<ServiceRuntimeState>? getServiceRuntimeStateOverride = null)
-    {
-        if (_options is null || _isSwitchingMode)
-        {
-            return;
-        }
-
-        _isSwitchingMode = true;
-
-        try
-        {
-            var next = getServiceRuntimeStateOverride is null
-                ? await _options.ConnectOrLaunchWorkerAsync(token)
-                : await _workerManager.ConnectOrLaunchAsync(
-                    ResolveServiceWorkerExecutablePath(_options),
-                    token,
-                    getServiceRuntimeState: getServiceRuntimeStateOverride);
-        _options.RuntimeKind = next.RuntimeKind;
-        _options.WorkerEndpointName = next.EndpointName;
-        _options.UseTrayIcon = next.ShouldShowTrayIcon && !_options.HideTrayIcon;
-
-        if (DataContext is MainWindowViewModel vm)
-        {
-            vm.CurrentMode = MapModeLabel(_options.RuntimeKind);
-            vm.RuntimeStatus = BuildRuntimeStatusText(_options.RuntimeKind, _options.GetServiceRuntimeState(), next.Status?.IsPaused ?? false);
-            vm.ExifToolVersion = NormalizeExifToolStatus(next.Status?.ExifToolVersion);
-        }
-
-        var isServiceMode = string.Equals(_options.RuntimeKind, "service", StringComparison.OrdinalIgnoreCase);
-        await Dispatcher.UIThread.InvokeAsync(() =>
-        {
-            PauseResumeButton.IsEnabled = !isServiceMode;
-            PauseResumeButton.Content = isServiceMode
-                ? LocalizationService.Instance.Get("status.pause_service_unavailable")
-                : (DataContext as MainWindowViewModel)?.PauseResumeLabel ?? LocalizationService.Instance.Get("btn.pause");
-        });
-
-        if (_options.UseTrayIcon)
-        {
-            _trayHost ??= new TrayHost(this, _options, ExitApplicationAsync);
-            _trayHost.IsVisible = true;
-            }
-            else
-            {
-                _trayHost?.Dispose();
-                _trayHost = null;
-            }
-        }
-        catch
-        {
-            // best effort mode switch
-        }
-        finally
-        {
-            _isSwitchingMode = false;
-        }
-    }
-
-    private async Task SwitchToServiceModeAfterInstallAsync(CancellationToken token)
-    {
-        if (_options is null)
-        {
-            return;
-        }
-
-        await ShutdownTrayWorkerForServiceSwitchAsync(token);
-        await SwitchToDefaultModeAsync(token);
-
-        _options.RuntimeKind = "service";
-        _options.WorkerEndpointName = PhotoPrivacy.Ipc.WorkerIpcEndpointNames.ServicePipe;
-        _options.UseTrayIcon = false;
-
-        Dispatcher.UIThread.Post(() =>
-        {
-            if (DataContext is MainWindowViewModel vm)
-            {
-                vm.CurrentMode = MapModeLabel(_options.RuntimeKind);
-                vm.RuntimeStatus = BuildRuntimeStatusText(_options.RuntimeKind, _options.GetServiceRuntimeState(), false);
-            }
-
-            _trayHost?.Dispose();
-            _trayHost = null;
-            Show();
-            WindowState = WindowState.Normal;
-            Activate();
-        });
-    }
-
-    private async Task<bool> ShutdownTrayWorkerForServiceSwitchAsync(CancellationToken token)
-    {
-        if (_options is null)
-        {
-            return false;
-        }
-
-        var endpoint = _options.WorkerEndpointName;
-        if (!string.Equals(endpoint, PhotoPrivacy.Ipc.WorkerIpcEndpointNames.BackgroundPipe, StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        try
-        {
-            var status = await _workerIpc.GetStatusAsync(endpoint, token);
-            if (status is null)
-            {
-                return true;
-            }
-
-            await _workerIpc.ShutdownAsync(endpoint, token);
-
-            for (var i = 0; i < 15; i++)
-            {
-                if (!await _workerIpc.IsAliveAsync(PhotoPrivacy.Ipc.WorkerIpcEndpointNames.BackgroundPipe, token))
-                {
-                    return true;
-                }
-
-                await Task.Delay(200, token);
-            }
-
-            return false;
-        }
-        catch (Exception ex)
-        {
-            UiDiagnosticLog.Write($"ShutdownTrayWorkerForServiceSwitchAsync failed: {ex.Message}");
-            return false;
-        }
-    }
-
-    private async Task EnsureTrayWorkerAfterServiceUninstallAsync(CancellationToken token)
-    {
-        await SwitchToDefaultModeAsync(token, getServiceRuntimeStateOverride: () => ServiceRuntimeState.NotInstalled);
-
-        if (_options is null)
-        {
-            return;
-        }
-
-        _options.RuntimeKind = "tray";
-        _options.WorkerEndpointName = PhotoPrivacy.Ipc.WorkerIpcEndpointNames.BackgroundPipe;
-        _options.UseTrayIcon = !_options.HideTrayIcon;
-
-        Dispatcher.UIThread.Post(() =>
-        {
-            try
-            {
-                if (DataContext is MainWindowViewModel vm)
-                {
-                    vm.CurrentMode = MapModeLabel(_options.RuntimeKind);
-                    vm.RuntimeStatus = BuildRuntimeStatusText(_options.RuntimeKind, _options.GetServiceRuntimeState(), false);
-                }
-
-                PauseResumeButton.IsEnabled = true;
-                PauseResumeButton.Content = (DataContext as MainWindowViewModel)?.PauseResumeLabel ?? LocalizationService.Instance.Get("btn.pause");
-
-                if (_options.UseTrayIcon)
-                {
-                    _trayHost ??= new TrayHost(this, _options, ExitApplicationAsync);
-                    _trayHost.IsVisible = true;
-                }
-
-                Show();
-                WindowState = WindowState.Normal;
-                Activate();
-            }
-            catch (Exception ex)
-            {
-                UiDiagnosticLog.Write($"EnsureTrayWorkerAfterServiceUninstallAsync UI post failed: {ex.Message}");
-            }
-        });
-    }
-
-    private void SetServiceButtonsBusy(bool isBusy)
-    {
-        if (!OperatingSystem.IsWindows())
-        {
-            return;
-        }
-
-        if (isBusy)
-        {
-            InstallServiceButton.IsEnabled = false;
-            UninstallServiceButton.IsEnabled = false;
-            StartServiceButton.IsEnabled = false;
-            StopServiceButton.IsEnabled = false;
-            return;
-        }
-
-        if (DataContext is MainWindowViewModel vm)
-        {
-            UpdateServiceButtons(vm);
         }
     }
 
@@ -1882,7 +1425,7 @@ public partial class MainWindow : Window
             {
                 if (DataContext is MainWindowViewModel vm)
                 {
-                    vm.ExifToolVersion = NormalizeExifToolStatus(changed);
+                    vm.ExifToolVersion = ServiceModeController.NormalizeExifToolStatus(changed);
                 }
             });
         }
@@ -1902,44 +1445,18 @@ public partial class MainWindow : Window
             : $"ExifTool v{text} ✓";
     }
 
-    private async Task ResolveExifToolVersionAsync(string? exePath)
+    // issue 06 checkpoint B: UI 不再 spawn exiftool -ver —— 版本探测统一走 IPC GetExifToolVersion。
+    private async Task ApplyExifToolVersionFromIpcAsync()
     {
-        if (string.IsNullOrWhiteSpace(exePath) || !File.Exists(exePath))
+        if (_options is null)
         {
-            Dispatcher.UIThread.Post(() =>
-            {
-                if (DataContext is MainWindowViewModel vm)
-                {
-                    vm.ExifToolVersion = LocalizationService.Instance.Get("status.exiftool_not_found");
-                }
-            });
             return;
         }
 
         try
         {
-            var psi = new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = exePath,
-                Arguments = "-ver",
-                RedirectStandardOutput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            using var process = System.Diagnostics.Process.Start(psi);
-            if (process is null)
-            {
-                throw new InvalidOperationException("failed to start exiftool");
-            }
-
-            var version = await process.StandardOutput.ReadToEndAsync();
-            await process.WaitForExitAsync();
-
-            var text = string.IsNullOrWhiteSpace(version)
-                ? LocalizationService.Instance.Get("status.exiftool_not_found")
-                : $"ExifTool v{version.Trim()} ✓";
-
+            var version = await _options.GetExifToolVersionAsync(CancellationToken.None).ConfigureAwait(false);
+            var text = ServiceModeController.NormalizeExifToolStatus(version);
             Dispatcher.UIThread.Post(() =>
             {
                 if (DataContext is MainWindowViewModel vm)
@@ -1960,49 +1477,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private static string MapModeLabel(string runtimeKind)
-    {
-        if (string.Equals(runtimeKind, "service", StringComparison.OrdinalIgnoreCase))
-        {
-            return LocalizationService.Instance.Get("mode.service");
-        }
-
-        if (string.Equals(runtimeKind, "tray", StringComparison.OrdinalIgnoreCase))
-        {
-            return LocalizationService.Instance.Get("mode.tray");
-        }
-
-        return runtimeKind;
-    }
-
-    private static string BuildRuntimeStatusText(string runtimeKind, ServiceRuntimeState state, bool isPaused)
-    {
-        if (string.Equals(runtimeKind, "service", StringComparison.OrdinalIgnoreCase))
-        {
-            return state is ServiceRuntimeState.Running or ServiceRuntimeState.StartPending or ServiceRuntimeState.ContinuePending
-                ? LocalizationService.Instance.Get("status.service_running")
-                : LocalizationService.Instance.Get("status.service_stopped");
-        }
-
-        return isPaused ? LocalizationService.Instance.Get("status.tray_paused") : LocalizationService.Instance.Get("status.tray_running");
-    }
-
-    private static string? ResolveServiceWorkerExecutablePath(BackgroundUiOptions? options)
-    {
-        if (options is null)
-        {
-            return null;
-        }
-
-        if (!string.IsNullOrWhiteSpace(options.WorkerExecutablePath) && File.Exists(options.WorkerExecutablePath))
-        {
-            return options.WorkerExecutablePath;
-        }
-
-        var workerName = OperatingSystem.IsWindows() ? "PhotoPrivacyWorker.exe" : "PhotoPrivacyWorker";
-        var candidate = Path.Combine(AppContext.BaseDirectory, workerName);
-        return File.Exists(candidate) ? candidate : null;
-    }
 }
 
 public partial class MainWindow
