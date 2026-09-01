@@ -29,7 +29,21 @@ public sealed class EndToEndSmokeTests : IntegrationTestBase
             };
 
             using var p = Process.Start(psi)!;
-            await p.WaitForExitAsync();
+            // dotnet run 重编译时子进程输出可达 ~90KB，必须并发排空两根管道，否则 4KB 缓冲写满后子进程阻塞在 stdout 写上永不退出
+            var stdoutTask = p.StandardOutput.ReadToEndAsync();
+            var stderrTask = p.StandardError.ReadToEndAsync();
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(120));
+            try
+            {
+                await p.WaitForExitAsync(timeoutCts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                try { p.Kill(entireProcessTree: true); } catch { }
+                throw new TimeoutException("smoke.ps1 CLI host did not exit within 120s.");
+            }
+            await stdoutTask;
+            await stderrTask;
             Assert.Equal(0, p.ExitCode);
 
             var auditFile = Directory.GetFiles(audit, "audit-*.jsonl").Single();

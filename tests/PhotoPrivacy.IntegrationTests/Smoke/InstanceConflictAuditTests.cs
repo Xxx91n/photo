@@ -71,7 +71,15 @@ public sealed class InstanceConflictAuditTests : IntegrationTestBase
             Assert.NotEmpty(conflict.Stderr);
 
             owner.Kill(entireProcessTree: true);
-            await owner.WaitForExitAsync();
+            using var exitCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            try
+            {
+                await owner.WaitForExitAsync(exitCts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                throw new TimeoutException("CLI owner process did not exit within 10s after tree-kill.");
+            }
 
             var auditFile = WaitForAuditFile(audit, TimeSpan.FromSeconds(5));
             var content = File.ReadAllText(auditFile);
