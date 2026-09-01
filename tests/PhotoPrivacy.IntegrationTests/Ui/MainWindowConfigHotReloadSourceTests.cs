@@ -7,7 +7,7 @@ public sealed class MainWindowConfigHotReloadSourceTests
     [Fact]
     public void MainWindow_Source_Should_Expose_Explicit_Apply_Config_Action_Chain()
     {
-        var sourcePath = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "Views", "MainWindow.axaml.cs");
+        var sourcePath = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views", "MainWindow.axaml.cs");
         var source = File.ReadAllText(sourcePath, Encoding.UTF8);
 
         Assert.Contains("private async void OnApplyConfigClick", source, StringComparison.Ordinal);

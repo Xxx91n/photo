@@ -15,39 +15,6 @@ namespace PhotoPrivacy.IntegrationTests.Ui;
 /// </summary>
 public sealed class UiLauncherSourceTests
 {
-    private static readonly string UiSourceRoot = ResolveUiSourceRoot();
-
-    private static string ResolveUiSourceRoot()
-    {
-        var dir = AppContext.BaseDirectory;
-        var current = dir;
-        for (var i = 0; i < 8; i++)
-        {
-            current = Path.GetFullPath(Path.Combine(current, ".."));
-            if (Directory.Exists(Path.Combine(current, ".git")) ||
-                File.Exists(Path.Combine(current, "PhotoPrivacy.sln")))
-            {
-                return Path.Combine(current, "src", "PhotoPrivacy.Ui");
-            }
-        }
-        return Path.GetFullPath(Path.Combine(dir, "..", "..", "..", "..", "..", "src", "PhotoPrivacy.Ui"));
-    }
-
-    private static List<string> GetUiCsFiles()
-    {
-        Assert.True(Directory.Exists(UiSourceRoot), $"Ui source root not found: {UiSourceRoot}");
-        return Directory.GetFiles(UiSourceRoot, "*.cs", SearchOption.AllDirectories)
-            .Where(f => !f.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar) &&
-                        !f.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar) &&
-                        !f.EndsWith(".g.cs") && !f.EndsWith(".GlobalUsings.g.cs"))
-            .ToList();
-    }
-
-    private static string StripLineComment(string line)
-    {
-        var commentIdx = line.IndexOf("//");
-        return commentIdx >= 0 ? line[..commentIdx] : line;
-    }
 
     /// <summary>
     /// Pure predicate shared by the repo-wide scan and the negative self-proof test.
@@ -81,12 +48,12 @@ public sealed class UiLauncherSourceTests
     {
         var violations = new List<string>();
 
-        foreach (var file in GetUiCsFiles())
+        foreach (var file in SourceLint.UiCsFiles())
         {
-            var relative = Path.GetRelativePath(UiSourceRoot, file);
+            var relative = Path.GetRelativePath(SourceLint.UiSourceRoot, file);
             foreach (var raw in File.ReadAllLines(file))
             {
-                var reason = ClassifyUseShellExecuteLine(StripLineComment(raw), relative);
+                var reason = ClassifyUseShellExecuteLine(SourceLint.StripLineComment(raw), relative);
                 if (reason is not null)
                 {
                     violations.Add($"{Path.GetFileName(file)}: {raw.Trim()}");
@@ -120,7 +87,7 @@ public sealed class UiLauncherSourceTests
 
         foreach (var (line, file, expect) in samples)
         {
-            var reason = ClassifyUseShellExecuteLine(StripLineComment(line), file);
+            var reason = ClassifyUseShellExecuteLine(SourceLint.StripLineComment(line), file);
             if (expect && reason is null)
             {
                 failures.Add($"MISSED (should be red): {file}: {line.Trim()}");
@@ -140,9 +107,9 @@ public sealed class UiLauncherSourceTests
     {
         // The whitelisted elevation site must exist and keep the Verb "runas" pairing,
         // so silently removing the elevation design trips this guard too.
-        var serviceManagerPath = Path.Combine(UiSourceRoot, "ServiceManager.cs");
+        var serviceManagerPath = Path.Combine(SourceLint.UiSourceRoot, "ServiceManager.cs");
         Assert.True(File.Exists(serviceManagerPath), $"ServiceManager.cs not found: {serviceManagerPath}");
-        var noComments = string.Concat(File.ReadAllLines(serviceManagerPath).Select(StripLineComment));
+        var noComments = string.Concat(File.ReadAllLines(serviceManagerPath).Select(SourceLint.StripLineComment));
 
         Assert.Contains("UseShellExecute = needElevation", noComments);
         Assert.Contains("needElevation ? \"runas\"", noComments);
@@ -156,11 +123,11 @@ public sealed class UiLauncherSourceTests
         // argument — the shell-open branching that UseShellExecute=true enabled.
         var shellOpenPattern = new Regex(@"""(explorer(\.exe)?|xdg-open|\bopen)""");
 
-        foreach (var file in GetUiCsFiles())
+        foreach (var file in SourceLint.UiCsFiles())
         {
             foreach (var raw in File.ReadAllLines(file))
             {
-                var line = StripLineComment(raw);
+                var line = SourceLint.StripLineComment(raw);
                 if (shellOpenPattern.IsMatch(line))
                 {
                     violations.Add($"{Path.GetFileName(file)}: {raw.Trim()}");
@@ -175,9 +142,9 @@ public sealed class UiLauncherSourceTests
     [Fact]
     public void Config_Dir_Open_Routes_Through_TopLevel_Launcher()
     {
-        var mainWindowPath = Path.Combine(UiSourceRoot, "Views", "MainWindow.axaml.cs");
+        var mainWindowPath = Path.Combine(SourceLint.UiSourceRoot, "Views", "MainWindow.axaml.cs");
         Assert.True(File.Exists(mainWindowPath), $"MainWindow.axaml.cs not found: {mainWindowPath}");
-        var noComments = string.Concat(File.ReadAllLines(mainWindowPath).Select(StripLineComment));
+        var noComments = string.Concat(File.ReadAllLines(mainWindowPath).Select(SourceLint.StripLineComment));
 
         Assert.Contains("LaunchDirectoryInfoAsync", noComments);
         Assert.Contains("OnOpenConfigDirClick", noComments);

@@ -7,7 +7,7 @@ public sealed class WorkerIpcClientSourceTests
     [Fact]
     public void SendAsync_Source_Should_Use_ConfigureAwaitFalse_For_Awaits()
     {
-        var sourcePath = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "WorkerIpcClient.cs");
+        var sourcePath = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "WorkerIpcClient.cs");
         var source = File.ReadAllText(sourcePath, Encoding.UTF8);
 
         // 使用安全的管道通信：ArgumentList + ReadBoundedLineAsync

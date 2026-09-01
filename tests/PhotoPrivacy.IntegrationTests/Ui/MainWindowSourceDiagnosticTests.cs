@@ -7,7 +7,7 @@ public sealed class MainWindowSourceDiagnosticTests
     [Fact]
     public void MainWindow_Source_Should_Expose_Safe_Startup_Show_Fallback()
     {
-        var sourcePath = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "Views", "MainWindow.axaml.cs");
+        var sourcePath = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views", "MainWindow.axaml.cs");
         var source = File.ReadAllText(sourcePath, Encoding.UTF8);
 
         Assert.Contains("EnsureWindowVisibleFallback", source, StringComparison.Ordinal);
@@ -18,7 +18,7 @@ public sealed class MainWindowSourceDiagnosticTests
     [Fact]
     public void MainWindow_Axaml_Should_Use_Tailscale_Style_Navigation_Shell()
     {
-        var sourcePath = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "Views", "MainWindow.axaml");
+        var sourcePath = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views", "MainWindow.axaml");
         var source = File.ReadAllText(sourcePath, Encoding.UTF8);
 
         Assert.Contains("Width=\"920\"", source, StringComparison.Ordinal);
