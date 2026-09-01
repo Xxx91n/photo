@@ -414,4 +414,106 @@ public sealed class DesignSystemTests
         Assert.Contains("IRecoveryScanner", interfacesFile, StringComparison.Ordinal);
         Assert.Contains("IFileSystemWatcherFactory", interfacesFile, StringComparison.Ordinal);
     }
+
+    // === Ticket 01 — button size tokens (architecture recovery C2) guards ===
+    // Button height/padding must have a single authority (AppTheme.axaml Size Ladder:
+    // content 32 / nav 40 / icon 32x32); views may not override sizing inline.
+
+    private static string Extract_Style_Block(string source, string selector)
+    {
+        var idx = source.IndexOf($"Selector=\"{selector}\"", StringComparison.Ordinal);
+        Assert.True(idx >= 0, $"AppTheme.axaml must define style {selector}");
+        var end = source.IndexOf("</Style>", idx, StringComparison.Ordinal);
+        Assert.True(end > idx, $"style {selector} must have a closing </Style>");
+        return source[idx..end];
+    }
+
+    [Fact]
+    public void Button_Size_Ladder_Must_Be_Single_Authority_In_AppTheme()
+    {
+        var path = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "Styling", "AppTheme.axaml");
+        Assert.True(File.Exists(path), "AppTheme.axaml should exist");
+        var source = File.ReadAllText(path, Encoding.UTF8);
+
+        // Content-area variants: 32 high (small rung)
+        foreach (var variant in new[] { "Button.primary", "Button.ghost", "Button.danger" })
+        {
+            var block = Extract_Style_Block(source, variant);
+            Assert.Contains("Property=\"Height\" Value=\"32\"", block);
+            Assert.Contains("Property=\"Padding\" Value=\"12,6\"", block);
+        }
+        // Navigation variants: 40 high (nav rung)
+        foreach (var variant in new[] { "Button.nav", "Button.nav-action" })
+        {
+            var block = Extract_Style_Block(source, variant);
+            Assert.Contains("Property=\"Height\" Value=\"40\"", block);
+            Assert.Contains("Property=\"Padding\" Value=\"12,0\"", block);
+        }
+        // Caption buttons ride the 32 rung (Win11 standard height)
+        var caption = Extract_Style_Block(source, "Button.caption-btn");
+        Assert.Contains("Property=\"Height\" Value=\"32\"", caption);
+    }
+
+    [Fact]
+    public void Button_Icon_Variant_Must_Be_32_Square_With_Zero_Padding()
+    {
+        var path = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "Styling", "AppTheme.axaml");
+        var source = File.ReadAllText(path, Encoding.UTF8);
+        var block = Extract_Style_Block(source, "Button.icon");
+        Assert.Contains("Property=\"Padding\" Value=\"0\"", block);
+        Assert.Contains("Property=\"Height\" Value=\"32\"", block);
+        Assert.Contains("Property=\"MinWidth\" Value=\"32\"", block);
+    }
+
+    [Fact]
+    public void MainWindow_Buttons_Must_Not_Override_Size_Inline()
+    {
+        var path = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "Views", "MainWindow.axaml");
+        Assert.True(File.Exists(path), "MainWindow.axaml should exist");
+        var source = File.ReadAllText(path, Encoding.UTF8);
+        // Every <Button ...> opening tag (multiline included) must be free of
+        // Padding/Height/MinWidth overrides — sizing comes from the style class only.
+        var buttons = System.Text.RegularExpressions.Regex.Matches(source, "<Button[^>]*>");
+        Assert.True(buttons.Count >= 10, $"Expected >=10 Button tags, got {buttons.Count}");
+        foreach (System.Text.RegularExpressions.Match b in buttons)
+        {
+            Assert.DoesNotContain("Padding=", b.Value);
+            Assert.DoesNotContain("Height=", b.Value);
+            Assert.DoesNotContain("MinWidth=", b.Value);
+        }
+    }
+
+    [Fact]
+    public void MainWindow_Icon_Buttons_Must_Use_Icon_Variant_Class()
+    {
+        var path = Path.Combine("D:", "Aworker", "photo", "src", "PhotoPrivacy.Ui", "Views", "MainWindow.axaml");
+        var source = File.ReadAllText(path, Encoding.UTF8);
+        // The 7 icon-only buttons (5 Browse + Add/Remove excluded) must route
+        // through the Button.icon variant, not ghost with inline sizing.
+        var iconButtons = System.Text.RegularExpressions.Regex.Matches(source, @"Classes=""icon""");
+        Assert.True(iconButtons.Count >= 7, $"Expected >=7 Button.icon usages, got {iconButtons.Count}");
+    }
+
+    [Fact]
+    public void All_Xaml_FontSize_Must_Be_On_Token_Ladder()
+    {
+        // Ladder: 11/12/14/16/18/20 — anything else (e.g. 11.5, 13) reintroduces
+        // the off-token gradient; {DynamicResource}/{StaticResource} refs are token-based and pass.
+        var srcDir = Path.Combine("D:", "Aworker", "photo", "src");
+        var files = Directory.GetFiles(srcDir, "*.axaml", SearchOption.AllDirectories)
+            .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}")
+                     && !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}"))
+            .ToList();
+        Assert.True(files.Count >= 9, $"Expected >=9 axaml files, got {files.Count}");
+        foreach (var file in files)
+        {
+            var content = File.ReadAllText(file);
+            foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(content, "FontSize=\"([^\"]+)\""))
+            {
+                var value = m.Groups[1].Value;
+                var onLadder = value.StartsWith("{") || value is "11" or "12" or "14" or "16" or "18" or "20";
+                Assert.True(onLadder, $"{file} has off-ladder FontSize=\"{value}\" (ladder: 11/12/14/16/18/20)");
+            }
+        }
+    }
 }

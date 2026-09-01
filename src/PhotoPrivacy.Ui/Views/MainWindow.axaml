@@ -24,13 +24,13 @@
       <Grid ColumnDefinitions="*,Auto">
         <Grid Grid.Column="0" />
         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="{DynamicResource SpaceXxs}" VerticalAlignment="Center" Margin="0,0,4,0">
-          <Button Classes="caption-btn" Click="OnMinimizeClick" WindowDecorationProperties.ElementRole="MinimizeButton" Padding="14,8" Background="Transparent" BorderThickness="0">
+          <Button Classes="caption-btn" Click="OnMinimizeClick" WindowDecorationProperties.ElementRole="MinimizeButton">
             <materialIcons:MaterialIcon Kind="WindowMinimize" Width="14" Height="14"/>
           </Button>
-          <Button Classes="caption-btn" Click="OnMaximizeClick" WindowDecorationProperties.ElementRole="MaximizeButton" Padding="14,8" Background="Transparent" BorderThickness="0">
+          <Button Classes="caption-btn" Click="OnMaximizeClick" WindowDecorationProperties.ElementRole="MaximizeButton">
             <materialIcons:MaterialIcon Kind="WindowMaximize" Width="14" Height="14"/>
           </Button>
-          <Button Classes="caption-btn danger" Click="OnCloseClick" WindowDecorationProperties.ElementRole="CloseButton" Padding="14,8" Background="Transparent" BorderThickness="0">
+          <Button Classes="caption-btn danger" Click="OnCloseClick" WindowDecorationProperties.ElementRole="CloseButton">
             <materialIcons:MaterialIcon Kind="WindowClose" Width="14" Height="14"/>
           </Button>
         </StackPanel>
@@ -72,19 +72,19 @@
         </Border>
 
         <StackPanel DockPanel.Dock="Top" Margin="8,16,8,0" Spacing="4">
-          <Button x:Name="ConfigNavButton" Classes="nav active" Tag="config" Height="40" HorizontalContentAlignment="Stretch">
+          <Button x:Name="ConfigNavButton" Classes="nav active" Tag="config" HorizontalContentAlignment="Stretch">
             <Grid ColumnDefinitions="Auto,*" HorizontalAlignment="Stretch">
               <materialIcons:MaterialIcon Grid.Column="0" Kind="Settings" Width="20" Height="20" VerticalAlignment="Center"/>
               <TextBlock Grid.Column="1" Text="{ex:Localize nav.config}" Classes="body" VerticalAlignment="Center" HorizontalAlignment="Stretch" TextTrimming="CharacterEllipsis" Margin="12,0,0,0"/>
             </Grid>
           </Button>
-          <Button x:Name="LogNavButton" Classes="nav" Tag="log" Height="40" HorizontalContentAlignment="Stretch">
+          <Button x:Name="LogNavButton" Classes="nav" Tag="log" HorizontalContentAlignment="Stretch">
             <Grid ColumnDefinitions="Auto,*" HorizontalAlignment="Stretch">
               <materialIcons:MaterialIcon Grid.Column="0" Kind="FileDocumentOutline" Width="20" Height="20" VerticalAlignment="Center"/>
               <TextBlock Grid.Column="1" Text="{ex:Localize nav.logs}" Classes="body" VerticalAlignment="Center" HorizontalAlignment="Stretch" TextTrimming="CharacterEllipsis" Margin="12,0,0,0"/>
             </Grid>
           </Button>
-          <Button x:Name="RulesNavButton" Classes="nav" Tag="rules" Height="40" HorizontalContentAlignment="Stretch">
+          <Button x:Name="RulesNavButton" Classes="nav" Tag="rules" HorizontalContentAlignment="Stretch">
             <Grid ColumnDefinitions="Auto,*" HorizontalAlignment="Stretch">
               <materialIcons:MaterialIcon Grid.Column="0" Kind="ShieldCheckOutline" Width="20" Height="20" VerticalAlignment="Center"/>
               <TextBlock Grid.Column="1" Text="{ex:Localize nav.rules}" Classes="body" VerticalAlignment="Center" HorizontalAlignment="Stretch" TextTrimming="CharacterEllipsis" Margin="12,0,0,0"/>
@@ -97,7 +97,6 @@
           <Button x:Name="OpenServiceManagerTabButton"
                   Classes="nav"
                   Tag="service"
-                  Height="40"
                   HorizontalContentAlignment="Stretch"
                   IsVisible="{Binding ShowServiceManagerTab}">
             <Grid ColumnDefinitions="Auto,*" HorizontalAlignment="Stretch">
@@ -151,7 +150,7 @@
                                  Text="{Binding ExifToolPath}"
                                  Classes="inline-input"
                                  VerticalAlignment="Center"/>
-                        <Button x:Name="BrowseExifToolButton" DockPanel.Dock="Right" MinWidth="32" Padding="0" Classes="ghost" VerticalAlignment="Center"><materialIcons:MaterialIcon Kind="FolderOpen" Width="16" Height="16"/></Button>
+                        <Button x:Name="BrowseExifToolButton" DockPanel.Dock="Right" Classes="icon" VerticalAlignment="Center"><materialIcons:MaterialIcon Kind="FolderOpen" Width="16" Height="16"/></Button>
                       </DockPanel>
                       <TextBlock Text="{Binding ExifToolPathHint}"
                                  FontSize="11"
@@ -176,7 +175,7 @@
                                Watermark="{Binding HotFolderPathHint}"
                                Classes="inline-input"
                                VerticalAlignment="Center"/>
-                      <Button x:Name="BrowseHotFolderButton" DockPanel.Dock="Right" MinWidth="32" Padding="0" Classes="ghost" VerticalAlignment="Center"><materialIcons:MaterialIcon Kind="FolderOpen" Width="16" Height="16"/></Button>
+                      <Button x:Name="BrowseHotFolderButton" DockPanel.Dock="Right" Classes="icon" VerticalAlignment="Center"><materialIcons:MaterialIcon Kind="FolderOpen" Width="16" Height="16"/></Button>
                     </DockPanel>
                   </DockPanel>
                 </Border>
@@ -212,7 +211,7 @@
                                Watermark="{Binding BackupDirectoryHint}"
                                Classes="inline-input"
                                VerticalAlignment="Center"/>
-                      <Button x:Name="BrowseBackupDirectoryButton" DockPanel.Dock="Right" MinWidth="32" Padding="0" Classes="ghost" VerticalAlignment="Center"><materialIcons:MaterialIcon Kind="FolderOpen" Width="16" Height="16"/></Button>
+                      <Button x:Name="BrowseBackupDirectoryButton" DockPanel.Dock="Right" Classes="icon" VerticalAlignment="Center"><materialIcons:MaterialIcon Kind="FolderOpen" Width="16" Height="16"/></Button>
                     </DockPanel>
                   </DockPanel>
                 </Border>
@@ -245,7 +244,7 @@
                                Watermark="{Binding QuarantineDirectoryHint}"
                                Classes="inline-input"
                                VerticalAlignment="Center"/>
-                      <Button x:Name="BrowseQuarantineDirectoryButton" DockPanel.Dock="Right" MinWidth="32" Padding="0" Classes="ghost" VerticalAlignment="Center"><materialIcons:MaterialIcon Kind="FolderOpen" Width="16" Height="16"/></Button>
+                      <Button x:Name="BrowseQuarantineDirectoryButton" DockPanel.Dock="Right" Classes="icon" VerticalAlignment="Center"><materialIcons:MaterialIcon Kind="FolderOpen" Width="16" Height="16"/></Button>
                     </DockPanel>
                   </DockPanel>
                 </Border>
@@ -397,7 +396,7 @@
                                Text="{Binding AuditLogDirectory}"
                                Classes="inline-input"
                                VerticalAlignment="Center"/>
-                      <Button x:Name="BrowseAuditLogDirectoryButton" DockPanel.Dock="Right" MinWidth="32" Padding="0" Classes="ghost" VerticalAlignment="Center"><materialIcons:MaterialIcon Kind="FolderOpen" Width="16" Height="16"/></Button>
+                      <Button x:Name="BrowseAuditLogDirectoryButton" DockPanel.Dock="Right" Classes="icon" VerticalAlignment="Center"><materialIcons:MaterialIcon Kind="FolderOpen" Width="16" Height="16"/></Button>
                     </DockPanel>
                   </DockPanel>
                 </Border>
@@ -433,8 +432,8 @@
                              BorderBrush="{DynamicResource SemiColorBorder}"
                              BorderThickness="1"/>
                     <StackPanel Orientation="Horizontal" Spacing="{DynamicResource SpaceSm}">
-                      <Button x:Name="AddExcludedDirectoryButton" Classes="ghost" MinWidth="32" Padding="0"><materialIcons:MaterialIcon Kind="Plus" Width="16" Height="16"/></Button>
-                      <Button x:Name="RemoveExcludedDirectoryButton" Classes="ghost" MinWidth="32" Padding="0"><materialIcons:MaterialIcon Kind="Minus" Width="16" Height="16"/></Button>
+                      <Button x:Name="AddExcludedDirectoryButton" Classes="icon"><materialIcons:MaterialIcon Kind="Plus" Width="16" Height="16"/></Button>
+                      <Button x:Name="RemoveExcludedDirectoryButton" Classes="icon"><materialIcons:MaterialIcon Kind="Minus" Width="16" Height="16"/></Button>
                     </StackPanel>
                   </StackPanel>
                 </Border>
@@ -535,8 +534,8 @@
           </Border>
           <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Stretch">
             <TextBox x:Name="RulesSearchBox" Text="{Binding RulesPanel.SearchFilter, Mode=TwoWay}" Watermark="{ex:Localize rules.search.placeholder}" MinWidth="260" />
-            <Button x:Name="SaveRulesButton" Classes="nav-action" Click="OnSaveRulesClick" Content="{ex:Localize rules.btn.save}" MinWidth="120" HorizontalContentAlignment="Center" />
-            <Button x:Name="ResetRulesButton" Classes="nav-action" Click="OnResetRulesClick" Content="{ex:Localize rules.btn.reset}" MinWidth="120" HorizontalContentAlignment="Center" />
+            <Button x:Name="SaveRulesButton" Classes="ghost" Click="OnSaveRulesClick" Content="{ex:Localize rules.btn.save}" />
+            <Button x:Name="ResetRulesButton" Classes="ghost" Click="OnResetRulesClick" Content="{ex:Localize rules.btn.reset}" />
             <TextBlock x:Name="RulesSaveStatus" Text="{Binding RulesPanel.SaveStatus}" Classes="caption" VerticalAlignment="Center" Margin="8,0,0,0" Opacity="0.6" />
           </StackPanel>
           <DataGrid x:Name="RulesDataGrid"
@@ -549,7 +548,7 @@
                     MinHeight="280"
                     HeadersVisibility="Column"
                     CanUserSortColumns="True"
-                    FontSize="13">
+                    FontSize="12">
             <DataGrid.Columns>
               <DataGridTextColumn Header="{ex:Localize rules.col.family}" Binding="{Binding FamilyName}" Width="90" IsReadOnly="True"/>
               <DataGridTextColumn Header="{ex:Localize rules.col.extensions}" Binding="{Binding Extensions}" Width="140" IsReadOnly="True"/>

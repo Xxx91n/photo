@@ -9,15 +9,17 @@
     <Setter Property="Foreground" Value="{DynamicResource SemiColorText0}" />
   </Style>
 
-  <!-- Button variant baseline (ADR 0050 A2). Padding 12,6 hits the Semi
-       "large-but-not-tall" baseline; removed inline Padding=4,0 / Height=28
-       scattered values that made buttons uneven heights. -->
+  <!-- Button variant baseline (ADR 0050 A2) + Size Ladder (ticket 01).
+       Single source of truth for button sizing: content buttons 32 high
+       (Padding 12,6), nav/nav-action 40 (Padding 12,0), icon-only 32x32
+       (Padding 0). Views must not override Height/Padding/MinWidth inline. -->
   <Style Selector="Button.primary">
     <Setter Property="Background" Value="{DynamicResource SemiColorPrimary}" />
     <Setter Property="Foreground" Value="White" />
     <Setter Property="BorderThickness" Value="0" />
     <Setter Property="CornerRadius" Value="{DynamicResource RadiusSm}" />
     <Setter Property="Padding" Value="12,6" />
+    <Setter Property="Height" Value="32" />
   </Style>
 
   <Style Selector="Button.primary:pointerover">
@@ -36,6 +38,7 @@
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="{DynamicResource RadiusSm}" />
     <Setter Property="Padding" Value="12,6" />
+    <Setter Property="Height" Value="32" />
   </Style>
 
   <Style Selector="Button.ghost:pointerover">
@@ -48,6 +51,27 @@
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="{DynamicResource RadiusSm}" />
     <Setter Property="Padding" Value="12,6" />
+    <Setter Property="Height" Value="32" />
+  </Style>
+
+  <!-- Icon-only button variant (ticket 01): fixed 32x32 square, no padding.
+       Content supplies its own icon size; views use Classes="icon" with no
+       inline MinWidth/Padding. -->
+  <Style Selector="Button.icon">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource SemiColorText0}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SemiColorBorder}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusSm}" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="Height" Value="32" />
+    <Setter Property="MinWidth" Value="32" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+
+  <Style Selector="Button.icon:pointerover">
+    <Setter Property="Background" Value="{DynamicResource SemiColorBackground1}" />
   </Style>
 
   <Style Selector="Button.nav">
@@ -95,6 +119,7 @@
     <Setter Property="BorderThickness" Value="0" />
     <Setter Property="CornerRadius" Value="0" />
     <Setter Property="Padding" Value="16,6" />
+    <Setter Property="Height" Value="32" />
     <Setter Property="Foreground" Value="{DynamicResource SemiColorText2}" />
     <Setter Property="HorizontalContentAlignment" Value="Center" />
     <Setter Property="VerticalContentAlignment" Value="Center" />
