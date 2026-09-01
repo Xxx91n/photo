@@ -22,4 +22,8 @@
     <ProjectReference Include="..\..\src\PhotoPrivacy.Ipc\PhotoPrivacy.Ipc.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="..\..\xunit.runner.json" Link="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
