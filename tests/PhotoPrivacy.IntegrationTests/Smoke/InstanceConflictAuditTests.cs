@@ -129,20 +129,14 @@ public sealed class InstanceConflictAuditTests : IntegrationTestBase
     private static Process StartCli(string repoRoot, string configPath)
     {
         var workerDll = Path.Combine(repoRoot, "src", "PhotoPrivacy.Worker", "bin", "Debug", "net10.0", "PhotoPrivacyWorker.dll");
-
-        string fileName, arguments;
-        if (File.Exists(workerDll))
+        if (!File.Exists(workerDll))
         {
-            fileName = "dotnet";
-            arguments = $"\"{workerDll}\" --mode cli --config \"{configPath}\"";
-        }
-        else
-        {
-            fileName = "dotnet";
-            arguments = $"run --project src/PhotoPrivacy.Worker/PhotoPrivacy.Worker.csproj --framework net10.0 -- --mode cli --config \"{configPath}\"";
+            throw new FileNotFoundException(
+                $"Worker DLL not found: {workerDll}. Test hosts are DLL-first; build it first with: dotnet build PhotoPrivacy.sln",
+                workerDll);
         }
 
-        var psi = new ProcessStartInfo(fileName, arguments)
+        var psi = new ProcessStartInfo("dotnet", $"\"{workerDll}\" --mode cli --config \"{configPath}\"")
         {
             WorkingDirectory = repoRoot,
             RedirectStandardOutput = true,
@@ -155,20 +149,14 @@ public sealed class InstanceConflictAuditTests : IntegrationTestBase
     private static async Task<(int ExitCode, string Stdout, string Stderr)> RunCliOnceAsync(string repoRoot, string configPath, TimeSpan timeout)
     {
         var workerDll = Path.Combine(repoRoot, "src", "PhotoPrivacy.Worker", "bin", "Debug", "net10.0", "PhotoPrivacyWorker.dll");
-
-        string fileName, arguments;
-        if (File.Exists(workerDll))
+        if (!File.Exists(workerDll))
         {
-            fileName = "dotnet";
-            arguments = $"\"{workerDll}\" --mode cli --once true --config \"{configPath}\"";
-        }
-        else
-        {
-            fileName = "dotnet";
-            arguments = $"run --project src/PhotoPrivacy.Worker/PhotoPrivacy.Worker.csproj --framework net10.0 -- --mode cli --once true --config \"{configPath}\"";
+            throw new FileNotFoundException(
+                $"Worker DLL not found: {workerDll}. Test hosts are DLL-first; build it first with: dotnet build PhotoPrivacy.sln",
+                workerDll);
         }
 
-        var psi = new ProcessStartInfo(fileName, arguments)
+        var psi = new ProcessStartInfo("dotnet", $"\"{workerDll}\" --mode cli --once true --config \"{configPath}\"")
         {
             WorkingDirectory = repoRoot,
             RedirectStandardOutput = true,
