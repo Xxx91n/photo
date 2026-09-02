@@ -29,7 +29,8 @@ public sealed class ConfigEditorRoundTripTests
                 AuditLogDirectory: @"D:\hot\_audit",
                 LogLevel: "debug",
                 QuarantineEnabled: true,
-                QuarantineDirectory: @"D:\hot\_quarantine");
+                QuarantineDirectory: @"D:\hot\_quarantine",
+                SidebarWidth: 321.5);
 
             ConfigEditor.UpdateConfig(configPath, command);
 
@@ -50,6 +51,9 @@ public sealed class ConfigEditorRoundTripTests
             Assert.True(uiEl.TryGetProperty("hide_tray_icon", out _));
             Assert.True(uiEl.TryGetProperty("theme_variant", out _));
             Assert.True(uiEl.TryGetProperty("locale", out _));
+            // 票 17：UI 拖拽宽度经防抖保存后必须真实落盘并可读回（此前为死字段）
+            Assert.Equal(command.SidebarWidth, reloaded.Ui.SidebarWidth);
+            Assert.True(uiEl.TryGetProperty("sidebar_width", out _));
         }
         finally
         {

@@ -41,8 +41,7 @@ public sealed class AppConfigLoaderTests
               },
               "backup": {
                 "enabled": false,
-                "suffix": ".bak",
-                "retention": "keep"
+                "suffix": ".bak"
               },
               "quarantine": {
                 "enabled": true,
@@ -106,8 +105,7 @@ public sealed class AppConfigLoaderTests
               },
               "backup": {
                 "enabled": false,
-                "suffix": ".bak",
-                "retention": "keep"
+                "suffix": ".bak"
               },
               "quarantine": {
                 "enabled": true,
@@ -173,8 +171,7 @@ public sealed class AppConfigLoaderTests
               },
               "backup": {
                 "enabled": false,
-                "suffix": ".bak",
-                "retention": "keep"
+                "suffix": ".bak"
               },
               "quarantine": {
                 "enabled": true,

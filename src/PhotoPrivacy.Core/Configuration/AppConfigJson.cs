@@ -46,7 +46,8 @@ public static class AppConfigJson
                 Enabled = config.Backup.Enabled,
                 Directory = config.Backup.Directory,
                 Suffix = config.Backup.Suffix,
-                MaxSizeMb = config.Backup.MaxSizeMb
+                MaxSizeMb = config.Backup.MaxSizeMb,
+                RetainDays = config.Backup.RetainDays
             },
             Quarantine = new QuarantineDto
             {
@@ -66,7 +67,8 @@ public static class AppConfigJson
                 HideTrayIcon = config.Ui.HideTrayIcon,
                 ThemeVariant = config.Ui.ThemeVariant,
                 ThemeId = config.Ui.ThemeId,
-                Locale = config.Ui.Locale
+                Locale = config.Ui.Locale,
+                SidebarWidth = config.Ui.SidebarWidth
             }
         };
 
@@ -188,6 +190,9 @@ public static class AppConfigJson
 
         [JsonPropertyName("max_size_mb")]
         public int MaxSizeMb { get; init; } = 5000;
+
+        [JsonPropertyName("retain_days")]
+        public int RetainDays { get; init; } = 30;
     }
 
     private sealed class QuarantineDto
@@ -230,5 +235,8 @@ public static class AppConfigJson
 
         [JsonPropertyName("locale")]
         public string? Locale { get; init; }
+
+        [JsonPropertyName("sidebar_width")]
+        public double SidebarWidth { get; init; } = 200.0;
     }
 }
