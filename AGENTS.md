@@ -186,6 +186,7 @@ dotnet vstest tests\PhotoPrivacy.IntegrationTests\bin\Debug\net10.0\PhotoPrivacy
 | Background 和 Service 共享同一 Mutex | Background 持有 Mutex 时 Service 无法启动（见 ADR 0036） |
 | 发布脚本只复制 config.sample.json 不复制 config.json | 服务 binPath 引用 config.json 不存在，Worker 启动失败 |
 | install-service.ps1 使用 `"""` 三重引号拼接 binPath | PowerShell 5.1 ParserError，脚本无法执行 |
+| GitButler 历史改写/丢弃操作（move/undo/resolve cancel/squash/discard/uncommit/branch delete/pull）前不先快照 .scratch 流程产物 | .scratch 不受版本控制，栈手术曾整树蒸发（ADR 0058 事故 1）；双轨防护见 .scratch/architecture-recovery/WORKFLOW.md §4.4 |
 
 | 依赖手动"应用配置"按钮做配置持久化 | 用户忘记点击 → 重启后配置丢失（见 ADR 0037） |
 | ClearLogs 只清内存不重置 _lastPosition | FSW 下次轮询重新填充旧日志→隐私泄露（见 ADR 0037） |
@@ -198,6 +199,7 @@ dotnet vstest tests\PhotoPrivacy.IntegrationTests\bin\Debug\net10.0\PhotoPrivacy
 - **提交信息**: 中文或英文均可，简洁描述变更内容
 - **不要自动提交** — 除非用户明确要求
 - **提交前检查**: 运行安全扫描，确保无新增 SCS 警告
+- **流程产物持久化**: .scratch/ 不受版本控制；流程文件定稿即沉淀 docs/process/（副本随票提交），执行 GitButler 历史改写/丢弃类操作前必须先做仓库外快照（触发时机与动作见 .scratch/architecture-recovery/WORKFLOW.md §4.4）
 
 ---
 
