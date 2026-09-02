@@ -18,6 +18,14 @@ public sealed class ProcessHygieneGuardTests
     }
 
     [Fact]
+    public void WaitForExit_Should_Never_Be_Parameterless()
+    {
+        var violations = ScanSourceLines(@"\.WaitForExit\s*\(\s*\)");
+        Assert.True(violations.Count == 0,
+            "同步 WaitForExit() 无参调用必须清零（必须传超时毫秒数，超时后 Kill(entireProcessTree: true)）：\n" + string.Join("\n", violations));
+    }
+
+    [Fact]
     public void Processes_Should_Never_Be_Killed_By_Name()
     {
         var violations = ScanSourceLines(@"\." + "GetProcesses" + "ByName" + @"s*\(");
