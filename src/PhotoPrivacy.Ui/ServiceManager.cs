@@ -107,6 +107,8 @@ public sealed class ServiceStateProbe : IServiceStateProbe
 
 public sealed class ScCommandExecutor : IScCommandExecutor
 {
+    private const int CommandTimeoutMilliseconds = 60_000;
+
     public ServiceCommandResult Execute(ProcessStartInfo startInfo)
     {
         using var process = Process.Start(startInfo);
@@ -115,15 +117,31 @@ public sealed class ScCommandExecutor : IScCommandExecutor
             return ServiceCommandResult.Failed("failed to start sc.exe");
         }
 
-        string stdout = string.Empty;
-        string stderr = string.Empty;
+        Task<string>? stdoutTask = null;
+        Task<string>? stderrTask = null;
         if (!startInfo.UseShellExecute)
         {
-            stdout = process.StandardOutput.ReadToEnd();
-            stderr = process.StandardError.ReadToEnd();
+            stdoutTask = process.StandardOutput.ReadToEndAsync();
+            stderrTask = process.StandardError.ReadToEndAsync();
         }
 
-        process.WaitForExit();
+        // 票10：同步 WaitForExit 必须有界，超时即杀整树，避免 sc.exe 卡死永久阻塞服务管理操作。
+        if (!process.WaitForExit(CommandTimeoutMilliseconds))
+        {
+            try
+            {
+                process.Kill(entireProcessTree: true);
+            }
+            catch
+            {
+                // ignore kill race
+            }
+
+            return ServiceCommandResult.Failed($"sc.exe did not exit within {CommandTimeoutMilliseconds} ms and was killed");
+        }
+
+        var stdout = stdoutTask?.GetAwaiter().GetResult() ?? string.Empty;
+        var stderr = stderrTask?.GetAwaiter().GetResult() ?? string.Empty;
 
         if (process.ExitCode == 0)
         {
