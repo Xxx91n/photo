@@ -401,26 +401,19 @@ public sealed class DryRunOutputFlowTests : IntegrationTestBase
         }
     }
 
-    private static async Task<CliRunResult> RunCliAsync(string configPath, TimeSpan timeout, string extraArgs = "", string framework = "net10.0")
+    private static async Task<CliRunResult> RunCliAsync(string configPath, TimeSpan timeout, string extraArgs = "")
     {
         var repoRoot = FindRepoRoot();
         var workerDll = Path.Combine(repoRoot, "src", "PhotoPrivacy.Worker", "bin", "Debug", "net10.0", "PhotoPrivacyWorker.dll");
-
-        string fileName, arguments;
-        if (File.Exists(workerDll))
+        if (!File.Exists(workerDll))
         {
-            fileName = "dotnet";
-            var mergedArgs = string.IsNullOrWhiteSpace(extraArgs) ? "" : " " + extraArgs.Trim();
-            arguments = $"\"{workerDll}\" --mode cli --config \"{configPath}\" --once true{mergedArgs}";
-        }
-        else
-        {
-            fileName = "dotnet";
-            var mergedArgs = string.IsNullOrWhiteSpace(extraArgs) ? "" : " " + extraArgs.Trim();
-            arguments = $"run --project src/PhotoPrivacy.Worker/PhotoPrivacy.Worker.csproj --framework {framework} -- --mode cli --config \"{configPath}\" --once true{mergedArgs}";
+            throw new FileNotFoundException(
+                $"Worker DLL not found: {workerDll}. Test hosts are DLL-first; build it first with: dotnet build PhotoPrivacy.sln",
+                workerDll);
         }
 
-        var psi = new ProcessStartInfo(fileName, arguments)
+        var mergedArgs = string.IsNullOrWhiteSpace(extraArgs) ? "" : " " + extraArgs.Trim();
+        var psi = new ProcessStartInfo("dotnet", $"\"{workerDll}\" --mode cli --config \"{configPath}\" --once true{mergedArgs}")
         {
             WorkingDirectory = repoRoot,
             RedirectStandardOutput = true,
