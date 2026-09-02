@@ -1,3 +1,7 @@
+# Ticket 09 (B09+B13, arc-recovery round 3): DLL-first smoke.
+# Launch the built Worker DLL directly instead of triggering a project rebuild,
+# capture worker stdout/stderr into temp files, and print both tails on exit so
+# failures (e.g. empty output) are diagnosable at the point of failure.
 param(
   [Parameter(Mandatory = $true)][string]$HotFolder,
   [Parameter(Mandatory = $true)][string]$AuditFolder,
