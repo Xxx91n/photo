@@ -27,10 +27,7 @@ New-Item -ItemType Directory -Force -Path $auditFolder | Out-Null
 
 try {
   Write-Host "[2/3] smoke test (dry-run)"
-  powershell -ExecutionPolicy Bypass -File "$repoRoot\scripts\smoke.ps1" -HotFolder $hotFolder -AuditFolder $auditFolder -DryRun 1
-  if ($LASTEXITCODE -ne 0) {
-    throw "Smoke test failed"
-  }
+  Invoke-ScriptWithCapture -Label "smoke.ps1" -ScriptPath (Join-Path $repoRoot "scripts\smoke.ps1") -ArgumentString ('-HotFolder "' + $hotFolder + '" -AuditFolder "' + $auditFolder + '" -DryRun 1')
 }
 finally {
   if (Test-Path $tmpRoot) {
