@@ -66,10 +66,17 @@ public sealed class UnixDomainSocketIpcTransport : IIpcTransport
 
     public ValueTask DisposeAsync()
     {
+        bool ownsEndpoint = _listener is not null;
         _listener?.Dispose();
         _listener = null;
-        // Best-effort cleanup of socket file
-        try { if (File.Exists(_socketPath)) File.Delete(_socketPath); } catch { /* ignore */ }
+        // Best-effort cleanup of socket file — only by the endpoint owner (server side).
+        // Client instances (per-call WorkerIpcClient.SendAsync transports) share the same socket
+        // path; deleting it there unlinks the live server endpoint after the first call, making
+        // every later connect fail (B11 finding: 2nd connect fails with AddressNotAvailable).
+        if (ownsEndpoint)
+        {
+            try { if (File.Exists(_socketPath)) File.Delete(_socketPath); } catch { /* ignore */ }
+        }
         return ValueTask.CompletedTask;
     }
 }
