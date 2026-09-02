@@ -84,7 +84,7 @@ _Avoid_: Vacuum, defragment
 _Avoid_: IPC backend, transport layer
 
 **Unix Domain Socket**:
-Linux/macOS 原生 IPC 机制，使用 .NET System.Net.Sockets + AddressFamily.Unix + UnixDomainSocketEndPoint，监听 /run/photoprivacy/worker.sock（Linux）或 ~/Library/Application Support/photoprivacy/worker.sock（macOS）。
+Linux/macOS 原生 IPC 机制，使用 .NET System.Net.Sockets + AddressFamily.Unix + UnixDomainSocketEndPoint。按运行模式双 socket：Service 用 `worker.sock`、Background 用 `worker-background.sock`。Linux 监听 /run/photoprivacy/worker.sock 与 /run/photoprivacy/worker-background.sock；macOS 监听 ~/Library/Application Support/photoprivacy/ 下同名双 socket。
 _Avoid_: UDS, Unix socket
 
 **Service State Probe**:
@@ -104,8 +104,12 @@ UI 进程后台心跳服务，定时 ping Worker（复用现有 IPC Ping），�
 _Avoid_: Keepalive, health monitor
 
 **Stale Socket Cleanup**:
-Unix Domain Socket 服务端绑前无条件删除残留 socket 文件（File.Exists + File.Delete），防止前次崩溃残留导致 EADDRINUSE。NamedPipe 无此问题（内核对象）。
+Unix Domain Socket 服务端绑前（ListenAsync）无条件删除残留 socket 文件（File.Exists + File.Delete），防止前次崩溃残留导致 EADDRINUSE。此无条件删除仅限 bind 前清理；DisposeAsync 的 socket 删除属主条件（仅端点属主执行，见 Endpoint Ownership，ADR 0057）。NamedPipe 无此问题（内核对象）。
 _Avoid_: Socket unlink, endpoint cleanup
+
+**Endpoint Ownership**:
+UnixDomainSocketIpcTransport.DisposeAsync 删除 socket 文件前判定属主 `ownsEndpoint = _listener is not null`，仅端点属主（服务端实例）清理。客户端每次 SendAsync 用完即弃的 transport 共享同一 socket 路径，客户端不删，否则首调后删掉服务端活端点致后续连接 AddressNotAvailable（ADR 0057 / 票11 修复）。
+_Avoid_: DisposeAsync 无条件删除 socket；客户端 transport 删除共享端点
 
 **SIGHUP Reload**:
 Linux/macOS 服务管理发送 SIGHUP 触发配置重载，与 IPC ReloadConfig 复用同一代码路径。systemd unit 配 ExecReload=/bin/kill -HUP \$MAINPID。
@@ -189,7 +193,7 @@ i18n 语言偏好的 config.json 持久化字段 `ui.locale`（如 "zh-CN"/"en"/
 _Avoid_: Language setting, culture config
 
 **Hot Folder Guard**:
-AppConfigValidator 对空 hot_folder 的校验策略：非 dry_run 模式下 hot_folder 必须为非空绝对路径，否则抛 AppConfigValidationException 阻止 Worker 启动。静默跳过空路径会导致用户误以为 Worker 在工作但实际什么都没处理。
+AppConfigValidator 对空 hot_folder 的校验策略：非 dry_run 模式下 hot_folder 必须为非空，否则抛 AppConfigValidationException 阻止 Worker 启动。静默跳过空路径会导致用户误以为 Worker 在工作但实际什么都没处理。
 _Avoid_: Empty folder fallback, silent skip
 
 **IPC Log Pull**:
@@ -291,7 +295,7 @@ MiddleClickScrollBehavior.cs 的 DispatcherTimer 16ms 换为 TopLevel.RequestAni
 _Avoid_: DispatcherTimer 16ms 非 vsync 对齐导致高刷屏抖动；偏离 Files.App 成熟常量值
 
 **Sidebar Nav Item (44px Icon+Text)**:
-企业级桌面侧栏导航项标准：44px 高、icon(20px)+text、4px 左侧 accent bar active 指示。Material Design 3 Navigation drawer / Fluent 2 NavViewItem / Apple HIG sidebar 均遵此规格。项目 Button.nav 三按钮（Config/Logs/ServiceManager）统一 Padding、加 Material.Icons（Settings/FileDocumentOutline/ServerNetwork）、active 态左侧 accent bar。见 ADR 0052 A1。
+企业级桌面侧栏导航项标准：44px 高、icon(20px)+text、4px 左侧 accent bar active 指示。Material Design 3 Navigation drawer / Fluent 2 NavViewItem / Apple HIG sidebar 均遵此规格。项目 Button.nav 4 按钮（Config/Logs/Rules/ServiceManager）统一 Padding、加 Material.Icons（Settings/FileDocumentOutline/ShieldCheckOutline/ServerNetwork）、active 态左侧 accent bar。见 ADR 0052 A1。
 _Avoid_: 纯文字无图标、Padding 不统一、无 active indicator
 
 **Exponential Scroll Smoothing**:
@@ -299,7 +303,7 @@ _Avoid_: 纯文字无图标、Padding 不统一、无 active indicator
 _Avoid_: 线性阶跃速度模型；DispatcherTimer 而非 RAF；松键硬切停机
 
 **Theme Swatch Grid**:
-主题选择控件用色板网格（RadioButton + WrapPanel，每个 swatch 显示该主题 primary 色 + name）替代纯 ComboBox。双轴独立：`theme_id`（预设轴 → `MergedDictionaries` StyleInclude swap）与 `theme_variant`（明暗轴 → `RequestedThemeVariant` Default/Light/Dark）互不覆盖；持久化只存原始两轴，派生值不回写（VS Code #196119 教训，commit cab8d55 修正）。明暗切换（system/light/dark）保留独立 ComboBox。当前 5 主题文件（Catppuccin/Dracula/NordDark/OneDarkPro/TokyoNight）已有但无 UI 入口，加 swatch grid + `ui.theme_id` 持久化后可点选。MD3 角色补强（SurfaceDim/Bright + ContainerLow/High + OnColor），深色 #121212 基调去饱和 Primary 70-80%。见 ADR 0052 A3。
+主题选择控件用色板网格（RadioButton + WrapPanel，每个 swatch 显示该主题 primary 色 + name）替代纯 ComboBox。双轴独立：`theme_id`（预设轴 → `MergedDictionaries` StyleInclude swap）与 `theme_variant`（明暗轴 → `RequestedThemeVariant` Default/Light/Dark）互不覆盖；持久化只存原始两轴，派生值不回写（VS Code #196119 教训，commit cab8d55 修正）。明暗切换（system/light/dark）保留独立 ComboBox。5 主题（catppuccin/dracula/nord/onedarkpro/tokyonight）已有 swatch grid UI 入口 + `ui.theme_id` 持久化，可点选（已落地）。MD3 角色补强（SurfaceDim/Bright + ContainerLow/High + OnColor），深色 #121212 基调去饱和 Primary 70-80%。见 ADR 0052 A3。
 _Avoid_: 主题文件存在但无 UI 入口；硬编码色值而非语义角色 token；高饱和 Primary
 
 **Titlebar Content Dedup**:
@@ -311,7 +315,7 @@ _Avoid_: 标题栏显示 AppTitle + ModeLabel 与 sidebar 头部重复；自绘 
 _Avoid_: 固定 200px 不可调；GridSplitter 无 Min/Max 约束；拖完不持久化
 
 **Default Path Watermark**:
-配置页 TextBox 加 `Watermark` 属性绑定 XxxPathHint，显示当前默认检测路径（DefaultPaths.cs 三端兼容值）。DefaultPaths 加 DefaultBackupDirectory → `<hotFolder>/.pp_backup`。AppConfig.Default 引用 DefaultPaths 而非 string.Empty。config.sample.json 填默认值。Avalonia TextBox Watermark 是原生属性，零新依赖。见 ADR 0052 A6。
+配置页 TextBox 加 `Watermark` 属性绑定 XxxPathHint，显示当前默认检测路径（DefaultPaths.cs 三端兼容值）。DefaultPaths 加 DefaultBackupDirectory → `<hotFolder>/bak`（对齐 BackupPathResolver.DefaultBackupDirName）。AppConfig.Default 引用 DefaultPaths 而非 string.Empty。config.sample.json 填默认值。Avalonia TextBox Watermark 是原生属性，零新依赖。见 ADR 0052 A6。
 _Avoid_: 配置目录 TextBox 空 string 默认值；无 Watermark 提示用户当前默认
 
 **Native Tray Menu (Immutable)**:
@@ -380,7 +384,7 @@ _Avoid_: 在 MainWindow.axaml/RulesPanel 行内 Padding/MinWidth 覆盖按钮；
 _Avoid_: UseShellExecute=true; Process.Start explorer
 
 **Typed WorkerIpcClient (单入口)**:
-UI↔Worker 所有 IPC 方法只经 `WorkerIpcClient`（Ping/GetStatus/Pause/Resume/Shutdown/ReloadConfig/GetRecentLogs/GetExifToolVersion + ProbeStatusSafeAsync 容错降级）。WorkerProcessManager 只管进程启停编排，禁持任何 IPC 方法。回归 guard: WorkerProcessManagerTests + ConnectOrLaunchAsync_Status_Probe 守卫。见 ADR 0056 票 04。
+UI↔Worker 所有 IPC 方法只经 `WorkerIpcClient`（Ping/GetStatus/Pause/Resume/Shutdown/ReloadConfig/GetRecentLogs + ProbeStatusSafeAsync 容错降级）；exiftool 版本经 GetStatusAsync 状态 DTO 的 ExifToolVersion 字段获取（不再有独立 GetExifToolVersion 方法）。WorkerProcessManager 只管进程启停编排，禁持任何 IPC 方法。回归 guard: WorkerProcessManagerTests + ConnectOrLaunchAsync_Status_Probe 守卫。见 ADR 0056 票 04。
 _Avoid_: WorkerProcessManager 里复述 IPC 方法；UI 直建 transport
 
 **AuditTail Backfill Coordinator**:
@@ -388,5 +392,5 @@ _Avoid_: WorkerProcessManager 里复述 IPC 方法；UI 直建 transport
 _Avoid_: MainWindow 再建 BackfillRecentLogsAsync;尾读类组件外置去重
 
 **ServiceModeController**:
-服务模式编排（Install/Uninstall/Start/Stop/Switch*/Poll*/Shutdown*/Ensure*）唯一承载体（src/PhotoPrivacy.Ui/Services/ServiceModeController.cs），MainWindow 只剩转发器。依赖缝：IServiceManagerOps/IUiHost/IViewModelView，测试用 FakeOps/FakeHost/FakeView 注入。exiftool 版本探测仅经 IPC GetExifToolVersion，UI 零 spawn。见 ADR 0056 票 06。ADR 0053 M2 曾误称该类为 `StartupCoordinator`（该类从未实现），已由 ADR 0053 文末 Errata 段更正为 ServiceModeController。
+服务模式编排（Install/Uninstall/Start/Stop/Switch*/Poll*/Shutdown*/Ensure*）唯一承载体（src/PhotoPrivacy.Ui/Services/ServiceModeController.cs），MainWindow 只剩转发器。依赖缝：IServiceManagerOps/IUiHost/IViewModelView，测试用 FakeOps/FakeHost/FakeView 注入。exiftool 版本探测仅经 IPC GetStatusAsync（状态 DTO 携带 ExifToolVersion），UI 零 spawn。见 ADR 0056 票 06。ADR 0053 M2 曾误称该类为 `StartupCoordinator`（该类从未实现），已由 ADR 0053 文末 Errata 段更正为 ServiceModeController。
 _Avoid_: MainWindow.axaml.cs 再出现编排方法实现体；UI Process.Start(exiftool);自创启动协调类回潮（ADR 0053 M2 误称 StartupCoordinator，已由其文末 Errata 更正为 ServiceModeController）

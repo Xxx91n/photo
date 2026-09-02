@@ -15,7 +15,7 @@ RuleEngine.ResolveBackupPath 当 backup.Directory 和 hotFolder 都空时
 
 ## 决策
 
-1. AppConfigValidator 非 dry_run 模式下 hot_folder 必须为非空绝对路径，
+1. AppConfigValidator 非 dry_run 模式下 hot_folder 必须为非空，
    否则抛 AppConfigValidationException 阻止 Worker 启动
 2. RuleEngine.ResolveBackupPath 当 hotFolder 为空时返回 null（不备份），
    不生成无意义的相对路径
