@@ -43,9 +43,14 @@ function Invoke-ScriptWithCapture([string]$Label, [string]$ScriptPath, [string]$
 }
 
 Write-Host "[1/3] dotnet test PhotoPrivacy.sln"
-dotnet test "$repoRoot\PhotoPrivacy.sln"
-if ($LASTEXITCODE -ne 0) {
-  throw "Tests failed"
+# 票16: dotnet test 经临时包装脚本纳入 Invoke-ScriptWithCapture，失败打印双尾部后 throw（四步全链路捕获）。
+$testScript = Join-Path ([System.IO.Path]::GetTempPath()) ("photo-ready-dotnet-test-" + [Guid]::NewGuid().ToString("N") + ".ps1")
+[System.IO.File]::WriteAllText($testScript, '& dotnet test "' + $repoRoot + '\PhotoPrivacy.sln"' + [Environment]::NewLine + 'exit $LASTEXITCODE', (New-Object System.Text.UTF8Encoding($false)))
+try {
+  Invoke-ScriptWithCapture -Label "dotnet test" -ScriptPath $testScript -ArgumentString ""
+}
+finally {
+  if (Test-Path $testScript) { Remove-Item $testScript -Force }
 }
 
 $tmpRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("photo-release-smoke-" + [Guid]::NewGuid().ToString("N"))
@@ -76,10 +81,7 @@ if ($includeForceKill) {
   }
 
   Write-Host "[4/4] force-kill cleanup gate"
-  powershell -ExecutionPolicy Bypass -File "$repoRoot\scripts\verify-force-kill-cleanup.ps1" -Version $Version
-  if ($LASTEXITCODE -ne 0) {
-    throw "Force-kill cleanup gate failed"
-  }
+  Invoke-ScriptWithCapture -Label "verify-force-kill-cleanup.ps1" -ScriptPath (Join-Path $repoRoot "scripts\verify-force-kill-cleanup.ps1") -ArgumentString ('-Version "' + $Version + '"')
 }
 
 Write-Host "Release readiness passed."
