@@ -39,3 +39,4 @@ tmp/
 .codex-tmp/
 .scratch/
 TestResults/
+outputs/
