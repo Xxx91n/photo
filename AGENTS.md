@@ -240,6 +240,8 @@ dotnet vstest tests\PhotoPrivacy.IntegrationTests\bin\Debug\net10.0\PhotoPrivacy
 | .NET SDK | 10.0.201 |
 | Semgrep | pip install（Python 3.11+） |
 | Python | 3.11+（pip install semgrep，PATH 可用） |
+| 流程快照（WORKFLOW §4.4 轨 2） | `node scripts/workflow-snapshot.js [源目录] [输出根]`（动栈前强制；整树复制 + manifest 逐文件字节数/SHA256，快照落仓库外 photo-snapshots/） |
+| 快照校验（WORKFLOW §4.4 轨 2） | `node scripts/workflow-verify.js <快照目录> [源目录]`（missing/changed/added + ZERO-LOSS 判定，非 0 退出码 = 丢失） |
 
 ---
 

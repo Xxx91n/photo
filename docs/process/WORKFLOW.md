@@ -23,6 +23,7 @@
 - **轨 2 — 仓库外快照（动栈前强制）**
   - 触发时机：执行任何 GitButler 历史改写或丢弃类操作之前——move / undo / resolve cancel / squash / discard / uncommit / branch delete / pull，无论目标分支是否属于本票。
   - 动作：整树复制 `.scratch/architecture-recovery/` 到仓库外时间戳目录（约定 `D:/Aworker/photo-snapshots/<yyyyMMdd-HHmmss>/`），附 manifest.json（逐文件字节数 + SHA256）；快照完成前禁止动栈。
+  - **工具段（票14 转正，2026-09-02）**：轨 2 快照/校验由转正脚本 `scripts/workflow-snapshot.js`（整树复制 + manifest.json 逐文件字节数/SHA256；默认源 `.scratch/architecture-recovery`，输出仓库外 `photo-snapshots/<yyyyMMdd-HHmmss>/`，用法 `node scripts/workflow-snapshot.js [源目录] [输出根]`）与 `scripts/workflow-verify.js`（现树 vs 快照逐文件 SHA256 比对，输出 missing/changed/added 与 ZERO-LOSS 判定，用法 `node scripts/workflow-verify.js <快照目录> [源目录]`）承载。原 `.codex-tmp/b12-snapshot.js`/`b12-verify.js` 临时身份就此退役；两脚本形态由 `WorkflowSnapshotScriptGuardTests` 源守卫锁定，工具段与实际不符即红灯。
 - **实测留证**：2026-09-02 完成一轮无破坏实测（快照 → but pull → 演练分支 move/squash/uncommit/discard 序列 → 逐点哈希比对零丢失），证据链见 `.scratch/architecture-recovery/report-12-workflow-artifact-persistence.md` 及其 docs 沉淀副本。
 
 ## §5 门禁
