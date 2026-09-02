@@ -7,7 +7,7 @@
 | 票 | 标题 | 来源 | Blocked by | 波次 | 状态 |
 |---|---|---|---|---|---|
 | 17 | 配置 round-trip 对称性止血 | 候选②配置权威 | None | 1 | ready-for-agent |
-| 18 | 规则存储完整往返 | 候选①规则面板 | None | 1 | ready-for-agent |
+| 18 | 规则存储完整往返 | 候选①规则面板 | None | 1 | done（report-18-rules-store-roundtrip.md） |
 | 19 | 规则引擎单一真相源 | 候选①规则面板 | 18 | 2 | ready-for-agent |
 | 20 | UI 根目录层化 + 死代码清理 | 候选③UI层化 | None | 1 | ready-for-agent |
 | 21 | CONTEXT.md 三层一致性收口 | 三层一致性 | 17, 19 | 3 | ready-for-agent |

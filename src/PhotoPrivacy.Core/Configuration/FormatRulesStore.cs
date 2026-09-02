@@ -5,10 +5,26 @@ namespace PhotoPrivacy.Core.Configuration;
 /// <summary>
 /// ADR 0053 M6d: Custom wipe rules persistent store.
 /// Config path: config/rules.json
+/// 票18: canonical schema — one "{family}_{group}" bool key per metadata group
+/// (strip_all / preserve_icc / strip_exif / strip_xmp / strip_iptc / strip_time)
+/// for every panel family, so Save→Load round-trips all group toggles, not just strip_all.
 /// </summary>
 public sealed class FormatRulesStore
 {
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
+
+    /// <summary>Per-family coded defaults, mirroring the rules panel row defaults (ADR 0053 M6).</summary>
+    private static readonly (string FamilyKey, bool StripAll, bool PreserveIcc, bool StripExif, bool StripXmp, bool StripIptc, bool StripTime)[] FamilyDefaults =
+    {
+        ("jpeg", true, true, false, false, false, false),
+        ("raw", false, false, true, true, true, false),
+        ("video", true, false, false, false, false, true),
+        ("pdf", true, false, false, false, false, false),
+        ("eps", true, false, false, false, false, false),
+    };
+
+    /// <summary>rules.json key for one family/group toggle.</summary>
+    public static string Key(string familyKey, string group) => $"{familyKey}_{group}";
 
     public string StorePath { get; }
 
@@ -19,15 +35,17 @@ public sealed class FormatRulesStore
 
     public Dictionary<string, bool> LoadDefaults()
     {
-        return new()
+        var defaults = new Dictionary<string, bool>();
+        foreach (var (familyKey, stripAll, preserveIcc, stripExif, stripXmp, stripIptc, stripTime) in FamilyDefaults)
         {
-            ["jpeg_strip_all"] = true,
-            ["jpeg_preserve_icc"] = true,
-            ["raw_strip_exif_xmp_iptc"] = true,
-            ["video_strip_all_time"] = true,
-            ["pdf_strip_all"] = true,
-            ["pdf_requires_warning"] = true,
-        };
+            defaults[Key(familyKey, "strip_all")] = stripAll;
+            defaults[Key(familyKey, "preserve_icc")] = preserveIcc;
+            defaults[Key(familyKey, "strip_exif")] = stripExif;
+            defaults[Key(familyKey, "strip_xmp")] = stripXmp;
+            defaults[Key(familyKey, "strip_iptc")] = stripIptc;
+            defaults[Key(familyKey, "strip_time")] = stripTime;
+        }
+        return defaults;
     }
 
     public Dictionary<string, bool> Load()

@@ -9,6 +9,7 @@ namespace PhotoPrivacy.Ui.ViewModels;
 /// <summary>
 /// ADR 0053 M6b-M6f: Rules Panel ViewModel with Expert mode gate.
 /// BleachBit 5.1 pattern: ToggleSwitch + confirmation dialog, dangerous columns disabled in non-expert.
+/// 票18: LoadRules backfills every group toggle from the store; SaveCustomRules persists all six toggles.
 /// </summary>
 public sealed class RulesPanelViewModel : INotifyPropertyChanged
 {
@@ -80,7 +81,8 @@ public sealed class RulesPanelViewModel : INotifyPropertyChanged
         _allRules.Add(new FormatRuleRow("Video", WipeFormatFamily.Video, "mov mp4 m4v", stripAll: true, stripTime: true)
         {
             IsDangerous = true,
-            IsEnabled = defaults.GetValueOrDefault("raw_strip_exif_xmp_iptc"),
+            // 票18: IsEnabled 不落盘；此前误读 RAW 族键 raw_strip_exif_xmp_iptc（键名错配），现按默认启用
+            IsEnabled = true,
         });
         _allRules.Add(new FormatRuleRow("PDF", WipeFormatFamily.Pdf, "pdf", stripAll: true)
         {
@@ -94,7 +96,22 @@ public sealed class RulesPanelViewModel : INotifyPropertyChanged
             RequiresUserWarning = true,
             IsEnabled = _isExpertMode,
         });
+        BackfillFromStore(defaults);
         ApplyFilter();
+    }
+
+    /// <summary>票18: defaults 正确回填——每行逐组开关从存储值覆盖，缺键时保留行编码默认值。</summary>
+    private void BackfillFromStore(Dictionary<string, bool> stored)
+    {
+        foreach (var row in _allRules)
+        {
+            row.StripAll = stored.GetValueOrDefault(FormatRulesStore.Key(row.FamilyKey, "strip_all"), row.StripAll);
+            row.PreserveIcc = stored.GetValueOrDefault(FormatRulesStore.Key(row.FamilyKey, "preserve_icc"), row.PreserveIcc);
+            row.StripExif = stored.GetValueOrDefault(FormatRulesStore.Key(row.FamilyKey, "strip_exif"), row.StripExif);
+            row.StripXmp = stored.GetValueOrDefault(FormatRulesStore.Key(row.FamilyKey, "strip_xmp"), row.StripXmp);
+            row.StripIptc = stored.GetValueOrDefault(FormatRulesStore.Key(row.FamilyKey, "strip_iptc"), row.StripIptc);
+            row.StripTime = stored.GetValueOrDefault(FormatRulesStore.Key(row.FamilyKey, "strip_time"), row.StripTime);
+        }
     }
 
     private void ApplyFilter()
@@ -116,7 +133,13 @@ public sealed class RulesPanelViewModel : INotifyPropertyChanged
         var rules = new Dictionary<string, bool>();
         foreach (var row in _allRules)
         {
-            rules[$"{row.FamilyName.ToLowerInvariant()}_strip_all"] = row.StripAll;
+            // 票18: 全部逐组开关持久化（此前仅 strip_all）；FamilyKey 取自枚举，杜绝 "eps/ps" 斜杠键
+            rules[FormatRulesStore.Key(row.FamilyKey, "strip_all")] = row.StripAll;
+            rules[FormatRulesStore.Key(row.FamilyKey, "preserve_icc")] = row.PreserveIcc;
+            rules[FormatRulesStore.Key(row.FamilyKey, "strip_exif")] = row.StripExif;
+            rules[FormatRulesStore.Key(row.FamilyKey, "strip_xmp")] = row.StripXmp;
+            rules[FormatRulesStore.Key(row.FamilyKey, "strip_iptc")] = row.StripIptc;
+            rules[FormatRulesStore.Key(row.FamilyKey, "strip_time")] = row.StripTime;
         }
         _store.Save(rules);
         SaveStatus = "Saved";
@@ -155,6 +178,10 @@ public sealed class FormatRuleRow : INotifyPropertyChanged
 
     public string FamilyName { get; }
     public WipeFormatFamily Family { get; }
+
+    /// <summary>票18: rules.json 键前缀（枚举名小写），与 FormatRulesStore.Key 共用一套 schema。</summary>
+    public string FamilyKey => Family.ToString().ToLowerInvariant();
+
     public string Extensions { get; }
     public bool IsDangerous { get; set; }
     public bool RequiresUserWarning { get; set; }

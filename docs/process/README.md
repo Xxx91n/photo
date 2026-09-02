@@ -11,6 +11,8 @@
 | round3-README.md | .scratch/architecture-recovery/README.md | 同上 |
 | round4-spec.md | .scratch/architecture-recovery/spec.md | 同上 |
 | round4-README.md | .scratch/architecture-recovery/README.md | 同上 |
+| round5-spec.md | .scratch/architecture-recovery/spec.md | 同上 |
+| round5-README.md | .scratch/architecture-recovery/README.md | 同上 |
 | reports/<票号>-<slug>.md | .scratch/architecture-recovery/report-<票号>-*.md | 每票报告写盘后随票提交 |
 
 任一侧修订后须同步另一侧；以 .scratch 工作版为会话内权威，本目录为可复盘灾备权威。
