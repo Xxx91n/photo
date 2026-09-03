@@ -3,6 +3,7 @@ using PhotoPrivacy.Ui.Localization;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using PhotoPrivacy.Core.Configuration;
+using PhotoPrivacy.Ui.Services;
 using System.IO;
 
 namespace PhotoPrivacy.Ui.ViewModels;
@@ -23,6 +24,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     {
         OnPropertyChanged(nameof(ModeLabel));
         OnPropertyChanged(nameof(PauseResumeLabel));
+        OnPropertyChanged(nameof(PauseResumeContent));
         ApplyLocaleFlowDirection();
     }
 
@@ -81,6 +83,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
             {
                 OnPropertyChanged(nameof(StatusDotColor));
                 OnPropertyChanged(nameof(PauseResumeLabel));
+                OnPropertyChanged(nameof(PauseResumeContent));
             }
         }
     }
@@ -107,6 +110,23 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     {
         get => _showServiceManagerTab;
         set => SetField(ref _showServiceManagerTab, value);
+    }
+
+    // 票 24（ADR 0061）：服务管理页按钮可用性单一真相源 — adapter 直写按钮清零，页面经绑定消费。
+    private ServiceButtonState _serviceButtons = ServiceButtonStates.AllDisabled;
+    public ServiceButtonState ServiceButtons
+    {
+        get => _serviceButtons;
+        set
+        {
+            if (SetField(ref _serviceButtons, value))
+            {
+                OnPropertyChanged(nameof(ServiceButtons.InstallEnabled));
+                OnPropertyChanged(nameof(ServiceButtons.UninstallEnabled));
+                OnPropertyChanged(nameof(ServiceButtons.StartEnabled));
+                OnPropertyChanged(nameof(ServiceButtons.StopEnabled));
+            }
+        }
     }
 
     public bool ShowDetailedEvents
@@ -270,6 +290,24 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public string StatusDotColor => IsRuntimeRunning ? "#22C55E" : "#9CA3AF";
 
     public string PauseResumeLabel => IsRuntimePaused ? LocalizationService.Instance.Get("btn.resume") : LocalizationService.Instance.Get("btn.pause");
+
+    // 票 24（ADR 0061）：暂停/恢复按钮可用性 + 派生文案（服务模式禁用并显示不可用文案）— 单一真相源在 VM。
+    private bool _pauseResumeAvailable = true;
+    public bool PauseResumeAvailable
+    {
+        get => _pauseResumeAvailable;
+        set
+        {
+            if (SetField(ref _pauseResumeAvailable, value))
+            {
+                OnPropertyChanged(nameof(PauseResumeContent));
+            }
+        }
+    }
+
+    public string PauseResumeContent => PauseResumeAvailable
+        ? PauseResumeLabel
+        : LocalizationService.Instance.Get("status.pause_service_unavailable");
 
     public string ServiceStatusDotColor
     {

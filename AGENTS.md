@@ -8,7 +8,7 @@
 
 **PhotoPrivacy** 是一个 C#/.NET 10 桌面工具，用于批量清理照片/视频的 EXIF 元数据和隐私信息。
 
-- **技术栈**: C# 13 / .NET 10 / Avalonia UI 11 / ExifTool / Named Pipes IPC
+- **技术栈**: C# 13 / .NET 10 / Avalonia UI 12.1.1 / ExifTool / Named Pipes IPC（票 24 时效纠错，spec Further Notes）
 - **仓库**: https://github.com/Xxx91n/photo
 - **语言**: 所有与用户的交互必须使用中文
 

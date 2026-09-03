@@ -179,9 +179,10 @@ public sealed class DesignSystemTests
     [Fact]
     public void Browse_Buttons_Use_MaterialIcons()
     {
-        var path = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views", "MainWindow.axaml");
-        Assert.True(File.Exists(path), "MainWindow.axaml should exist");
-        var source = File.ReadAllText(path, Encoding.UTF8);
+        // 票 24（ADR 0061）：页面拆分后 Browse/Add/Remove 按钮位于 Views/Pages/，扫描整个 Views 目录。
+        var viewsDir = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views");
+        var source = string.Concat(Directory.GetFiles(viewsDir, "*.axaml", SearchOption.AllDirectories)
+            .Select(f => File.ReadAllText(f, Encoding.UTF8)));
         Assert.Contains("Kind=\"FolderOpen\"", source, StringComparison.Ordinal);
         Assert.Contains("Kind=\"Plus\"", source, StringComparison.Ordinal);
         Assert.Contains("Kind=\"Minus\"", source, StringComparison.Ordinal);
@@ -247,9 +248,10 @@ public sealed class DesignSystemTests
     [Fact]
     public void MiddleClick_Behavior_Attached_To_ScrollViewer()
     {
-        var path = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views", "MainWindow.axaml");
-        Assert.True(File.Exists(path), "MainWindow.axaml should exist");
-        var source = File.ReadAllText(path, Encoding.UTF8);
+        // 票 24（ADR 0061）：ScrollViewer 挂载点（Config/ServiceManager 页）位于 Views/Pages/，扫描整个 Views 目录。
+        var viewsDir = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views");
+        var source = string.Concat(Directory.GetFiles(viewsDir, "*.axaml", SearchOption.AllDirectories)
+            .Select(f => File.ReadAllText(f, Encoding.UTF8)));
         // At least 2 ScrollViewers (config + service manager pages) must attach the behavior.
         var hits = System.Text.RegularExpressions.Regex.Matches(source, @"MiddleClickScrollBehavior\.IsEnabled=""True""");
         Assert.True(hits.Count >= 2, $"Expected >=2 MiddleClickScrollBehavior attachments, got {hits.Count}");
@@ -386,8 +388,10 @@ public sealed class DesignSystemTests
     [Fact]
     public void Spacing_Must_Reference_Space_Tokens()
     {
-        var path = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views", "MainWindow.axaml");
-        var source = File.ReadAllText(path, Encoding.UTF8);
+        // 票 24（ADR 0061）：Spacing 消费散布在 shell + Pages，扫描整个 Views 目录。
+        var viewsDir = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views");
+        var source = string.Concat(Directory.GetFiles(viewsDir, "*.axaml", SearchOption.AllDirectories)
+            .Select(f => File.ReadAllText(f, Encoding.UTF8)));
         // At least 20 Spacing references should now use DynamicResource Space* tokens
         var tokenHits = System.Text.RegularExpressions.Regex.Matches(source, @"Spacing=""{DynamicResource Space");
         Assert.True(tokenHits.Count >= 20, $"Expected >=20 Spacing token references, got {tokenHits.Count}");
@@ -468,9 +472,10 @@ public sealed class DesignSystemTests
     [Fact]
     public void MainWindow_Buttons_Must_Not_Override_Size_Inline()
     {
-        var path = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views", "MainWindow.axaml");
-        Assert.True(File.Exists(path), "MainWindow.axaml should exist");
-        var source = File.ReadAllText(path, Encoding.UTF8);
+        // 票 24（ADR 0061）：按钮散布在 shell + Pages，扫描整个 Views 目录。
+        var viewsDir = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views");
+        var source = string.Concat(Directory.GetFiles(viewsDir, "*.axaml", SearchOption.AllDirectories)
+            .Select(f => File.ReadAllText(f, Encoding.UTF8)));
         // Every <Button ...> opening tag (multiline included) must be free of
         // Padding/Height/MinWidth overrides — sizing comes from the style class only.
         var buttons = System.Text.RegularExpressions.Regex.Matches(source, "<Button[^>]*>");
@@ -486,8 +491,10 @@ public sealed class DesignSystemTests
     [Fact]
     public void MainWindow_Icon_Buttons_Must_Use_Icon_Variant_Class()
     {
-        var path = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views", "MainWindow.axaml");
-        var source = File.ReadAllText(path, Encoding.UTF8);
+        // 票 24（ADR 0061）：icon 按钮散布在各 Page 文件，扫描整个 Views 目录。
+        var viewsDir = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views");
+        var source = string.Concat(Directory.GetFiles(viewsDir, "*.axaml", SearchOption.AllDirectories)
+            .Select(f => File.ReadAllText(f, Encoding.UTF8)));
         // The 7 icon-only buttons (5 Browse + Add/Remove excluded) must route
         // through the Button.icon variant, not ghost with inline sizing.
         var iconButtons = System.Text.RegularExpressions.Regex.Matches(source, @"Classes=""icon""");
