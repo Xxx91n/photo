@@ -71,6 +71,7 @@ public static class AppConfigLoader
                 HideTrayIcon: dto.Ui.HideTrayIcon,
                 ThemeVariant: dto.Ui.ThemeVariant,
                 Locale: dto.Ui.Locale ?? "zh-CN",
+                SidebarWidth: dto.Ui.SidebarWidth,
                 ThemeId: string.IsNullOrWhiteSpace(dto.Ui.ThemeId) ? "catppuccin" : dto.Ui.ThemeId));
     }
 
@@ -269,5 +270,8 @@ public static class AppConfigLoader
 
         [JsonPropertyName("locale")]
         public string? Locale { get; init; }
+
+        [JsonPropertyName("sidebar_width")]
+        public double SidebarWidth { get; init; } = AppConfig.Default.Ui.SidebarWidth;
     }
 }

@@ -47,8 +47,7 @@ public sealed class InstanceConflictAuditTests : IntegrationTestBase
               },
               "backup": {
                 "enabled": false,
-                "suffix": ".bak",
-                "retention": "keep"
+                "suffix": ".bak"
               },
               "quarantine": {
                 "enabled": true,

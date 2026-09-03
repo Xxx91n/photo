@@ -65,8 +65,8 @@
   "audit": {
     "log_directory": "",
     "retain_days": 30,
-    "diagnostic_mode": true,
-    "log_level": "debug"
+    "diagnostic_mode": false,
+    "log_level": "info"
   },
   "ui": {
     "hide_main_window_on_startup": false,

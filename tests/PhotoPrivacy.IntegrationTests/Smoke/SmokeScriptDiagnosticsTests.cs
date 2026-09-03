@@ -102,8 +102,7 @@ public sealed class SmokeScriptDiagnosticsTests
               },
               "backup": {
                 "enabled": false,
-                "suffix": ".bak",
-                "retention": "keep"
+                "suffix": ".bak"
               },
               "quarantine": {
                 "enabled": true,
