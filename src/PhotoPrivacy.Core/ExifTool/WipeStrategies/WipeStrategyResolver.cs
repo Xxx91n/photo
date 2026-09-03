@@ -1,4 +1,5 @@
 using System.IO;
+using PhotoPrivacy.Core.Rules;
 
 namespace PhotoPrivacy.Core.ExifTool;
 
@@ -48,46 +49,23 @@ public static class WipeStrategyResolver
     };
 
     public static WipeStrategyResult Resolve(string filePath)
+        => WipeRuleEngine.Resolve(ResolveFamily(filePath), rules: null);
+
+    /// <summary>票 19: 规则驱动 resolve——family 由扩展名表判定，命令由 WipeRuleEngine 从规则字典生成。</summary>
+    public static WipeStrategyResult Resolve(string filePath, IReadOnlyDictionary<string, bool>? rules)
+        => WipeRuleEngine.Resolve(ResolveFamily(filePath), rules);
+
+    /// <summary>扩展名 → 格式族（未知扩展/无扩展 → Unknown）。</summary>
+    public static WipeFormatFamily ResolveFamily(string filePath)
     {
         var ext = Path.GetExtension(filePath);
         if (string.IsNullOrEmpty(ext))
         {
-            return new WipeStrategyResult(WipeFormatFamily.Unknown, EffectiveArgs: string.Empty, RequiresUserWarning: true, SkipReason: "unknown_format");
+            return WipeFormatFamily.Unknown;
         }
 
         var key = ext.StartsWith('.') ? ext[1..] : ext;
-        if (!ExtensionFamilyMap.TryGetValue(key, out var family))
-        {
-            return new WipeStrategyResult(WipeFormatFamily.Unknown, EffectiveArgs: string.Empty, RequiresUserWarning: true, SkipReason: "unknown_format");
-        }
-
-        return family switch
-        {
-            WipeFormatFamily.Jpeg => new WipeStrategyResult(family,
-                "-all= --icc_profile:all -tagsfromfile @ -colorspacetags",
-                RequiresUserWarning: false),
-            WipeFormatFamily.Tiff => new WipeStrategyResult(family,
-                "-all= -CommonIFD0=",
-                RequiresUserWarning: false),
-            WipeFormatFamily.Raw => new WipeStrategyResult(family,
-                "-exif:all= -xmp:all= -iptc:all= -icc_profile:all=",
-                RequiresUserWarning: false),
-            WipeFormatFamily.Heic => new WipeStrategyResult(family,
-                "-all= --icc_profile:all",
-                RequiresUserWarning: false),
-            WipeFormatFamily.Png => new WipeStrategyResult(family,
-                "-all=",
-                RequiresUserWarning: false),
-            WipeFormatFamily.Video => new WipeStrategyResult(family,
-                "-All= -Time:All=",
-                RequiresUserWarning: false),
-            WipeFormatFamily.Pdf => new WipeStrategyResult(family,
-                "-all=",
-                RequiresUserWarning: true),
-            WipeFormatFamily.Eps => new WipeStrategyResult(family,
-                "-all=",
-                RequiresUserWarning: true),
-            _ => new WipeStrategyResult(WipeFormatFamily.Unknown, EffectiveArgs: string.Empty, RequiresUserWarning: true, SkipReason: "unknown_format"),
-        };
+        return ExtensionFamilyMap.TryGetValue(key, out var family) ? family : WipeFormatFamily.Unknown;
     }
+
 }

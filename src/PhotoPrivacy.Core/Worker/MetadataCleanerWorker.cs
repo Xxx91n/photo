@@ -413,7 +413,10 @@ public sealed class MetadataCleanerWorker : BackgroundService
 
     private IExifToolBridge CreateBridge(AppConfig config, IAuditLogger audit)
     {
-        return PooledExifToolBridgeFactory.BuildFromConfig(config, audit);
+        // 票 19: 擦除引擎由 rules.json 驱动（单一真相源），与 UI 规则面板同一 FormatRulesStore 存储；
+        // 规则快照在 bridge 构建时载入（初启与 ApplyConfig 重建时刷新），缺文件时 Load 返回默认规则。
+        var rulesStore = new FormatRulesStore(Path.Combine(AppContext.BaseDirectory, "config"));
+        return PooledExifToolBridgeFactory.BuildFromConfig(config, audit, rulesStore.Load());
     }
 
     public async Task ReloadConfigAsync()

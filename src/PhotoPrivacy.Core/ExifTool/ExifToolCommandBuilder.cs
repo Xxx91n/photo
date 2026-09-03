@@ -44,10 +44,16 @@ public static class ExifToolCommandBuilder
     /// Unknown extensions are rejected (audit wipe_skipped_unknown).
     /// </summary>
     public static string BuildWipeTaskBlock(string targetPath, string taskId)
+        => BuildWipeTaskBlock(targetPath, taskId, rules: null);
+
+    /// <summary>
+    /// 票 19: 规则驱动擦除命令块——参数面由 WipeRuleEngine 从规则字典生成（单一真相源）。
+    /// </summary>
+    public static string BuildWipeTaskBlock(string targetPath, string taskId, IReadOnlyDictionary<string, bool>? rules)
     {
         ValidatePathForExifToolProtocol(targetPath);
 
-        var wipe = WipeStrategyResolver.Resolve(targetPath);
+        var wipe = WipeStrategyResolver.Resolve(targetPath, rules);
         if (wipe.SkipReason is not null)
         {
             // Unknown format — return a no-op probe block so the task completes cleanly

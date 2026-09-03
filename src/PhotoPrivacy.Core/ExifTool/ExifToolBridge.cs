@@ -11,6 +11,7 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
 {
     private readonly IExifToolProcess _process;
     private readonly AppConfig _config;
+    private readonly IReadOnlyDictionary<string, bool>? _wipeRules;
     private readonly ILogger<ExifToolBridge> _logger;
     private readonly Func<ExifToolLifecycleEvent, CancellationToken, ValueTask>? _lifecycleSink;
     private readonly ConcurrentDictionary<string, TaskCompletionSource<bool>> _pending = new();
@@ -34,10 +35,12 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
         AppConfig config,
         ILogger<ExifToolBridge>? logger,
         Func<ExifToolLifecycleEvent, CancellationToken, ValueTask>? lifecycleSink = null,
-        TimeSpan? healthTimeout = null)
+        TimeSpan? healthTimeout = null,
+        IReadOnlyDictionary<string, bool>? wipeRules = null)
     {
         _process = process;
         _config = config;
+        _wipeRules = wipeRules;
         _logger = logger ?? NullLogger<ExifToolBridge>.Instance;
         _lifecycleSink = lifecycleSink;
         _startupTimeout = healthTimeout ?? TimeSpan.FromSeconds(3);
@@ -220,7 +223,7 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
 
         try
         {
-            var wipeBlock = ExifToolCommandBuilder.BuildWipeTaskBlock(targetPath, id);
+            var wipeBlock = ExifToolCommandBuilder.BuildWipeTaskBlock(targetPath, id, _wipeRules);
             await _process.WriteStdinAsync(wipeBlock, cancellationToken);
             await wipeTcs.Task.WaitAsync(cancellationToken);
         }
