@@ -1,7 +1,7 @@
 using PhotoPrivacy.Core.Configuration;
 using PhotoPrivacy.Core.Pipeline;
 
-namespace PhotoPrivacy.Ui;
+namespace PhotoPrivacy.Ui.Services;
 
 public static class ConfigEditor
 {

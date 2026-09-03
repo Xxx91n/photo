@@ -54,18 +54,18 @@ public sealed class ServiceModeControllerTests
         var ops = new FakeOps();
         var host = new FakeHost();
         var view = new FakeView();
+        // 票20 检查点 C：BackgroundUiOptions 公共面只读——构建期值经对象初始化器（init）写入，
+        // 运行期状态（RuntimeKind/WorkerEndpointName/UseTrayIcon）经具名方法 UpdateRuntimeState 收口。
         var options = new BackgroundUiOptions
         {
-            RuntimeKind = "tray",
-            WorkerEndpointName = PhotoPrivacy.Ipc.WorkerIpcEndpointNames.BackgroundPipe,
-            HideTrayIcon = false,
-            WorkerExecutablePath = string.Empty
+            WorkerExecutablePath = string.Empty,
+            ConnectOrLaunchWorkerAsync = _ => Task.FromResult(connectResult ?? new WorkerConnectionResult(
+                RuntimeKind: "tray",
+                EndpointName: PhotoPrivacy.Ipc.WorkerIpcEndpointNames.BackgroundPipe,
+                ShouldShowTrayIcon: true,
+                Status: null))
         };
-        options.ConnectOrLaunchWorkerAsync = _ => Task.FromResult(connectResult ?? new WorkerConnectionResult(
-            RuntimeKind: "tray",
-            EndpointName: PhotoPrivacy.Ipc.WorkerIpcEndpointNames.BackgroundPipe,
-            ShouldShowTrayIcon: true,
-            Status: null));
+        options.UpdateRuntimeState("tray", PhotoPrivacy.Ipc.WorkerIpcEndpointNames.BackgroundPipe, useTrayIcon: true);
         var controller = new ServiceModeController(ops, new WorkerProcessManager(new WorkerIpcClient()), new WorkerIpcClient(), host, view);
         controller.Attach(options);
         return (controller, ops, host, view, options);
@@ -130,7 +130,7 @@ public sealed class ServiceModeControllerTests
     public async Task ShutdownTrayWorker_Should_Fail_Fast_When_Not_On_Background_Endpoint()
     {
         var (controller, _, _, _, options) = Create();
-        options.WorkerEndpointName = PhotoPrivacy.Ipc.WorkerIpcEndpointNames.ServicePipe;
+        options.UpdateRuntimeState(options.RuntimeKind, PhotoPrivacy.Ipc.WorkerIpcEndpointNames.ServicePipe, options.UseTrayIcon);
 
         var done = await controller.ShutdownTrayWorkerForServiceSwitchAsync(CancellationToken.None);
 
@@ -144,7 +144,7 @@ public sealed class ServiceModeControllerTests
         ops.State = ServiceRuntimeState.Stopped;
         // WorkerExecutablePath 为空 + BaseDirectory 无 PhotoPrivacyWorker.exe → Start 走 worker-not-found 分支
         // 为测 tray-shutdown 失败路径，需要 worker 路径可解析：把端点留在 BackgroundPipe 且注入假状态
-        options.WorkerEndpointName = PhotoPrivacy.Ipc.WorkerIpcEndpointNames.BackgroundPipe;
+        options.UpdateRuntimeState(options.RuntimeKind, PhotoPrivacy.Ipc.WorkerIpcEndpointNames.BackgroundPipe, options.UseTrayIcon);
 
         await controller.StartAsync();
 

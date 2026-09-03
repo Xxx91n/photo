@@ -1,4 +1,5 @@
 ﻿﻿using PhotoPrivacy.Ui;
+using PhotoPrivacy.Ui.Services;
 
 namespace PhotoPrivacy.IntegrationTests.Ui;
 
@@ -38,7 +39,7 @@ public sealed class WorkerProcessManagerTests
         // issue 04 checkpoint A: WorkerProcessManager keeps process-launch duty only.
         // Every protocol method name (WorkerIpcMethods list) must be absent from the class —
         // all IPC calls live in WorkerIpcClient (single typed entry point).
-        var sourcePath = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "WorkerProcessManager.cs");
+        var sourcePath = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Services", "WorkerProcessManager.cs");
         var source = File.ReadAllText(sourcePath, System.Text.Encoding.UTF8);
 
         var ipcMethodNames = new[]
@@ -62,10 +63,10 @@ public sealed class WorkerProcessManagerTests
         // moved it out of WorkerProcessManager); ConnectOrLaunchAsync must route all status
         // probes through it and declare no direct IPC sends of its own.
         var wpmSource = File.ReadAllText(
-            Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "WorkerProcessManager.cs"),
+            Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Services", "WorkerProcessManager.cs"),
             System.Text.Encoding.UTF8);
         var clientSource = File.ReadAllText(
-            Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "WorkerIpcClient.cs"),
+            Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Services", "WorkerIpcClient.cs"),
             System.Text.Encoding.UTF8);
 
         // The client owns the resilient probe: IO/Socket/Timeout degrade to null, never crash.

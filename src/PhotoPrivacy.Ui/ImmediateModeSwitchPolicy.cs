@@ -1,3 +1,5 @@
+using PhotoPrivacy.Ui.Services;
+
 namespace PhotoPrivacy.Ui;
 
 public static class ImmediateModeSwitchPolicy

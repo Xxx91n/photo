@@ -3,7 +3,7 @@ using System.Security.AccessControl;
 using System.Security.Principal;
 using PhotoPrivacy.Core.Runtime;
 
-namespace PhotoPrivacy.Ui;
+namespace PhotoPrivacy.Ui.Services;
 
 public sealed class UiSingleInstance : IDisposable
 {

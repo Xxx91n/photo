@@ -1,5 +1,6 @@
 using PhotoPrivacy.Ui;
 using Xunit;
+using PhotoPrivacy.Ui.Services;
 
 namespace PhotoPrivacy.IntegrationTests.Ui;
 

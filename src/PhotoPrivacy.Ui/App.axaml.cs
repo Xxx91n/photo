@@ -9,6 +9,7 @@ using Avalonia.Threading;
 using PhotoPrivacy.Core.Configuration;
 using PhotoPrivacy.Ui.ViewModels;
 using PhotoPrivacy.Ui.Views;
+using PhotoPrivacy.Ui.Services;
 
 namespace PhotoPrivacy.Ui;
 
@@ -63,7 +64,7 @@ public partial class App : Application
                 window.WindowState = WindowState.Normal;
                 window.Activate();
                 UiDiagnosticLog.Write("App forced initial MainWindow Show/Activate");
-                RuntimeOptions.ShowMainWindow = () =>
+                RuntimeOptions.SetShowMainWindow(() =>
                 {
                     Dispatcher.UIThread.Post(() =>
                     {
@@ -72,7 +73,7 @@ public partial class App : Application
                         window.WindowState = WindowState.Normal;
                         window.Activate();
                     });
-                };
+                });
 
             }
         }

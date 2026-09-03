@@ -1,4 +1,5 @@
 using PhotoPrivacy.Ui;
+using PhotoPrivacy.Ui.Services;
 
 namespace PhotoPrivacy.IntegrationTests;
 

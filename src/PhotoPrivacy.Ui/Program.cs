@@ -7,13 +7,12 @@ using Microsoft.Extensions.Configuration;
 using PhotoPrivacy.Ipc;
 using PhotoPrivacy.Core.Configuration;
 using Serilog;
+using PhotoPrivacy.Ui.Services;
 
 namespace PhotoPrivacy.Ui;
 
 public static class UiProgram
 {
-    public static BackgroundUiOptions Options { get; set; } = BackgroundUiOptions.CreateFallback();
-
     public static void Main(string[] args)
     {
         Start(args);
@@ -60,7 +59,6 @@ public static class UiProgram
         // then AppMain fires ConnectWorkerAsync in background to replace the placeholder.
         var showPipeCts = new CancellationTokenSource();
         App.RuntimeOptions = BuildRuntimeOptions(
-            options: Options,
             modeKind: "tray",
             endpointName: WorkerIpcEndpointNames.BackgroundPipe,
             workerPath: workerPath,
@@ -73,7 +71,7 @@ public static class UiProgram
         // ConnectionState starts in Connecting — heartbeat timer will promote to Connected/Reconnecting.
         var connectionState = new ConnectionStateService(new WorkerIpcClient(), WorkerIpcEndpointNames.BackgroundPipe);
         connectionState.State = ConnectionState.Connecting;
-        App.RuntimeOptions.ConnectionState = connectionState;
+        App.RuntimeOptions.SetConnectionState(connectionState);
 
         var showPipeTask = UiSingleInstance.RunShowWindowServerAsync(
             onShowWindowRequested: () => App.RuntimeOptions.ShowMainWindow(),
@@ -95,10 +93,10 @@ public static class UiProgram
 
                 Dispatcher.UIThread.Post(() =>
                 {
-                    App.RuntimeOptions.RuntimeKind = connectResult.RuntimeKind;
-                    App.RuntimeOptions.WorkerEndpointName = connectResult.EndpointName;
-                    App.RuntimeOptions.UseTrayIcon = connectResult.ShouldShowTrayIcon &&
-                        !App.RuntimeOptions.HideTrayIcon;
+                    App.RuntimeOptions.UpdateRuntimeState(
+                        connectResult.RuntimeKind,
+                        connectResult.EndpointName,
+                        connectResult.ShouldShowTrayIcon && !App.RuntimeOptions.HideTrayIcon);
                     UiDiagnosticLog.Write($"RuntimeOptions updated. RuntimeKind={App.RuntimeOptions.RuntimeKind}, Endpoint={App.RuntimeOptions.WorkerEndpointName}");
                 });
             }
@@ -165,7 +163,6 @@ public static class UiProgram
     }
 
     private static BackgroundUiOptions BuildRuntimeOptions(
-        BackgroundUiOptions options,
         string modeKind,
         string endpointName,
         string? workerPath,
@@ -175,47 +172,55 @@ public static class UiProgram
         WorkerIpcClient workerIpc,
         ServiceManager serviceManager)
     {
-        options.RuntimeKind = modeKind;
-        options.WorkerEndpointName = endpointName;
-        options.WorkerExecutablePath = workerPath ?? string.Empty;
-        options.HideMainWindowOnStartup = config.Ui.HideMainWindowOnStartup;
-        options.HideTrayIcon = config.Ui.HideTrayIcon;
-        options.UseTrayIcon = modeKind == "tray" && !config.Ui.HideTrayIcon;
-        options.ConfigPath = configPath;
-        options.AuditDirectory = config.Audit.LogDirectory;
-        options.GetServiceRuntimeState = serviceManager.GetRuntimeState;
-        options.IsWorkerAliveAsync = token => workerIpc.IsAliveAsync(options.WorkerEndpointName, token);
-        options.IsPausedAsync = async token =>
+        // 票20 检查点 C：一次性构建不可变快照；委托在调用时读取 App.RuntimeOptions 的当前值
+        //（与原实现闭包读取同一共享实例语义一致）。
+        var options = new BackgroundUiOptions
         {
-            var res = await workerIpc.GetStatusAsync(options.WorkerEndpointName, token).ConfigureAwait(false);
-            return res?.Data?.IsPaused ?? false;
-        };
-        options.PauseAsync = async token => { await workerIpc.PauseAsync(options.WorkerEndpointName, token).ConfigureAwait(false); };
-        options.ResumeAsync = async token => { await workerIpc.ResumeAsync(options.WorkerEndpointName, token).ConfigureAwait(false); };
-        options.ShutdownWorkerAsync = async token =>
-        {
-            if (string.Equals(options.RuntimeKind, "tray", StringComparison.OrdinalIgnoreCase))
+            WorkerExecutablePath = workerPath ?? string.Empty,
+            ConfigPath = configPath,
+            AuditDirectory = config.Audit.LogDirectory,
+            GetServiceRuntimeState = serviceManager.GetRuntimeState,
+            IsWorkerAliveAsync = token => workerIpc.IsAliveAsync(App.RuntimeOptions.WorkerEndpointName, token),
+            IsPausedAsync = async token =>
             {
-                await workerIpc.ShutdownAsync(options.WorkerEndpointName, token).ConfigureAwait(false);
-            }
-        };
-        options.ExitApplicationAsync = async token =>
-        {
-            if (string.Equals(options.RuntimeKind, "tray", StringComparison.OrdinalIgnoreCase))
+                var res = await workerIpc.GetStatusAsync(App.RuntimeOptions.WorkerEndpointName, token).ConfigureAwait(false);
+                return res?.Data?.IsPaused ?? false;
+            },
+            PauseAsync = async token =>
             {
-                await workerIpc.ShutdownAsync(options.WorkerEndpointName, token).ConfigureAwait(false);
-            }
+                await workerIpc.PauseAsync(App.RuntimeOptions.WorkerEndpointName, token).ConfigureAwait(false);
+            },
+            ResumeAsync = async token =>
+            {
+                await workerIpc.ResumeAsync(App.RuntimeOptions.WorkerEndpointName, token).ConfigureAwait(false);
+            },
+            ShutdownWorkerAsync = async token =>
+            {
+                if (string.Equals(App.RuntimeOptions.RuntimeKind, "tray", StringComparison.OrdinalIgnoreCase))
+                {
+                    await workerIpc.ShutdownAsync(App.RuntimeOptions.WorkerEndpointName, token).ConfigureAwait(false);
+                }
+            },
+            ExitApplicationAsync = async token =>
+            {
+                if (string.Equals(App.RuntimeOptions.RuntimeKind, "tray", StringComparison.OrdinalIgnoreCase))
+                {
+                    await workerIpc.ShutdownAsync(App.RuntimeOptions.WorkerEndpointName, token).ConfigureAwait(false);
+                }
+            },
+            GetExifToolVersionAsync = async token =>
+            {
+                var res = await workerIpc.GetStatusAsync(App.RuntimeOptions.WorkerEndpointName, token).ConfigureAwait(false);
+                return res?.Data?.ExifToolVersion ?? "unknown";
+            },
+            ConnectOrLaunchWorkerAsync = token => workerManager.ConnectOrLaunchAsync(
+                workerPath,
+                token,
+                getServiceRuntimeState: serviceManager.GetRuntimeState,
+                configPath: configPath)
         };
-        options.GetExifToolVersionAsync = async token =>
-        {
-            var res = await workerIpc.GetStatusAsync(options.WorkerEndpointName, token).ConfigureAwait(false);
-            return res?.Data?.ExifToolVersion ?? "unknown";
-        };
-        options.ConnectOrLaunchWorkerAsync = token => workerManager.ConnectOrLaunchAsync(
-            workerPath,
-            token,
-            getServiceRuntimeState: serviceManager.GetRuntimeState,
-            configPath: options.ConfigPath);
+        options.UpdateRuntimeState(modeKind, endpointName, modeKind == "tray" && !config.Ui.HideTrayIcon);
+        options.UpdateHideFlags(config.Ui.HideMainWindowOnStartup, config.Ui.HideTrayIcon);
         return options;
     }
 

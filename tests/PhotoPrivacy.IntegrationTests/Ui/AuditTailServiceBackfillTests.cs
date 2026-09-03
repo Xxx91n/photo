@@ -1,4 +1,5 @@
 using PhotoPrivacy.Ui;
+using PhotoPrivacy.Ui.Services;
 
 namespace PhotoPrivacy.IntegrationTests.Ui;
 
@@ -248,7 +249,7 @@ public sealed class AuditTailServiceBackfillTests
     [Fact]
     public void AuditTailService_Source_Should_Own_Backfill_Fetcher_And_Merge()
     {
-        var source = File.ReadAllText(Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "AuditTailService.cs"));
+        var source = File.ReadAllText(Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Services", "AuditTailService.cs"));
         Assert.Contains("backfillFetcher", source, StringComparison.Ordinal);
         Assert.Contains("MergeBackfillLines", source, StringComparison.Ordinal);
         Assert.Contains("NotifyLogsCleared", source, StringComparison.Ordinal);

@@ -20,7 +20,8 @@ public sealed class MainWindowUninstallFlowSourceTests
     {
         var source = SourceLint.Read("src", "PhotoPrivacy.Ui", "Services", "ServiceModeController.cs");
 
-        Assert.Contains("options.WorkerEndpointName = PhotoPrivacy.Ipc.WorkerIpcEndpointNames.BackgroundPipe;", source, StringComparison.Ordinal);
+        // 票20：写入收口至 BackgroundUiOptions.UpdateRuntimeState 具名方法（公共面只读），断言随形态迁移，语义不变：卸载后端点钉回 BackgroundPipe。
+        Assert.Contains("options.UpdateRuntimeState(\"tray\", PhotoPrivacy.Ipc.WorkerIpcEndpointNames.BackgroundPipe", source, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -1,3 +1,5 @@
+using PhotoPrivacy.Ui.Services;
+
 namespace PhotoPrivacy.Ui;
 
 public readonly record struct ServiceButtonState(

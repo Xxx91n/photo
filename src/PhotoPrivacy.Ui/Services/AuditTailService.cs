@@ -3,7 +3,7 @@ using System.Text.Json;
 using Avalonia.Threading;
 
 using PhotoPrivacy.Ui.Localization;
-namespace PhotoPrivacy.Ui;
+namespace PhotoPrivacy.Ui.Services;
 
 public sealed class AuditTailService
 {

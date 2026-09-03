@@ -107,7 +107,7 @@ public sealed class UiLauncherSourceTests
     {
         // The whitelisted elevation site must exist and keep the Verb "runas" pairing,
         // so silently removing the elevation design trips this guard too.
-        var serviceManagerPath = Path.Combine(SourceLint.UiSourceRoot, "ServiceManager.cs");
+        var serviceManagerPath = Path.Combine(SourceLint.UiSourceRoot, "Services", "ServiceManager.cs");
         Assert.True(File.Exists(serviceManagerPath), $"ServiceManager.cs not found: {serviceManagerPath}");
         var noComments = string.Concat(File.ReadAllLines(serviceManagerPath).Select(SourceLint.StripLineComment));
 
