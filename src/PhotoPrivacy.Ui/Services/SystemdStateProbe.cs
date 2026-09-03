@@ -1,7 +1,5 @@
-using System.ComponentModel;
-using System.Diagnostics;
 
-namespace PhotoPrivacy.Ui;
+namespace PhotoPrivacy.Ui.Services;
 
 /// <summary>
 /// ADR 0020: Linux systemd service state probe.
@@ -20,7 +18,7 @@ public sealed class SystemdStateProbe : IServiceStateProbe
 
         try
         {
-            var (exitCode, output) = RunProcess("systemctl", $"is-active {ServiceName}");
+            var (exitCode, output) = ServiceProbeProcess.Run("systemctl", $"is-active {ServiceName}");
             return exitCode switch
             {
                 0 => ServiceRuntimeState.Running,
@@ -44,29 +42,12 @@ public sealed class SystemdStateProbe : IServiceStateProbe
 
         try
         {
-            var (exitCode, _) = RunProcess("systemctl", $"is-enabled {ServiceName}");
+            var (exitCode, _) = ServiceProbeProcess.Run("systemctl", $"is-enabled {ServiceName}");
             return exitCode == 0 || exitCode == 1; // enabled or disabled (exists)
         }
         catch
         {
             return false;
         }
-    }
-
-    private static (int exitCode, string output) RunProcess(string fileName, string arguments)
-    {
-        var psi = new ProcessStartInfo
-        {
-            FileName = fileName,
-            Arguments = arguments,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-        using var process = Process.Start(psi);
-        if (process is null) return (-1, string.Empty);
-        process.WaitForExit(3000);
-        return (process.ExitCode, process.StandardOutput.ReadToEnd().Trim());
     }
 }

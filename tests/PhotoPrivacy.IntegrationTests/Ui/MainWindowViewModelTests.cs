@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using PhotoPrivacy.Ui;
+using PhotoPrivacy.Ui.Services;
 using PhotoPrivacy.Ui.ViewModels;
 
 namespace PhotoPrivacy.IntegrationTests.Ui;

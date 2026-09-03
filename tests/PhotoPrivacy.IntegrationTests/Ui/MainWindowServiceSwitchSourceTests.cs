@@ -12,7 +12,8 @@ public sealed class MainWindowServiceSwitchSourceTests
     {
         var source = SourceLint.Read("src", "PhotoPrivacy.Ui", "Services", "ServiceModeController.cs");
 
-        Assert.Contains("options.RuntimeKind = \"service\";", source, StringComparison.Ordinal);
+        // 票20：写入收口至 BackgroundUiOptions.UpdateRuntimeState 具名方法（公共面只读），断言随形态迁移，语义不变：安装/启动后切 service 模式。
+        Assert.Contains("options.UpdateRuntimeState(\"service\",", source, StringComparison.Ordinal);
         Assert.Contains("_view.SetCurrentMode(MapModeLabel(options.RuntimeKind));", source, StringComparison.Ordinal);
         Assert.Contains("public async Task InstallAsync()", source, StringComparison.Ordinal);
         Assert.Contains("public async Task StartAsync()", source, StringComparison.Ordinal);

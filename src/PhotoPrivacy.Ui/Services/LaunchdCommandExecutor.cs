@@ -1,7 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 
-namespace PhotoPrivacy.Ui;
+namespace PhotoPrivacy.Ui.Services;
 
 /// <summary>
 /// ADR 0021: macOS launchd service command executor.

@@ -1337,14 +1337,10 @@ public partial class MainWindow : Window
         try
         {
             var cfg = LoadConfigOrDefault(_options.ConfigPath) ?? AppConfig.Default;
-            _options.HideMainWindowOnStartup = cfg.Ui.HideMainWindowOnStartup;
-            _options.HideTrayIcon = cfg.Ui.HideTrayIcon;
+            // 票20 检查点 C：HideMainWindowOnStartup/HideTrayIcon/UseTrayIcon 写入收口至具名方法
+            // （UpdateHideFlags 内含原「tray 模式下 UseTrayIcon = !HideTrayIcon」联动，语义逐字等价）。
+            _options.UpdateHideFlags(cfg.Ui.HideMainWindowOnStartup, cfg.Ui.HideTrayIcon);
             var normalizedThemeVariant = NormalizeThemeVariant(cfg.Ui.ThemeVariant);
-
-            if (string.Equals(_options.RuntimeKind, "tray", StringComparison.OrdinalIgnoreCase))
-            {
-                _options.UseTrayIcon = !_options.HideTrayIcon;
-            }
 
             if (DataContext is MainWindowViewModel vm)
             {

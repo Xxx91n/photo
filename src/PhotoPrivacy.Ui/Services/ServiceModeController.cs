@@ -230,8 +230,7 @@ public sealed class ServiceModeController
             var state = _serviceManager.GetRuntimeState();
             if (state != ServiceRuntimeState.NotInstalled)
             {
-                options.RuntimeKind = "service";
-                options.UseTrayIcon = false;
+                options.UpdateRuntimeState("service", options.WorkerEndpointName, useTrayIcon: false);
             }
         }
 
@@ -326,9 +325,7 @@ public sealed class ServiceModeController
                     token,
                     getServiceRuntimeState: getServiceRuntimeStateOverride).ConfigureAwait(false);
 
-            options.RuntimeKind = next.RuntimeKind;
-            options.WorkerEndpointName = next.EndpointName;
-            options.UseTrayIcon = next.ShouldShowTrayIcon && !options.HideTrayIcon;
+            options.UpdateRuntimeState(next.RuntimeKind, next.EndpointName, next.ShouldShowTrayIcon && !options.HideTrayIcon);
 
             _view.SetModeAndRuntimeStatus(
                 MapModeLabel(options.RuntimeKind),
@@ -368,9 +365,7 @@ public sealed class ServiceModeController
         await ShutdownTrayWorkerForServiceSwitchAsync(token).ConfigureAwait(false);
         await SwitchToDefaultModeAsync(token).ConfigureAwait(false);
 
-        options.RuntimeKind = "service";
-        options.WorkerEndpointName = PhotoPrivacy.Ipc.WorkerIpcEndpointNames.ServicePipe;
-        options.UseTrayIcon = false;
+        options.UpdateRuntimeState("service", PhotoPrivacy.Ipc.WorkerIpcEndpointNames.ServicePipe, useTrayIcon: false);
 
         _host.Post(() =>
         {
@@ -437,9 +432,7 @@ public sealed class ServiceModeController
             return;
         }
 
-        options.RuntimeKind = "tray";
-        options.WorkerEndpointName = PhotoPrivacy.Ipc.WorkerIpcEndpointNames.BackgroundPipe;
-        options.UseTrayIcon = !options.HideTrayIcon;
+        options.UpdateRuntimeState("tray", PhotoPrivacy.Ipc.WorkerIpcEndpointNames.BackgroundPipe, !options.HideTrayIcon);
 
         _host.Post(() =>
         {

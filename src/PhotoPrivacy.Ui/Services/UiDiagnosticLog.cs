@@ -2,7 +2,7 @@ using PhotoPrivacy.Core.Audit;
 using Serilog;
 using Serilog.Core;
 
-namespace PhotoPrivacy.Ui;
+namespace PhotoPrivacy.Ui.Services;
 
 public static class UiDiagnosticLog
 {

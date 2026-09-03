@@ -1,7 +1,7 @@
 ﻿using System.Diagnostics;
 using PhotoPrivacy.Ipc;
 
-namespace PhotoPrivacy.Ui;
+namespace PhotoPrivacy.Ui.Services;
 
 /// <summary>
 /// Worker 进程启动与连接编排。issue 04（C3a）：IPC 方法全部收敛到 WorkerIpcClient，

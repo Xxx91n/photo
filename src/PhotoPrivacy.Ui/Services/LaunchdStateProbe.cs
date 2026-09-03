@@ -1,7 +1,5 @@
-using System.ComponentModel;
-using System.Diagnostics;
 
-namespace PhotoPrivacy.Ui;
+namespace PhotoPrivacy.Ui.Services;
 
 /// <summary>
 /// ADR 0020: macOS launchd service state probe.
@@ -20,7 +18,7 @@ public sealed class LaunchdStateProbe : IServiceStateProbe
 
         try
         {
-            var (exitCode, output) = RunProcess("launchctl", $"list {Label}");
+            var (exitCode, output) = ServiceProbeProcess.Run("launchctl", $"list {Label}");
             if (exitCode != 0)
             {
                 return ServiceRuntimeState.NotInstalled;
@@ -56,29 +54,12 @@ public sealed class LaunchdStateProbe : IServiceStateProbe
 
         try
         {
-            var (exitCode, _) = RunProcess("launchctl", $"list {Label}");
+            var (exitCode, _) = ServiceProbeProcess.Run("launchctl", $"list {Label}");
             return exitCode == 0;
         }
         catch
         {
             return false;
         }
-    }
-
-    private static (int exitCode, string output) RunProcess(string fileName, string arguments)
-    {
-        var psi = new ProcessStartInfo
-        {
-            FileName = fileName,
-            Arguments = arguments,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-        using var process = Process.Start(psi);
-        if (process is null) return (-1, string.Empty);
-        process.WaitForExit(3000);
-        return (process.ExitCode, process.StandardOutput.ReadToEnd().Trim());
     }
 }

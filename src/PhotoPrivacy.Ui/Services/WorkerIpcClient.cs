@@ -2,7 +2,7 @@ using System.Net.Sockets;
 using System.Text.Json;
 using PhotoPrivacy.Ipc;
 
-namespace PhotoPrivacy.Ui;
+namespace PhotoPrivacy.Ui.Services;
 
 /// <summary>
 /// Single typed IPC entry point for every Worker call (issue 04 / C3a).

@@ -7,7 +7,7 @@ public sealed class TrayHostSourceSafetyTests
     [Fact]
     public void TrayHost_Source_Should_Guard_UpdateMenu_Ipc_Failures()
     {
-        var sourcePath = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "TrayHost.cs");
+        var sourcePath = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Services", "TrayHost.cs");
         var source = File.ReadAllText(sourcePath, Encoding.UTF8);
 
         Assert.Contains("private void UpdateMenu()", source, StringComparison.Ordinal);
