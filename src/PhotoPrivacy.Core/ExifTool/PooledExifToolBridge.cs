@@ -80,7 +80,7 @@ public sealed class PooledExifToolBridge : IExifToolBridge, IDisposable
 
 public static class PooledExifToolBridgeFactory
 {
-    public static IExifToolBridge BuildFromConfig(AppConfig config, IAuditLogger audit)
+    public static IExifToolBridge BuildFromConfig(AppConfig config, IAuditLogger audit, IReadOnlyDictionary<string, bool>? wipeRules = null)
     {
         if (config.ExifTool.DryRun)
         {
@@ -90,23 +90,24 @@ public static class PooledExifToolBridgeFactory
         var poolSize = Math.Max(1, config.ExifTool.StayOpenPoolSize);
         if (poolSize == 1)
         {
-            return BuildSingle(config, audit);
+            return BuildSingle(config, audit, wipeRules);
         }
 
         var bridges = new List<IExifToolBridge>(poolSize);
         for (var i = 0; i < poolSize; i++)
         {
-            bridges.Add(BuildSingle(config, audit));
+            bridges.Add(BuildSingle(config, audit, wipeRules));
         }
 
         return new PooledExifToolBridge(bridges, config.ExifTool.MaxParallelDrain);
     }
 
-    private static IExifToolBridge BuildSingle(AppConfig config, IAuditLogger audit)
+    private static IExifToolBridge BuildSingle(AppConfig config, IAuditLogger audit, IReadOnlyDictionary<string, bool>? wipeRules)
     {
         return new ExifToolBridge(
             process: new ProcessExifToolProcess(),
             config: config,
+            wipeRules: wipeRules,
             logger: null,
             lifecycleSink: async (lifecycleEvent, cancellationToken) =>
             {

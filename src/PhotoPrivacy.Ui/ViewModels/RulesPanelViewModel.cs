@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using PhotoPrivacy.Core.Configuration;
 using PhotoPrivacy.Core.ExifTool;
+using PhotoPrivacy.Core.Rules;
 
 namespace PhotoPrivacy.Ui.ViewModels;
 
@@ -202,37 +203,37 @@ public sealed class FormatRuleRow : INotifyPropertyChanged
     public bool StripAll
     {
         get => _stripAll;
-        set => SetField(ref _stripAll, value);
+        set { if (SetField(ref _stripAll, value)) PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(EffectiveArgs))); }
     }
 
     public bool PreserveIcc
     {
         get => _preserveIcc;
-        set => SetField(ref _preserveIcc, value);
+        set { if (SetField(ref _preserveIcc, value)) PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(EffectiveArgs))); }
     }
 
     public bool StripExif
     {
         get => _stripExif;
-        set => SetField(ref _stripExif, value);
+        set { if (SetField(ref _stripExif, value)) PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(EffectiveArgs))); }
     }
 
     public bool StripXmp
     {
         get => _stripXmp;
-        set => SetField(ref _stripXmp, value);
+        set { if (SetField(ref _stripXmp, value)) PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(EffectiveArgs))); }
     }
 
     public bool StripIptc
     {
         get => _stripIptc;
-        set => SetField(ref _stripIptc, value);
+        set { if (SetField(ref _stripIptc, value)) PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(EffectiveArgs))); }
     }
 
     public bool StripTime
     {
         get => _stripTime;
-        set => SetField(ref _stripTime, value);
+        set { if (SetField(ref _stripTime, value)) PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(EffectiveArgs))); }
     }
 
     public string WarningLevel => (Family, RequiresUserWarning) switch
@@ -257,18 +258,12 @@ public sealed class FormatRuleRow : INotifyPropertyChanged
         _stripTime = stripTime;
     }
 
-    public string EffectiveArgs => Family switch
-    {
-        WipeFormatFamily.Jpeg => "-all= --icc_profile:all -tagsfromfile @ -colorspacetags",
-        WipeFormatFamily.Tiff => "-all= -CommonIFD0=",
-        WipeFormatFamily.Raw => "-exif:all= -xmp:all= -iptc:all= -icc_profile:all=",
-        WipeFormatFamily.Heic => "-all= --icc_profile:all",
-        WipeFormatFamily.Png => "-all=",
-        WipeFormatFamily.Video => "-All= -Time:All=",
-        WipeFormatFamily.Pdf => "-all=",
-        WipeFormatFamily.Eps => "-all=",
-        _ => "",
-    };
+    /// <summary>
+    /// 票 19: family→命令复制表已删除。参数预览由 WipeRuleEngine（单一真相源）从本行勾选实时生成，
+    /// 与 Worker 端擦除命令同源；勾选任一开关即真实改变命令（含 DataGrid 预览列与实际执行一致）。
+    /// </summary>
+    public string EffectiveArgs => WipeRuleEngine.BuildEffectiveArgs(
+        Family, _stripAll, _preserveIcc, _stripExif, _stripXmp, _stripIptc, _stripTime);
 
     private bool SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
     {
