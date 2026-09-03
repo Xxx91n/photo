@@ -5,8 +5,8 @@ public static class DefaultPaths
     public static string ExifToolPath => ResolveExifToolPath();
 
     /// <summary>
-    /// Cross-platform default hot folder. Returns a user-accessible photos directory.
-    /// AppConfigValidator rejects non-existent directories, so users get a clear "not configured" error.
+    /// App-local default hot folder: <BaseDirectory>/hot (ADR 0055 A4), three-platform compatible.
+    /// AppConfigValidator rejects an empty hot_folder (non-dry-run), so users get a clear "not configured" error.
     /// </summary>
     public static string DefaultHotFolder => ResolveDefaultHotFolder();
 
@@ -29,7 +29,8 @@ public static class DefaultPaths
 
     // ADR 0055 A4: App-local hot folder (BaseDirectory/hot) — three-platform compatible,
     // does NOT select user's system pictures (prevents accidental damage to user photos).
-    // AppConfig.Default.HotFolder stays string.Empty (ADR 0045 dynamic fallback semantics unchanged).
+    // AppConfig.Default.Watch.HotFolder references DefaultPaths.DefaultHotFolder (BaseDirectory/hot);
+    // Backup.Directory stays string.Empty (ADR 0045 dynamic fallback to <hotFolder>/bak).
     private static string ResolveDefaultHotFolder()
     {
         return System.IO.Path.Combine(AppContext.BaseDirectory, "hot");
