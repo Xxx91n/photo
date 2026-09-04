@@ -177,6 +177,10 @@
     "label": {
       "system_excluded": "系统自动排除目录（只读）",
       "user_excluded": "用户自定义排除目录"
+    },
+    "tooltip": {
+      "add_excluded_dir": "添加排除监听的目录",
+      "remove_excluded_dir": "移除选中的排除目录"
     }
   },
   "theme": {
@@ -208,7 +212,13 @@
     },
     "btn": {
       "clear": "清空"
-    }
+    },
+    "empty": "暂无审计日志 — 等待文件监控事件"
+  },
+  "titlebar": {
+    "minimize": "最小化",
+    "maximize": "最大化",
+    "close": "关闭"
   },
   "tray": {
     "pause": "暂停",
@@ -250,6 +260,7 @@
       "save": "保存自定义规则",
       "reset": "恢复默认"
     },
+    "empty": "无匹配的清理规则",
     "col": {
       "family": "格式族",
       "extensions": "扩展名",

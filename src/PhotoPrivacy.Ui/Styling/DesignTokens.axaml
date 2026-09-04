@@ -42,4 +42,7 @@
   <BoxShadows x:Key="Elevation1">0 1 2 0 #14000000</BoxShadows>
   <BoxShadows x:Key="Elevation2">0 2 4 0 #1F000000</BoxShadows>
   <BoxShadows x:Key="Elevation4">0 4 8 0 #29000000</BoxShadows>
+
+  <!-- 票 26（ADR 0062）: 色板标识色权威在票 25 ThemeSwatchCatalog（C# 数据层），DesignTokens 不再持有
+       swatch token——Views axaml 内联 hex 由 source-lint 全禁（数据色与 chrome 色分层，见 ADR 0062）。 -->
 </ResourceDictionary>

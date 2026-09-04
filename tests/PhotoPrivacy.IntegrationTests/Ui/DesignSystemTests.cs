@@ -222,6 +222,7 @@ public sealed class DesignSystemTests
         Assert.True(File.Exists(path), "MainWindow.axaml should exist");
         var source = File.ReadAllText(path, Encoding.UTF8);
         // The self-drawn titlebar must theme through Semi Color tokens, not inline hex.
+        // 票 26：Text2 字面前景为许可的语义 token 消费（gate 只禁内联 hex/FontSize），保留原断言。
         Assert.Contains("{DynamicResource SemiColorBackground0}", source, StringComparison.Ordinal);
         Assert.Contains("{DynamicResource SemiColorText2}", source, StringComparison.Ordinal);
     }
@@ -525,5 +526,132 @@ public sealed class DesignSystemTests
                 Assert.True(onLadder, $"{file} has off-ladder FontSize=\"{value}\" (ladder: 11/12/14/16/18/20)");
             }
         }
+    }
+
+    // === 票 26（ADR 0062）— token 消费纪律 gate：Views 源码层静态断言 ===
+
+    [Fact]
+    public void Ticket26_Views_Must_Not_Contain_Inline_FontSize()
+    {
+        // 检查点 A①: Views 内 FontSize= 清零 — 字号唯一权威是 AppTheme typography class
+        //（caption=11/mono=12/body=14/title=16/headline=18/display=20，DesignTokens 档位）。
+        var viewsDir = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views");
+        foreach (var file in Directory.GetFiles(viewsDir, "*.axaml", SearchOption.AllDirectories))
+        {
+            var source = File.ReadAllText(file, Encoding.UTF8);
+            Assert.DoesNotContain("FontSize=", source, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void Ticket26_Views_Must_Not_Contain_Hardcoded_Hex_Colors()
+    {
+        // 检查点 A①②: Views 内联 hex 清零 — 色板标识色收敛 DesignTokens Swatch* token，
+        // 语义色一律走 SemiColor* DynamicResource。3/6/8 位 hex 全禁（#RRGGBB/#AARRGGBB/#RGB）。
+        var viewsDir = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views");
+        foreach (var file in Directory.GetFiles(viewsDir, "*.axaml", SearchOption.AllDirectories))
+        {
+            var source = File.ReadAllText(file, Encoding.UTF8);
+            var hits = System.Text.RegularExpressions.Regex.Matches(source, @"#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b");
+            Assert.True(hits.Count == 0, $"{file} has inline hex color(s): {string.Join(", ", hits.Select(h => h.Value))}");
+        }
+    }
+
+    [Fact]
+    public void Ticket26_Views_Classes_Must_Be_Defined_In_AppTheme()
+    {
+        // 检查点 A②: 无未定义 Classes — h2 类违例（report-22 B 节）不得回潮。
+        // AppTheme.axaml 选择器内 .class 提取为白名单；Views 的 Classes="a b" 逐词校验。
+        var appTheme = File.ReadAllText(Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Styling", "AppTheme.axaml"), Encoding.UTF8);
+        var defined = new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
+        foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(appTheme, @"Selector=""[^""]*\.([A-Za-z][\w-]*)"))
+        {
+            defined.Add(m.Groups[1].Value);
+        }
+        Assert.True(defined.Count >= 15, $"AppTheme should define >=15 style classes, got {defined.Count}");
+
+        var viewsDir = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views");
+        foreach (var file in Directory.GetFiles(viewsDir, "*.axaml", SearchOption.AllDirectories))
+        {
+            var source = File.ReadAllText(file, Encoding.UTF8);
+            foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(source, @"Classes=""([^""]+)"""))
+            {
+                foreach (var cls in m.Groups[1].Value.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    Assert.True(defined.Contains(cls), $"{file} uses undefined Classes=\"{cls}\" (AppTheme whitelist)");
+                }
+            }
+        }
+    }
+
+    [Fact]
+    public void Ticket26_Icon_Only_Buttons_Must_Carry_ToolTip()
+    {
+        // 检查点 A③: 图标必须伴随文字或 ToolTip — caption-btn（3）与 icon 变体（Add/Remove，票 25 后仅存 2 个
+        // icon Button；5 处 Browse 的 ToolTip 由票 25 u:PathPicker 自带 ToolTip.Tip 承载）均无文字，
+        // ToolTip.Tip 必须挂在本体（locale key 驱动）。
+        var viewsDir = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views");
+        var source = string.Concat(Directory.GetFiles(viewsDir, "*.axaml", SearchOption.AllDirectories)
+            .Select(f => File.ReadAllText(f, Encoding.UTF8)));
+        var buttons = System.Text.RegularExpressions.Regex.Matches(source, "<Button[^>]*>");
+        var checkedButtons = 0;
+        foreach (System.Text.RegularExpressions.Match b in buttons)
+        {
+            var isOpenIconOnly = b.Value.Contains("Classes=\"caption-btn") || b.Value.Contains("Classes=\"icon\"");
+            if (!isOpenIconOnly) continue;
+            Assert.Contains("ToolTip.Tip=", b.Value);
+            checkedButtons++;
+        }
+        Assert.True(checkedButtons >= 5, $"Expected >=5 icon-only buttons with ToolTip, got {checkedButtons}");
+    }
+
+    [Fact]
+    public void Ticket26_Button_State_Matrix_Must_Be_Complete()
+    {
+        // 检查点 B: 7 variant × pointerover/pressed/disabled 全覆盖 + :focus-visible 全局 ring。
+        //（idle 为基线样式本体，不设伪类；pressed 语义 = 纯色/透明度反馈，无 scale，ADR 0054/0062。）
+        var appTheme = File.ReadAllText(Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Styling", "AppTheme.axaml"), Encoding.UTF8);
+        foreach (var variant in new[] { "primary", "ghost", "danger", "icon", "nav", "nav-action", "caption-btn" })
+        {
+            foreach (var state in new[] { "pointerover", "pressed", "disabled" })
+            {
+                Assert.Contains($"Button.{variant}:{state}", appTheme, StringComparison.Ordinal);
+            }
+        }
+        Assert.Contains("Button:focus-visible", appTheme, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Ticket26_Empty_State_Copy_Must_Be_Wired()
+    {
+        // 检查点 C: Logs/Rules 空态文案 — locale key 存在 + 页面消费 + VM 开关收口（无事件订阅）。
+        var en = File.ReadAllText(Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Localization", "Locales", "en.json"), Encoding.UTF8);
+        var zh = File.ReadAllText(Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Localization", "Locales", "zh-CN.json"), Encoding.UTF8);
+        Assert.Contains("\"empty\"", en, StringComparison.Ordinal);
+        Assert.Contains("\"empty\"", zh, StringComparison.Ordinal);
+
+        var logsPage = File.ReadAllText(Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views", "Pages", "LogsPage.axaml"), Encoding.UTF8);
+        Assert.Contains("{ex:Localize log.empty}", logsPage, StringComparison.Ordinal);
+        Assert.Contains("HasNoLogs", logsPage, StringComparison.Ordinal);
+        var rulesPage = File.ReadAllText(Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views", "Pages", "RulesPage.axaml"), Encoding.UTF8);
+        Assert.Contains("{ex:Localize rules.empty}", rulesPage, StringComparison.Ordinal);
+        Assert.Contains("HasNoVisibleRules", rulesPage, StringComparison.Ordinal);
+
+        var vm = File.ReadAllText(Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "ViewModels", "MainWindowViewModel.cs"), Encoding.UTF8);
+        Assert.Contains("public bool HasNoLogs", vm, StringComparison.Ordinal);
+        Assert.Contains("HasNoLogs = false", vm, StringComparison.Ordinal);
+        Assert.Contains("HasNoLogs = true", vm, StringComparison.Ordinal);
+        var rpvm = File.ReadAllText(Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "ViewModels", "RulesPanelViewModel.cs"), Encoding.UTF8);
+        Assert.Contains("public bool HasNoVisibleRules", rpvm, StringComparison.Ordinal);
+        Assert.Contains("HasNoVisibleRules = Rules.Count == 0", rpvm, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Ticket26_Theme_Swap_Timing_Instrumented()
+    {
+        // 检查点 C: 色板切换耗时观测插桩 — ThemeSwapMs 打点必须存在（运行时实测值落 logs/ui-*.log 报告）。
+        var app = File.ReadAllText(Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "App.axaml.cs"), Encoding.UTF8);
+        Assert.Contains("ThemeSwapMs=", app, StringComparison.Ordinal);
+        Assert.Contains("ApplyCommunityThemeResourcesCore", app, StringComparison.Ordinal);
     }
 }

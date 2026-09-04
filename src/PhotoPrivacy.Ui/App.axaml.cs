@@ -122,6 +122,16 @@ public partial class App : Application
 
     internal static void ApplyCommunityThemeResources(string themeName, bool applyDark)
     {
+        // 票 26（ADR 0062）: 5 色板运行时切换耗时观测 — spec 门限 <200ms（首次含 JIT 预热，取第 3 次起均值）。
+        // 观测打点在 ResourceDictionary 换入完成后统一落 UiDiagnosticLog（logs/ui-*.log）。
+        var swapStopwatch = System.Diagnostics.Stopwatch.StartNew();
+        ApplyCommunityThemeResourcesCore(themeName, applyDark);
+        swapStopwatch.Stop();
+        UiDiagnosticLog.Write($"ThemeSwapMs={swapStopwatch.ElapsedMilliseconds} theme={themeName} applyDark={applyDark}");
+    }
+
+    private static void ApplyCommunityThemeResourcesCore(string themeName, bool applyDark)
+    {
         try
         {
             var resources = Application.Current!.Resources;
