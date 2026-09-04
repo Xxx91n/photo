@@ -5,6 +5,12 @@ namespace PhotoPrivacy.Ui.Services;
 
 public static class ConfigEditor
 {
+    /// <summary>
+    /// 票 27：在写盘前调用一次，抑制 ConfigFileWatcher 因自身写入触发的 FSW 反弹 reload,
+    /// 防止 UI → 磁盘 → UI 死循环覆盖用户尚未确认的改动.调用方负责持有 watcher 引用.
+    /// </summary>
+    public static Action? OnSelfWrite { get; set; }
+
     public static void UpdateConfig(string configPath, ConfigEditCommand command)
     {
         var config = File.Exists(configPath)
@@ -54,6 +60,9 @@ public static class ConfigEditor
         {
             Directory.CreateDirectory(dir);
         }
+
+        // 票 27：写盘前抑制 FSW 反弹回调（写盘后会自然触发 Changed 事件）
+        OnSelfWrite?.Invoke();
 
         // Atomic backup before write: copy existing config to .bak via temp+rename
         if (File.Exists(configPath))

@@ -128,6 +128,54 @@ public sealed class AppConfigRoundTripTests
     }
 
     /// <summary>
+    /// 票 27 B 检查点 — 收敛 3 处双 DTO 漂移点:Backup.Suffix / Ui.ThemeVariant / Ui.Locale
+    /// 写侧默认值必须等于读侧 AppConfigLoader 默认值,确保磁盘 JSON 永远带语义值(不出现空串).
+    /// </summary>
+    [Theory]
+    [InlineData("\"suffix\"", "\".bak\"")]
+    [InlineData("\"theme_variant\"", "\"system\"")]
+    [InlineData("\"locale\"", "\"zh-CN\"")]
+    [InlineData("\"theme_id\"", "\"catppuccin\"")]
+    [InlineData("\"sidebar_width\"", "200")]
+    public void ToIndentedJson_Should_Emit_Aligned_Defaults_For_Triple_Drift_Points(string keyFragment, string valueFragment)
+    {
+        var json = AppConfigJson.ToIndentedJson(AppConfig.Default);
+
+        Assert.Contains(keyFragment, json, StringComparison.Ordinal);
+        Assert.Contains(valueFragment, json, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// 票 27 B — 读侧空白兜底:手工编辑漏填关键字段后,AppConfigLoader 必须回填到 AppConfig.Default
+    /// 语义值,而不是传空串到下游路径拼接或主题切换逻辑里.
+    /// </summary>
+    [Theory]
+    [InlineData("\"suffix\"", "\".bak\"")]
+    [InlineData("\"theme_variant\"", "\"system\"")]
+    [InlineData("\"locale\"", "\"zh-CN\"")]
+    public void Loader_Should_Fallback_To_Default_When_Field_Is_Missing(string droppedKey, string expectedValueFragment)
+    {
+        var json = AppConfigJson.ToIndentedJson(AppConfig.Default);
+        // 从 JSON 里删掉指定的关键字段,模拟"手工编辑漏填"
+        var stripped = System.Text.RegularExpressions.Regex.Replace(
+            json,
+            $"\\s*\"{droppedKey.Trim('"')}\"\\s*:\\s*\"[^\"]*\",?",
+            string.Empty);
+        var path = WriteTempConfig(stripped);
+
+        try
+        {
+            var reloaded = AppConfigLoader.Load(path);
+            var roundTripJson = AppConfigJson.ToIndentedJson(reloaded);
+            Assert.Contains(expectedValueFragment, roundTripJson, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(Path.GetDirectoryName(path)!, recursive: true);
+        }
+    }
+
+    /// <summary>
     /// spec Testing Decisions：断言 sample 与 AppConfig.Default 关键取值一致
     /// （audit.diagnostic_mode/log_level 此前与代码默认相反）。
     /// </summary>

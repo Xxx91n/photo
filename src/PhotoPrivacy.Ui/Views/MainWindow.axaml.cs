@@ -294,6 +294,15 @@ public partial class MainWindow : Window
         _serviceModePollTask = Task.Run(
             () => _serviceModeController.PollServiceModeTransitionAsync(_serviceModePollCts.Token),
             _serviceModePollCts.Token);
+
+        // 票 27：启动 ConfigFileWatcher 监听磁盘变更（手改/外部工具/备份回滚）.
+        // 与 OnSelfWrite 抑制回调配对，避免 UI 自身写盘触发的 FSW 反弹 reload 覆盖未确认改动.
+        _configFileWatcher = new ConfigFileWatcher(
+            configPath: options.ConfigPath,
+            onReload: () => Dispatcher.UIThread.Post(ApplyRuntimeConfigToUiState, DispatcherPriority.Background));
+        ConfigEditor.OnSelfWrite = _configFileWatcher.SuppressNextReload;
+        _configFileWatcher.Start();
+
         UiDiagnosticLog.Write("MainWindow.InitializeRuntime end");
         EnsureWindowVisibleFallback(options);
     }
@@ -352,6 +361,15 @@ public partial class MainWindow : Window
         _configApplyDebounceCts?.Cancel();
         _configApplyDebounceCts?.Dispose();
         _configApplyDebounceCts = null;
+
+        // 票 27：释放 ConfigFileWatcher 并解绑 OnSelfWrite 抑制回调（避免静态事件悬挂）
+        if (_configFileWatcher is not null)
+        {
+            _configFileWatcher.Dispose();
+            _configFileWatcher = null;
+        }
+
+        ConfigEditor.OnSelfWrite = null;
 
         if (_versionPollCts is not null)
         {

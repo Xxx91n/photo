@@ -45,7 +45,8 @@ public static class AppConfigJson
             {
                 Enabled = config.Backup.Enabled,
                 Directory = config.Backup.Directory,
-                Suffix = config.Backup.Suffix,
+                // 票 27 B：写侧空字符串/空白会回填为 Default，避免下游读时需要二次兜底。
+                Suffix = string.IsNullOrWhiteSpace(config.Backup.Suffix) ? AppConfig.Default.Backup.Suffix : config.Backup.Suffix,
                 MaxSizeMb = config.Backup.MaxSizeMb,
                 RetainDays = config.Backup.RetainDays
             },
@@ -65,9 +66,9 @@ public static class AppConfigJson
             {
                 HideMainWindowOnStartup = config.Ui.HideMainWindowOnStartup,
                 HideTrayIcon = config.Ui.HideTrayIcon,
-                ThemeVariant = config.Ui.ThemeVariant,
-                ThemeId = config.Ui.ThemeId,
-                Locale = config.Ui.Locale,
+                ThemeVariant = config.Ui.ThemeVariant ?? AppConfig.Default.Ui.ThemeVariant,
+                ThemeId = string.IsNullOrWhiteSpace(config.Ui.ThemeId) ? AppConfig.Default.Ui.ThemeId : config.Ui.ThemeId,
+                Locale = config.Ui.Locale ?? AppConfig.Default.Ui.Locale,
                 SidebarWidth = config.Ui.SidebarWidth
             }
         };
@@ -185,8 +186,10 @@ public static class AppConfigJson
         [JsonPropertyName("directory")]
         public string Directory { get; init; } = string.Empty;
 
+        // 票 27 B：写侧默认值对齐读侧 AppConfigLoader（.bak / system / zh-CN），
+        // 消除"写空串写入磁盘 → 读时兜底回填"的双 DTO 漂移。读侧默认来源 AppConfig.Default。
         [JsonPropertyName("suffix")]
-        public string Suffix { get; init; } = string.Empty;
+        public string Suffix { get; init; } = AppConfig.Default.Backup.Suffix;
 
         [JsonPropertyName("max_size_mb")]
         public int MaxSizeMb { get; init; } = 5000;
@@ -227,16 +230,18 @@ public static class AppConfigJson
         [JsonPropertyName("hide_tray_icon")]
         public bool HideTrayIcon { get; init; }
 
+        // 票 27 B：写侧默认值对齐读侧 AppConfigLoader（system / zh-CN / 200 / catppuccin），
+        // 消除"写入空串 → 读时兜底回填"的双 DTO 漂移。读侧默认来源 AppConfig.Default。
         [JsonPropertyName("theme_variant")]
-        public string ThemeVariant { get; init; } = string.Empty;
+        public string ThemeVariant { get; init; } = AppConfig.Default.Ui.ThemeVariant;
 
         [JsonPropertyName("theme_id")]
-        public string ThemeId { get; init; } = "catppuccin";
+        public string ThemeId { get; init; } = AppConfig.Default.Ui.ThemeId;
 
         [JsonPropertyName("locale")]
-        public string? Locale { get; init; }
+        public string Locale { get; init; } = AppConfig.Default.Ui.Locale;
 
         [JsonPropertyName("sidebar_width")]
-        public double SidebarWidth { get; init; } = 200.0;
+        public double SidebarWidth { get; init; } = AppConfig.Default.Ui.SidebarWidth;
     }
 }
