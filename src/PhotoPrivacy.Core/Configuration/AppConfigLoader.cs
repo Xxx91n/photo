@@ -55,7 +55,9 @@ public static class AppConfigLoader
             Backup: new BackupOptions(
                 Enabled: dto.Backup.Enabled,
                 Directory: dto.Backup.Directory,
-                Suffix: dto.Backup.Suffix,
+                // 票 27 B：写侧已统一兜底为空时写 Default；读侧再做空白兜底是双层保险，
+                // 防止旧磁盘文件或手工编辑时漏值导致空串污染下游路径拼接。
+                Suffix: string.IsNullOrWhiteSpace(dto.Backup.Suffix) ? AppConfig.Default.Backup.Suffix : dto.Backup.Suffix,
                 MaxSizeMb: dto.Backup.MaxSizeMb,
                 RetainDays: dto.Backup.RetainDays),
             Quarantine: new QuarantineOptions(
@@ -69,10 +71,11 @@ public static class AppConfigLoader
             Ui: new UiOptions(
                 HideMainWindowOnStartup: dto.Ui.HideMainWindowOnStartup,
                 HideTrayIcon: dto.Ui.HideTrayIcon,
-                ThemeVariant: dto.Ui.ThemeVariant,
-                Locale: dto.Ui.Locale ?? "zh-CN",
+                // 票 27 B：ThemeVariant/Locale/ThemeId 兜底默认从 AppConfig.Default 取，消双 DTO 漂移。
+                ThemeVariant: string.IsNullOrWhiteSpace(dto.Ui.ThemeVariant) ? AppConfig.Default.Ui.ThemeVariant : dto.Ui.ThemeVariant,
+                Locale: string.IsNullOrWhiteSpace(dto.Ui.Locale) ? AppConfig.Default.Ui.Locale : dto.Ui.Locale,
                 SidebarWidth: dto.Ui.SidebarWidth,
-                ThemeId: string.IsNullOrWhiteSpace(dto.Ui.ThemeId) ? "catppuccin" : dto.Ui.ThemeId));
+                ThemeId: string.IsNullOrWhiteSpace(dto.Ui.ThemeId) ? AppConfig.Default.Ui.ThemeId : dto.Ui.ThemeId));
     }
 
     private static string ResolveExifToolPath(string nestedPath, string? legacyPath, bool hasNestedExifToolPath)
@@ -220,6 +223,8 @@ public static class AppConfigLoader
         [JsonPropertyName("directory")]
         public string Directory { get; init; } = AppConfig.Default.Backup.Directory;
 
+        // 票 27 B：写侧已统一兜底为空时写 Default；Dto 默认值也同步到 AppConfig.Default，
+        // 让 JsonSerializer 不会产出意外的空串。运行时 AppConfig 构造还会再 blanket 一次。
         [JsonPropertyName("suffix")]
         public string Suffix { get; init; } = AppConfig.Default.Backup.Suffix;
 
@@ -262,6 +267,7 @@ public static class AppConfigLoader
         [JsonPropertyName("hide_tray_icon")]
         public bool HideTrayIcon { get; init; } = AppConfig.Default.Ui.HideTrayIcon;
 
+        // 票 27 B：写侧 Default 已统一；DTO 默认值也同步到 AppConfig.Default，消双 DTO 漂移。
         [JsonPropertyName("theme_variant")]
         public string ThemeVariant { get; init; } = AppConfig.Default.Ui.ThemeVariant;
 
@@ -269,7 +275,7 @@ public static class AppConfigLoader
         public string ThemeId { get; init; } = AppConfig.Default.Ui.ThemeId;
 
         [JsonPropertyName("locale")]
-        public string? Locale { get; init; }
+        public string Locale { get; init; } = AppConfig.Default.Ui.Locale;
 
         [JsonPropertyName("sidebar_width")]
         public double SidebarWidth { get; init; } = AppConfig.Default.Ui.SidebarWidth;
