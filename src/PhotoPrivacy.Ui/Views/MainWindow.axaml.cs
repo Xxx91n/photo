@@ -29,6 +29,8 @@ public partial class MainWindow : Window
     private string _exifToolHint = string.Empty;
     private CancellationTokenSource? _saveStatusResetCts;
     private CancellationTokenSource? _configApplyDebounceCts;
+    // 票 27：ConfigFileWatcher — 监听磁盘 config.json 变更后回调 ApplyRuntimeConfigToUiState
+    private ConfigFileWatcher? _configFileWatcher;
     private static readonly HashSet<string> _configProperties = new(StringComparer.OrdinalIgnoreCase)
     {
         nameof(MainWindowViewModel.ExifToolPath),
@@ -185,8 +187,8 @@ public partial class MainWindow : Window
             }
 
             var isServiceMode = string.Equals(options.RuntimeKind, "service", StringComparison.OrdinalIgnoreCase);
-            PauseResumeButton.IsEnabled = !isServiceMode;
-            PauseResumeButton.Content = isServiceMode ? LocalizationService.Instance.Get("status.pause_service_unavailable") : viewModel.PauseResumeLabel;
+            // 票 24（ADR 0061）：Service→View 直写清零 — 可用性/文案改经 VM 中转，由 XAML 绑定消费。
+            viewModel.PauseResumeAvailable = !isServiceMode;
 
             _serviceModeController.Attach(options);
             _serviceModeController.UpdateServiceButtons();
@@ -198,9 +200,10 @@ public partial class MainWindow : Window
         }
 
         PauseResumeButton.Click += OnPauseResumeClick;
-        ClearLogsButton.Click += OnClearLogsClick;
+        // 票 24（ADR 0061）：页面控件经 Pages code-behind 内部访问器接线，事件订阅仍统一收口在 MainWindow。
+        LogPage.ClearLogsButtonControl.Click += OnClearLogsClick;
         OpenConfigDirButton.Click += OnOpenConfigDirClick;
-        RefreshServiceStatusButton.Click += OnRefreshServiceStatusClick;
+        ServiceManagerTab.RefreshServiceStatusButtonControl.Click += OnRefreshServiceStatusClick;
         ConfigNavButton.Click += OnNavigateClick;
         LogNavButton.Click += OnNavigateClick;
         RulesNavButton.Click += OnNavigateClick;
@@ -209,20 +212,27 @@ public partial class MainWindow : Window
             openServiceManagerTabButton.Click += OnNavigateClick;
         }
 
-        InstallServiceButton.Click += OnInstallServiceClick;
-        UninstallServiceButton.Click += OnUninstallServiceClick;
-        StartServiceButton.Click += OnStartServiceClick;
-        StopServiceButton.Click += OnStopServiceClick;
-        ThemeVariantComboBox.SelectionChanged += OnThemeVariantSelectionChanged;
-        LogLevelComboBox.SelectionChanged += OnLogLevelSelectionChanged;
-        // LocaleVariantComboBox uses inline SelectionChanged in AXAML, no manual wire needed
-        BrowseExifToolButton.Click += OnBrowseExifToolClick;
-        BrowseHotFolderButton.Click += OnBrowseHotFolderClick;
-        BrowseBackupDirectoryButton.Click += OnBrowseBackupDirectoryClick;
-        BrowseAuditLogDirectoryButton.Click += OnBrowseAuditLogDirectoryClick;
-        BrowseQuarantineDirectoryButton.Click += OnBrowseQuarantineDirectoryClick;
-        AddExcludedDirectoryButton.Click += OnAddExcludedDirectoryClick;
-        RemoveExcludedDirectoryButton.Click += OnRemoveExcludedDirectoryClick;
+        ServiceManagerTab.InstallServiceButtonControl.Click += OnInstallServiceClick;
+        ServiceManagerTab.UninstallServiceButtonControl.Click += OnUninstallServiceClick;
+        ServiceManagerTab.StartServiceButtonControl.Click += OnStartServiceClick;
+        ServiceManagerTab.StopServiceButtonControl.Click += OnStopServiceClick;
+        ConfigPage.ThemeVariantComboBoxControl.SelectionChanged += OnThemeVariantSelectionChanged;
+        ConfigPage.LogLevelComboBoxControl.SelectionChanged += OnLogLevelSelectionChanged;
+        ConfigPage.LocaleVariantComboBoxControl.SelectionChanged += OnLocaleSelectionChanged;
+        ConfigPage.BrowseExifToolButtonControl.Click += OnBrowseExifToolClick;
+        ConfigPage.BrowseHotFolderButtonControl.Click += OnBrowseHotFolderClick;
+        ConfigPage.BrowseBackupDirectoryButtonControl.Click += OnBrowseBackupDirectoryClick;
+        ConfigPage.BrowseAuditLogDirectoryButtonControl.Click += OnBrowseAuditLogDirectoryClick;
+        ConfigPage.BrowseQuarantineDirectoryButtonControl.Click += OnBrowseQuarantineDirectoryClick;
+        ConfigPage.AddExcludedDirectoryButtonControl.Click += OnAddExcludedDirectoryClick;
+        ConfigPage.RemoveExcludedDirectoryButtonControl.Click += OnRemoveExcludedDirectoryClick;
+        ConfigPage.CatppuccinSwatchControl.Click += OnThemePresetSwatchClick;
+        ConfigPage.DraculaSwatchControl.Click += OnThemePresetSwatchClick;
+        ConfigPage.NordSwatchControl.Click += OnThemePresetSwatchClick;
+        ConfigPage.OneDarkProSwatchControl.Click += OnThemePresetSwatchClick;
+        ConfigPage.TokyoNightSwatchControl.Click += OnThemePresetSwatchClick;
+        RulesPage.SaveRulesButtonControl.Click += OnSaveRulesClick;
+        RulesPage.ResetRulesButtonControl.Click += OnResetRulesClick;
 
         // ADR 0037: instant-apply via debounced PropertyChanged — no manual "应用配置" button.
         viewModel.PropertyChanged += OnViewModelPropertyChanged;
@@ -624,7 +634,7 @@ public partial class MainWindow : Window
     private void OnRemoveExcludedDirectoryClick(object? sender, RoutedEventArgs e)
     {
         if (DataContext is MainWindowViewModel vm
-            && UserExcludedDirectoriesListBox.SelectedItem is string selected)
+            && ConfigPage.UserExcludedDirectoriesListBoxControl.SelectedItem is string selected)
         {
             vm.UserExcludedDirectories.Remove(selected);
         }
@@ -847,23 +857,24 @@ public partial class MainWindow : Window
     {
         try
         {
-            if (LocaleVariantComboBox is null || LocaleVariantComboBox.Items is null)
+            var combo = ConfigPage.LocaleVariantComboBoxControl;
+            if (combo is null || combo.Items is null)
             {
                 return;
             }
 
             var target = string.IsNullOrWhiteSpace(locale) ? "zh-CN" : locale;
-            foreach (var item in LocaleVariantComboBox.Items)
+            foreach (var item in combo.Items)
             {
                 if (item is ComboBoxItem comboItem
                     && string.Equals(comboItem.Tag?.ToString(), target, StringComparison.OrdinalIgnoreCase))
                 {
-                    LocaleVariantComboBox.SelectedItem = comboItem;
+                    combo.SelectedItem = comboItem;
                     return;
                 }
             }
 
-            LocaleVariantComboBox.SelectedIndex = 0;
+            combo.SelectedIndex = 0;
         }
         catch
         {
@@ -900,15 +911,16 @@ public partial class MainWindow : Window
     private void RefreshI18nComboBoxItems()
     {
         var svc = LocalizationService.Instance;
-        RefreshComboBoxItems(ThemeVariantComboBox, ThemeVariantTagToLocaleKey, svc);
-        RefreshComboBoxItems(LogLevelComboBox, LogLevelTagToLocaleKey, svc);
+        var configPage = ConfigPage;
+        RefreshComboBoxItems(configPage.ThemeVariantComboBoxControl, ThemeVariantTagToLocaleKey, svc);
+        RefreshComboBoxItems(configPage.LogLevelComboBoxControl, LogLevelTagToLocaleKey, svc);
         // Force Avalonia ComboBox SelectionBoxItem to re-render: setting Content
         // on ComboBoxItem does NOT propagate to the closed dropdown display
         // (SelectionBoxItemPresenter caches the selected item's content). The
         // industry pattern is to temporarily clear selection then restore it,
         // which forces the ComboBox to re-evaluate its SelectionBoxItem.
-        ForceComboBoxSelectionBoxRefresh(ThemeVariantComboBox);
-        ForceComboBoxSelectionBoxRefresh(LogLevelComboBox);
+        ForceComboBoxSelectionBoxRefresh(configPage.ThemeVariantComboBoxControl);
+        ForceComboBoxSelectionBoxRefresh(configPage.LogLevelComboBoxControl);
         // LocaleVariantComboBox items are native-language labels (not i18n keys),
         // so they don't change on locale switch — no refresh needed.
     }
@@ -964,23 +976,24 @@ public partial class MainWindow : Window
     {
         try
         {
-            if (ThemeVariantComboBox is null || ThemeVariantComboBox.Items is null)
+            var combo = ConfigPage.ThemeVariantComboBoxControl;
+            if (combo is null || combo.Items is null)
             {
                 return;
             }
 
             var normalized = NormalizeThemeVariant(variant);
-            foreach (var item in ThemeVariantComboBox.Items)
+            foreach (var item in combo.Items)
             {
                 if (item is ComboBoxItem comboItem
                     && string.Equals(comboItem.Tag?.ToString(), normalized, StringComparison.OrdinalIgnoreCase))
                 {
-                    ThemeVariantComboBox.SelectedItem = comboItem;
+                    combo.SelectedItem = comboItem;
                     return;
                 }
             }
 
-            ThemeVariantComboBox.SelectedIndex = 0;
+            combo.SelectedIndex = 0;
         }
         catch
         {
@@ -994,7 +1007,7 @@ public partial class MainWindow : Window
     {
         try
         {
-            var swatches = new[] { CatppuccinSwatch, DraculaSwatch, NordSwatch, OneDarkProSwatch, TokyoNightSwatch };
+            var swatches = new RadioButton?[] { ConfigPage.CatppuccinSwatchControl, ConfigPage.DraculaSwatchControl, ConfigPage.NordSwatchControl, ConfigPage.OneDarkProSwatchControl, ConfigPage.TokyoNightSwatchControl };
             foreach (var sw in swatches)
             {
                 if (sw is { } btn && string.Equals(btn.Tag?.ToString(), themeId, StringComparison.OrdinalIgnoreCase))
@@ -1014,22 +1027,23 @@ public partial class MainWindow : Window
     {
         try
         {
-            if (LogLevelComboBox is null || LogLevelComboBox.Items is null)
+            var combo = ConfigPage.LogLevelComboBoxControl;
+            if (combo is null || combo.Items is null)
             {
                 return;
             }
 
-            foreach (var item in LogLevelComboBox.Items)
+            foreach (var item in combo.Items)
             {
                 if (item is ComboBoxItem comboItem
                     && string.Equals(comboItem.Tag?.ToString(), level, StringComparison.OrdinalIgnoreCase))
                 {
-                    LogLevelComboBox.SelectedItem = comboItem;
+                    combo.SelectedItem = comboItem;
                     return;
                 }
             }
 
-            LogLevelComboBox.SelectedIndex = 1;
+            combo.SelectedIndex = 1;
         }
         catch
         {

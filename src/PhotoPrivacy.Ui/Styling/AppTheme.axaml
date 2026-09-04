@@ -243,6 +243,8 @@
   <Style Selector="TextBox.inline-input">
     <Setter Property="BorderBrush" Value="{DynamicResource SemiColorBorder}" />
     <Setter Property="CornerRadius" Value="{DynamicResource RadiusSm}" />
+    <!-- 票 24（ADR 0061）：Width=280 ×4/×5 收敛为共享 class 单一权威（Views 禁止内联宽度） -->
+    <Setter Property="Width" Value="280" />
   </Style>
 
   <!-- atomcode 2026-08-18: industry-standard button feedback = color transition only.
