@@ -338,6 +338,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
     public ObservableCollection<AuditLogEntry> LogEntries { get; } = [];
 
+    // 票 26（ADR 0062）: 空审计流占位开关 — 在 Append/Clear 收口处联动刷新（无事件订阅，防泄漏）。
+    private bool _hasNoLogs = true;
+    public bool HasNoLogs
+    {
+        get => _hasNoLogs;
+        private set => SetField(ref _hasNoLogs, value);
+    }
+
     private bool IsServiceMode =>
         string.Equals(_currentMode, "service", StringComparison.OrdinalIgnoreCase)
         || _currentMode.Contains("service", StringComparison.OrdinalIgnoreCase);
@@ -361,6 +369,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public void AppendLog(AuditLogEntry entry)
     {
         LogEntries.Insert(0, entry);
+        HasNoLogs = false;
         while (LogEntries.Count > 500)
         {
             LogEntries.RemoveAt(LogEntries.Count - 1);
@@ -380,6 +389,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         {
             LogEntries.Insert(0, entries[i]);
         }
+        HasNoLogs = false;
 
         // 批量裁剪尾部
         var excess = LogEntries.Count - 500;
@@ -395,6 +405,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public void ClearLogs()
     {
         LogEntries.Clear();
+        HasNoLogs = true;
     }
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)

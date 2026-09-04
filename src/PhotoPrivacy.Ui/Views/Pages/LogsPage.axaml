@@ -27,10 +27,8 @@
             <Grid ColumnDefinitions="68,108,*,1.6*" Height="32" Background="Transparent">
               <TextBlock Text="{Binding TimeText}"
                          Classes="caption"
-                         FontSize="11"
                          FontFeatures="+tnum"
-                         VerticalAlignment="Center"
-                         Foreground="{DynamicResource SemiColorText2}"/>
+                         VerticalAlignment="Center"/>
               <Border Grid.Column="1"
                       CornerRadius="4"
                       Padding="6,2"
@@ -38,18 +36,17 @@
                       Margin="0,0,8,0"
                       VerticalAlignment="Center"
                       HorizontalAlignment="Left">
-                <TextBlock Text="{Binding DisplayEvent}" FontSize="11" Foreground="{Binding ColorHex}" FontWeight="Medium"/>
+                <TextBlock Text="{Binding DisplayEvent}" Classes="caption" Foreground="{Binding ColorHex}" FontWeight="Medium"/>
               </Border>
               <TextBlock Grid.Column="2"
                          Text="{Binding SourcePathMasked}"
                          Classes="caption"
-                         FontSize="11"
                          VerticalAlignment="Center"
                          Foreground="{DynamicResource SemiColorText1}"
                          TextTrimming="CharacterEllipsis"/>
               <TextBlock Grid.Column="3"
+                         Classes="mono"
                          Text="{Binding Message}"
-                         FontSize="12"
                          VerticalAlignment="Center"
                          Foreground="{DynamicResource SemiColorText0}"
                          TextTrimming="CharacterEllipsis"/>
@@ -57,6 +54,12 @@
           </DataTemplate>
         </ListBox.ItemTemplate>
       </ListBox>
+      <!-- 票 26（ADR 0062）: 空审计流占位 — HasNoLogs 由 VM 在 Append/Clear 收口处联动刷新 -->
+      <TextBlock Text="{ex:Localize log.empty}"
+                 Classes="caption"
+                 HorizontalAlignment="Center"
+                 VerticalAlignment="Center"
+                 IsVisible="{Binding HasNoLogs}"/>
     </DockPanel>
   </Grid>
 </UserControl>

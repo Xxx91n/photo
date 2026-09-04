@@ -177,6 +177,10 @@
     "label": {
       "system_excluded": "System auto-excluded directories (read-only)",
       "user_excluded": "User-defined exclusion directories"
+    },
+    "tooltip": {
+      "add_excluded_dir": "Add a directory to exclude from watching",
+      "remove_excluded_dir": "Remove the selected excluded directory"
     }
   },
   "theme": {
@@ -208,7 +212,13 @@
     },
     "btn": {
       "clear": "Clear"
-    }
+    },
+    "empty": "No audit entries yet — waiting for file watch events"
+  },
+  "titlebar": {
+    "minimize": "Minimize",
+    "maximize": "Maximize",
+    "close": "Close"
   },
   "tray": {
     "pause": "Pause",
@@ -250,6 +260,7 @@
       "save": "Save custom rules",
       "reset": "Reset to defaults"
     },
+    "empty": "No matching wipe rules",
     "col": {
       "family": "Family",
       "extensions": "Extensions",

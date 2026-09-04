@@ -177,6 +177,10 @@
     "label": {
       "system_excluded": "Systematisch automatisch ausgeschlossene Verzeichnisse (nur Lesen)",
       "user_excluded": "Vom Benutzer definierte Ausschlussverzeichnisse"
+    },
+    "tooltip": {
+      "add_excluded_dir": "Verzeichnis von der Überwachung ausschließen",
+      "remove_excluded_dir": "Ausgewähltes ausgeschlossenes Verzeichnis entfernen"
     }
   },
   "theme": {
@@ -208,7 +212,8 @@
     },
     "btn": {
       "clear": "Bereinigen"
-    }
+    },
+    "empty": "Noch keine Prüfprotokolle — warte auf Dateiüberwachungsereignisse"
   },
   "tray": {
     "pause": "Anhalten",
@@ -262,6 +267,12 @@
       "strip_time": "Zeit",
       "warning": "Warnung",
       "effective_args": "Generierte Args"
-    }
+    },
+    "empty": "Keine passenden Bereinigungsregeln"
+  },
+  "titlebar": {
+    "minimize": "Minimieren",
+    "maximize": "Maximieren",
+    "close": "Schließen"
   }
 }

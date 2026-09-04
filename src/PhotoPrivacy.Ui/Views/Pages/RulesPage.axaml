@@ -30,6 +30,7 @@
           <Button x:Name="ResetRulesButton" Classes="ghost" Content="{ex:Localize rules.btn.reset}" />
           <TextBlock x:Name="RulesSaveStatus" Text="{Binding RulesPanel.SaveStatus}" Classes="caption" VerticalAlignment="Center" Margin="8,0,0,0" Opacity="0.6" />
         </StackPanel>
+        <Grid MinHeight="280">
         <DataGrid x:Name="RulesDataGrid"
                   ItemsSource="{Binding RulesPanel.Rules}"
                   AutoGenerateColumns="False"
@@ -37,10 +38,9 @@
                   GridLinesVisibility="All"
                   FrozenColumnCount="1"
                   SelectionMode="Single"
-                  MinHeight="280"
                   HeadersVisibility="Column"
                   CanUserSortColumns="True"
-                  FontSize="12">
+                  Classes="data-grid">
           <DataGrid.Columns>
             <DataGridTextColumn Header="{ex:Localize rules.col.family}" Binding="{Binding FamilyName}" Width="90" IsReadOnly="True"/>
             <DataGridTextColumn Header="{ex:Localize rules.col.extensions}" Binding="{Binding Extensions}" Width="140" IsReadOnly="True"/>
@@ -55,6 +55,13 @@
             <DataGridTextColumn Header="{ex:Localize rules.col.effective_args}" Binding="{Binding EffectiveArgs}" Width="*" IsReadOnly="True"/>
           </DataGrid.Columns>
         </DataGrid>
+          <!-- 票 26（ADR 0062）: 规则空态占位 — 筛选无命中 / 加载为空时可见 -->
+          <TextBlock Text="{ex:Localize rules.empty}"
+                     Classes="caption"
+                     HorizontalAlignment="Center"
+                     VerticalAlignment="Center"
+                     IsVisible="{Binding RulesPanel.HasNoVisibleRules}"/>
+        </Grid>
       </StackPanel>
     </ScrollViewer>
   </Grid>

@@ -177,6 +177,10 @@
     "label": {
       "system_excluded": "Directorios autoexcluidos del sistema (solo lectura)",
       "user_excluded": "Directorios de exclusión definidos por el usuario"
+    },
+    "tooltip": {
+      "add_excluded_dir": "Añadir directorio excluido de la vigilancia",
+      "remove_excluded_dir": "Eliminar el directorio excluido seleccionado"
     }
   },
   "theme": {
@@ -208,7 +212,8 @@
     },
     "btn": {
       "clear": "Borrar"
-    }
+    },
+    "empty": "Aún no hay registros de auditoría — esperando eventos de vigilancia"
   },
   "tray": {
     "pause": "Pausa",
@@ -262,6 +267,12 @@
       "strip_time": "Tiempo",
       "warning": "Aviso",
       "effective_args": "Args generados"
-    }
+    },
+    "empty": "No hay reglas de limpieza coincidentes"
+  },
+  "titlebar": {
+    "minimize": "Minimizar",
+    "maximize": "Maximizar",
+    "close": "Cerrar"
   }
 }

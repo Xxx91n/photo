@@ -60,6 +60,14 @@ public sealed class RulesPanelViewModel : INotifyPropertyChanged
     public ObservableCollection<FormatRuleRow> Rules { get; } = new();
     private readonly List<FormatRuleRow> _allRules = new();
 
+    // 票 26（ADR 0062）: 规则空态占位开关 — ApplyFilter 收口处联动刷新（无事件订阅，防泄漏）。
+    private bool _hasNoVisibleRules;
+    public bool HasNoVisibleRules
+    {
+        get => _hasNoVisibleRules;
+        private set => SetField(ref _hasNoVisibleRules, value);
+    }
+
     public RulesPanelViewModel(FormatRulesStore store)
     {
         _store = store;
@@ -127,6 +135,7 @@ public sealed class RulesPanelViewModel : INotifyPropertyChanged
                 Rules.Add(row);
             }
         }
+        HasNoVisibleRules = Rules.Count == 0;
     }
 
     public void SaveCustomRules()

@@ -177,6 +177,10 @@
     "label": {
       "system_excluded": "Répertoires auto-exclus du système (lecture seule)",
       "user_excluded": "Répertoires d'exclusion définis par l'utilisateur"
+    },
+    "tooltip": {
+      "add_excluded_dir": "Ajouter un répertoire exclu de la surveillance",
+      "remove_excluded_dir": "Supprimer le répertoire exclu sélectionné"
     }
   },
   "theme": {
@@ -208,7 +212,8 @@
     },
     "btn": {
       "clear": "Effacer"
-    }
+    },
+    "empty": "Aucun journal d'audit pour l'instant — en attente d'événements de surveillance"
   },
   "tray": {
     "pause": "Pause",
@@ -262,6 +267,12 @@
       "strip_time": "Temps",
       "warning": "Avertissement",
       "effective_args": "Args générés"
-    }
+    },
+    "empty": "Aucune règle de nettoyage correspondante"
+  },
+  "titlebar": {
+    "minimize": "Réduire",
+    "maximize": "Agrandir",
+    "close": "Fermer"
   }
 }
