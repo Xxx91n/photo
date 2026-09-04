@@ -247,6 +247,14 @@
     <Setter Property="Width" Value="280" />
   </Style>
 
+  <!-- 票 25：路径行收敛为 Ursa PathPicker 后 Width=280 单一权威随控件迁移（原 TextBox.inline-input 保留供排除目录等余量场景） -->
+  <Style Selector="u|PathPicker.inline-input">
+    <Setter Property="BorderBrush" Value="{DynamicResource SemiColorBorder}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusSm}" />
+    <!-- 票 24（ADR 0061）：Width=280 ×4/×5 收敛为共享 class 单一权威（Views 禁止内联宽度） -->
+    <Setter Property="Width" Value="280" />
+  </Style>
+
   <!-- atomcode 2026-08-18: industry-standard button feedback = color transition only.
        Removed SukiUI pressed scale + RenderTransform transition (ADR 0051 A2).
        NN/g + Fluent 2: pressed = slight color change 100-150ms; scale is WCAG 2.2 SC 2.3.3 motion.

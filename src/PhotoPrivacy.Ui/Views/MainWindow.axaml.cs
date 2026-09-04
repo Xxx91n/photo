@@ -6,11 +6,13 @@ using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Platform.Storage;
 using Avalonia.Styling;
+using Avalonia.VisualTree;
 using PhotoPrivacy.Core.Configuration;
 using PhotoPrivacy.Core.Watcher;
 using PhotoPrivacy.Ui.Localization;
 using PhotoPrivacy.Ui.Services;
 using PhotoPrivacy.Ui.ViewModels;
+using PhotoPrivacy.Ui.Views.Controls;
 
 namespace PhotoPrivacy.Ui.Views;
 
@@ -204,13 +206,10 @@ public partial class MainWindow : Window
         LogPage.ClearLogsButtonControl.Click += OnClearLogsClick;
         OpenConfigDirButton.Click += OnOpenConfigDirClick;
         ServiceManagerTab.RefreshServiceStatusButtonControl.Click += OnRefreshServiceStatusClick;
-        ConfigNavButton.Click += OnNavigateClick;
-        LogNavButton.Click += OnNavigateClick;
-        RulesNavButton.Click += OnNavigateClick;
-        if (this.FindControl<Button>("OpenServiceManagerTabButton") is { } openServiceManagerTabButton)
-        {
-            openServiceManagerTabButton.Click += OnNavigateClick;
-        }
+        ConfigNavButton.NavButtonControl.Click += OnNavigateClick;
+        LogNavButton.NavButtonControl.Click += OnNavigateClick;
+        RulesNavButton.NavButtonControl.Click += OnNavigateClick;
+        OpenServiceManagerTabButton.NavButtonControl.Click += OnNavigateClick;
 
         ServiceManagerTab.InstallServiceButtonControl.Click += OnInstallServiceClick;
         ServiceManagerTab.UninstallServiceButtonControl.Click += OnUninstallServiceClick;
@@ -219,18 +218,10 @@ public partial class MainWindow : Window
         ConfigPage.ThemeVariantComboBoxControl.SelectionChanged += OnThemeVariantSelectionChanged;
         ConfigPage.LogLevelComboBoxControl.SelectionChanged += OnLogLevelSelectionChanged;
         ConfigPage.LocaleVariantComboBoxControl.SelectionChanged += OnLocaleSelectionChanged;
-        ConfigPage.BrowseExifToolButtonControl.Click += OnBrowseExifToolClick;
-        ConfigPage.BrowseHotFolderButtonControl.Click += OnBrowseHotFolderClick;
-        ConfigPage.BrowseBackupDirectoryButtonControl.Click += OnBrowseBackupDirectoryClick;
-        ConfigPage.BrowseAuditLogDirectoryButtonControl.Click += OnBrowseAuditLogDirectoryClick;
-        ConfigPage.BrowseQuarantineDirectoryButtonControl.Click += OnBrowseQuarantineDirectoryClick;
         ConfigPage.AddExcludedDirectoryButtonControl.Click += OnAddExcludedDirectoryClick;
         ConfigPage.RemoveExcludedDirectoryButtonControl.Click += OnRemoveExcludedDirectoryClick;
-        ConfigPage.CatppuccinSwatchControl.Click += OnThemePresetSwatchClick;
-        ConfigPage.DraculaSwatchControl.Click += OnThemePresetSwatchClick;
-        ConfigPage.NordSwatchControl.Click += OnThemePresetSwatchClick;
-        ConfigPage.OneDarkProSwatchControl.Click += OnThemePresetSwatchClick;
-        ConfigPage.TokyoNightSwatchControl.Click += OnThemePresetSwatchClick;
+        // 票 25：ThemeSwatch Click 路由统一收口（PART_Radio 的 Button.Click 自 ItemTemplate 内冒泡至 ItemsControl；程序化回填 IsChecked 不触发 = 原 Click 语义零回归）
+        ConfigPage.ThemeSwatchListControl.AddHandler(Button.ClickEvent, OnThemePresetSwatchClick);
         RulesPage.SaveRulesButtonControl.Click += OnSaveRulesClick;
         RulesPage.ResetRulesButtonControl.Click += OnResetRulesClick;
 
@@ -487,134 +478,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void OnBrowseExifToolClick(object? sender, RoutedEventArgs e)
-    {
-        var storageProvider = ResolveStorageProvider();
-        if (storageProvider is null)
-        {
-            return;
-        }
-
-        var task = storageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
-        {
-            Title = LocalizationService.Instance.Get("dialog.select_exiftool"),
-            AllowMultiple = false,
-            FileTypeFilter =
-            [
-                new FilePickerFileType("ExifTool")
-                {
-                    Patterns = ["exiftool.exe", "exiftool"]
-                }
-            ]
-        });
-        LastPickerTask = task;
-        var files = await task;
-        if (files.Count == 0)
-        {
-            return;
-        }
-
-        if (DataContext is MainWindowViewModel vm)
-        {
-            vm.ExifToolPath = files[0].Path.LocalPath;
-            vm.ExifToolPathHint = string.Empty;
-        }
-    }
-
-    private async void OnBrowseHotFolderClick(object? sender, RoutedEventArgs e)
-    {
-        var storageProvider = ResolveStorageProvider();
-        if (storageProvider is null)
-        {
-            return;
-        }
-
-        var task = storageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
-        {
-            Title = LocalizationService.Instance.Get("dialog.select_hot_folder"),
-            AllowMultiple = false
-        });
-        LastPickerTask = task;
-        var folders = await task;
-        if (folders.Count == 0)
-        {
-            return;
-        }
-
-        if (DataContext is MainWindowViewModel vm)
-        {
-            vm.HotFolderPath = folders[0].Path.LocalPath;
-        }
-    }
-
-    private async void OnBrowseBackupDirectoryClick(object? sender, RoutedEventArgs e)
-    {
-        var storageProvider = ResolveStorageProvider();
-        if (storageProvider is null)
-        {
-            return;
-        }
-
-        var task = storageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
-        {
-            Title = LocalizationService.Instance.Get("dialog.select_backup_dir"),
-            AllowMultiple = false
-        });
-        LastPickerTask = task;
-        var folders = await task;
-        if (folders.Count == 0)
-        {
-            return;
-        }
-
-        if (DataContext is MainWindowViewModel vm)
-        {
-            vm.BackupDirectory = folders[0].Path.LocalPath;
-        }
-    }
-
-    private async void OnBrowseAuditLogDirectoryClick(object? sender, RoutedEventArgs e)
-    {
-        var storageProvider = ResolveStorageProvider();
-        if (storageProvider is null)
-        {
-            return;
-        }
-
-        var task = storageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
-        {
-            Title = LocalizationService.Instance.Get("dialog.select_log_dir"),
-            AllowMultiple = false
-        });
-        LastPickerTask = task;
-        var folders = await task;
-        if (folders.Count == 0)
-        {
-            return;
-        }
-
-        if (DataContext is MainWindowViewModel vm)
-        {
-            vm.AuditLogDirectory = folders[0].Path.LocalPath;
-        }
-    }
-
-    private async void OnBrowseQuarantineDirectoryClick(object? sender, RoutedEventArgs e)
-    {
-        var storageProvider = ResolveStorageProvider();
-        if (storageProvider is null) return;
-        var task = storageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
-        {
-            Title = LocalizationService.Instance.Get("dialog.select_quarantine_dir"),
-            AllowMultiple = false
-        });
-        LastPickerTask = task;
-        var folders = await task;
-        if (folders.Count == 0) return;
-        if (DataContext is MainWindowViewModel vm)
-            vm.QuarantineDirectory = folders[0].Path.LocalPath;
-    }
-
     private async void OnAddExcludedDirectoryClick(object? sender, RoutedEventArgs e)
     {
         var storageProvider = ResolveStorageProvider();
@@ -685,7 +548,10 @@ public partial class MainWindow : Window
 
     private void OnNavigateClick(object? sender, RoutedEventArgs e)
     {
-        if (sender is not Button button || button.Tag is not string pageTag)
+        // 票 25：sender 为 NavButton 内部 PART_Button，页面键自 NavButton.PageTag 读取。
+        if (sender is not Button button) return;
+        var pageTag = (button.Parent as NavButton)?.PageTag;
+        if (string.IsNullOrEmpty(pageTag))
         {
             return;
         }
@@ -723,20 +589,8 @@ public partial class MainWindow : Window
         SetNavButtonActive(RulesNavButton, string.Equals(normalized, "rules", StringComparison.Ordinal));
     }
 
-    private static void SetNavButtonActive(Button button, bool isActive)
-    {
-        if (isActive)
-        {
-            if (!button.Classes.Contains("active"))
-            {
-                button.Classes.Add("active");
-            }
-
-            return;
-        }
-
-        button.Classes.Remove("active");
-    }
+    // 票 25：active 态唯一驱动 = NavButton.IsActive（内部映射 AppTheme Button.nav.active）。
+    private static void SetNavButtonActive(NavButton button, bool isActive) => button.IsActive = isActive;
 
     private void OnSaveRulesClick(object? sender, RoutedEventArgs e)
     {
@@ -1003,16 +857,41 @@ public partial class MainWindow : Window
 
 
     // ADR 0052 A3: Restore swatch checked state from config
+    // 票 25：色板数据化后回填遍历 ThemeSwatchList 视觉树内的 PART_Radio（Tag=ThemeId 语义不变）；
+    // InitializeRuntime 先于首布局时容器未生成，记 pending 并挂 ItemsControl.Loaded 一次性重放。
+    private string? _pendingThemeSwatchSelection;
+
     private void SyncThemeSwatchSelection(string themeId)
+    {
+        _pendingThemeSwatchSelection = themeId;
+        if (ConfigPage.ThemeSwatchListControl.IsLoaded)
+        {
+            TryApplyThemeSwatchSelection(themeId);
+        }
+        else
+        {
+            ConfigPage.ThemeSwatchListControl.Loaded += OnThemeSwatchListLoaded;
+        }
+    }
+
+    private void OnThemeSwatchListLoaded(object? sender, RoutedEventArgs e)
+    {
+        ConfigPage.ThemeSwatchListControl.Loaded -= OnThemeSwatchListLoaded;
+        if (_pendingThemeSwatchSelection is { } themeId)
+        {
+            TryApplyThemeSwatchSelection(themeId);
+        }
+    }
+
+    private void TryApplyThemeSwatchSelection(string themeId)
     {
         try
         {
-            var swatches = new RadioButton?[] { ConfigPage.CatppuccinSwatchControl, ConfigPage.DraculaSwatchControl, ConfigPage.NordSwatchControl, ConfigPage.OneDarkProSwatchControl, ConfigPage.TokyoNightSwatchControl };
-            foreach (var sw in swatches)
+            foreach (var sw in ConfigPage.ThemeSwatchListControl.GetVisualDescendants().OfType<ThemeSwatch>())
             {
-                if (sw is { } btn && string.Equals(btn.Tag?.ToString(), themeId, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(sw.ThemeId, themeId, StringComparison.OrdinalIgnoreCase))
                 {
-                    btn.IsChecked = true;
+                    sw.ThemePresetRadioControl.IsChecked = true;
                     return;
                 }
             }
@@ -1474,11 +1353,6 @@ public partial class MainWindow : Window
 
 public partial class MainWindow
 {
-    internal Task TestPickHotFolderAsync()
-    {
-        OnBrowseHotFolderClick(this, new RoutedEventArgs());
-        return LastPickerTask ?? Task.CompletedTask;
-    }
 
     private IStorageProvider? ResolveStorageProvider()
     {
