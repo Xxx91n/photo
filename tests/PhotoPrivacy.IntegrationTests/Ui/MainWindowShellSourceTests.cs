@@ -119,4 +119,54 @@ public sealed class MainWindowShellSourceTests
             Assert.Contains(page, source, StringComparison.Ordinal);
         }
     }
+
+    // === 票 25（架构恢复第六轮）：高频组件抽取守卫 ===
+
+    [Fact]
+    public void Views_Must_Not_Contain_Inline_Browse_Path_Rows()
+    {
+        // 检查点 A 验收：Browse 行零残留 inline — TextBox + Browse icon 按钮的复制粘贴行结构不得回潮，
+        // 路径选择统一走 Ursa u:PathPicker（ButtonContent=btn.browse 文案 + FolderOpen 由 Ursa 语义承接）。
+        var viewsDir = UiPath("Views");
+        foreach (var file in Directory.GetFiles(viewsDir, "*.axaml", SearchOption.AllDirectories))
+        {
+            var source = ReadAll(file);
+            Assert.DoesNotContain("x:Name=\"Browse", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("Classes=\"icon\" ToolTip.Tip=\"{ex:Localize dialog.select", source, StringComparison.Ordinal);
+        }
+        // PathPicker 弹窗标题权威仍在 localization key（dialog.select_*）— 5 处经 u:PathPicker 声明
+        var configPage = ReadAll(UiPath("Views", "Pages", "ConfigPage.axaml"));
+        var pickerCount = Regex.Matches(configPage, "<u:PathPicker").Count;
+        Assert.True(pickerCount == 5, $"expected 5 u:PathPicker rows in ConfigPage, got {pickerCount}");
+    }
+
+    [Fact]
+    public void Shell_Nav_Buttons_Must_Use_NavButton_Component()
+    {
+        // 检查点 B 验收：4 个侧栏导航按钮组件化 — Icon+Label+PageTag 声明式，active 态经 NavButton.IsActive。
+        var shell = ReadAll(UiPath("Views", "MainWindow.axaml"));
+        var navCount = Regex.Matches(shell, "<controls:NavButton").Count;
+        Assert.True(navCount == 4, $"expected 4 NavButton in shell, got {navCount}");
+        // inline 导航按钮结构不得回潮（Button Classes="nav" + 内嵌 Grid MaterialIcon）
+        Assert.DoesNotContain("Classes=\"nav active\"", shell, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Theme_Swatches_Must_Be_DataDriven_From_Catalog()
+    {
+        // 检查点 B 验收：5 色板数据化 — 唯一权威 ThemeSwatchCatalog.Presets，inline RadioButton 色板块不得回潮。
+        var configPage = ReadAll(UiPath("Views", "Pages", "ConfigPage.axaml"));
+        Assert.Contains("ThemeSwatchCatalog.Presets", configPage, StringComparison.Ordinal);
+        Assert.DoesNotContain("GroupName=\"ThemePreset\"", configPage, StringComparison.Ordinal);
+        var controls = UiPath("Views", "Controls", "ThemeSwatch.axaml.cs");
+        var catalog = ReadAll(controls);
+        foreach (var theme in new[] { "catppuccin", "dracula", "nord", "onedarkpro", "tokyonight" })
+        {
+            Assert.Contains("\"" + theme + "\"", catalog, StringComparison.Ordinal);
+        }
+        // GroupName/Tag 语义迁移进 ThemeSwatch 控件本体
+        var swatchAxaml = ReadAll(UiPath("Views", "Controls", "ThemeSwatch.axaml"));
+        Assert.Contains("GroupName=", swatchAxaml, StringComparison.Ordinal);
+        Assert.Contains("Tag=", swatchAxaml, StringComparison.Ordinal);
+    }
 }

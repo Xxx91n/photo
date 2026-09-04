@@ -179,11 +179,14 @@ public sealed class DesignSystemTests
     [Fact]
     public void Browse_Buttons_Use_MaterialIcons()
     {
-        // 票 24（ADR 0061）：页面拆分后 Browse/Add/Remove 按钮位于 Views/Pages/，扫描整个 Views 目录。
+        // 票 24（ADR 0061）：页面拆分后 Add/Remove 按钮位于 Views/Pages/，扫描整个 Views 目录。
+        // 票 25：5 处 Browse 行收敛为 Ursa u:PathPicker（OpenFolder/OpenFile 图标由 Ursa 语义承接），
+        // Views 内不再有 inline FolderOpen Browse 按钮；Plus/Minus 图标按钮仍在。
         var viewsDir = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views");
         var source = string.Concat(Directory.GetFiles(viewsDir, "*.axaml", SearchOption.AllDirectories)
             .Select(f => File.ReadAllText(f, Encoding.UTF8)));
-        Assert.Contains("Kind=\"FolderOpen\"", source, StringComparison.Ordinal);
+        Assert.Contains("<u:PathPicker", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("Kind=\"FolderOpen\"", source, StringComparison.Ordinal);
         Assert.Contains("Kind=\"Plus\"", source, StringComparison.Ordinal);
         Assert.Contains("Kind=\"Minus\"", source, StringComparison.Ordinal);
     }
@@ -492,13 +495,13 @@ public sealed class DesignSystemTests
     public void MainWindow_Icon_Buttons_Must_Use_Icon_Variant_Class()
     {
         // 票 24（ADR 0061）：icon 按钮散布在各 Page 文件，扫描整个 Views 目录。
+        // 票 25：5 处 Browse icon 按钮随 PathPicker 收敛移出（Ursa 模板内部按钮不受本项目 Button.icon 纪律约束），
+        // 余下 Add/Remove 2 处仍须走 Button.icon 变体。
         var viewsDir = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views");
         var source = string.Concat(Directory.GetFiles(viewsDir, "*.axaml", SearchOption.AllDirectories)
             .Select(f => File.ReadAllText(f, Encoding.UTF8)));
-        // The 7 icon-only buttons (5 Browse + Add/Remove excluded) must route
-        // through the Button.icon variant, not ghost with inline sizing.
         var iconButtons = System.Text.RegularExpressions.Regex.Matches(source, @"Classes=""icon""");
-        Assert.True(iconButtons.Count >= 7, $"Expected >=7 Button.icon usages, got {iconButtons.Count}");
+        Assert.True(iconButtons.Count >= 2, $"Expected >=2 Button.icon usages, got {iconButtons.Count}");
     }
 
     [Fact]

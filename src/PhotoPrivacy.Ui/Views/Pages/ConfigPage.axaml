@@ -1,4 +1,4 @@
-<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:ex="using:PhotoPrivacy.Ui.Localization" xmlns:vm="using:PhotoPrivacy.Ui.ViewModels" xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia" xmlns:behaviors="using:PhotoPrivacy.Ui.Behaviors" x:Class="PhotoPrivacy.Ui.Views.Pages.ConfigPage" x:DataType="vm:MainWindowViewModel">
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:ex="using:PhotoPrivacy.Ui.Localization" xmlns:vm="using:PhotoPrivacy.Ui.ViewModels" xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia" xmlns:behaviors="using:PhotoPrivacy.Ui.Behaviors" xmlns:u="https://irihi.tech/ursa" xmlns:controls="using:PhotoPrivacy.Ui.Views.Controls" x:Class="PhotoPrivacy.Ui.Views.Pages.ConfigPage" x:DataType="vm:MainWindowViewModel">
   <!-- 票 24（ADR 0061）：自 MainWindow.axaml 拆出的配置页。路径输入宽度统一走 TextBox.inline-input 共享 class（Width=280 收敛为单一权威）。 -->
   <Grid RowDefinitions="Auto,*">
     <Border Padding="24,20,24,16" BorderBrush="{DynamicResource SemiColorBorder}" BorderThickness="0,0,0,1">
@@ -17,10 +17,9 @@
                 </StackPanel>
                 <StackPanel DockPanel.Dock="Right" Spacing="{DynamicResource SpaceSm}">
                   <DockPanel LastChildFill="False" VerticalAlignment="Center">
-                    <TextBox DockPanel.Dock="Left" Text="{Binding ExifToolPath}" Classes="inline-input" VerticalAlignment="Center"/>
-                    <Button x:Name="BrowseExifToolButton" DockPanel.Dock="Right" Classes="icon" VerticalAlignment="Center"><materialIcons:MaterialIcon Kind="FolderOpen" Width="16" Height="16"/></Button>
+                    <u:PathPicker UsePickerType="OpenFile" Title="{ex:Localize dialog.select_exiftool}" ButtonContent="{ex:Localize btn.browse}" ToolTip.Tip="{ex:Localize dialog.select_exiftool}" FileFilter="[ExifTool, exiftool.exe, exiftool]" SelectedPathsText="{Binding ExifToolPath, Mode=TwoWay}" Classes="inline-input" HorizontalAlignment="Right"/>
                   </DockPanel>
-                  <TextBlock Text="{Binding ExifToolPathHint}" FontSize="11" Foreground="{DynamicResource SemiColorText2}" IsVisible="{Binding HasExifToolHint}"/>
+                  <TextBlock Text="{Binding ExifToolPathHint}" Classes="caption" IsVisible="{Binding HasExifToolHint}"/>
                 </StackPanel>
               </DockPanel>
             </Border>
@@ -32,8 +31,7 @@
                   <TextBlock Text="{ex:Localize config.desc.hot_folder}" Classes="row-desc"/>
                 </StackPanel>
                 <DockPanel DockPanel.Dock="Right" LastChildFill="False" VerticalAlignment="Center">
-                  <TextBox DockPanel.Dock="Left" Text="{Binding HotFolderPath}" PlaceholderText="{Binding HotFolderPathHint}" Classes="inline-input" VerticalAlignment="Center"/>
-                  <Button x:Name="BrowseHotFolderButton" DockPanel.Dock="Right" Classes="icon" VerticalAlignment="Center"><materialIcons:MaterialIcon Kind="FolderOpen" Width="16" Height="16"/></Button>
+                  <u:PathPicker DockPanel.Dock="Right" UsePickerType="OpenFolder" Title="{ex:Localize dialog.select_hot_folder}" ButtonContent="{ex:Localize btn.browse}" ToolTip.Tip="{ex:Localize dialog.select_hot_folder}" SelectedPathsText="{Binding HotFolderPath, Mode=TwoWay}" Classes="inline-input" HorizontalAlignment="Right"/>
                 </DockPanel>
               </DockPanel>
             </Border>
@@ -59,8 +57,7 @@
                   <TextBlock Text="{ex:Localize config.desc.backup_dir}" Classes="row-desc"/>
                 </StackPanel>
                 <DockPanel DockPanel.Dock="Right" LastChildFill="False" VerticalAlignment="Center">
-                  <TextBox DockPanel.Dock="Left" Text="{Binding BackupDirectory}" PlaceholderText="{Binding BackupDirectoryHint}" Classes="inline-input" VerticalAlignment="Center"/>
-                  <Button x:Name="BrowseBackupDirectoryButton" DockPanel.Dock="Right" Classes="icon" VerticalAlignment="Center"><materialIcons:MaterialIcon Kind="FolderOpen" Width="16" Height="16"/></Button>
+                  <u:PathPicker DockPanel.Dock="Right" UsePickerType="OpenFolder" Title="{ex:Localize dialog.select_backup_dir}" ButtonContent="{ex:Localize btn.browse}" ToolTip.Tip="{ex:Localize dialog.select_backup_dir}" SelectedPathsText="{Binding BackupDirectory, Mode=TwoWay}" Classes="inline-input" HorizontalAlignment="Right"/>
                 </DockPanel>
               </DockPanel>
             </Border>
@@ -82,8 +79,7 @@
                   <TextBlock Text="{ex:Localize config.desc.quarantine_dir}" Classes="row-desc"/>
                 </StackPanel>
                 <DockPanel DockPanel.Dock="Right" LastChildFill="False" VerticalAlignment="Center">
-                  <TextBox DockPanel.Dock="Left" Text="{Binding QuarantineDirectory}" PlaceholderText="{Binding QuarantineDirectoryHint}" Classes="inline-input" VerticalAlignment="Center"/>
-                  <Button x:Name="BrowseQuarantineDirectoryButton" DockPanel.Dock="Right" Classes="icon" VerticalAlignment="Center"><materialIcons:MaterialIcon Kind="FolderOpen" Width="16" Height="16"/></Button>
+                  <u:PathPicker DockPanel.Dock="Right" UsePickerType="OpenFolder" Title="{ex:Localize dialog.select_quarantine_dir}" ButtonContent="{ex:Localize btn.browse}" ToolTip.Tip="{ex:Localize dialog.select_quarantine_dir}" SelectedPathsText="{Binding QuarantineDirectory, Mode=TwoWay}" Classes="inline-input" HorizontalAlignment="Right"/>
                 </DockPanel>
               </DockPanel>
             </Border>
@@ -122,13 +118,15 @@
             <Border Classes="settings-row">
               <StackPanel Spacing="{DynamicResource SpaceSm}">
                 <TextBlock Text="{ex:Localize settings.theme_preset}" Classes="row-label"/>
-                <WrapPanel ItemSpacing="{DynamicResource SpaceSm}">
-                  <RadioButton x:Name="CatppuccinSwatch" Tag="catppuccin" GroupName="ThemePreset" Padding="8" CornerRadius="8"><StackPanel Orientation="Vertical" Spacing="4" HorizontalAlignment="Center"><Border Width="40" Height="28" CornerRadius="4" Background="#89B4FA"/><TextBlock Text="{ex:Localize preset.catppuccin}" Classes="caption" HorizontalAlignment="Center"/></StackPanel></RadioButton>
-                  <RadioButton x:Name="DraculaSwatch" Tag="dracula" GroupName="ThemePreset" Padding="8" CornerRadius="8"><StackPanel Orientation="Vertical" Spacing="4" HorizontalAlignment="Center"><Border Width="40" Height="28" CornerRadius="4" Background="#BD93F9"/><TextBlock Text="{ex:Localize preset.dracula}" Classes="caption" HorizontalAlignment="Center"/></StackPanel></RadioButton>
-                  <RadioButton x:Name="NordSwatch" Tag="nord" GroupName="ThemePreset" Padding="8" CornerRadius="8"><StackPanel Orientation="Vertical" Spacing="4" HorizontalAlignment="Center"><Border Width="40" Height="28" CornerRadius="4" Background="#88C0D0"/><TextBlock Text="{ex:Localize preset.nord}" Classes="caption" HorizontalAlignment="Center"/></StackPanel></RadioButton>
-                  <RadioButton x:Name="OneDarkProSwatch" Tag="onedarkpro" GroupName="ThemePreset" Padding="8" CornerRadius="8"><StackPanel Orientation="Vertical" Spacing="4" HorizontalAlignment="Center"><Border Width="40" Height="28" CornerRadius="4" Background="#61AFEF"/><TextBlock Text="{ex:Localize preset.onedarkpro}" Classes="caption" HorizontalAlignment="Center"/></StackPanel></RadioButton>
-                  <RadioButton x:Name="TokyoNightSwatch" Tag="tokyonight" GroupName="ThemePreset" Padding="8" CornerRadius="8"><StackPanel Orientation="Vertical" Spacing="4" HorizontalAlignment="Center"><Border Width="40" Height="28" CornerRadius="4" Background="#7AA2F7"/><TextBlock Text="{ex:Localize preset.tokyonight}" Classes="caption" HorizontalAlignment="Center"/></StackPanel></RadioButton>
-                </WrapPanel>
+                <!-- 票 25：ThemeSwatch 数据化色板 — 目录唯一权威 ThemeSwatchCatalog.Presets，GroupName=ThemePreset/Tag=ThemeId 语义保留（Click 路由 MainWindow.OnThemePresetSwatchClick） -->
+                <ItemsControl x:Name="ThemeSwatchList" ItemsSource="{x:Static controls:ThemeSwatchCatalog.Presets}">
+                  <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel ItemSpacing="{DynamicResource SpaceSm}"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="controls:ThemeSwatchPreset">
+                      <controls:ThemeSwatch ThemeId="{Binding ThemeId}" LabelKey="{Binding LabelKey}" ColorHex="{Binding ColorHex}"/>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
               </StackPanel>
             </Border>
             <Border Classes="row-divider"/>
@@ -168,8 +166,7 @@
                   <TextBlock Text="{ex:Localize config.desc.audit_log_dir}" Classes="row-desc"/>
                 </StackPanel>
                 <DockPanel DockPanel.Dock="Right" LastChildFill="False" VerticalAlignment="Center">
-                  <TextBox DockPanel.Dock="Left" Text="{Binding AuditLogDirectory}" Classes="inline-input" VerticalAlignment="Center"/>
-                  <Button x:Name="BrowseAuditLogDirectoryButton" DockPanel.Dock="Right" Classes="icon" VerticalAlignment="Center"><materialIcons:MaterialIcon Kind="FolderOpen" Width="16" Height="16"/></Button>
+                  <u:PathPicker DockPanel.Dock="Right" UsePickerType="OpenFolder" Title="{ex:Localize dialog.select_log_dir}" ButtonContent="{ex:Localize btn.browse}" ToolTip.Tip="{ex:Localize dialog.select_log_dir}" SelectedPathsText="{Binding AuditLogDirectory, Mode=TwoWay}" Classes="inline-input" HorizontalAlignment="Right"/>
                 </DockPanel>
               </DockPanel>
             </Border>
@@ -194,15 +191,15 @@
                 </StackPanel>
                 <ListBox x:Name="UserExcludedDirectoriesListBox" ItemsSource="{Binding UserExcludedDirectories}" Height="80" BorderBrush="{DynamicResource SemiColorBorder}" BorderThickness="1"/>
                 <StackPanel Orientation="Horizontal" Spacing="{DynamicResource SpaceSm}">
-                  <Button x:Name="AddExcludedDirectoryButton" Classes="icon"><materialIcons:MaterialIcon Kind="Plus" Width="16" Height="16"/></Button>
-                  <Button x:Name="RemoveExcludedDirectoryButton" Classes="icon"><materialIcons:MaterialIcon Kind="Minus" Width="16" Height="16"/></Button>
+                  <Button x:Name="AddExcludedDirectoryButton" Classes="icon" ToolTip.Tip="{ex:Localize config.tooltip.add_excluded_dir}"><materialIcons:MaterialIcon Kind="Plus" Width="16" Height="16"/></Button>
+                  <Button x:Name="RemoveExcludedDirectoryButton" Classes="icon" ToolTip.Tip="{ex:Localize config.tooltip.remove_excluded_dir}"><materialIcons:MaterialIcon Kind="Minus" Width="16" Height="16"/></Button>
                 </StackPanel>
               </StackPanel>
             </Border>
           </StackPanel>
         </Border>
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10" Margin="0,8,0,0">
-          <TextBlock Text="{Binding SaveStatus}" FontSize="12" Foreground="{DynamicResource SemiColorText1}" VerticalAlignment="Center"/>
+          <TextBlock Text="{Binding SaveStatus}" Classes="caption" Foreground="{DynamicResource SemiColorText1}" VerticalAlignment="Center"/>
         </StackPanel>
       </StackPanel>
     </ScrollViewer>

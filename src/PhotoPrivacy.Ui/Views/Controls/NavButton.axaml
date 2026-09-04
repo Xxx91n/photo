@@ -1,0 +1,16 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+        xmlns:controls="using:PhotoPrivacy.Ui.Views.Controls"
+        x:Class="PhotoPrivacy.Ui.Views.Controls.NavButton"
+        x:DataType="controls:NavButton">
+  <!-- 票 25（架构恢复第六轮）：侧栏导航按钮 — Icon + 本地化文本。
+       视觉承袭 AppTheme Button.nav / Button.nav.active（active class 由 IsActive 驱动，
+       SemiColorPrimaryLight 背景 + 4px 左边框与原 MainWindow inline 结构逐像素一致）。 -->
+  <Button x:Name="PART_Button" Classes="nav" HorizontalContentAlignment="Stretch">
+    <Grid ColumnDefinitions="Auto,*" HorizontalAlignment="Stretch">
+      <materialIcons:MaterialIcon Grid.Column="0" Kind="{Binding IconKind, RelativeSource={RelativeSource AncestorType=controls:NavButton}}" Width="20" Height="20" VerticalAlignment="Center"/>
+      <TextBlock Grid.Column="1" Text="{Binding Label, RelativeSource={RelativeSource AncestorType=controls:NavButton}}" Classes="body" VerticalAlignment="Center" HorizontalAlignment="Stretch" TextTrimming="CharacterEllipsis" Margin="12,0,0,0"/>
+    </Grid>
+  </Button>
+</UserControl>

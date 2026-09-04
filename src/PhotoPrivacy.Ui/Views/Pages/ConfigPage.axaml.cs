@@ -12,16 +12,7 @@ public partial class ConfigPage : UserControl
     internal ComboBox LogLevelComboBoxControl => LogLevelComboBox;
     internal ComboBox LocaleVariantComboBoxControl => LocaleVariantComboBox;
     internal ListBox UserExcludedDirectoriesListBoxControl => UserExcludedDirectoriesListBox;
-    internal Button BrowseExifToolButtonControl => BrowseExifToolButton;
-    internal Button BrowseHotFolderButtonControl => BrowseHotFolderButton;
-    internal Button BrowseBackupDirectoryButtonControl => BrowseBackupDirectoryButton;
-    internal Button BrowseQuarantineDirectoryButtonControl => BrowseQuarantineDirectoryButton;
-    internal Button BrowseAuditLogDirectoryButtonControl => BrowseAuditLogDirectoryButton;
     internal Button AddExcludedDirectoryButtonControl => AddExcludedDirectoryButton;
     internal Button RemoveExcludedDirectoryButtonControl => RemoveExcludedDirectoryButton;
-    internal RadioButton CatppuccinSwatchControl => CatppuccinSwatch;
-    internal RadioButton DraculaSwatchControl => DraculaSwatch;
-    internal RadioButton NordSwatchControl => NordSwatch;
-    internal RadioButton OneDarkProSwatchControl => OneDarkProSwatch;
-    internal RadioButton TokyoNightSwatchControl => TokyoNightSwatch;
+    internal ItemsControl ThemeSwatchListControl => ThemeSwatchList;
 }
