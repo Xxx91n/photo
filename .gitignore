@@ -38,6 +38,7 @@ tmp/
 /exiftool/
 .codex-tmp/
 .scratch/
+photo-snapshots/
 TestResults/
 outputs/
 results/
