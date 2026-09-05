@@ -6,7 +6,6 @@ using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Platform.Storage;
 using Avalonia.Styling;
-using Avalonia.VisualTree;
 using PhotoPrivacy.Core.Configuration;
 using PhotoPrivacy.Core.Watcher;
 using PhotoPrivacy.Ui.Localization;
@@ -170,11 +169,7 @@ public partial class MainWindow : Window
 
             ApplyThemeVariantToApplication(viewModel.ThemeVariant);
             App.ApplyCommunityThemeResources(viewModel.ThemeId, applyDark: string.Equals(NormalizeThemeVariant(viewModel.ThemeVariant), "dark", StringComparison.OrdinalIgnoreCase));
-            SyncThemeVariantComboSelection(viewModel.ThemeVariant);
-            SyncThemeSwatchSelection(viewModel.ThemeId);
             RestoreSidebarWidth(effectiveConfig.Ui.SidebarWidth);
-            SyncLogLevelComboSelection(viewModel.LogLevel);
-            SyncLocaleComboSelection(viewModel.CurrentLocale);
             viewModel.SaveStatus = string.Empty;
             SetCurrentPage(viewModel.CurrentPage);
 
@@ -219,9 +214,9 @@ public partial class MainWindow : Window
         ServiceManagerTab.UninstallServiceButtonControl.Click += OnUninstallServiceClick;
         ServiceManagerTab.StartServiceButtonControl.Click += OnStartServiceClick;
         ServiceManagerTab.StopServiceButtonControl.Click += OnStopServiceClick;
-        ConfigPage.ThemeVariantComboBoxControl.SelectionChanged += OnThemeVariantSelectionChanged;
-        ConfigPage.LogLevelComboBoxControl.SelectionChanged += OnLogLevelSelectionChanged;
-        ConfigPage.LocaleVariantComboBoxControl.SelectionChanged += OnLocaleSelectionChanged;
+        // 票 30：主题/语言/日志级别三套 SelectionChanged 手动镜像删除 —— ComboBox 选中态经
+        // SelectedIndex TwoWay 绑定 VM（ThemeVariantIndex/CurrentLocaleIndex/LogLevelIndex），
+        // 联动副作用在 VM setter；色板 Click 转发保留（ThemeId 回写）。
         ConfigPage.AddExcludedDirectoryButtonControl.Click += OnAddExcludedDirectoryClick;
         ConfigPage.RemoveExcludedDirectoryButtonControl.Click += OnRemoveExcludedDirectoryClick;
         // 票 25：ThemeSwatch Click 路由统一收口（PART_Radio 的 Button.Click 自 ItemTemplate 内冒泡至 ItemsControl；程序化回填 IsChecked 不触发 = 原 Click 语义零回归）
@@ -630,36 +625,13 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnThemeVariantSelectionChanged(object? sender, SelectionChangedEventArgs e)
-    {
-        try
-        {
-            if (sender is not ComboBox combo || combo.SelectedItem is not ComboBoxItem item)
-            {
-                return;
-            }
-
-            var variant = NormalizeThemeVariant(item.Tag?.ToString());
-            if (DataContext is MainWindowViewModel vm)
-            {
-                vm.ThemeVariant = variant;
-            }
-
-            ApplyThemeVariantToApplication(variant);
-            // Re-apply community theme with new variant (light removes dark-only resources)
-            if (DataContext is MainWindowViewModel tvm)
-            {
-                App.ApplyCommunityThemeResources(tvm.ThemeId, applyDark: string.Equals(variant, "dark", StringComparison.OrdinalIgnoreCase));
-            }
-        }
-        catch
-        {
-            // prevent crash on unexpected combo state
-        }
-    }
+    // 票 30：OnThemeVariantSelectionChanged/OnLogLevelSelectionChanged/OnLocaleSelectionChanged 已删除 ——
+    // 三套 SelectionChanged 手动镜像收敛为 ComboBox SelectedIndex TwoWay 绑定 VM 索引属性，
+    // 主题应用/SwitchLocale/LogEnabled 联动在 VM setter 承载（行为不变）。
 
 
     // ADR 0052 A3: Theme preset swatch click — dual-axis: ThemeId (preset) independent of ThemeVariant (light/dark)
+    // 票 30：只剩事件转发 —— ThemeId 写回 VM（资源应用经 PropertyChanged 响应，防抖经 _configProperties 既有链路）。
     private void OnThemePresetSwatchClick(object? sender, RoutedEventArgs e)
     {
         try
@@ -670,8 +642,6 @@ public partial class MainWindow : Window
             {
                 vm.ThemeId = tag;
             }
-            App.ApplyCommunityThemeResources(tag, applyDark: DataContext is MainWindowViewModel mvm && string.Equals(NormalizeThemeVariant(mvm.ThemeVariant), "dark", StringComparison.OrdinalIgnoreCase));
-            ScheduleDebouncedConfigApply();
         }
         catch
         {
@@ -679,94 +649,21 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnLogLevelSelectionChanged(object? sender, SelectionChangedEventArgs e)
-    {
-        try
-        {
-            if (sender is not ComboBox combo || combo.SelectedItem is not ComboBoxItem item)
-            {
-                return;
-            }
+    // 票 30：OnLogLevelSelectionChanged 已删除 —— 联动（LogEnabled/ShowDetailedEvents）迁入 MainWindowViewModel.LogLevelIndex setter。
 
-            var level = item.Tag?.ToString() ?? "info";
-            if (DataContext is MainWindowViewModel vm)
-            {
-                vm.LogLevel = level;
-                vm.LogEnabled = level is "all" or "debug";
-                vm.ShowDetailedEvents = level is "all" or "debug";
-            }
-        }
-        catch
-        {
-            // prevent crash on unexpected combo state
-        }
-    }
 
-    private void OnLocaleSelectionChanged(object? sender, SelectionChangedEventArgs e)
-    {
-        try
-        {
-            if (sender is not ComboBox combo || combo.SelectedItem is not ComboBoxItem item)
-            {
-                return;
-            }
+    // 票 30：OnLocaleSelectionChanged 已删除 —— SwitchLocale 联动迁入 MainWindowViewModel.CurrentLocale setter。
 
-            var locale = item.Tag?.ToString() ?? "zh-CN";
-            if (DataContext is MainWindowViewModel vm)
-            {
-                vm.CurrentLocale = locale;
-            }
+    // 票 30：SyncLocaleComboSelection/SyncThemeVariantComboSelection/SyncLogLevelComboSelection 已删除 ——
+    // ComboBox 选中态回填由 SelectedIndex TwoWay 绑定自动完成（get 侧归一化语义与原回填一致）。
 
-            LocalizationService.Instance.SwitchLocale(locale);
-            if (DataContext is MainWindowViewModel vm2)
-            {
-                vm2.RefreshLocaleDependent();
-            }
-        }
-        catch
-        {
-            // prevent crash on unexpected combo state
-        }
-    }
 
-    private void SyncLocaleComboSelection(string locale)
-    {
-        try
-        {
-            var combo = ConfigPage.LocaleVariantComboBoxControl;
-            if (combo is null || combo.Items is null)
-            {
-                return;
-            }
+    // ADR 0052 A3: Restore swatch checked state from config
+    // 票 30：SyncThemeSwatchSelection/_pending/OnThemeSwatchListLoaded/TryApplyThemeSwatchSelection 已删除 ——
+    // 色板选中态回填由 ConfigPage MultiBinding（VM.ThemeId ↔ 色板 ThemeId 比较）驱动，
+    // 绑定系统天然处理容器延迟生成，无需 Loaded 重放 hack。
 
-            var target = string.IsNullOrWhiteSpace(locale) ? "zh-CN" : locale;
-            foreach (var item in combo.Items)
-            {
-                if (item is ComboBoxItem comboItem
-                    && string.Equals(comboItem.Tag?.ToString(), target, StringComparison.OrdinalIgnoreCase))
-                {
-                    combo.SelectedItem = comboItem;
-                    return;
-                }
-            }
-
-            combo.SelectedIndex = 0;
-        }
-        catch
-        {
-            // control not yet ready
-        }
-    }
-
-    private static string ReadComboItemString(object? selectedItem)
-    {
-        if (selectedItem is ComboBoxItem comboItem)
-        {
-            return comboItem.Content?.ToString() ?? string.Empty;
-        }
-
-        return selectedItem?.ToString() ?? string.Empty;
-    }
+    // 票 30：ReadComboItemString 已删除 —— 全仓无调用者的死代码。
 
     private static readonly Dictionary<string, string> ThemeVariantTagToLocaleKey = new()
     {
@@ -848,119 +745,15 @@ public partial class MainWindow : Window
         return ServiceModeController.BuildRuntimeStatusText(_options.RuntimeKind, _options.GetServiceRuntimeState(), isPaused);
     }
 
-    private void SyncThemeVariantComboSelection(string variant)
-    {
-        try
-        {
-            var combo = ConfigPage.ThemeVariantComboBoxControl;
-            if (combo is null || combo.Items is null)
-            {
-                return;
-            }
-
-            var normalized = NormalizeThemeVariant(variant);
-            foreach (var item in combo.Items)
-            {
-                if (item is ComboBoxItem comboItem
-                    && string.Equals(comboItem.Tag?.ToString(), normalized, StringComparison.OrdinalIgnoreCase))
-                {
-                    combo.SelectedItem = comboItem;
-                    return;
-                }
-            }
-
-            combo.SelectedIndex = 0;
-        }
-        catch
-        {
-            // control not yet ready
-        }
-    }
+    // 票 30：SyncThemeVariantComboSelection 已删除（SelectedIndex 绑定自动回填）。
 
 
-    // ADR 0052 A3: Restore swatch checked state from config
-    // 票 25：色板数据化后回填遍历 ThemeSwatchList 视觉树内的 PART_Radio（Tag=ThemeId 语义不变）；
-    // InitializeRuntime 先于首布局时容器未生成，记 pending 并挂 ItemsControl.Loaded 一次性重放。
-    private string? _pendingThemeSwatchSelection;
+    // 票 30：SyncThemeSwatchSelection/_pending/OnThemeSwatchListLoaded/TryApplyThemeSwatchSelection 已删除
+    //（色板选中态由 MultiBinding 驱动）。
 
-    private void SyncThemeSwatchSelection(string themeId)
-    {
-        _pendingThemeSwatchSelection = themeId;
-        if (ConfigPage.ThemeSwatchListControl.IsLoaded)
-        {
-            TryApplyThemeSwatchSelection(themeId);
-        }
-        else
-        {
-            ConfigPage.ThemeSwatchListControl.Loaded += OnThemeSwatchListLoaded;
-        }
-    }
+    // 票 30：SyncLogLevelComboSelection 已删除（SelectedIndex 绑定自动回填）。
 
-    private void OnThemeSwatchListLoaded(object? sender, RoutedEventArgs e)
-    {
-        ConfigPage.ThemeSwatchListControl.Loaded -= OnThemeSwatchListLoaded;
-        if (_pendingThemeSwatchSelection is { } themeId)
-        {
-            TryApplyThemeSwatchSelection(themeId);
-        }
-    }
-
-    private void TryApplyThemeSwatchSelection(string themeId)
-    {
-        try
-        {
-            foreach (var sw in ConfigPage.ThemeSwatchListControl.GetVisualDescendants().OfType<ThemeSwatch>())
-            {
-                if (string.Equals(sw.ThemeId, themeId, StringComparison.OrdinalIgnoreCase))
-                {
-                    sw.ThemePresetRadioControl.IsChecked = true;
-                    return;
-                }
-            }
-        }
-        catch
-        {
-            // control not yet ready
-        }
-    }
-
-    private void SyncLogLevelComboSelection(string level)
-    {
-        try
-        {
-            var combo = ConfigPage.LogLevelComboBoxControl;
-            if (combo is null || combo.Items is null)
-            {
-                return;
-            }
-
-            foreach (var item in combo.Items)
-            {
-                if (item is ComboBoxItem comboItem
-                    && string.Equals(comboItem.Tag?.ToString(), level, StringComparison.OrdinalIgnoreCase))
-                {
-                    combo.SelectedItem = comboItem;
-                    return;
-                }
-            }
-
-            combo.SelectedIndex = 1;
-        }
-        catch
-        {
-            // control not yet ready
-        }
-    }
-
-    private static string ReadThemeVariantSelection(object? selectedItem)
-    {
-        if (selectedItem is ComboBoxItem comboItem)
-        {
-            return NormalizeThemeVariant(comboItem.Content?.ToString());
-        }
-
-        return NormalizeThemeVariant(selectedItem?.ToString());
-    }
+    // 票 30：ReadThemeVariantSelection 已删除 —— 全仓无调用者的死代码。
 
     private static string NormalizeThemeVariant(string? value)
     {
@@ -1027,6 +820,18 @@ public partial class MainWindow : Window
 
     private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
+        // 票 30：主题双轴（预设 ThemeId / 明暗 ThemeVariant）任一变化 → 社区主题资源重应用
+        //（原 OnThemeVariantSelectionChanged / OnThemePresetSwatchClick 的视图侧应用迁至此处；
+        // RequestedThemeVariant 仍由 VM ThemeVariant setter 承担）。幂等：启动/热重载的
+        // 显式应用调用保留，重复应用结果一致。
+        if (e.PropertyName is nameof(MainWindowViewModel.ThemeVariant) or nameof(MainWindowViewModel.ThemeId)
+            && DataContext is MainWindowViewModel themeVm)
+        {
+            App.ApplyCommunityThemeResources(
+                themeVm.ThemeId,
+                applyDark: string.Equals(NormalizeThemeVariant(themeVm.ThemeVariant), "dark", StringComparison.OrdinalIgnoreCase));
+        }
+
         if (!_configProperties.Contains(e.PropertyName ?? string.Empty))
             return;
         ScheduleDebouncedConfigApply();
@@ -1133,73 +938,9 @@ public partial class MainWindow : Window
     }
 
 
-    private async void OnApplyConfigClick(object? sender, RoutedEventArgs e)
-    {
-        if (_options is null || DataContext is not MainWindowViewModel vm)
-        {
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(vm.ExifToolPath)
-            || !Path.IsPathFullyQualified(vm.ExifToolPath)
-            || !File.Exists(vm.ExifToolPath))
-        {
-            vm.SaveStatus = LocalizationService.Instance.Get("msg.invalid_exiftool_path");
-            ScheduleSaveStatusClear();
-            return;
-        }
-
-        try
-        {
-            var command = new ConfigEditCommand(
-                ExifToolPath: vm.ExifToolPath,
-                BackupEnabled: vm.BackupEnabled,
-                LogEnabled: vm.LogEnabled,
-                HotFolderPath: vm.HotFolderPath,
-                HideMainWindowOnStartup: vm.HideGuiOnStartup,
-                HideTrayIcon: vm.HideTrayIcon,
-                ThemeVariant: vm.ThemeVariant,
-                Locale: vm.CurrentLocale,
-                BackupDirectory: vm.BackupDirectory,
-                AuditLogDirectory: vm.AuditLogDirectory,
-                LogLevel: vm.LogLevel,
-                QuarantineEnabled: vm.QuarantineEnabled,
-                QuarantineDirectory: vm.QuarantineDirectory,
-                SidebarWidth: vm.SidebarWidth,
-                ThemeId: vm.ThemeId);
-            ConfigEditor.UpdateConfig(_options.ConfigPath, command);
-
-            try
-            {
-                await _workerIpc.ReloadConfigAsync(_options.WorkerEndpointName, CancellationToken.None);
-            }
-            catch
-            {
-                vm.SaveStatus = LocalizationService.Instance.Get("msg.saved_worker_down");
-                ScheduleSaveStatusClear();
-                return;
-            }
-
-            ApplyRuntimeConfigToUiState();
-            vm.SaveStatus = LocalizationService.Instance.Get("msg.applied");
-            ScheduleSaveStatusClear();
-        }
-        catch (Exception ex)
-        {
-            vm.SaveStatus = LocalizationService.Instance.Get("msg.apply_failed_exception", ex.Message);
-            ScheduleSaveStatusClear();
-            vm.AppendLog(new AuditLogEntry(
-                TimeText: DateTime.Now.ToString("HH:mm:ss"),
-                EventType: "config_apply_failed",
-                DisplayEvent: LocalizationService.Instance.Get("msg.config_apply_failed"),
-                SourcePathMasked: _options.ConfigPath,
-                Message: ex.Message,
-                ColorHex: "#C62828"));
-        }
-        finally
-        {
-        }
-    }
+    // 票 30：OnApplyConfigClick 已删除 —— ADR 0037「应用配置」按钮移除后即为无引用死代码
+    //（全仓 grep 仅守卫测试断言其存在）；守卫 MainWindowConfigHotReloadSourceTests 同步迁移为
+    // 锁定防抖即时应用链（ScheduleDebouncedConfigApply → ApplyConfigImmediatelyAsync）。
 
     private void ScheduleSaveStatusClear()
     {
@@ -1232,15 +973,8 @@ public partial class MainWindow : Window
         }, token);
     }
 
-    private async Task ApplyConfigForCurrentModeAsync(CancellationToken token)
-    {
-        if (_options is null)
-        {
-            return;
-        }
-
-        await _workerIpc.ReloadConfigAsync(_options.WorkerEndpointName, token);
-    }
+    // 票 30：ApplyConfigForCurrentModeAsync 已删除 —— 全仓无调用者的死代码（防抖链路
+    // ApplyConfigImmediatelyAsync 才是唯一 Worker ReloadConfig 入口）。
 
     private void ApplyRuntimeConfigToUiState()
     {
@@ -1267,13 +1001,11 @@ public partial class MainWindow : Window
                 vm.HideTrayIcon = cfg.Ui.HideTrayIcon;
                 vm.ThemeVariant = normalizedThemeVariant;
                 vm.ThemeId = string.IsNullOrWhiteSpace(cfg.Ui.ThemeId) ? "catppuccin" : cfg.Ui.ThemeId;
-                SyncThemeVariantComboSelection(vm.ThemeVariant);
+                // 票 30：Sync*ComboSelection/SyncThemeSwatchSelection 回填调用删除 —— 选中态由绑定自动跟随 VM。
                 App.ApplyCommunityThemeResources(vm.ThemeId, applyDark: string.Equals(NormalizeThemeVariant(vm.ThemeVariant), "dark", StringComparison.OrdinalIgnoreCase));
-                SyncThemeSwatchSelection(vm.ThemeId);
                 vm.BackupDirectory = cfg.Backup.Directory;
                 vm.AuditLogDirectory = cfg.Audit.LogDirectory;
                 vm.LogLevel = cfg.Audit.LogLevel;
-                SyncLogLevelComboSelection(vm.LogLevel);
                 vm.ExifToolPathHint = _exifToolHint;
                 vm.QuarantineEnabled = cfg.Quarantine.Enabled;
                 vm.QuarantineDirectory = cfg.Quarantine.Directory;
@@ -1325,19 +1057,8 @@ public partial class MainWindow : Window
         }
     }
 
-    private static string NormalizeExifToolStatus(string? raw)
-    {
-        if (string.IsNullOrWhiteSpace(raw)
-            || string.Equals(raw, "unknown", StringComparison.OrdinalIgnoreCase))
-        {
-            return LocalizationService.Instance.Get("status.exiftool_not_found");
-        }
-
-        var text = raw.Trim();
-        return text.StartsWith("ExifTool", StringComparison.OrdinalIgnoreCase)
-            ? text
-            : $"ExifTool v{text} ✓";
-    }
+    // 票 30：窗口内私有 NormalizeExifToolStatus 副本已删除 —— 唯一权威在
+    // ServiceModeController.NormalizeExifToolStatus（本文件两处调用均走该权威，副本无调用者）。
 
     // issue 06 checkpoint B: UI 不再 spawn exiftool -ver —— 版本探测统一走 IPC GetExifToolVersion。
     private async Task ApplyExifToolVersionFromIpcAsync()
