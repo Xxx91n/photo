@@ -4,9 +4,10 @@ using Avalonia.Media;
 using Avalonia.Threading;
 using System.Diagnostics;
 using Microsoft.Extensions.Configuration;
-using PhotoPrivacy.Ipc;
+using Microsoft.Extensions.DependencyInjection;
 using PhotoPrivacy.Core.Configuration;
 using Serilog;
+using PhotoPrivacy.Ui.Composition;
 using PhotoPrivacy.Ui.Services;
 
 namespace PhotoPrivacy.Ui;
@@ -49,27 +50,18 @@ public static class UiProgram
         var config = LoadConfigOrDefault(configPath);
         UiDiagnosticLog.Write($"Config resolved. path={configPath}, hide_main_window_on_startup={config.Ui.HideMainWindowOnStartup}, hide_tray_icon={config.Ui.HideTrayIcon}");
 
-        var workerPath = ResolveWorkerExecutablePath();
-        var workerManager = new WorkerProcessManager(new WorkerIpcClient());
-        var workerIpc = new WorkerIpcClient();
-        var serviceManager = new ServiceManager();
+        // 票 29（架构恢复第七轮）：组合根装配 —— 核心服务在 DI 容器注册为单例，运行时选项构建收口
+        // AppComposition（spec 研究输入 Q1/Q2：组合根 + VM 构造注入）；Program 不再手写 new 服务链。
+        var services = AppComposition.Build(config, configPath, ResolveWorkerExecutablePath());
+        App.RuntimeOptions = services.GetRequiredService<BackgroundUiOptions>();
 
         // ADR 0053 M1: Set initial RuntimeOptions with placeholder endpoint (Connecting state).
         // App.OnFrameworkInitializationCompleted will create MainWindow with Connecting UI,
         // then AppMain fires ConnectWorkerAsync in background to replace the placeholder.
         var showPipeCts = new CancellationTokenSource();
-        App.RuntimeOptions = BuildRuntimeOptions(
-            modeKind: "tray",
-            endpointName: WorkerIpcEndpointNames.BackgroundPipe,
-            workerPath: workerPath,
-            configPath: configPath,
-            config: config,
-            workerManager: workerManager,
-            workerIpc: workerIpc,
-            serviceManager: serviceManager);
 
         // ConnectionState starts in Connecting — heartbeat timer will promote to Connected/Reconnecting.
-        var connectionState = new ConnectionStateService(new WorkerIpcClient(), WorkerIpcEndpointNames.BackgroundPipe);
+        var connectionState = services.GetRequiredService<ConnectionStateService>();
         connectionState.State = ConnectionState.Connecting;
         App.RuntimeOptions.SetConnectionState(connectionState);
 
@@ -107,7 +99,7 @@ public static class UiProgram
         });
 
         UiDiagnosticLog.Write("Avalonia StartWithClassicDesktopLifetime starting");
-        BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+        BuildAvaloniaApp(services).StartWithClassicDesktopLifetime(args);
         UiDiagnosticLog.Write("Avalonia lifetime exited");
 
         showPipeCts.Cancel();
@@ -162,71 +154,10 @@ public static class UiProgram
         return File.Exists(workerPath) ? workerPath : null;
     }
 
-    private static BackgroundUiOptions BuildRuntimeOptions(
-        string modeKind,
-        string endpointName,
-        string? workerPath,
-        string configPath,
-        AppConfig config,
-        WorkerProcessManager workerManager,
-        WorkerIpcClient workerIpc,
-        ServiceManager serviceManager)
+    public static AppBuilder BuildAvaloniaApp(IServiceProvider services)
     {
-        // 票20 检查点 C：一次性构建不可变快照；委托在调用时读取 App.RuntimeOptions 的当前值
-        //（与原实现闭包读取同一共享实例语义一致）。
-        var options = new BackgroundUiOptions
-        {
-            WorkerExecutablePath = workerPath ?? string.Empty,
-            ConfigPath = configPath,
-            AuditDirectory = config.Audit.LogDirectory,
-            GetServiceRuntimeState = serviceManager.GetRuntimeState,
-            IsWorkerAliveAsync = token => workerIpc.IsAliveAsync(App.RuntimeOptions.WorkerEndpointName, token),
-            IsPausedAsync = async token =>
-            {
-                var res = await workerIpc.GetStatusAsync(App.RuntimeOptions.WorkerEndpointName, token).ConfigureAwait(false);
-                return res?.Data?.IsPaused ?? false;
-            },
-            PauseAsync = async token =>
-            {
-                await workerIpc.PauseAsync(App.RuntimeOptions.WorkerEndpointName, token).ConfigureAwait(false);
-            },
-            ResumeAsync = async token =>
-            {
-                await workerIpc.ResumeAsync(App.RuntimeOptions.WorkerEndpointName, token).ConfigureAwait(false);
-            },
-            ShutdownWorkerAsync = async token =>
-            {
-                if (string.Equals(App.RuntimeOptions.RuntimeKind, "tray", StringComparison.OrdinalIgnoreCase))
-                {
-                    await workerIpc.ShutdownAsync(App.RuntimeOptions.WorkerEndpointName, token).ConfigureAwait(false);
-                }
-            },
-            ExitApplicationAsync = async token =>
-            {
-                if (string.Equals(App.RuntimeOptions.RuntimeKind, "tray", StringComparison.OrdinalIgnoreCase))
-                {
-                    await workerIpc.ShutdownAsync(App.RuntimeOptions.WorkerEndpointName, token).ConfigureAwait(false);
-                }
-            },
-            GetExifToolVersionAsync = async token =>
-            {
-                var res = await workerIpc.GetStatusAsync(App.RuntimeOptions.WorkerEndpointName, token).ConfigureAwait(false);
-                return res?.Data?.ExifToolVersion ?? "unknown";
-            },
-            ConnectOrLaunchWorkerAsync = token => workerManager.ConnectOrLaunchAsync(
-                workerPath,
-                token,
-                getServiceRuntimeState: serviceManager.GetRuntimeState,
-                configPath: configPath)
-        };
-        options.UpdateRuntimeState(modeKind, endpointName, modeKind == "tray" && !config.Ui.HideTrayIcon);
-        options.UpdateHideFlags(config.Ui.HideMainWindowOnStartup, config.Ui.HideTrayIcon);
-        return options;
-    }
-
-    public static AppBuilder BuildAvaloniaApp()
-    {
-        var builder = AppBuilder.Configure<App>()
+        // 票 29：App 经工厂重载拿到容器（AppBuilder.Configure(Func<TApp>)），OnFrameworkInitializationCompleted 内解析 MainWindow。
+        var builder = AppBuilder.Configure(() => new App(services))
             .UsePlatformDetect()
             .WithInterFont()
             .With(new FontManagerOptions

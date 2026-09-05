@@ -6,8 +6,8 @@ using Avalonia.Markup.Xaml.Styling;
 using Avalonia.Media.Imaging;
 using Avalonia.Styling;
 using Avalonia.Threading;
+using Microsoft.Extensions.DependencyInjection;
 using PhotoPrivacy.Core.Configuration;
-using PhotoPrivacy.Ui.ViewModels;
 using PhotoPrivacy.Ui.Views;
 using PhotoPrivacy.Ui.Services;
 
@@ -16,6 +16,15 @@ namespace PhotoPrivacy.Ui;
 public partial class App : Application
 {
     public static BackgroundUiOptions RuntimeOptions { get; set; } = BackgroundUiOptions.CreateFallback();
+
+    // 票 29（架构恢复第七轮）：容器由组合根 AppComposition 构建，经 Program.Start 的
+    // AppBuilder.Configure 工厂注入 —— App/MainWindow 不再手写 new 全局依赖。
+    private readonly IServiceProvider _services;
+
+    public App(IServiceProvider services)
+    {
+        _services = services;
+    }
 
     public override void Initialize()
     {
@@ -27,10 +36,8 @@ public partial class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             UiDiagnosticLog.Write("App.OnFrameworkInitializationCompleted entered with desktop lifetime");
-            desktop.MainWindow = new MainWindow
-            {
-                DataContext = new MainWindowViewModel()
-            };
+            // 票 29：MainWindow 与 MainWindowViewModel 由组合根容器构造注入解析。
+            desktop.MainWindow = _services.GetRequiredService<MainWindow>();
 
             if (desktop.MainWindow is MainWindow window)
             {

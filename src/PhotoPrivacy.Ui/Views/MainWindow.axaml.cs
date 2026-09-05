@@ -24,7 +24,7 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _versionPollCts;
     private Task? _versionPollTask;
     internal BackgroundUiOptions? _options;
-    private readonly WorkerIpcClient _workerIpc = new();
+    private readonly WorkerIpcClient _workerIpc;
     internal readonly ServiceModeController _serviceModeController;
     private CancellationTokenSource? _serviceModePollCts;
     private Task? _serviceModePollTask;
@@ -61,20 +61,24 @@ public partial class MainWindow : Window
         "exiftool.exe"
     ];
 
-    public MainWindow()
+    // 票 29（架构恢复第七轮）：构造注入 —— 服务依赖经组合根容器（AppComposition）装配，
+    // MainWindow 不再手写 new WorkerIpcClient/ServiceManager/ServiceModeController 依赖链；
+    // 窗口仅保留对自身视图缝（UiHost/ViewModelView 适配器）的落位。
+    public MainWindow(
+        MainWindowViewModel viewModel,
+        IServiceManagerOps serviceManagerOps,
+        WorkerProcessManager workerManager,
+        WorkerIpcClient workerIpc)
     {
         InitializeComponent();
-        _serviceModeController = CreateServiceModeController();
-    }
-
-    private ServiceModeController CreateServiceModeController()
-    {
-        return new ServiceModeController(
-            new ServiceManagerOps(new ServiceManager()),
-            new WorkerProcessManager(new WorkerIpcClient()),
+        _workerIpc = workerIpc;
+        _serviceModeController = new ServiceModeController(
+            serviceManagerOps,
+            workerManager,
             _workerIpc,
             new MainWindowUiHost(this),
             new MainWindowViewModelView(this));
+        DataContext = viewModel;
     }
 
     public void InitializeRuntime(BackgroundUiOptions options)
