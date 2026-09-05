@@ -6,6 +6,13 @@ namespace PhotoPrivacy.IntegrationTests.Ui;
 
 public sealed class ServiceManagerTests
 {
+    /// <summary>
+    /// 票 28 返修：下列测试锁 Windows sc.exe 服务管理流程（UAC/exit code/命令拼装）。
+    /// SUT 在非 Windows 按设计返回 Skipped（service.msg.use_systemd，systemd/launchd 探针另有测试），
+    /// 这些流程断言仅对 Windows 有意义——测试体内 `if (SkipOnNonWindows()) { return; }` 提前结束。
+    /// </summary>
+    private static bool SkipOnNonWindows() => !OperatingSystem.IsWindows();
+
     private sealed class FakeStateProbe : IServiceStateProbe
     {
         public bool Exists { get; set; }
@@ -148,6 +155,7 @@ public sealed class ServiceManagerTests
     [Fact]
     public void Install_Should_Return_Executor_Result_And_Build_Create_Command()
     {
+        if (SkipOnNonWindows()) { return; }
         var expected = ServiceCommandResult.Success();
         var fakeExecutor = new FakeExecutor(expected);
         var manager = new ServiceManager(fakeExecutor, new FakeStateProbe());
@@ -164,6 +172,7 @@ public sealed class ServiceManagerTests
     [Fact]
     public void Install_Should_Fail_When_Path_Is_Not_Worker_Executable()
     {
+        if (SkipOnNonWindows()) { return; }
         var fakeExecutor = new FakeExecutor(ServiceCommandResult.Success());
         var manager = new ServiceManager(fakeExecutor, new FakeStateProbe());
 
@@ -177,6 +186,7 @@ public sealed class ServiceManagerTests
     [Fact]
     public void Start_Should_Request_Runas_When_Forced_And_Not_Admin()
     {
+        if (SkipOnNonWindows()) { return; }
         var fakeExecutor = new FakeExecutorWithQueue(new Queue<ServiceCommandResult>(new[]
         {
             ServiceCommandResult.Success(),
@@ -206,6 +216,7 @@ public sealed class ServiceManagerTests
     [Fact]
     public void Install_Should_Return_Failed_When_Executor_Returns_NonZero_Code()
     {
+        if (SkipOnNonWindows()) { return; }
         var fakeExecutor = new FakeExecutor(ServiceCommandResult.Failed("sc failure", exitCode: 5));
         var manager = new ServiceManager(fakeExecutor, new FakeStateProbe());
 
@@ -218,6 +229,7 @@ public sealed class ServiceManagerTests
     [Fact]
     public void Stop_Should_Return_ElevationCancelled_When_User_Rejects_Uac()
     {
+        if (SkipOnNonWindows()) { return; }
         var fakeExecutor = new FakeExecutor(new System.ComponentModel.Win32Exception(1223));
         var manager = new ServiceManager(fakeExecutor, new FakeStateProbe
         {
@@ -233,6 +245,7 @@ public sealed class ServiceManagerTests
     [Fact]
     public void Start_Should_Fail_When_Service_Not_Installed()
     {
+        if (SkipOnNonWindows()) { return; }
         var fakeExecutor = new FakeExecutor(ServiceCommandResult.Success());
         var manager = new ServiceManager(fakeExecutor, new FakeStateProbe
         {
@@ -249,6 +262,7 @@ public sealed class ServiceManagerTests
     [Fact]
     public void Start_Should_Fail_When_Path_Is_Not_Worker_Executable()
     {
+        if (SkipOnNonWindows()) { return; }
         var fakeExecutor = new FakeExecutor(ServiceCommandResult.Success());
         var manager = new ServiceManager(fakeExecutor, new FakeStateProbe
         {
@@ -266,6 +280,7 @@ public sealed class ServiceManagerTests
     [Fact]
     public void Uninstall_Should_Stop_Running_Service_Before_Delete()
     {
+        if (SkipOnNonWindows()) { return; }
         var fakeExecutor = new FakeExecutorWithQueue(new Queue<ServiceCommandResult>(new[]
         {
             ServiceCommandResult.Success(),
@@ -353,6 +368,7 @@ public sealed class ServiceManagerTests
     [Fact]
     public void BuildReconfigArguments_Should_Quote_Executable_And_Config_Path()
     {
+        if (SkipOnNonWindows()) { return; }
         var args = ServiceManager.BuildReconfigArguments(
             @"C:\Program Files\PhotoPrivacy\PhotoPrivacyWorker.exe",
             @"D:\cfg path\config.json");
@@ -365,6 +381,7 @@ public sealed class ServiceManagerTests
     [Fact]
     public void Install_Should_Auto_Retry_After_Service_Already_Exists()
     {
+        if (SkipOnNonWindows()) { return; }
         var results = new Queue<ServiceCommandResult>(new[]
         {
             ServiceCommandResult.Failed("not running", 1062),

@@ -6,11 +6,27 @@ namespace PhotoPrivacy.Core.Tests.ExifTool;
 
 public sealed class ExifToolBridgeTests
 {
+    // 票 28 返修：AppConfig.Default.ExifTool.Path 在 Unix 回退裸 "exiftool"（相对路径），
+    // 被 SUT ValidateExifToolPath 拒绝；Bridge 测试只锁 stay_open/生命周期行为，
+    // 统一用平台绝对路径假配置（仅校验绝对性，不要求文件存在）。
+    private static readonly AppConfig Config = CreateConfig();
+
+    private static AppConfig CreateConfig()
+    {
+        var absolutePath = OperatingSystem.IsWindows()
+            ? @"C:\Program Files\ExifTool\exiftool.exe"
+            : "/usr/bin/exiftool";
+        return AppConfig.Default with
+        {
+            ExifTool = AppConfig.Default.ExifTool with { Path = absolutePath }
+        };
+    }
+
     [Fact]
     public async Task WipeMetadataAsync_Should_Complete_When_TaskDone_Line_Arrives()
     {
         var process = new FakeExifToolProcess();
-        var bridge = new ExifToolBridge(process, AppConfig.Default);
+        var bridge = new ExifToolBridge(process, Config);
         await bridge.StartAsync(CancellationToken.None);
 
         await bridge.WipeMetadataAsync(@"D:\hot\a.jpg", CancellationToken.None);
@@ -26,7 +42,7 @@ public sealed class ExifToolBridgeTests
         {
             AutoEmitTaskDone = false
         };
-        var bridge = new ExifToolBridge(process, AppConfig.Default);
+        var bridge = new ExifToolBridge(process, Config);
         await bridge.StartAsync(CancellationToken.None);
 
         using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
@@ -41,12 +57,12 @@ public sealed class ExifToolBridgeTests
     public async Task EnsureStartedAsync_Should_Start_Process_When_Not_Started()
     {
         var process = new FakeExifToolProcess();
-        var bridge = new ExifToolBridge(process, AppConfig.Default);
+        var bridge = new ExifToolBridge(process, Config);
 
         await bridge.EnsureStartedAsync(CancellationToken.None);
 
         Assert.Equal(1, process.StartCalls);
-        Assert.Equal(AppConfig.Default.ExifTool.Path, process.ExePath);
+        Assert.Equal(Config.ExifTool.Path, process.ExePath);
     }
 
     [Fact]
@@ -56,7 +72,7 @@ public sealed class ExifToolBridgeTests
         {
             SuppressHealthReady = true
         };
-        var bridge = new ExifToolBridge(process, AppConfig.Default);
+        var bridge = new ExifToolBridge(process, Config);
 
         await bridge.EnsureStartedAsync(CancellationToken.None);
         await bridge.EnsureStartedAsync(CancellationToken.None);
@@ -73,7 +89,7 @@ public sealed class ExifToolBridgeTests
             HealthResponseDelayMs = 300
         };
 
-        var bridge = new ExifToolBridge(process, AppConfig.Default);
+        var bridge = new ExifToolBridge(process, Config);
 
         await bridge.EnsureStartedAsync(CancellationToken.None);
         await bridge.EnsureStartedAsync(CancellationToken.None);
@@ -86,7 +102,7 @@ public sealed class ExifToolBridgeTests
     public async Task EnsureStartedAsync_Should_Probe_ExifTool_Version_On_First_Start()
     {
         var process = new FakeExifToolProcess();
-        var bridge = new ExifToolBridge(process, AppConfig.Default);
+        var bridge = new ExifToolBridge(process, Config);
 
         await bridge.EnsureStartedAsync(CancellationToken.None);
 
@@ -100,7 +116,7 @@ public sealed class ExifToolBridgeTests
         var lifecycleEvents = new List<ExifToolLifecycleEvent>();
         var bridge = new ExifToolBridge(
             process,
-            AppConfig.Default,
+            Config,
             logger: null,
             lifecycleSink: (ev, _) =>
             {
@@ -120,7 +136,7 @@ public sealed class ExifToolBridgeTests
         var lifecycleEvents = new List<ExifToolLifecycleEvent>();
         var bridge = new ExifToolBridge(
             process,
-            AppConfig.Default,
+            Config,
             logger: null,
             lifecycleSink: (ev, _) =>
             {
@@ -147,7 +163,7 @@ public sealed class ExifToolBridgeTests
         var lifecycleEvents = new List<ExifToolLifecycleEvent>();
         var bridge = new ExifToolBridge(
             process,
-            AppConfig.Default,
+            Config,
             logger: null,
             lifecycleSink: (ev, _) =>
             {
@@ -174,7 +190,7 @@ public sealed class ExifToolBridgeTests
         var lifecycleEvents = new List<ExifToolLifecycleEvent>();
         var bridge = new ExifToolBridge(
             process,
-            AppConfig.Default,
+            Config,
             logger: null,
             lifecycleSink: (ev, _) =>
             {
@@ -195,7 +211,7 @@ public sealed class ExifToolBridgeTests
     public async Task EnsureStartedAsync_HealthCheck_Should_Use_Fast_Path_Probe_With_Marker()
     {
         var process = new FakeExifToolProcess();
-        var bridge = new ExifToolBridge(process, AppConfig.Default);
+        var bridge = new ExifToolBridge(process, Config);
 
         await bridge.EnsureStartedAsync(CancellationToken.None);
         await bridge.EnsureStartedAsync(CancellationToken.None);
@@ -203,7 +219,7 @@ public sealed class ExifToolBridgeTests
         var healthCommand = process.Writes.Last(x => x.Contains("HEALTH_", StringComparison.Ordinal));
         Assert.Contains("-fast", healthCommand, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("-execute", healthCommand, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains(AppConfig.Default.ExifTool.Path, healthCommand, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(Config.ExifTool.Path, healthCommand, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("-ver", healthCommand, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -215,7 +231,7 @@ public sealed class ExifToolBridgeTests
             VersionText = "13.05"
         };
         var logger = new ListLogger<ExifToolBridge>();
-        var bridge = new ExifToolBridge(process, AppConfig.Default, logger, healthTimeout: TimeSpan.FromMilliseconds(200));
+        var bridge = new ExifToolBridge(process, Config, logger, healthTimeout: TimeSpan.FromMilliseconds(200));
 
         await bridge.EnsureStartedAsync(CancellationToken.None);
 
@@ -235,7 +251,7 @@ public sealed class ExifToolBridgeTests
         };
 
         var logger = new ListLogger<ExifToolBridge>();
-        var bridge = new ExifToolBridge(process, AppConfig.Default, logger: logger);
+        var bridge = new ExifToolBridge(process, Config, logger: logger);
 
         await bridge.EnsureStartedAsync(CancellationToken.None);
 
@@ -256,7 +272,7 @@ public sealed class ExifToolBridgeTests
         var lifecycleEvents = new List<ExifToolLifecycleEvent>();
         var bridge = new ExifToolBridge(
             process,
-            AppConfig.Default,
+            Config,
             logger: null,
             lifecycleSink: (ev, _) =>
             {

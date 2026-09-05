@@ -5,6 +5,7 @@ using PhotoPrivacy.Core.ExifTool;
 
 namespace PhotoPrivacy.IntegrationTests.Smoke;
 
+[Trait("Category", "ExifTool")]
 public sealed class RealExifToolProbeTest : IntegrationTestBase
 {
     [Fact]

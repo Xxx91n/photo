@@ -19,37 +19,42 @@ public sealed class RuleEngineTests
     [Fact]
     public void Decide_Should_Use_Fixed_Output_Directory_When_Configured()
     {
+        // 票 28 返修：Path.GetRelativePath/Combine 平台分隔符随 OS——用平台中立构造断言
+        var hot = Path.Combine(Path.GetTempPath(), "pp-re-hot");
+        var clean = Path.Combine(Path.GetTempPath(), "pp-re-clean");
         var cfg = AppConfig.Default with
         {
             Rules = AppConfig.Default.Rules with
             {
                 OutputMode = "fixed_directory",
-                OutputDirectory = @"D:\clean"
+                OutputDirectory = clean
             },
-            Watch = AppConfig.Default.Watch with { HotFolder = @"D:\hot" }
+            Watch = AppConfig.Default.Watch with { HotFolder = hot }
         };
 
         var engine = new RuleEngine(cfg);
-        var decision = engine.Decide(@"D:\hot\album\a.jpg");
+        var decision = engine.Decide(Path.Combine(hot, "album", "a.jpg"));
 
         Assert.True(decision.ShouldProcess);
-        Assert.Equal(@"D:\clean\album\a.jpg", decision.OutputPath);
+        Assert.Equal(Path.Combine(clean, "album", "a.jpg"), decision.OutputPath);
     }
 
     [Fact]
     public void Decide_Should_Create_Bak_Path_When_Backup_Enabled()
     {
+        // 票 28 返修：备份目录 = <hotFolder>/bak（BackupPathResolver），断言平台中立构造
+        var hot = Path.Combine(Path.GetTempPath(), "pp-re-hot");
         var cfg = AppConfig.Default with
         {
             Backup = AppConfig.Default.Backup with { Enabled = true, Suffix = ".bak" },
-            Watch = AppConfig.Default.Watch with { HotFolder = @"D:\hot" }
+            Watch = AppConfig.Default.Watch with { HotFolder = hot }
         };
 
         var engine = new RuleEngine(cfg);
-        var decision = engine.Decide(@"D:\hot\a.jpg");
+        var decision = engine.Decide(Path.Combine(hot, "a.jpg"));
 
         Assert.True(decision.CreateBackup);
-        Assert.Equal(@"D:\hot\bak\a.jpg.bak", decision.BackupPath);
+        Assert.Equal(Path.Combine(hot, "bak", "a.jpg.bak"), decision.BackupPath);
     }
 
     [Theory]

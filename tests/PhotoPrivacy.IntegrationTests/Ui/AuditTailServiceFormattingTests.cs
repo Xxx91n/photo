@@ -42,11 +42,13 @@ public sealed class AuditTailServiceFormattingTests
     [Fact]
     public void BuildAuditPath_Should_Use_LogDirectory_Directly()
     {
+        // 票 28 返修：BuildAuditPath = Path.Combine(logDirectory, 文件名)——平台中立构造断言
         var day = new DateTime(2026, 4, 19);
+        var logDirectory = Path.Combine(Path.GetTempPath(), "pp-audit", "_audit");
 
-        var path = AuditTailService.BuildAuditPath(@"D:\hot\_audit", day);
+        var path = AuditTailService.BuildAuditPath(logDirectory, day);
 
-        Assert.Equal(@"D:\hot\_audit\audit-2026-04-19.jsonl", path);
+        Assert.Equal(Path.Combine(logDirectory, "audit-2026-04-19.jsonl"), path);
     }
 
     [Fact]

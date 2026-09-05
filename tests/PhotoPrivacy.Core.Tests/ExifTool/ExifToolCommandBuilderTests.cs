@@ -34,7 +34,9 @@ public sealed class ExifToolCommandBuilderTests
     [Fact]
     public void BuildWipeTaskBlock_Should_Contain_TaskDone_And_Execute()
     {
-        var block = ExifToolCommandBuilder.BuildWipeTaskBlock(@"D:\hot\a.jpg", "123");
+        // 票 28 返修：BuildWipeTaskBlock 校验绝对路径，Windows 风格字面量在 Linux 非法——用平台绝对路径
+        var target = Path.Combine(Path.GetTempPath(), "pp-cb", "a.jpg");
+        var block = ExifToolCommandBuilder.BuildWipeTaskBlock(target, "123");
 
         Assert.Contains("-all=", block, StringComparison.Ordinal);
         Assert.Contains("-overwrite_original", block, StringComparison.Ordinal);

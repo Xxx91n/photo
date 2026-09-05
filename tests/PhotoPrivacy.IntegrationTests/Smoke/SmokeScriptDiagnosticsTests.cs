@@ -10,6 +10,7 @@ namespace PhotoPrivacy.IntegrationTests.Smoke;
 /// 4) 票15 — tests/ 直启宿主（InstanceConflictAuditTests/DryRunOutputFlowTests）无 dotnet run
 ///    兜底（含拆参形态），DLL-first 直启 + DLL 缺失显式报错（source guard 扩域）。
 /// </summary>
+[Trait("Category", "Smoke")]
 public sealed class SmokeScriptDiagnosticsTests
 {
     [Fact]
