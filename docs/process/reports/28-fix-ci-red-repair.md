@@ -50,7 +50,14 @@
 - `git diff --check` exit 0；LF 无 CRLF。
 - 本机未运行 dotnet（CI-only）；本票运行类验收 = 大脑重推验证分支后的 CI run 实物。
 
-## 4. 云端预期与移交
+## 4. 云端验收（已闭环，2026-09-05 回填）
+
+- **返修一轮**（959d517 + 报告 8e6526d）→ run 33944424867（HEAD 8e6526d）：IntegrationTests **273/273 全绿**（首轮 294 总数中 21 例为被过滤 Smoke/ExifTool 类，排除生效），CoreTests 181/183——仅剩 ExifToolBridgeTests 2 例 WipeMetadataAsync 失败：wipe **目标路径** @"D:\hot\*.jpg" 字面量在 Linux 非绝对，被 BuildProbeTaskBlock → ValidatePathForExifToolProtocol 拒（第一轮只修了 ExifTool 程序路径，目标路径漏网）。
+- **返修二轮**（9dd4de9）：两例入参改 Path.Combine 临时目录绝对路径（断言只锁 TASK_DONE/超时语义，与路径无关）→ **run 33944636423 = SUCCESS**，test job 绿：**Core 183/183 + Integration 273/273，0 失败**。
+- 幽灵 run 消除留证：三次推送三次真实 "CI" run（33944424867 / 33944636423 + 首轮 33925388409），run 名为 workflow 名而非文件路径，jobs 非空、日志完整。
+- 票 28 完成定义五条全部达成：①三元根除 ✅ ②push/PR 测试门禁 + 手动发布守卫 ✅ ③ci.yml/release.yml 拆分 ✅ ④**CI 验证分支 run 实物绿** ✅（33944636423）⑤报告双轨 ✅。ADR 0016 修订说明见主报告 §2，随收口沉淀。
+
+## 5. 移交记录（已由本窗口按用户指令执行推送，闭环）
 
 - 预期：ci.yml push 触发 → test job 过滤后 Core/Integration 套件在 ubuntu-latest 全绿（46 失败中：46 例被根因修复或按设计排除，0 例遗留未处置）。
 - 风险留观：Filter 生效后跑的测试集合首次变化（排除 Smoke/ExifTool 类），可能暴露其余潜伏平台假设——红则按流程再开返修窗。
