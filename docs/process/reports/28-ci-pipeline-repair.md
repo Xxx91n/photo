@@ -18,7 +18,7 @@
 | 7 | 行为保持（发布面） | 7-rid matrix、test→build→release 依赖链、dotnet 10.0.201、publish 脚本调用参数、deb×2/app bundle/upload/release 步骤逐字段保留（node 检查：7 rids、依赖链、触发键扫描 PASS） | ✅ |
 | 8 | CONTEXT.md 术语一致（spec 用户故事 12） | Manual Dispatch 条目修订为「发布手动 + 测试门禁 push/PR 自动（对 ADR 0016 的部分修订）」；Release Directory 条目同步「完全平铺（UI+Worker 根目录）」口径 | ✅ |
 | 9 | ADR 0016 修订说明随报告呈报 | 见 §3；本票不改 ADR 文件（spec Further Notes：修订随收口沉淀） | ✅ 已呈报 |
-| 10 | 静态卫生 | `git diff --check` exit 0（空输出）；两 workflow 文件 LF、无 BOM；23 项 node 检查 ALL-PASS（初次跑 1 FAIL 为验证脚本自身口径误报——ci.yml 合法地零表达式——修正口径后复跑全绿，过程留痕） | ✅ |
+| 10 | 静态卫生 | `git diff --check` exit 0（空输出）；两 workflow 文件 LF、无 BOM；22 项 node 检查 ALL-PASS（勘误 2026-09-05：初版误写 23，实际 ALL-PASS 轮脚本为口径修正后 22 项检查，见 28-fix 报告）（初次跑 1 FAIL 为验证脚本自身口径误报——ci.yml 合法地零表达式——修正口径后复跑全绿，过程留痕） | ✅ |
 | 11 | 版本控制纪律（WORKFLOW §4.2/§4.4） | GitButler 单票独立分支 round7/28-ci-pipeline-repair，单 commit，无裸 git 写、无 push；本票未触发任何动栈/丢弃类操作，§4.4 快照义务不触发；他人物品（codex/session 分支、round6 merged 栈）未触碰 | ✅ |
 | 12 | CI 验证分支 run 实物绿（jobs 非空、有日志、test 成功） | 本窗口不推送（handoff 明定）；commit 40fc946 已就绪，移交大脑推送验证分支并复核 | ⏳ 移交大脑 |
 
@@ -48,5 +48,5 @@
 
 - 本窗口无 ctx_* 工具，按启动器授权的退回路径使用内置读工具读全必读清单。
 - 文件写入用字节精确的 Write 工具（YAML 含大量 `${{}}`/引号/反斜杠，node 脚本字符串内嵌转义风险更高，Write 不经 shell 无嵌套吞字路径，满足「避免嵌套导致对话断开」的意图）。
-- 字节级验证用 node.js 脚本（OS 临时目录，非 repo；验证后已删除），含 sha256/CRLF/BOM/三元扫描/结构锚点 23 项。
+- 字节级验证用 node.js 脚本（OS 临时目录，非 repo；验证后已删除），含 sha256/CRLF/BOM/三元扫描/结构锚点 22 项（勘误：初版误写 23）。
 - 本机未运行任何 dotnet/actionlint/lint（CI-only 政策）。
