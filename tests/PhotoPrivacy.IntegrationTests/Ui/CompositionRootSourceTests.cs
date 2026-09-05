@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 namespace PhotoPrivacy.IntegrationTests.Ui;
 
 /// <summary>
-/// 票 29（架构恢复第七轮）组合根 + DI 容器骨架 source-lint：
+/// 票 29（架构恢复第七轮）组合根 + DI 容器骨架 source-lint（票 31 追加轮询宿主服务断言）：
 /// - AppComposition 为唯一装配点（ServiceCollection 单例注册 + BuildServiceProvider）
 /// - Program.Start 在应用启动处调用组合根装配，不再手写服务依赖链
 /// - App 解析 MainWindow 自容器（不再手写 new MainWindowViewModel）
@@ -27,7 +27,8 @@ public sealed class CompositionRootSourceTests
                      "AddSingleton<FormatRulesStore>",
                      "AddSingleton<LocalizationService>",
                      "AddSingleton<MainWindowViewModel>",
-                     "AddSingleton<MainWindow>"
+                     "AddSingleton<MainWindow>",
+                     "WindowPollingHostedService("
                  })
         {
             Assert.Contains(svc, source, StringComparison.Ordinal);
@@ -35,6 +36,10 @@ public sealed class CompositionRootSourceTests
 
         // 检查点 B：容器内注册的就是既有单例实例（构造私有），容器外静态直引按 spec Out of Scope 逐票迁移
         Assert.Contains("LocalizationService.Instance", source, StringComparison.Ordinal);
+
+        // 票 31：轮询宿主服务经工厂注册（只依赖 VM 单例破 DI 环，版本源惰性读 App.RuntimeOptions）
+        Assert.Contains("new WindowPollingHostedService(", source, StringComparison.Ordinal);
+        Assert.Contains("() => App.RuntimeOptions.GetExifToolVersionAsync", source, StringComparison.Ordinal);
     }
 
     [Fact]
