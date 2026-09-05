@@ -15,13 +15,20 @@ public sealed class ShutdownCoordinatorTests
         }, TimeSpan.FromSeconds(1));
 
         coordinator.RequestStop();
-        coordinator.RequestStop();
-        coordinator.RequestStop();
 
-        await coordinator.WaitForFirstRequestAsync(TimeSpan.FromSeconds(1));
+        // 票 28 返修三轮：SUT 的 stopHost 经 Task.Run 调度，与 WaitForFirstRequestAsync 返回无先后
+        // 保证（CI 两次实锤 calls==0 调度竞态）——轮询至回调确已执行再验证 exactly-once。
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (Volatile.Read(ref calls) == 0 && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(20);
+        }
+
+        coordinator.RequestStop();
+        coordinator.RequestStop();
         await Task.Delay(100);
 
-        Assert.Equal(1, calls);
+        Assert.Equal(1, Volatile.Read(ref calls));
     }
 
 }
