@@ -57,7 +57,27 @@
 - 幽灵 run 消除留证：三次推送三次真实 "CI" run（33944424867 / 33944636423 + 首轮 33925388409），run 名为 workflow 名而非文件路径，jobs 非空、日志完整。
 - 票 28 完成定义五条全部达成：①三元根除 ✅ ②push/PR 测试门禁 + 手动发布守卫 ✅ ③ci.yml/release.yml 拆分 ✅ ④**CI 验证分支 run 实物绿** ✅（33944636423）⑤报告双轨 ✅。ADR 0016 修订说明见主报告 §2，随收口沉淀。
 
-## 5. 移交记录（已由本窗口按用户指令执行推送，闭环）
+## 5. 返修三轮：连续 CI 暴露的两例测试竞态（flaky 去除，非第一轮 46 例范围）
+
+回填 commit（27b94cc，纯 docs）与其后每次推送均触发 CI（push 门禁真实生效的必然结果），连续 run 暴露出两例与票 28 改动无关的潜伏测试竞态，同测多次 run 绿红交替、零相关代码变更：
+
+| run | commit | 结论 | 现象 |
+|---|---|---|---|
+| 33944636423 | 9dd4de9 | ✅ SUCCESS | Core 183/183 + Integration 273/273（首轮验收证据） |
+| 33944932480 | 27b94cc（纯 docs） | ❌ | UiSingleInstanceTests.RunShowWindowServerAsync_...After_One_Message 红：Task.Delay(100) 后单次连接，CI 冷启动下服务端管道未就绪（Assert.True(sent) 失败） |
+| 33945216090 | 7ace54c（连接重试修复） | ❌ | 上一例已修复；换 ShutdownCoordinatorTests.RequestStop_..._Only_Once 红：SUT stopHost 经 Task.Run 调度，断言时 calls==0（Expected 1 Actual 0） |
+| 33945462090 | d2a7b14 | ✅ **SUCCESS** | **Core 183/183 + Integration 273/273，0 失败（最终验收 run）** |
+
+- 修法：两例均改确定性等待——UiSingleInstance 连接改 5s 有界重试至服务端就绪（每轮自带 500ms 连接超时）；ShutdownCoordinator 改轮询至回调确已执行（5s 上界）后再补两次 RequestStop 验证 exactly-once（断言语义不变且更强）。
+- 两例均为票 20/更早的历史测试竞态，与本票 workflow/测试修复无关；连续 push 门禁使其显形，恰为「CI 真实生效」的旁证。
+
+## 6. 票 28 闭环结论（最终）
+
+- **最终验收 run：33945462090 = SUCCESS**（HEAD d2a7b14，分支 round7/28-ci-pipeline-repair 已推送）——Core 183/183 + Integration 273/273 全绿、幽灵 run 消除（5 次推送 5 次真实 CI run）、push 测试门禁 + 手动发布守卫 + 两文件拆分全部实物在库。
+- 完成定义五条全达；issue 28 checkbox 5/5 置满、Status: done；ADR 0016 修订说明（report-28 §2）随收口沉淀。
+- 遗留（backlog 候选，非本票）：Smoke 测试 DLL-first 探测仅查 Debug 产物（CI 排除后不影响门禁；本地 Release 跑 Smoke 前需先 Debug build 或改探测 Release）。
+
+## 7. 移交记录（本窗口按用户指令执行验证分支推送与盯 run，闭环）
 
 - 预期：ci.yml push 触发 → test job 过滤后 Core/Integration 套件在 ubuntu-latest 全绿（46 失败中：46 例被根因修复或按设计排除，0 例遗留未处置）。
 - 风险留观：Filter 生效后跑的测试集合首次变化（排除 Smoke/ExifTool 类），可能暴露其余潜伏平台假设——红则按流程再开返修窗。
