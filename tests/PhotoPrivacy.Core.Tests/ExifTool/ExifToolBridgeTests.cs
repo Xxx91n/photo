@@ -29,7 +29,7 @@ public sealed class ExifToolBridgeTests
         var bridge = new ExifToolBridge(process, Config);
         await bridge.StartAsync(CancellationToken.None);
 
-        await bridge.WipeMetadataAsync(@"D:\hot\a.jpg", CancellationToken.None);
+        await bridge.WipeMetadataAsync(Path.Combine(Path.GetTempPath(), "pp-bridge", "a.jpg"), CancellationToken.None);
 
         Assert.True(process.Writes.Count >= 1);
         Assert.Contains(process.Writes, w => w.Contains("-echo1\nTASK_DONE_", StringComparison.Ordinal));
@@ -48,7 +48,7 @@ public sealed class ExifToolBridgeTests
         using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
-            () => bridge.WipeMetadataAsync(@"D:\hot\timeout.jpg", cts.Token));
+            () => bridge.WipeMetadataAsync(Path.Combine(Path.GetTempPath(), "pp-bridge", "timeout.jpg"), cts.Token));
 
         Assert.Equal(0, bridge.PendingCount);
     }
