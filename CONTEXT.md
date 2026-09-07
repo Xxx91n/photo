@@ -394,3 +394,11 @@ _Avoid_: MainWindow 再建 BackfillRecentLogsAsync;尾读类组件外置去重
 **ServiceModeController**:
 服务模式编排（Install/Uninstall/Start/Stop/Switch*/Poll*/Shutdown*/Ensure*）唯一承载体（src/PhotoPrivacy.Ui/Services/ServiceModeController.cs），MainWindow 只剩转发器。依赖缝：IServiceManagerOps/IUiHost/IViewModelView，测试用 FakeOps/FakeHost/FakeView 注入。exiftool 版本探测仅经 IPC GetStatusAsync（状态 DTO 携带 ExifToolVersion），UI 零 spawn。见 ADR 0056 票 06。ADR 0053 M2 曾误称该类为 `StartupCoordinator`（该类从未实现），已由 ADR 0053 文末 Errata 段更正为 ServiceModeController。
 _Avoid_: MainWindow.axaml.cs 再出现编排方法实现体；UI Process.Start(exiftool);自创启动协调类回潮（ADR 0053 M2 误称 StartupCoordinator，已由其文末 Errata 更正为 ServiceModeController）
+
+**Composition Root (AppComposition)**:
+组合根，DI 容器唯一装配点（src/PhotoPrivacy.Ui/Composition/AppComposition.cs）。Program.Start 处 AppComposition.Build 装配 ServiceCollection，核心服务（WorkerIpcClient/WorkerProcessManager/ServiceManager/IServiceManagerOps/ConnectionStateService/FormatRulesStore/LocalizationService/MainWindowViewModel/MainWindow/WindowPollingHostedService）单例注册 + BuildServiceProvider 收口；App 经 AppBuilder.Configure(() => new App(services)) 工厂持容器。窗口/VM 停止手写 new 服务链；静态单例逐票收敛（LocalizationService.Instance 已收敛第一例）。见 ADR 0064 票 29/31。
+_Avoid_: MainWindow 构造内手写 new 服务链；容器外新建核心服务实例；绕过组合根直接 new WindowPollingHostedService
+
+**WindowPollingHostedService**:
+版本轮询（1s）+ 服务状态轮询（3s）的 IHostedService 承载（src/PhotoPrivacy.Ui/Services/WindowPollingHostedService.cs），与 ADR 0025 心跳同构。装配破环：宿主服务只依赖 VM 单例 + 惰性版本源工厂，服务模式轮询经 AttachServiceModePoll 委托由 MainWindow 构造挂载（ServiceModeController 构造需 MainWindow 视图适配器，直注成 MS DI 死环）。StartAsync 不拉起——InitializeRuntime 窗口就绪后 Activate，OnClosed 一行 StopAsync（版本→服务模式顺序取消）。见 ADR 0064 票 31。
+_Avoid_: MainWindow code-behind 内 Task.Run 轮询回潮；宿主服务构造直注 ServiceModeController；忘记 Activate 导致轮询不启动
