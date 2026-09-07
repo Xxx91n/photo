@@ -10,7 +10,7 @@ public partial class ConfigPage : UserControl
 
     internal ComboBox ThemeVariantComboBoxControl => ThemeVariantComboBox;
     internal ComboBox LogLevelComboBoxControl => LogLevelComboBox;
-    internal ComboBox LocaleVariantComboBoxControl => LocaleVariantComboBox;
+    // 票 30：LocaleVariantComboBoxControl 访问器已删除 —— 语言下拉唯一消费方是 SelectedIndex 绑定。
     internal ListBox UserExcludedDirectoriesListBoxControl => UserExcludedDirectoriesListBox;
     internal Button AddExcludedDirectoryButtonControl => AddExcludedDirectoryButton;
     internal Button RemoveExcludedDirectoryButtonControl => RemoveExcludedDirectoryButton;

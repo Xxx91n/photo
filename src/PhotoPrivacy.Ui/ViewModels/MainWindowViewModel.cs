@@ -213,6 +213,26 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         }
     }
 
+    // 票 30（架构恢复第七轮）：三套手动镜像收敛 —— ComboBox 选中态经 SelectedIndex TwoWay 绑定
+    // 由 VM 索引属性驱动（spec 研究输入 Q1：设置单一真相源在 VM）。get 侧归一化与原
+    // Sync*ComboSelection 回填语义一致（OrdinalIgnoreCase 匹配，未知值回落默认项）；
+    // set 侧仅承载用户交互路径的联动副作用（启动/热重载直接赋 string 属性，不触发）。
+    public int ThemeVariantIndex
+    {
+        get => NormalizeThemeVariantValue(_themeVariant) switch
+        {
+            "light" => 1,
+            "dark" => 2,
+            _ => 0
+        };
+        set => ThemeVariant = value switch
+        {
+            1 => "light",
+            2 => "dark",
+            _ => "system"
+        };
+    }
+
     // ADR 0052 A3: Theme preset ID (independent of variant axis) — atomcode research: dual-axis design
     private string _themeId = "catppuccin";
     public string ThemeId
@@ -232,7 +252,30 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public string CurrentLocale
     {
         get => _currentLocale;
-        set => SetField(ref _currentLocale, value);
+        set
+        {
+            if (SetField(ref _currentLocale, value) && value is not null)
+            {
+                // 票 30：SwitchLocale 联动迁入 setter（原 OnLocaleSelectionChanged 手动镜像）；
+                // ADR 0044 决策 8 / ADR 0047 A6 持久化链路「启动时读取 → Initialize(locale)」由此贯通，
+                // config ui.locale 与系统语言不一致时 UI 文案随 config（SwitchLocale 自带防重入幂等）。
+                _localization.SwitchLocale(value);
+            }
+        }
+    }
+
+    // 票 30：语言下拉选中态绑定 —— 顺序与 ConfigPage.axaml 的 10 个 ComboBoxItem 一致；
+    // 未知 locale 回落 0（zh-CN），与原 SyncLocaleComboSelection 的 SelectedIndex=0 兜底一致。
+    public static readonly string[] LocaleOrder = ["zh-CN", "en", "ja", "ko", "de", "fr", "es", "pt", "ru", "ar"];
+
+    public int CurrentLocaleIndex
+    {
+        get
+        {
+            var idx = Array.FindIndex(LocaleOrder, l => string.Equals(l, _currentLocale, StringComparison.OrdinalIgnoreCase));
+            return idx < 0 ? 0 : idx;
+        }
+        set => CurrentLocale = value >= 0 && value < LocaleOrder.Length ? LocaleOrder[value] : LocaleOrder[0];
     }
 
     public string SaveStatus
@@ -257,6 +300,52 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     {
         get => _logLevel;
         set => SetField(ref _logLevel, value);
+    }
+
+    // 票 30：日志级别下拉选中态绑定 —— 顺序与 ConfigPage.axaml 的 5 个 ComboBoxItem 一致；
+    // 未知级别回落 1（info），与原 SyncLogLevelComboSelection 的 SelectedIndex=1 兜底一致。
+    // set 侧联动 LogEnabled/ShowDetailedEvents（原 OnLogLevelSelectionChanged 行为迁入；
+    // 启动/热重载直接赋 LogLevel string，不触发联动 —— 行为不变）。
+    public int LogLevelIndex
+    {
+        get => (_logLevel ?? string.Empty).ToLowerInvariant() switch
+        {
+            "all" => 0,
+            "info" => 1,
+            "debug" => 2,
+            "warn" => 3,
+            "error" => 4,
+            _ => 1
+        };
+        set
+        {
+            var level = value switch
+            {
+                0 => "all",
+                2 => "debug",
+                3 => "warn",
+                4 => "error",
+                _ => "info"
+            };
+            LogLevel = level;
+            LogEnabled = level is "all" or "debug";
+            ShowDetailedEvents = level is "all" or "debug";
+        }
+    }
+
+    private static string NormalizeThemeVariantValue(string? value)
+    {
+        if (string.Equals(value, "light", StringComparison.OrdinalIgnoreCase))
+        {
+            return "light";
+        }
+
+        if (string.Equals(value, "dark", StringComparison.OrdinalIgnoreCase))
+        {
+            return "dark";
+        }
+
+        return "system";
     }
 
     // ADR 0052 A6: Path hint properties for Watermark display
