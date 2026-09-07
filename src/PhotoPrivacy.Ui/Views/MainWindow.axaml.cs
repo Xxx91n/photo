@@ -245,7 +245,7 @@ public partial class MainWindow : Window
                     return (DataContext as MainWindowViewModel)?.LogLevel ?? "info";
                 return Dispatcher.UIThread.Invoke(() => (DataContext as MainWindowViewModel)?.LogLevel ?? "info");
             },
-            onExifToolExePathDetected: _ => _ = _pollingHostedService.ApplyExifToolVersionFromIpcAsync(_options!.GetExifToolVersionAsync),
+            onExifToolExePathDetected: exePath => _ = _pollingHostedService.ApplyExifToolVersionFromIpcAsync(_options!.GetExifToolVersionAsync),
             backfillFetcher: token =>
             {
                 // 票号05: backfill 协调已收口在 AuditTailService 内部（ADR 0046 语义保持：
