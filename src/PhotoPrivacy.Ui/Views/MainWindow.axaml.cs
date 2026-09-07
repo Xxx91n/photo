@@ -19,14 +19,12 @@ public partial class MainWindow : Window
 {
     private AuditTailService? _auditTail;
     internal TrayHost? _trayHost;
-    private ExifToolVersionSnapshot? _versionSnapshot;
-    private CancellationTokenSource? _versionPollCts;
-    private Task? _versionPollTask;
     internal BackgroundUiOptions? _options;
     private readonly WorkerIpcClient _workerIpc;
     internal readonly ServiceModeController _serviceModeController;
-    private CancellationTokenSource? _serviceModePollCts;
-    private Task? _serviceModePollTask;
+    // 票 31：版本/服务状态轮询已下沉 WindowPollingHostedService（_versionSnapshot/_versionPollCts/
+    // _versionPollTask/_serviceModePollCts/_serviceModePollTask 五字段随之删除）。
+    private readonly WindowPollingHostedService _pollingHostedService;
     private string _exifToolHint = string.Empty;
     private CancellationTokenSource? _saveStatusResetCts;
     private CancellationTokenSource? _configApplyDebounceCts;
@@ -67,16 +65,20 @@ public partial class MainWindow : Window
         MainWindowViewModel viewModel,
         IServiceManagerOps serviceManagerOps,
         WorkerProcessManager workerManager,
-        WorkerIpcClient workerIpc)
+        WorkerIpcClient workerIpc,
+        WindowPollingHostedService pollingHostedService)
     {
         InitializeComponent();
         _workerIpc = workerIpc;
+        _pollingHostedService = pollingHostedService;
         _serviceModeController = new ServiceModeController(
             serviceManagerOps,
             workerManager,
             _workerIpc,
             new MainWindowUiHost(this),
             new MainWindowViewModelView(this));
+        // 票 31：服务模式轮询委托挂载（破 DI 环，见 WindowPollingHostedService 类注释）。
+        _pollingHostedService.AttachServiceModePoll(_serviceModeController.PollServiceModeTransitionAsync);
         DataContext = viewModel;
     }
 
@@ -118,10 +120,8 @@ public partial class MainWindow : Window
         if (viewModel is not null)
         {
             viewModel.CurrentMode = ServiceModeController.MapModeLabel(options.RuntimeKind);
-            // ADR 0053 M2: async delegate — eliminates sync-over-async in version snapshot
-            _versionSnapshot = new ExifToolVersionSnapshot(options.GetExifToolVersionAsync);
-            // ponytail: fire-and-forget initial version read — avoids UI-thread deadlock from sync-over-async
-            // PollVersionAsync (background thread) will detect the real version within 1s and post via Dispatcher.UIThread
+            // 票 31：版本快照与轮询由 WindowPollingHostedService.Activate 构建（窗口就绪后），
+            // 初始 detecting 占位语义保持 —— 1s 内轮询经 Dispatcher 检出真实版本。
             viewModel.ExifToolVersion = LocalizationService.Instance.Get("status.detecting");
             viewModel.ShowDetailedEvents = false;
             // ADR 0053 M1: Show "Worker connecting…" if ConnectionState is Connecting (Worker not yet connected).
@@ -245,7 +245,7 @@ public partial class MainWindow : Window
                     return (DataContext as MainWindowViewModel)?.LogLevel ?? "info";
                 return Dispatcher.UIThread.Invoke(() => (DataContext as MainWindowViewModel)?.LogLevel ?? "info");
             },
-            onExifToolExePathDetected: exePath => _ = ApplyExifToolVersionFromIpcAsync(),
+            onExifToolExePathDetected: exePath => _ = _pollingHostedService.ApplyExifToolVersionFromIpcAsync(_options!.GetExifToolVersionAsync),
             backfillFetcher: token =>
             {
                 // 票号05: backfill 协调已收口在 AuditTailService 内部（ADR 0046 语义保持：
@@ -259,10 +259,7 @@ public partial class MainWindow : Window
             });
 
         _auditTail.Start();
-        _ = ApplyExifToolVersionFromIpcAsync();
-
-        _versionPollCts = new CancellationTokenSource();
-        _versionPollTask = Task.Run(() => PollVersionAsync(_versionPollCts.Token), _versionPollCts.Token);
+        _ = _pollingHostedService.ApplyExifToolVersionFromIpcAsync(options.GetExifToolVersionAsync);
 
         var trayReady = false;
         if (options.UseTrayIcon && !options.HideTrayIcon)
@@ -289,10 +286,8 @@ public partial class MainWindow : Window
             UiDiagnosticLog.Write("MainWindow startup policy keeps window visible");
         }
 
-        _serviceModePollCts = new CancellationTokenSource();
-        _serviceModePollTask = Task.Run(
-            () => _serviceModeController.PollServiceModeTransitionAsync(_serviceModePollCts.Token),
-            _serviceModePollCts.Token);
+        // 票 31：版本轮询与服务状态轮询统一由宿主服务拉起（1s/3s 周期、取消/等待语义不变）。
+        _pollingHostedService.Activate();
 
         // 票 27：启动 ConfigFileWatcher 监听磁盘变更（手改/外部工具/备份回滚）.
         // 与 OnSelfWrite 抑制回调配对，避免 UI 自身写盘触发的 FSW 反弹 reload 覆盖未确认改动.
@@ -370,52 +365,13 @@ public partial class MainWindow : Window
 
         ConfigEditor.OnSelfWrite = null;
 
-        if (_versionPollCts is not null)
-        {
-            await _versionPollCts.CancelAsync();
-            _versionPollCts.Dispose();
-            _versionPollCts = null;
-        }
-
-        if (_versionPollTask is not null)
-        {
-            try
-            {
-                await _versionPollTask;
-            }
-            catch (OperationCanceledException)
-            {
-                // expected when window closes
-            }
-
-            _versionPollTask = null;
-        }
-
         if (_auditTail is not null)
         {
             await _auditTail.StopAsync();
         }
 
-        if (_serviceModePollCts is not null)
-        {
-            await _serviceModePollCts.CancelAsync();
-            _serviceModePollCts.Dispose();
-            _serviceModePollCts = null;
-        }
-
-        if (_serviceModePollTask is not null)
-        {
-            try
-            {
-                await _serviceModePollTask;
-            }
-            catch (OperationCanceledException)
-            {
-                // expected on close
-            }
-
-            _serviceModePollTask = null;
-        }
+        // 票 31：两轮询的取消/等待收口宿主服务 StopAsync（顺序：版本→服务模式，语义不变）。
+        await _pollingHostedService.StopAsync(CancellationToken.None);
 
         _trayHost?.Dispose();
         base.OnClosed(e);
@@ -1031,67 +987,9 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task PollVersionAsync(CancellationToken token)
-    {
-        if (_versionSnapshot is null)
-        {
-            return;
-        }
-
-        while (!token.IsCancellationRequested)
-        {
-            await Task.Delay(TimeSpan.FromSeconds(1), token);
-            var changed = await _versionSnapshot.TryReadChangedAsync(token).ConfigureAwait(false);
-            if (changed is null)
-            {
-                continue;
-            }
-
-            Dispatcher.UIThread.Post(() =>
-            {
-                if (DataContext is MainWindowViewModel vm)
-                {
-                    vm.ExifToolVersion = ServiceModeController.NormalizeExifToolStatus(changed);
-                }
-            });
-        }
-    }
-
-    // 票 30：窗口内私有 NormalizeExifToolStatus 副本已删除 —— 唯一权威在
-    // ServiceModeController.NormalizeExifToolStatus（本文件两处调用均走该权威，副本无调用者）。
-
-    // issue 06 checkpoint B: UI 不再 spawn exiftool -ver —— 版本探测统一走 IPC GetExifToolVersion。
-    private async Task ApplyExifToolVersionFromIpcAsync()
-    {
-        if (_options is null)
-        {
-            return;
-        }
-
-        try
-        {
-            var version = await _options.GetExifToolVersionAsync(CancellationToken.None).ConfigureAwait(false);
-            var text = ServiceModeController.NormalizeExifToolStatus(version);
-            Dispatcher.UIThread.Post(() =>
-            {
-                if (DataContext is MainWindowViewModel vm)
-                {
-                    vm.ExifToolVersion = text;
-                }
-            });
-        }
-        catch
-        {
-            Dispatcher.UIThread.Post(() =>
-            {
-                if (DataContext is MainWindowViewModel vm)
-                {
-                    vm.ExifToolVersion = LocalizationService.Instance.Get("status.exiftool_not_found");
-                }
-            });
-        }
-    }
-
+    // 票 31：PollVersionAsync / ApplyExifToolVersionFromIpcAsync 已迁移
+    // WindowPollingHostedService（循环体/取消/投递语义逐字保持）；
+    // NormalizeExifToolStatus 唯一权威仍在 ServiceModeController（票 30 结论保持）。
 }
 
 public partial class MainWindow

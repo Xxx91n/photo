@@ -46,6 +46,14 @@ public static class AppComposition
         // FormatRulesStore 注册使容器可完整解析 MainWindowViewModel 构造（与 VM 可选参数默认值同一 config 目录）。
         services.AddSingleton<FormatRulesStore>(_ => new FormatRulesStore(Path.Combine(AppContext.BaseDirectory, "config")));
         services.AddSingleton<MainWindowViewModel>();
+
+        // 票 31：轮询宿主服务 —— 只依赖 VM 单例（服务模式轮询经 AttachServiceModePoll 委托
+        // 由 MainWindow 构造挂载，破 MainWindow→ServiceModeController→视图适配器 DI 环）；
+        // 版本源惰性读取 App.RuntimeOptions 当前值，与原 InitializeRuntime 建快照时序一致。
+        services.AddSingleton(sp => new WindowPollingHostedService(
+            sp.GetRequiredService<MainWindowViewModel>(),
+            () => App.RuntimeOptions.GetExifToolVersionAsync));
+
         services.AddSingleton<MainWindow>();
 
         return services.BuildServiceProvider();
