@@ -30,13 +30,26 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
     public void ApplyLocaleFlowDirection()
     {
-        UiFlowDirection = LocalizationService.Instance.IsRtl()
+        UiFlowDirection = _localization.IsRtl()
             ? Avalonia.Media.FlowDirection.RightToLeft
             : Avalonia.Media.FlowDirection.LeftToRight;
     }
+    private readonly LocalizationService _localization;
+
+    // 票 29（架构恢复第七轮）：构造注入 —— LocalizationService 经组合根容器注入
+    //（检查点 B：静态单例收敛第一例，容器与 Instance 为同一实例）。
+    // 可选参数默认回落 Instance，保留既有无参调用/测试兼容（行为不变）。
+    public MainWindowViewModel(LocalizationService? localization = null, FormatRulesStore? rulesStore = null)
+    {
+        _localization = localization ?? LocalizationService.Instance;
+        _runtimeStatus = _localization.Get("status.running");
+        _exifToolVersion = _localization.Get("msg.exiftool_not_found");
+        RulesPanel = new RulesPanelViewModel(rulesStore ?? new FormatRulesStore(Path.Combine(AppContext.BaseDirectory, "config")));
+    }
+
     private string _currentMode = "background";
-    private string _runtimeStatus = LocalizationService.Instance.Get("status.running");
-    private string _exifToolVersion = LocalizationService.Instance.Get("msg.exiftool_not_found");
+    private string _runtimeStatus;
+    private string _exifToolVersion;
     private string _serviceStatus = "N/A";
     private bool _showServiceManagerTab;
     private bool _showDetailedEvents;
@@ -177,8 +190,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         set => SetField(ref _currentPage, value);
     }
 
-    public RulesPanelViewModel RulesPanel { get; } =
-        new RulesPanelViewModel(new FormatRulesStore(Path.Combine(AppContext.BaseDirectory, "config")));
+    public RulesPanelViewModel RulesPanel { get; }
 
     public string ThemeVariant
     {
@@ -285,11 +297,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
     public string ModeColor => IsServiceMode ? "#3B82F6" : "#22C55E";
 
-    public string ModeLabel => IsServiceMode ? LocalizationService.Instance.Get("mode.service") : LocalizationService.Instance.Get("mode.tray");
+    public string ModeLabel => IsServiceMode ? _localization.Get("mode.service") : _localization.Get("mode.tray");
 
     public string StatusDotColor => IsRuntimeRunning ? "#22C55E" : "#9CA3AF";
 
-    public string PauseResumeLabel => IsRuntimePaused ? LocalizationService.Instance.Get("btn.resume") : LocalizationService.Instance.Get("btn.pause");
+    public string PauseResumeLabel => IsRuntimePaused ? _localization.Get("btn.resume") : _localization.Get("btn.pause");
 
     // 票 24（ADR 0061）：暂停/恢复按钮可用性 + 派生文案（服务模式禁用并显示不可用文案）— 单一真相源在 VM。
     private bool _pauseResumeAvailable = true;
@@ -307,7 +319,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
     public string PauseResumeContent => PauseResumeAvailable
         ? PauseResumeLabel
-        : LocalizationService.Instance.Get("status.pause_service_unavailable");
+        : _localization.Get("status.pause_service_unavailable");
 
     public string ServiceStatusDotColor
     {
