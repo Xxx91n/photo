@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 
 namespace PhotoPrivacy.IntegrationTests.Smoke;
 
+[Trait("Category", "Smoke")]
 public sealed class ReleaseReadinessScriptValidationTests
 {
     [Fact]

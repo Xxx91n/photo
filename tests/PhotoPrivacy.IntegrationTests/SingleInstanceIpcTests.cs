@@ -33,8 +33,15 @@ public sealed class UiSingleInstanceTests
             cancellationToken: cts.Token,
             pipeName: uniquePipeName);
 
-        await Task.Delay(100);
-        var sent = await UiSingleInstance.NotifyExistingInstanceAsync(pipeName: uniquePipeName);
+        // 票 28 返修三轮：服务端管道在 CI 冷启动下就绪时机不定（run 33944932480 实锤单次连接 flaky），
+        // 连接改为有界重试直至服务端就绪（每轮内部自带 500ms 连接超时），测试语义不变：消息确实送达一次。
+        var sent = false;
+        var connectDeadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (DateTime.UtcNow < connectDeadline && !(sent = await UiSingleInstance.NotifyExistingInstanceAsync(pipeName: uniquePipeName)))
+        {
+            await Task.Delay(100);
+        }
+
         Assert.True(sent);
 
         var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(1);

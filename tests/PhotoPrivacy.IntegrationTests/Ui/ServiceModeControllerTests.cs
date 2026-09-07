@@ -74,6 +74,11 @@ public sealed class ServiceModeControllerTests
     [Fact]
     public async Task InstallAsync_Should_Run_Install_Off_Ui_Thread_And_Report_Result()
     {
+        // 票 28 返修：断言 Windows 按钮（InstallEnabled）终态——UpdateServiceButtons 在非 Windows 按设计 AllDisabled 早退
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
         var (controller, ops, _, view, _) = Create();
 
         await controller.InstallAsync();
@@ -87,6 +92,12 @@ public sealed class ServiceModeControllerTests
     [Fact]
     public async Task InstallAsync_With_Failed_Result_Should_Not_Trigger_Service_Switch()
     {
+        // 票 28 返修：断言状态文本最终稳定态——Windows 上 UpdateServiceButtons 会重写为 GetStatusText()，
+        // 非 Windows 早退不重写（保留 fail 格式文案），此终态语义仅 Windows 有意义
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
         var (controller, ops, host, view, _) = Create();
         ops.NextResult = ServiceCommandResult.Failed("boom");
 

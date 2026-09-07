@@ -50,7 +50,7 @@ _Avoid_: Platform, target
 _Avoid_: Bundle, package
 
 **Release Directory**:
-统一发布输出目录 release/<rid>/，替代旧 publish/ 路径。每个 RID 子目录内为平铺结构，Worker 在 worker/ 子目录。
+统一发布输出目录 release/<rid>/，替代旧 publish/ 路径。每个 RID 子目录内为完全平铺结构，UI 与 Worker 可执行文件均在根目录（ADR 0010 修订，见 ADR 0039 §5）。
 _Avoid_: Publish directory, output folder
 
 **Publish Profile**:
@@ -58,8 +58,8 @@ csproj PropertyGroup 中的发布属性集合（SelfContained、PublishSingleFil
 _Avoid_: Build config, deployment config
 
 **Manual Dispatch**:
-GitHub Actions workflow_dispatch 手动触发模式，不在 push/PR 上自动运行。用户通过 GitHub UI 手动触发构建。
-_Avoid_: Auto build, CI trigger
+发布流水线（release.yml）workflow_dispatch 手动触发模式，构建/发布 job 不在 push/PR 上自动运行，用户通过 GitHub UI 手动触发。测试门禁（ci.yml）自票 28 起在 push/PR 自动运行（对 ADR 0016 的部分修订）。
+_Avoid_: Auto release, tag-triggered release
 
 **Deb Package**:
 Linux .deb 安装包，control 文件声明 Avalonia native 依赖（libx11-6 等），用 dpkg-deb --build 手动构建。

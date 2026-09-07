@@ -26,6 +26,7 @@ jobs:
 
   build:
     needs: test
+    if: github.event_name == 'workflow_dispatch'
     strategy:
       fail-fast: false
       matrix:
@@ -74,8 +75,8 @@ jobs:
       - name: Verify structure
         shell: bash
         run: |
-          test -f release/${{ matrix.rid }}/PhotoPrivacy${{ matrix.rid == 'win-x64' || matrix.rid == 'win-x86' || matrix.rid == 'win-arm64' ? '.exe' : '' }}
-          test -f release/${{ matrix.rid }}/worker/PhotoPrivacyWorker${{ matrix.rid == 'win-x64' || matrix.rid == 'win-x86' || matrix.rid == 'win-arm64' ? '.exe' : '' }} || true
+          test -f release/${{ matrix.rid }}/PhotoPrivacy${{ (matrix.rid == 'win-x64' || matrix.rid == 'win-x86' || matrix.rid == 'win-arm64') && '.exe' || '' }}
+          test -f release/${{ matrix.rid }}/PhotoPrivacyWorker${{ (matrix.rid == 'win-x64' || matrix.rid == 'win-x86' || matrix.rid == 'win-arm64') && '.exe' || '' }}
           test -f release/${{ matrix.rid }}/config/config.sample.json
 
       - name: Build .deb (linux-x64)
@@ -147,7 +148,7 @@ jobs:
 
   release:
     needs: build
-    if: ${{ inputs.create_release }}
+    if: github.event_name == 'workflow_dispatch' && inputs.create_release
     runs-on: ubuntu-latest
     permissions:
       contents: write

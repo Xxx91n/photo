@@ -280,7 +280,9 @@ public sealed class WipeRuleEngineTests
         var rules = PanelDefaults();
         rules[K("jpeg", "preserve_icc")] = false;
 
-        var block = ExifToolCommandBuilder.BuildWipeTaskBlock(@"D:\hot\a.jpg", "t1", rules);
+        // 票 28 返修：BuildWipeTaskBlock 校验绝对路径——平台中立构造（原字面量 D:\hot\a.jpg 在 Linux 非法）
+        var target = Path.Combine(Path.GetTempPath(), "pp-wipe", "a.jpg");
+        var block = ExifToolCommandBuilder.BuildWipeTaskBlock(target, "t1", rules);
 
         Assert.Contains("-all=", block, StringComparison.Ordinal);
         Assert.Contains("-tagsfromfile", block, StringComparison.Ordinal);
@@ -291,7 +293,8 @@ public sealed class WipeRuleEngineTests
     [Fact]
     public void BuildWipeTaskBlock_Without_Rules_Keeps_Legacy_Command()
     {
-        var block = ExifToolCommandBuilder.BuildWipeTaskBlock(@"D:\hot\a.jpg", "t1");
+        var target = Path.Combine(Path.GetTempPath(), "pp-wipe", "a.jpg");
+        var block = ExifToolCommandBuilder.BuildWipeTaskBlock(target, "t1");
 
         Assert.Contains("-all=", block, StringComparison.Ordinal);
         Assert.Contains("--icc_profile:all", block, StringComparison.Ordinal);

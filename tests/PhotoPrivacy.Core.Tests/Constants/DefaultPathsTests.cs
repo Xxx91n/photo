@@ -7,9 +7,20 @@ public sealed class DefaultPathsTests
     [Fact]
     public void ExifToolPath_Should_Be_The_Required_Absolute_Path()
     {
-        Assert.Equal(
-            @"C:\Program Files\ExifTool\exiftool.exe",
-            DefaultPaths.ExifToolPath);
+        // 平台相关默认值：Windows = Program Files 绝对路径；Unix = PATH 探测失败时回退裸 "exiftool"（DefaultPaths.ResolveExifToolPath）
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Equal(
+                @"C:\Program Files\ExifTool\exiftool.exe",
+                DefaultPaths.ExifToolPath);
+        }
+        else
+        {
+            Assert.True(
+                Path.IsPathFullyQualified(DefaultPaths.ExifToolPath)
+                    || Path.GetFileName(DefaultPaths.ExifToolPath) == DefaultPaths.ExifToolPath,
+                $"unexpected ExifToolPath: {DefaultPaths.ExifToolPath}");
+        }
     }
 
     // ADR 0055 A4: DefaultHotFolder must be app-local (BaseDirectory/hot), not user's system pictures

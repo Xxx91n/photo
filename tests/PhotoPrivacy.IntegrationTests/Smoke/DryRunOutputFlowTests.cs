@@ -2,6 +2,7 @@ using System.Diagnostics;
 
 namespace PhotoPrivacy.IntegrationTests.Smoke;
 
+[Trait("Category", "Smoke")]
 public sealed class DryRunOutputFlowTests : IntegrationTestBase
 {
     private static readonly TimeSpan CliRunTimeout = TimeSpan.FromSeconds(30);
