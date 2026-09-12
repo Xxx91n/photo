@@ -1,0 +1,115 @@
+<Window Title="{Binding ModeLabel}" xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ex="using:PhotoPrivacy.Ui.Localization"
+        xmlns:vm="using:PhotoPrivacy.Ui.ViewModels"
+        xmlns:audit="using:PhotoPrivacy.Ui"
+         xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+        xmlns:views="using:PhotoPrivacy.Ui.Views.Pages"
+        xmlns:behaviors="using:PhotoPrivacy.Ui.Behaviors"
+        xmlns:controls="using:PhotoPrivacy.Ui.Views.Controls" x:Class="PhotoPrivacy.Ui.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Width="920"
+        Height="600"
+        MinWidth="740"
+        MinHeight="480"
+
+        FlowDirection="{Binding UiFlowDirection}"
+        Background="{DynamicResource SemiColorBackground0}"
+        ExtendClientAreaToDecorationsHint="True"
+        WindowDecorations="None"
+        ExtendClientAreaTitleBarHeightHint="-1">
+  <Grid RowDefinitions="40,*">
+    <!-- ADR 0050 A4 — self-drawn titlebar (WindowDecorations=None + ExtendClientAreaToDecorationsHint) -->
+    <Border Grid.Row="0" Grid.ColumnSpan="2" Classes="titlebar-host" Background="{DynamicResource SemiColorBackground0}"
+            WindowDecorationProperties.ElementRole="TitleBar">
+      <Grid ColumnDefinitions="*,Auto">
+        <Grid Grid.Column="0" />
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="{DynamicResource SpaceXxs}" VerticalAlignment="Center" Margin="0,0,4,0">
+          <Button Classes="caption-btn" Click="OnMinimizeClick" ToolTip.Tip="{ex:Localize titlebar.minimize}" WindowDecorationProperties.ElementRole="MinimizeButton">
+            <materialIcons:MaterialIcon Kind="WindowMinimize" Width="14" Height="14"/>
+          </Button>
+          <Button Classes="caption-btn" Click="OnMaximizeClick" ToolTip.Tip="{ex:Localize titlebar.maximize}" WindowDecorationProperties.ElementRole="MaximizeButton">
+            <materialIcons:MaterialIcon Kind="WindowMaximize" Width="14" Height="14"/>
+          </Button>
+          <Button Classes="caption-btn danger" Click="OnCloseClick" ToolTip.Tip="{ex:Localize titlebar.close}" WindowDecorationProperties.ElementRole="CloseButton">
+            <materialIcons:MaterialIcon Kind="WindowClose" Width="14" Height="14"/>
+          </Button>
+        </StackPanel>
+      </Grid>
+    </Border>
+    <Grid Grid.Row="1" ColumnDefinitions="200,4,*" x:Name="MainRootGrid">
+      <Border Grid.Column="0"
+            Width="200"
+            Background="{DynamicResource SemiColorNavBackground}"
+            BorderBrush="{DynamicResource SemiColorBorder}"
+            BorderThickness="0,0,1,0"
+            BoxShadow="{DynamicResource Elevation1}"><!-- ADR 0051 A1: sidebar depth — Elevation1 ladder token -->
+      <DockPanel>
+        <Border DockPanel.Dock="Top" Height="56" Padding="16,0">
+          <StackPanel VerticalAlignment="Center" Spacing="{DynamicResource SpaceXxs}">
+            <TextBlock Text="PhotoPrivacy" Classes="headline"/>
+            <StackPanel Orientation="Horizontal" Spacing="{DynamicResource SpaceSm}" VerticalAlignment="Center">
+              <Ellipse Width="6" Height="6" Fill="{Binding ModeColor}"/>
+              <TextBlock Text="{Binding ModeLabel}" Classes="caption" Foreground="{DynamicResource SemiColorText1}"/>
+            </StackPanel>
+          </StackPanel>
+        </Border>
+
+        <Border DockPanel.Dock="Top" Height="1" Background="{DynamicResource SemiColorBorder}"/>
+
+        <Border DockPanel.Dock="Top"
+                Margin="10,10,10,0"
+                Padding="12,10"
+                Background="{DynamicResource SemiColorBackground0}"
+                CornerRadius="8">
+          <StackPanel Spacing="{DynamicResource SpaceSm}">
+            <StackPanel Orientation="Horizontal" Spacing="{DynamicResource SpaceSm}">
+              <Ellipse Width="8" Height="8" Fill="{Binding StatusDotColor}" VerticalAlignment="Center"/>
+              <TextBlock Text="{Binding RuntimeStatus}" Classes="caption" FontWeight="Medium" VerticalAlignment="Center"/>
+            </StackPanel>
+            <TextBlock Text="{Binding ExifToolVersion}" Classes="caption" Foreground="{DynamicResource SemiColorText2}"/>
+            <TextBlock Text="{Binding CurrentPage}" IsVisible="False"/>
+          </StackPanel>
+        </Border>
+
+        <StackPanel DockPanel.Dock="Top" Margin="8,16,8,0" Spacing="4">
+          <!-- 票 25：NavButton 组件化 — Icon/Label/PageTag 声明式，IsActive 由 MainWindow 依 VM CurrentPage 同步 -->
+          <controls:NavButton x:Name="ConfigNavButton" PageTag="config" IconKind="Settings" Label="{ex:Localize nav.config}" IsActive="True"/>
+          <controls:NavButton x:Name="LogNavButton" PageTag="log" IconKind="FileDocumentOutline" Label="{ex:Localize nav.logs}"/>
+          <controls:NavButton x:Name="RulesNavButton" PageTag="rules" IconKind="ShieldCheckOutline" Label="{ex:Localize nav.rules}"/>
+        </StackPanel>
+
+        <StackPanel DockPanel.Dock="Bottom" Margin="8,0,8,12" Spacing="4">
+          <Border Height="1" Background="{DynamicResource SemiColorBorder}" Margin="0,0,0,4"/>
+          <controls:NavButton x:Name="OpenServiceManagerTabButton" PageTag="service" IconKind="ServerNetwork" Label="{ex:Localize nav.service_manager}" IsVisible="{Binding ShowServiceManagerTab}"/>
+          <Button x:Name="PauseResumeButton"
+                  Classes="nav-action"
+                  IsEnabled="{Binding PauseResumeAvailable}"
+                  Content="{Binding PauseResumeContent}"
+                  HorizontalAlignment="Stretch"/>
+          <Button x:Name="OpenConfigDirButton"
+                  Content="{ex:Localize btn.open_config_dir}"
+                  Classes="nav-action"
+                  HorizontalAlignment="Stretch"/>
+        </StackPanel>
+      </DockPanel>
+    </Border>
+
+    <!-- ADR 0052 A5: GridSplitter — resizable sidebar (170-400) -->
+    <GridSplitter x:Name="SidebarSplitter" Grid.Column="1" Background="Transparent" ResizeDirection="Columns" Width="4" ResizeBehavior="PreviousAndNext" DragCompleted="OnSidebarSplitterDragCompleted">
+      <GridSplitter.Styles>
+        <Style Selector="GridSplitter:pointerover">
+          <Setter Property="Background" Value="{DynamicResource SemiColorBorder}" />
+        </Style>
+      </GridSplitter.Styles>
+    </GridSplitter>
+
+    <Grid Grid.Column="2" x:Name="MainContentGrid">
+      <views:ConfigPage x:Name="ConfigPage" IsVisible="True" />
+      <views:LogsPage x:Name="LogPage" IsVisible="False" />
+      <views:RulesPage x:Name="RulesPage" IsVisible="False" />
+      <views:ServiceManagerPage x:Name="ServiceManagerTab" IsVisible="False" />
+    </Grid>
+  </Grid>
+  </Grid>
+</Window>

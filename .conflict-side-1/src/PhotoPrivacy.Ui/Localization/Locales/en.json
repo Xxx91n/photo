@@ -1,0 +1,278 @@
+{
+  "app": {
+    "title": "PhotoPrivacy"
+  },
+  "nav": {
+    "config": "Settings",
+    "logs": "Logs",
+    "service": "Service",
+    "service_manager": "Service Manager",
+    "rules": "Rules"
+  },
+  "btn": {
+    "pause": "⏸ Pause",
+    "resume": "▶ Resume",
+    "save": "Save Config",
+    "clear_logs": "Clear Logs",
+    "browse": "Browse...",
+    "open_config_dir": "Open config directory",
+    "ellipsis": "…",
+    "add": "+",
+    "remove": "-"
+  },
+  "status": {
+    "running": "Running",
+    "paused": "Paused",
+    "stopped": "Stopped",
+    "detecting": "Detecting…",
+    "connecting": "Worker connecting…",
+    "exiftool_not_found": "ExifTool not found",
+    "auto_detected": "Auto-detected",
+    "service_mode": "Service Mode",
+    "tray_mode": "Tray Mode",
+    "service_running": "Service running",
+    "service_stopped": "Service stopped",
+    "tray_paused": "Tray paused",
+    "tray_running": "Tray running",
+    "pause_service_unavailable": "Pause (unavailable in service mode)"
+  },
+  "mode": {
+    "tray": "Tray Mode",
+    "service": "Service Mode",
+    "background": "Background Mode"
+  },
+  "settings": {
+    "exiftool_path": "ExifTool Path",
+    "hot_folder": "Watch Folder",
+    "backup": "Backup",
+    "backup_dir": "Backup Directory",
+    "theme": "Theme",
+    "theme_preset": "Theme Preset",
+    "language": "Language",
+    "font": "Font",
+    "font_size": "Font Size",
+    "hide_on_startup": "Hide window on startup",
+    "hide_tray": "Hide tray icon",
+    "quarantine": "Quarantine",
+    "quarantine_dir": "Quarantine Directory",
+    "audit_log_dir": "Audit Log Directory",
+    "log_level": "Log Level",
+    "excluded_dirs": "Excluded Directories",
+    "system_excluded": "System Auto-Excluded",
+    "enable_backup": "Enable backup",
+    "enable_backup_full": "Enable backup",
+    "audit_log_dir_label": "Log storage path"
+  },
+  "service": {
+    "status": "Service Status",
+    "install": "Install Service",
+    "uninstall": "Uninstall Service",
+    "start": "Start Service",
+    "stop": "Stop Service",
+    "running": "Running",
+    "stopped": "Stopped",
+    "failed": "Failed",
+    "section": {
+      "status": "CURRENT STATUS",
+      "actions": "ACTIONS"
+    },
+    "row": {
+      "install_start": "Install & start service",
+      "start_stop": "Start / stop service",
+      "uninstall": "Uninstall service"
+    },
+    "desc": {
+      "install": "Register PhotoPrivacyWorker as a Windows system service",
+      "start_stop": "Manually control run state of the installed service",
+      "uninstall": "Remove service from system, switch to tray mode"
+    },
+    "btn": {
+      "install": "Install service",
+      "start": "Start",
+      "stop": "Stop",
+      "refresh": "Refresh",
+      "uninstall": "Uninstall service"
+    },
+    "status_format_skip": "{0} | Skipped: {1}",
+    "status_format_cancel": "{0} | Cancelled: {1}",
+    "status_format_fail": "{0} | Failed: {1}",
+    "uninstalling": "Uninstalling service...",
+    "state": {
+      "not_installed": "Not installed",
+      "start_pending": "Starting",
+      "pause_pending": "Pausing",
+      "continue_pending": "Resuming",
+      "stop_pending": "Stopping",
+      "unknown": "Unknown",
+      "not_installed_short": "Not installed"
+    },
+    "msg": {
+      "operation_success": "Operation succeeded",
+      "use_systemd": "Use systemd to manage services on Linux/macOS",
+      "must_use_worker": "Service installation requires PhotoPrivacyWorker.exe",
+      "invalid_target": "Service target must be PhotoPrivacyWorker.exe",
+      "path_empty": "Path cannot be empty",
+      "path_invalid_chars": "Path contains invalid characters: {0}",
+      "path_must_be_absolute": "Path must be absolute",
+      "elevation_cancelled": "User cancelled administrator authorization"
+    },
+    "exitcode": {
+      "0": "Operation succeeded",
+      "5": "Access denied, please run as administrator",
+      "1053": "Service start timeout, check ExifTool path and config file",
+      "1055": "Service database locked, please retry later",
+      "1056": "Service is already running",
+      "1058": "Service is disabled",
+      "1060": "Service does not exist, please install first",
+      "1062": "Service is not running, no need to stop",
+      "1072": "Service marked for deletion, please restart system and retry",
+      "1073": "Service already exists, auto uninstalled then reinstalled",
+      "unknown": "Unknown error (code {0})"
+    }
+  },
+  "msg": {
+    "saved": "Configuration saved",
+    "save_failed": "Save failed",
+    "exiftool_not_found": "ExifTool not found",
+    "worker_not_found": "Worker executable not found",
+    "tray_still_running": "Tray Worker is still running. Service start cancelled, please retry later.",
+    "auto_saved": "Auto-saved",
+    "auto_saved_worker_down": "Auto-saved (Worker not running)",
+    "save_failed_exception": "Save failed: {0}",
+    "invalid_exiftool_path": "Invalid ExifTool path, please select correct exiftool.exe",
+    "saved_worker_down": "Saved (Worker not running, takes effect on next start)",
+    "applied": "Applied",
+    "apply_failed_exception": "Apply failed: {0}",
+    "config_apply_failed": "Config apply failed",
+    "worker_not_found_detail": "Worker executable not found (PhotoPrivacyWorker)",
+    "tray_worker_running": "Tray Worker is still running. Service start cancelled, please retry later."
+  },
+  "config": {
+    "section": {
+      "path": "Path settings",
+      "behavior": "Behavior settings",
+      "logs": "Log settings",
+      "excluded": "Exclude watch list"
+    },
+    "row": {
+      "enable_backup": "Enable backup",
+      "enable_quarantine": "Enable quarantine"
+    },
+    "desc": {
+      "exiftool_path": "Full path to the exiftool executable",
+      "hot_folder": "Automatically clean metadata from new files in this directory",
+      "backup_enabled": "Copy original files to backup dir before cleaning",
+      "backup_dir": "Leave empty to use <hot_folder>/bak",
+      "quarantine_enabled": "Move failed files into this directory for isolation",
+      "quarantine_dir": "Path to store failed files",
+      "hide_on_startup": "Show in tray only after startup, no main window popup",
+      "hide_tray": "Hide tray icon in tray mode, keep background processing only",
+      "theme": "Switch freely between system/light/dark",
+      "language": "Select interface display language",
+      "log_level": "info=standard logging, debug=verbose debugging logs",
+      "audit_log_dir": "Directory where audit JSONL files are stored",
+      "system_excluded": "Log, backup, and quarantine dirs are auto-excluded from file watching",
+      "user_excluded": "Add additional paths to exclude from watching"
+    },
+    "label": {
+      "system_excluded": "System auto-excluded directories (read-only)",
+      "user_excluded": "User-defined exclusion directories"
+    },
+    "tooltip": {
+      "add_excluded_dir": "Add a directory to exclude from watching",
+      "remove_excluded_dir": "Remove the selected excluded directory"
+    }
+  },
+  "theme": {
+    "option": {
+      "system": "Follow system",
+      "light": "Light",
+      "dark": "Dark"
+    },
+    "preset": {
+      "catppuccin": "Catppuccin",
+      "dracula": "Dracula",
+      "nord": "Nord",
+      "onedarkpro": "One Dark Pro",
+      "tokyonight": "Tokyo Night"
+    }
+  },
+  "loglevel": {
+    "option": {
+      "all": "ALL (everything)",
+      "info": "INFO (standard)",
+      "debug": "DEBUG (verbose)",
+      "warn": "WARN (warnings)",
+      "error": "ERROR (errors)"
+    }
+  },
+  "log": {
+    "section": {
+      "logs": "Logs"
+    },
+    "btn": {
+      "clear": "Clear"
+    },
+    "empty": "No audit entries yet — waiting for file watch events"
+  },
+  "titlebar": {
+    "minimize": "Minimize",
+    "maximize": "Maximize",
+    "close": "Close"
+  },
+  "tray": {
+    "pause": "Pause",
+    "resume": "Resume",
+    "open_window": "Open Main Window",
+    "exit": "Exit",
+    "tooltip": "PhotoPrivacy"
+  },
+  "dialog": {
+    "select_exiftool": "Select ExifTool executable",
+    "select_hot_folder": "Select watch folder",
+    "select_backup_dir": "Select backup directory",
+    "select_log_dir": "Select log directory",
+    "select_quarantine_dir": "Select quarantine directory",
+    "select_excluded_dir": "Add directory to exclude from watching"
+  },
+  "audit": {
+    "exiftool_started": "ExifTool started",
+    "service_started": "Service started",
+    "file_cleaned": "Cleaned",
+    "file_skipped": "Skipped",
+    "file_detected": "File detected",
+    "instance_conflict": "Duplicate launch rejected",
+    "file_failed": "Cleaning failed"
+  },
+  "rules": {
+    "panel": {
+      "title": "Per-Format Wipe Rules",
+      "subtitle": "Configure metadata wipe strategy per format family; expert mode unlocks dangerous options"
+    },
+    "expert": {
+      "mode": "Expert mode",
+      "infobar": "To bypass protection, enable expert mode. Expert mode relaxes guardrails — use extra caution."
+    },
+    "search": {
+      "placeholder": "Search extensions or format family, e.g. jpg, raw, mp4…"
+    },
+    "btn": {
+      "save": "Save custom rules",
+      "reset": "Reset to defaults"
+    },
+    "empty": "No matching wipe rules",
+    "col": {
+      "family": "Family",
+      "extensions": "Extensions",
+      "enabled": "Enabled",
+      "strip_all": "Strip all",
+      "preserve_icc": "Preserve ICC",
+      "strip_exif": "EXIF",
+      "strip_xmp": "XMP",
+      "strip_iptc": "IPTC",
+      "strip_time": "Time",
+      "warning": "Warning",
+      "effective_args": "Effective args"
+    }
+  }
+}

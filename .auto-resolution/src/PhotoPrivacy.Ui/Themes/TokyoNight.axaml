@@ -1,0 +1,23 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <Color x:Key="SemiBackground0Color">#1A1B26</Color>
+  <Color x:Key="SemiBackground1Color">#16161E</Color>
+  <Color x:Key="SemiBackground2Color">#24283B</Color>
+
+  <SolidColorBrush x:Key="SemiColorBackground0" Color="{StaticResource SemiBackground0Color}" />
+  <SolidColorBrush x:Key="SemiColorBackground1" Color="{StaticResource SemiBackground1Color}" />
+  <SolidColorBrush x:Key="SemiColorBackground2" Color="{StaticResource SemiBackground2Color}" />
+  <SolidColorBrush x:Key="SemiColorNavBackground" Color="{StaticResource SemiBackground1Color}" />
+
+  <SolidColorBrush x:Key="SemiColorText0" Color="#C0CAF5" />
+  <SolidColorBrush x:Key="SemiColorText1" Color="#A9B1D6" Opacity="0.8" />
+  <SolidColorBrush x:Key="SemiColorText2" Color="#565F89" Opacity="0.62" />
+
+  <SolidColorBrush x:Key="SemiColorPrimary" Color="#7AA2F7" />
+  <SolidColorBrush x:Key="SemiColorPrimaryPointerover" Color="#7AA2F7" Opacity="0.85" />
+  <SolidColorBrush x:Key="SemiColorPrimaryLight" Color="#7AA2F7" Opacity="0.15" />
+
+  <SolidColorBrush x:Key="SemiColorBorder" Color="#3B4261" Opacity="0.3" />
+
+</ResourceDictionary>

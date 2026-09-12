@@ -1,0 +1,173 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version string"
+        required: true
+        default: "0.1.0-preview"
+      create_release:
+        description: "Create GitHub Release after build"
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.201"
+      - name: Run tests (exclude Smoke/ExifTool)
+        run: dotnet test PhotoPrivacy.sln --configuration Release --filter "Category!=Smoke&Category!=ExifTool"
+
+  build:
+    needs: test
+    if: github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: win-x64
+            os: windows-latest
+            archive: zip
+          - rid: win-x86
+            os: windows-latest
+            archive: zip
+          - rid: win-arm64
+            os: windows-latest
+            archive: zip
+          - rid: linux-x64
+            os: ubuntu-latest
+            archive: tar
+          - rid: linux-arm64
+            os: ubuntu-24.04-arm
+            archive: tar
+          - rid: osx-x64
+            os: macos-13
+            archive: tar
+          - rid: osx-arm64
+            os: macos-latest
+            archive: tar
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.201"
+
+      - name: Publish (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          .\scripts\publish-app.ps1 -Version ${{ inputs.version }} -Runtime ${{ matrix.rid }} -Zip true
+
+      - name: Publish (Linux/macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          chmod +x scripts/publish.sh
+          ./scripts/publish.sh --version ${{ inputs.version }} --runtime ${{ matrix.rid }} --zip true
+
+      - name: Verify structure
+        shell: bash
+        run: |
+          test -f release/${{ matrix.rid }}/PhotoPrivacy${{ (matrix.rid == 'win-x64' || matrix.rid == 'win-x86' || matrix.rid == 'win-arm64') && '.exe' || '' }}
+          test -f release/${{ matrix.rid }}/PhotoPrivacyWorker${{ (matrix.rid == 'win-x64' || matrix.rid == 'win-x86' || matrix.rid == 'win-arm64') && '.exe' || '' }}
+          test -f release/${{ matrix.rid }}/config/config.sample.json
+
+      - name: Build .deb (linux-x64)
+        if: matrix.rid == 'linux-x64'
+        shell: bash
+        run: |
+          mkdir -p deb-pkg/DEBIAN deb-pkg/opt/photoprivacy deb-pkg/usr/bin
+          cp -r release/${{ matrix.rid }}/* deb-pkg/opt/photoprivacy/
+          cat > deb-pkg/DEBIAN/control <<CTRL
+          Package: photoprivacy
+          Version: ${{ inputs.version }}
+          Architecture: amd64
+          Maintainer: PhotoPrivacy <hello@tonpro.fu>
+          Description: Batch EXIF metadata and privacy cleaner
+          Depends: libx11-6, libice6, libsm6, libfontconfig1, ca-certificates, tzdata, libc6, libgcc-s1, libstdc++6, zlib1g, libssl3, libicu74
+          CTRL
+          dpkg-deb --build deb-pkg photoprivacy-${{ inputs.version }}-amd64.deb
+
+      - name: Build .deb (linux-arm64)
+        if: matrix.rid == 'linux-arm64'
+        shell: bash
+        run: |
+          mkdir -p deb-pkg/DEBIAN deb-pkg/opt/photoprivacy
+          cp -r release/${{ matrix.rid }}/* deb-pkg/opt/photoprivacy/
+          cat > deb-pkg/DEBIAN/control <<CTRL
+          Package: photoprivacy
+          Version: ${{ inputs.version }}
+          Architecture: arm64
+          Maintainer: PhotoPrivacy <hello@tonpro.fu>
+          Description: Batch EXIF metadata and privacy cleaner
+          Depends: libx11-6, libice6, libsm6, libfontconfig1, ca-certificates, tzdata, libc6, libgcc-s1, libstdc++6, zlib1g, libssl3, libicu74
+          CTRL
+          dpkg-deb --build deb-pkg photoprivacy-${{ inputs.version }}-arm64.deb
+
+      - name: Build .app bundle (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          APP_DIR="release/${{ matrix.rid }}/PhotoPrivacy.app"
+          mkdir -p "$APP_DIR/Contents/MacOS"
+          mkdir -p "$APP_DIR/Contents/Resources"
+          cp release/${{ matrix.rid }}/PhotoPrivacy "$APP_DIR/Contents/MacOS/"
+          cp -r release/${{ matrix.rid }}/*.dylib "$APP_DIR/Contents/MacOS/" 2>/dev/null || true
+          cat > "$APP_DIR/Contents/Info.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleExecutable</key>
+            <string>PhotoPrivacy</string>
+            <key>CFBundleIdentifier</key>
+            <string>com.photoprivacy.app</string>
+            <key>CFBundleName</key>
+            <string>PhotoPrivacy</string>
+            <key>CFBundleVersion</key>
+            <string>${{ inputs.version }}</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+          </dict>
+          </plist>
+          PLIST
+          ditto -c -k --keepParent "$APP_DIR" "release/PhotoPrivacy-${{ inputs.version }}-${{ matrix.rid }}.app.zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.rid }}
+          path: release/
+          retention-days: 7
+
+  release:
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && inputs.create_release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.201"
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ inputs.version }}
+          generate_release_notes: true
+          files: |
+            artifacts/**/*.zip
+            artifacts/**/*.tar.gz
+            artifacts/**/*.deb
+            artifacts/**/*.app.zip
