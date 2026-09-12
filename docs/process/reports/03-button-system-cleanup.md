@@ -215,3 +215,144 @@
 - **零代码改动**：未修改任何 `.axaml`/`.cs`/`CONTEXT.md`/`TEST-CONVENTIONS.md`——后两者为票 01 在途领地，主动避让（WORKFLOW §4.3）。
 - **版本控制**：WORKFLOW §4.2 —— GitButler 虚拟分支 `ui-craft/03-button-system-cleanup`，仅圈入本窗口产物，不 push、不 PR。
 - **CI**：CI-only 政策，本机零构建/测试；本票无代码改动，无 CI 面影响。
+
+## 10. 补充勘察（2026-09-13 00:5x）—— 票 01 落盘后的定线与停止说明
+
+### 10.1 阻断条件变化：票 01 主交付物已落盘（但未提交）
+
+本窗口提交呈报后复核 `but status`，票 01 窗口产物已出现（仍在未提交池 `zz`，属票 01 在途）：
+
+| 变更 ID | 路径 | 说明 |
+|---|---|---|
+| `kl` | `docs/design/ui-visual-standard.md`（24 510 B / 286 行，v1.0） | 必读清单第 7 项**已落盘**，本窗口已读全 §0–§8 + 附录 A |
+| `qz` | `docs/adr/0065-ui-visual-standard-live-doc-nav-language-button-group-width.md` | D3 按钮组宽度策略拍板 |
+| `no` | `CONTEXT.md` | UI Visual Standard / Visual Baseline / Sidebar Nav Item 44→40 三词条 |
+| `rr` | `tests/TEST-CONVENTIONS.md` | D-006 两条守卫规则 |
+| `qt` / `ov` | `docs/design/screenshots/.gitkeep`、`docs/process/reports/01-visual-standard-doc.md` | 基线目录与票 01 报告 |
+
+**§1 定线与本窗口独立结论互相印证**：规范 §1.2 现状对账表已记 `MainWindow.axaml:85` / `:90` = 「已归队 nav-action（A-001 已闭合）」——与本窗口 `git blame` 实锤（§2）一致，票面「裸按钮」前提失准这一发现成立且已被票 01 独立采信。
+
+### 10.2 规范指派给票 03 的落点（R1-1 不符项，仅两处）
+
+| 规范行 | 落点 | 组 | 判定 |
+|---|---|---|---|
+| §1.2 | `ServiceManagerPage.axaml:43-45` | 启动 / 停止 / 刷新（ghost×3） | 不符 R1-1 → 票 03 |
+| §1.2 | `RulesPage.axaml:29-30` | 保存 / 重置（ghost×2） | 不符 R1-1 → 票 03 |
+
+其余四组（侧栏 nav-action 组、ConfigPage icon 对、LogsPage 单枚、服务页 Install/Uninstall 单枚）经规范判定为**符合** R1-1 / R1-2，本票不动。
+
+### 10.3 施工方案定线（已定，未施工）
+
+- **机制**：`Grid` + `ColumnDefinition SharedSizeGroup` + `Grid.IsSharedSizeScope`（祖先元素）+ `ColumnSpacing="{DynamicResource SpaceSm}"`（规范 §5.2 P4：同组内元素 = `SpaceSm` 8）；按钮加 `HorizontalAlignment="Stretch"`。
+- **不取固定 MinWidth 的理由**：本项目 10 语言，组内最长文案随语言变化，`MinWidth` 定值只能在「全部文案窄于定值」时保证等宽，德/俄等长文案会破功；`SharedSizeGroup` 按组内最长文案动态定宽，任何语言下都成立。
+- **API 实物核验（非记忆）**：`.nuget/packages/avalonia/12.1.1/lib/net10.0/Avalonia.Controls.xml` 命中 `P:Avalonia.Controls.Grid.ColumnSpacing` ×5、`P:Avalonia.Controls.Grid.RowSpacing` ×5、`P:Avalonia.Controls.ColumnDefinition.SharedSizeGroup` ×4、`Avalonia.Controls.Grid.SetIsSharedSizeScope` ×1 —— 三者在本项目 Avalonia 12.1.1 均可用；仓库内此前零使用（新增机制，须云端 CI 验证）。
+- **与票 02 的关系**：该方案**不触碰 `AppTheme.axaml`**（等宽在页面容器层实现），本职上不侵入票 02 领地；但票 02 未落地前仍受 WORKFLOW §4.3 串行纪律约束（见 §10.5）。
+
+### 10.4 守卫落点（已定，未写入）
+
+新增两条 `DesignSystemTests.cs` 断言（落位：`MainWindow_Icon_Buttons_Must_Use_Icon_Variant_Class` 之后）：
+
+1. `Button_Elements_Must_Carry_A_Variant_Class` —— 复用既有 `<Button[^>]*>` 多行口径（同 `MainWindow_Buttons_Must_Not_Override_Size_Inline`），逐枚断言含 `Classes=`。
+   - 防的 bug：新增按钮忘记挂变体类 → 吃 Semi 默认样式、脱离七变体尺寸/反馈体系（A-001 用户原话的字面来源）。
+   - D-006 定性：**变更探测器**而非契约——只能证明现役 16 枚全部归队，不能证明视觉等宽。
+2. `Button_Groups_Must_Use_Equal_Width_Mechanism` —— 断言 `ServiceManagerPage.axaml` / `RulesPage.axaml` 含 `SharedSizeGroup`。
+   - 防的 bug：按钮组回退到 `StackPanel` 内容宽度，R1-1 等宽失效。
+
+### 10.5 停止说明（用户指令：上游票 02 未落地，票 03 停止）
+
+1. **票 02 未开工**：`AppTheme.axaml` 的 nav 段（`Button.nav:pointerover` L88、`Button.nav-action:pointerover` L110）无 `Transitions` setter，票 02 零痕迹。按波次表与 WORKFLOW §4.3（一次一票同一文件），票 03 不越过票 02 施工。
+2. **规范文档仍在票 01 未提交池**：本票需把「变体对账表」写入规范附录、并新增修订记录 v1.1；此时写入 `docs/design/ui-visual-standard.md` 会与票 01 在途改动互相覆盖，故附录亦不写。
+3. **本机禁构建/测试（CI-only）**：等宽属视觉变更，须云端 CI + 同机位 before/after 人工对照（D-007），本窗口无法自证。
+
+### 10.6 交接清单（下一窗口直接续做）
+
+| 序 | 动作 | 前置 |
+|---|---|---|
+| 1 | 等票 01 提交规范文档与 ADR 0065 | — |
+| 2 | 等票 02 落地 `AppTheme.axaml` nav 段（Foreground 过渡 + 三态联动，规范 §2.2 N2/N3） | 1 |
+| 3 | 按 §10.3 改 `ServiceManagerPage.axaml:42-46`、`RulesPage.axaml:27-32`；顺手 `Spacing="8"` → `SpaceSm` | 2 |
+| 4 | 按 §10.4 加两条守卫（注释须带票号 + 防的 bug，D-006） | 2 |
+| 5 | 变体对账表入规范附录 B + 修订记录 v1.1（素材即本报告 §3 的 16 枚全表） | 1 |
+| 6 | 推送验证分支取云端 CI；before/after 截图人工对照（D-007） | 3–5 |
+
+**本窗口终态**：零 XAML / 零 C# 改动；仅提交本报告（commit `yoo` + 本补充）。
+
+## 11. 施工记录（2026-09-13 · 经「继续」指令执行）
+
+### 11.1 改动清单
+
+| 文件 | 改动 | 依据 |
+|---|---|---|
+| `ServiceManagerPage.axaml:40-55` | `StackPanel` → `Grid` + `SharedSizeGroup="ServiceActions"`×3 + `ColumnSpacing="{DynamicResource SpaceSm}"`；三枚按钮加 `Grid.Column` 与 `HorizontalAlignment="Stretch"`；`DockPanel` 挂 `Grid.IsSharedSizeScope="True"` | R1-1 / §5.2 P4 |
+| `RulesPage.axaml:27-38` | 保存/重置包进 `Grid` + `SharedSizeGroup="RuleActions"`×2；外层 `StackPanel` 挂 scope；`Spacing="8"` → `Spacing="{DynamicResource SpaceSm}"`（A-008 顺手清理，8 在 ramp 上） | R1-1 / §5.2 P4 / A-008 |
+| `DesignSystemTests.cs` | 新增 2 条断言（均带 D-006「防的 bug」注释与「变更探测器非契约」定性） | D-006 / 完成定义 |
+| `docs/design/ui-visual-standard.md` | 新增**附录 B 按钮变体使用对账表** + 修订记录 v1.1 | C3 / D-009 |
+
+### 11.2 静态自检（本机禁构建，CI-only）
+
+- **XAML 标签平衡**：`ServiceManagerPage` / `RulesPage` / `MainWindow` 三项 ✅（栈式校验，先剥离注释）
+- **按钮复查**：16 枚，裸 0，行内尺寸 0，`SharedSizeGroup` 命中 5（3+2）✅
+- **C# 花括号**：相对 HEAD 增量 **+4 / +4 平衡** ✅（HEAD 本身 99/97 的差值来自字符串字面量，非本票引入）
+- **页行数上限守卫（220）**：ServiceManagerPage 75 / RulesPage 76 ✅
+- **主动避让**：未触碰 `AppTheme.axaml`（票 02 领地）、`MainWindow.axaml`（票 04 领地，本票无改动必要）
+
+### 11.3 完成定义对照
+
+| 完成定义项 | 状态 |
+|---|---|
+| 全仓零裸 Button（守卫锁定） | ✅ 现状 16/16 + 新断言 `Button_Elements_Must_Carry_A_Variant_Class` 锁定 |
+| 按钮组宽度规则全部落位且无 XAML 行内尺寸覆盖 | ✅ 两处落位；零行内尺寸（既有断言 + 本次复查双证） |
+| 变体对账表入规范附录 | ✅ 附录 B |
+| Margin 清理仅限本票触碰文件 | ✅ 仅 `RulesPage` 一处 `Spacing` 字面量 → token；页面外边距离轨值（如 20）移交票 04（须间距节奏节定值） |
+| CI 云端绿 | ⏳ 待大脑推送验证分支（CI-only 政策 + WORKFLOW §4.2 不 push 不 PR） |
+
+### 11.4 遗留与风险
+
+1. **票 02 仍未开工**：`AppTheme.axaml` nav 段无 `Transitions` setter。本票与其**文件不重叠**，但票 02 落地后需做一次回归。
+2. **T-2 待裁定**：规范附录 A.2 登记「页内按钮组等宽 vs 四大平台内容自适应」张力，裁定前沿用等宽（用户 A-001 决策优先）。裁定若改向 hug，需回退本票两处并同步删改守卫。
+3. **视觉验收未执行**：D-007 要求同机位 before/after 人工对照；本机零构建零截图，`docs/design/screenshots/` 仅 `.gitkeep`。等宽效果须由用户实机确认。
+4. **SharedSizeGroup 为仓库内首次使用**：API 已实物核验存在，但无本地渲染验证，建议云端 CI 通过后的人工探活优先看服务页与规则页两组按钮。
+
+## 12. 票 01 / 02 解锁后的收口复检（2026-09-13 02:0x）
+
+### 12.1 上游落地核验
+
+- **票 02 已落地**：分支 `ui-craft/02-nav-hover-feedback` ✓；`AppTheme.axaml` 的 nav / nav-action 段已**显式声明 Transitions 三路**（L92-97、L129-134），票 02 报告 §2 对 D-004 三根因逐条给出 diff 证据。
+- **C3 已被上游采信**：票 02 报告 §0 记录 `docs/design/ui-visual-standard.md` = **26 595 B / 308 行**，明列「附录 A（atomcode 控件级调研）」与「修订记录 v1.0（票 01）+ v1.1（票 03）」——本票附录 B 已成为规范的一部分。
+- **与票 02 零文件冲突**：票 02 报告 §8 记明「未触碰 `MainWindow.axaml`（票 04 领地）、`ui-visual-standard.md`（票 01 / 03 领地）、`DesignSystemTests.cs`（票 03 已改动，本票改用独立文件 `NavFeedbackSourceTests.cs` 规避）」。本票亦未触碰 `AppTheme.axaml`。WORKFLOW §4.3 双向遵守。
+
+### 12.2 检查点终版（C1–C4）
+
+| 检查点 | 结果 | 证据 |
+|---|---|---|
+| C1 裸按钮清零 | ✅ 裸 = 0 | 多行感知普查：全仓 16 枚 Button，16 枚带 `Classes`；新断言 `Button_Elements_Must_Carry_A_Variant_Class` 锁定 |
+| C2 按钮组宽度规则落位 | ✅ 命中 5 | `ServiceManagerPage` 3 列 `ServiceActions` + `RulesPage` 2 列 `RuleActions`；行内尺寸覆盖 = 0（既有断言 + 本次复检双证） |
+| C3 变体对账表入附录 | ✅ | 规范附录 B（票 02 报告 §0 确认文档含票 03 修订记录 v1.1） |
+| C4 本票触碰文件 Margin 残留计数 | ✅ 计数完成 | 见下表 |
+
+**C4 明细（本票触碰文件 = `ServiceManagerPage` / `RulesPage`）**
+
+| 文件 | `Margin`/`Padding`/`Spacing` 字面量 | 本票已清理 | 离轨值（不在 2/4/8/12/16/24/32/48 ramp） | 处置 |
+|---|---|---|---|---|
+| ServiceManagerPage.axaml | 5 处（L4 Padding、L8 Margin、L12 Margin、L13 Margin；L13/26/41/45/62 已 token） | 0（本票改动区 L40-55 内无 Margin） | **20**（L4、L8） | 移交票 04 |
+| RulesPage.axaml | 9 处（L4、L5、L10、L11、L13、L14、L19、L20、L38） | **1**（L27 `Spacing="8"` → `{DynamicResource SpaceSm}`，8 在 ramp 上） | **20**（L4 Padding） | 移交票 04 |
+
+**口径订正**：离轨值仅 `20` 共 3 处（ServiceManagerPage ×2、RulesPage ×1）。`0` 值（如 `Margin="16,0,16,12"`、`Margin="8,0,0,0"`）是零间距，**不计离轨**——自动清点脚本初判为离轨，已人工订正。
+
+**为何不自行定值 20**：离轨值映射到上档（24）还是下档（16）是**页面级节奏决策**，规范 §5.2 的 P1–P7 七场景未覆盖「ScrollViewer 外边距 / 卡片 Padding」；票 04 已就此定线并冻结（其报告 §3）。本票不抢定值权，按 delta「仅限本票触碰文件、撞见才改」执行。
+
+### 12.3 完成定义终版
+
+| 完成定义项 | 状态 |
+|---|---|
+| 全仓零裸 Button（守卫锁定） | ✅ |
+| 按钮组宽度规则全部落位且无 XAML 行内尺寸覆盖 | ✅ |
+| 变体对账表入规范附录 | ✅ |
+| Margin 清理仅限本票触碰文件 | ✅ 清理 1 处，余下 3 处离轨值移交票 04 |
+| CI 云端绿 | ⏳ 待明令 push（WORKFLOW §4.2：不 push 不 PR 除非用户明令） |
+
+### 12.4 呈报（本窗口不擅自改）
+
+1. **CONTEXT.md「Button Transition Animation」词条陈旧**（L289-291）：仍记载 ADR 0054 已删除的 `scale(0.97)` 与 `TransformOperationsTransition`，与实物（ADR 0062 纯色/透明度 150ms `SineEaseOut`；票 02 已补 nav 段三路 Transitions）不符。票 02 报告 §7.3 观察项 3 呈报「涉票 03 共享面，本票不代改」。本窗口同样**不代改**——`CONTEXT.md` 属票 01 领地且为跨票共享面，建议由大脑指派或下轮修订。
+2. **T-2 张力仍待裁定**：页内按钮组等宽（用户 A-001）vs 四大平台内容自适应。裁定若改向 hug，需回退本票两处并同步删改 `Button_Groups_Must_Use_Equal_Width_Mechanism`。
+3. **视觉验收未执行**：D-007 要求同机位 before/after 人工对照；本机零构建零截图，`docs/design/screenshots/` 仅 `.gitkeep`。建议探活时优先看服务页（启动/停止/刷新）与规则页（保存/重置）两组。
