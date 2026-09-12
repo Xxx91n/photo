@@ -100,6 +100,41 @@
 - **ConfigPage.axaml:8 `StackPanel Spacing="0"`**：分组卡片之间零间距，与 WinUI SettingsCard `Spacing=4` / macOS「分组须成视觉簇」不符，登记为 §3.3 B3，交票 04。
 - **nav accent bar 宽度 4px**：工业参照 VS Code 2px、WinUI 视觉约 3px；ADR 0052 A1 定值为 4px 且用户未抱怨，登记为「观察项，非缺陷」。
 
+### 4.5 ⚠ 跨窗口 CONTEXT.md 文本冲突 + GitButler 多 base 重放缺陷（已回滚，移交大脑）
+
+**结论先行**：票 01 六件产物已全部落盘于 commit `xov`（分支 `ui-craft/01-visual-standard-doc`，`conflicted: false`），工作区**已回到 0 冲突、可继续提交**的干净态。两处残留须大脑裁定：① 该分支 `mergesCleanly: false`（与上游 CONTEXT.md 真实文本冲突）；② report-32 扩充（变更 ID `rl`）因依赖锁留在 `zz` 未提交区。
+
+**A. 根因（pull 之前即已存在）**：动栈前 `but pull --check` 就只把票 01 标为 `[conflict - rebasable]`，票 03 / 04 为 clean。冲突源是 `CONTEXT.md` 的同一释义区段——上游 `origin/main` 的 `8a96564`（ADR 0064）新增 `Composition Root (AppComposition)` / `WindowPollingHostedService` 两条词条；本票新增 `UI Visual Standard` / `Visual Baseline` 并把 `Sidebar Nav Item` 由 44px 改为 40px。两组改动落点相邻，属并行窗口共享文件的必然碰撞（WORKFLOW §4.3），**不是本票改向**。
+
+**B. 处置时间线（证据链）**：
+
+| # | 动作 | 结果 |
+|---|---|---|
+| 1 | §4.4 轨 2 强制快照 `workflow-snapshot.js` | 263 文件 / 2,684,997 字节 → `photo-snapshots/20260913-005405`（另增 010146、010610 两份） |
+| 2 | `but pull --check` | 仅票 01 `[conflict - rebasable]`；03 / 04 clean |
+| 3 | `but pull` | 03 / 04 干净 rebase；票 01 冲突于 CONTEXT.md；票 32 的 `snp` / `yqn` 连带被标 `{conflicted}` |
+| 4 | 手工解析 CONTEXT.md（**双侧并存**：上游 ADR 0064 词条 + 本票词条全留） | 0 冲突标记，42,862 字节 |
+| 5 | `but resolve finish` ×3 | **失败**：`Failed to merge bases while cherry picking ... Encountered a conflict while merging the commit new bases: 8a96564 / 0ebce17 / 211c65d / 91e19f8 / 8685211 / 05b2ebc`。6 个 base 之间自身冲突，属 GitButler 多 base 合并缺陷，**与我的解析内容无关** |
+| 6 | `but resolve cancel --force` | 成功退出 edit mode；未提交区出现 `no`(CONTEXT.md) / `py`(票 03) / `rl`(report-32) |
+| 7 | `but uncommit xov` | 被拒：`Cannot uncommit commits that would result in merge conflicts` |
+| 8 | `but commit -b ui-craft/01-visual-standard-doc ... no rl` | 被拒：复现 #5 的 6-base 错误——证明该栈在 post-pull 态**无法写入任何提交** |
+| 9 | `but oplog restore 41438d5`（pull 前快照 00:50:43） | **成功**：0 冲突、无 edit mode、`ui` / `cr` / `ra` / `g0` 四栈齐在，`xov` 完整持有 6 件产物 |
+| 10 | 还原票 03 报告（回滚使其由 28,562 退回 23,189 字节） | 已从保护副本还原为 28,562 字节，票 03 成果零丢失 |
+
+**C. 数据完整性**：全过程零丢失。动栈前对 12 个文件做了仓库外字节级保护副本（`photo-snapshots/20260913-010146/ticket-all-protect/`），并验证 git 对象层恢复通道可用（`git show c153f9f4:<path>` 可读）。回滚后逐字节核验：ADR 0065 / `.gitkeep` / `ui-visual-standard.md` / report-01 / `TEST-CONVENTIONS.md` / report-32 六件与备份**完全一致**；CONTEXT.md 为 41,302 字节（含本票 3 处新增、40px 已改；不含上游 ADR 0064 词条——pre-pull 基线本就如此，非丢失）。
+
+**D. 移交大脑（两个待裁定项）**：
+
+1. **`mergesCleanly: false`**：票 01 分支与上游 CONTEXT.md 存在真实文本冲突。可选路径——(a) 大脑先合并上游 CONTEXT.md 再让本票重放；(b) 由大脑直接裁定 CONTEXT.md 该区段的最终排版，本票按其重写；(c) 维持现状、待 land 时一次性解析。**本窗口不自行重放**：重放已被证明会触发 GitButler 多 base 缺陷并连带阻塞票 03 / 04。
+2. **`rl`（report-32 扩充）**：依赖锁未解，仍留在 `zz` 未提交区。内容已在磁盘双轨一致（23,370 字节；LCS 校验为相对 HEAD 的 76 行纯插入、0 删除 0 修改，原 28 项零改写），随时可重提。
+
+### 4.6 ⚠ 实时并发编辑：票 03 正在改写本票主交付（未阻止，如实登记）
+
+- **事实**：01:10:49，`docs/design/ui-visual-standard.md` 由 24,510 字节变为 26,595 字节（+21 行），新增「附录 B. 按钮变体使用对账表」与修订记录 v1.1，**落款为票 03 / ui-craft**。同一时刻未提交区另出现 `pq`(RulesPage.axaml)、`rx`(ServiceManagerPage.axaml)、`ovl`(DesignSystemTests.cs)——票 03 / 04 窗口正在活跃施工。
+- **性质判定**：这是 WORKFLOW §4.3「共享文件同一时刻只归一个票」的实时实例，与 §4.5 的 CONTEXT.md 冲突同源——并行窗口对同一批共享文件的写入互相放大。
+- **本窗口处置**：**不回滚、不覆盖、不抢提交** `kl`（该改动归票 03）。本票提交只含自己名下的改动。C1 门禁取证于 24,510 字节版本；票 03 的 21 行为纯插入（附录 B + v1.1 修订行），不破坏七节结构，张力 T-1 / T-2 登记仍在。本票**不再主张对该文件的独占**。
+- **移交大脑**：D-009 立的是活文档，但未指定 owner。建议明确 `docs/design/ui-visual-standard.md` 在票 01 之后归谁维护，否则并行窗口将持续互相放大写入——§4.5 的 CONTEXT.md 冲突与本节是同一病灶的两次发作。
+
 ## 5. atomcode 调研完整来源清单（28 条，均为本轮实际抓取验证）
 
 | # | 来源 | URL | 角度 | 贡献 |
@@ -157,5 +192,8 @@
 ## 8. 收尾动作
 
 - [x] 报告写入 .scratch/ui-craft/reports/01-visual-standard-doc.md（本文件）
-- [ ] 轨 1 沉淀：docs/process/reports/ 副本随票提交
+- [x] 轨 1 沉淀：docs/process/reports/01-visual-standard-doc.md 已随票提交（commit xov）
 - [ ] 推验证分支由大脑审核云端 CI（本机零构建 / 测试，CI-only）
+- [x] **已处置**：edit mode 退出 + `but oplog restore 41438d5` 回滚，工作区 0 冲突；票 03 / 04 分支 `mergesCleanly: true`，不再被本票阻塞
+- [ ] **遗留 1**：票 01 分支 `mergesCleanly: false`（与上游 CONTEXT.md 同区段文本冲突），待大脑裁定合并路径（见 §4.5-D-1）
+- [ ] **遗留 2**：report-32 扩充（变更 ID `rl`）因 GitButler 依赖锁留 zz 未提交区，磁盘内容不丢失，待解锁后重提（见 §4.5-D-2）
