@@ -294,9 +294,9 @@ _Avoid_: Button 样式无 Transitions 导致 :pressed 闪现硬切；WPF 风格 
 MiddleClickScrollBehavior.cs 的 DispatcherTimer 16ms 换为 TopLevel.RequestAnimationFrame（Avalonia 11.0+ 官方等价物 of CompositionTarget.Rendering，与渲染循环/显示器帧率同步），消除合并帧/抖动。帧率无关计算：delta * (frameTime.TotalMilliseconds / 16.67) 让高刷屏自动适配。常量对齐 Files.App 原版：DeadZone=12, SpeedFactor=0.12, MaxSpeedPerTick=32。TopLevel.GetTopLevel(sv) null 边界 fallback 到 DispatcherTimer。保持线性比例速度模型（松键即停，不加惯性）。见 ADR 0051 A3。
 _Avoid_: DispatcherTimer 16ms 非 vsync 对齐导致高刷屏抖动；偏离 Files.App 成熟常量值
 
-**Sidebar Nav Item (44px Icon+Text)**:
-企业级桌面侧栏导航项标准：44px 高、icon(20px)+text、4px 左侧 accent bar active 指示。Material Design 3 Navigation drawer / Fluent 2 NavViewItem / Apple HIG sidebar 均遵此规格。项目 Button.nav 4 按钮（Config/Logs/Rules/ServiceManager）统一 Padding、加 Material.Icons（Settings/FileDocumentOutline/ShieldCheckOutline/ServerNetwork）、active 态左侧 accent bar。见 ADR 0052 A1。
-_Avoid_: 纯文字无图标、Padding 不统一、无 active indicator
+**Sidebar Nav Item (40px Icon+Text)**:
+企业级桌面侧栏导航项标准：40px 高、icon(20px)+text、4px 左侧 accent bar active 指示。Material Design 3 Navigation drawer / Fluent 2 NavViewItem / Apple HIG sidebar 均遵此规格。项目 Button.nav 4 按钮（Config/Logs/Rules/ServiceManager）统一 Padding、加 Material.Icons（Settings/FileDocumentOutline/ShieldCheckOutline/ServerNetwork）、active 态左侧 accent bar。初定 44px（ADR 0052 A1），后修订为 40px（ADR 0055 A1 / ADR 0056 票 01，与 Nav Group Split、Button Size Ladder 词条一致）。
+_Avoid_: 纯文字无图标、Padding 不统一、无 active indicator；44px 旧值回潮
 
 **Exponential Scroll Smoothing**:
 中键滚动指数平滑速度模型：`v += (targetV - v) * (1 - exp(-k*dt))`，k≈15 s⁻¹（半衰期 ~46ms），dt 钳制 ≤100ms，`|v|<1` 停机。消除三路"flash"根因：死区阶跃（targetV 瞬间 0→v）、松键急停（无减速）、高刷帧率依赖。Lembcke《Improved Lerp Smoothing》帧率无关数学 + LibreScroll 摩擦衰减 + SmoothScroll.Avalonia 停机阈值综合。见 ADR 0052 A2。
