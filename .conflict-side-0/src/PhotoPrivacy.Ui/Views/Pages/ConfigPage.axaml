@@ -1,0 +1,218 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:ex="using:PhotoPrivacy.Ui.Localization" xmlns:vm="using:PhotoPrivacy.Ui.ViewModels" xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia" xmlns:behaviors="using:PhotoPrivacy.Ui.Behaviors" xmlns:u="https://irihi.tech/ursa" xmlns:controls="using:PhotoPrivacy.Ui.Views.Controls" x:Class="PhotoPrivacy.Ui.Views.Pages.ConfigPage" x:DataType="vm:MainWindowViewModel">
+  <!-- 票 24（ADR 0061）：自 MainWindow.axaml 拆出的配置页。路径输入宽度统一走 TextBox.inline-input 共享 class（Width=280 收敛为单一权威）。 -->
+  <Grid RowDefinitions="Auto,*">
+    <Border Padding="24,20,24,16" BorderBrush="{DynamicResource SemiColorBorder}" BorderThickness="0,0,0,1">
+      <TextBlock Text="{ex:Localize nav.config}" Classes="title"/>
+    </Border>
+    <ScrollViewer Grid.Row="1" Margin="24,16,24,20" VerticalScrollBarVisibility="Auto" behaviors:MiddleClickScrollBehavior.IsEnabled="True">
+      <StackPanel Spacing="0">
+        <Border Classes="settings-card">
+          <StackPanel>
+            <TextBlock Text="{ex:Localize config.section.path}" Classes="section-header"/>
+            <Border Classes="settings-row">
+              <DockPanel LastChildFill="False">
+                <StackPanel DockPanel.Dock="Left" Spacing="{DynamicResource SpaceXxs}" VerticalAlignment="Center">
+                  <StackPanel Orientation="Horizontal" Spacing="{DynamicResource SpaceSm}"><materialIcons:MaterialIcon Kind="ImageMultiple" Width="16" Height="16" Foreground="{DynamicResource SemiColorPrimary}"/><TextBlock Text="{ex:Localize settings.exiftool_path}" Classes="row-label"/></StackPanel>
+                  <TextBlock Text="{ex:Localize config.desc.exiftool_path}" Classes="row-desc"/>
+                </StackPanel>
+                <StackPanel DockPanel.Dock="Right" Spacing="{DynamicResource SpaceSm}">
+                  <DockPanel LastChildFill="False" VerticalAlignment="Center">
+                    <u:PathPicker UsePickerType="OpenFile" Title="{ex:Localize dialog.select_exiftool}" ButtonContent="{ex:Localize btn.browse}" ToolTip.Tip="{ex:Localize dialog.select_exiftool}" FileFilter="[ExifTool, exiftool.exe, exiftool]" SelectedPathsText="{Binding ExifToolPath, Mode=TwoWay}" Classes="inline-input" HorizontalAlignment="Right"/>
+                  </DockPanel>
+                  <TextBlock Text="{Binding ExifToolPathHint}" Classes="caption" IsVisible="{Binding HasExifToolHint}"/>
+                </StackPanel>
+              </DockPanel>
+            </Border>
+            <Border Classes="row-divider"/>
+            <Border Classes="settings-row">
+              <DockPanel LastChildFill="False">
+                <StackPanel DockPanel.Dock="Left" Spacing="{DynamicResource SpaceXxs}" VerticalAlignment="Center">
+                  <TextBlock Text="{ex:Localize settings.hot_folder}" Classes="row-label"/>
+                  <TextBlock Text="{ex:Localize config.desc.hot_folder}" Classes="row-desc"/>
+                </StackPanel>
+                <DockPanel DockPanel.Dock="Right" LastChildFill="False" VerticalAlignment="Center">
+                  <u:PathPicker DockPanel.Dock="Right" UsePickerType="OpenFolder" Title="{ex:Localize dialog.select_hot_folder}" ButtonContent="{ex:Localize btn.browse}" ToolTip.Tip="{ex:Localize dialog.select_hot_folder}" SelectedPathsText="{Binding HotFolderPath, Mode=TwoWay}" Classes="inline-input" HorizontalAlignment="Right"/>
+                </DockPanel>
+              </DockPanel>
+            </Border>
+          </StackPanel>
+        </Border>
+        <Border Classes="settings-card">
+          <StackPanel>
+            <TextBlock Text="{ex:Localize config.section.behavior}" Classes="section-header"/>
+            <Border Classes="settings-row">
+              <DockPanel LastChildFill="False">
+                <StackPanel DockPanel.Dock="Left" Spacing="{DynamicResource SpaceXxs}">
+                  <TextBlock Text="{ex:Localize config.row.enable_backup}" Classes="row-label"/>
+                  <TextBlock Text="{ex:Localize config.desc.backup_enabled}" Classes="row-desc"/>
+                </StackPanel>
+                <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding BackupEnabled}" VerticalAlignment="Center" OnContent="" OffContent=""/>
+              </DockPanel>
+            </Border>
+            <Border Classes="row-divider"/>
+            <Border Classes="settings-row" IsVisible="{Binding BackupEnabled}">
+              <DockPanel LastChildFill="False">
+                <StackPanel DockPanel.Dock="Left" Spacing="{DynamicResource SpaceXxs}">
+                  <TextBlock Text="{ex:Localize settings.backup_dir}" Classes="row-label"/>
+                  <TextBlock Text="{ex:Localize config.desc.backup_dir}" Classes="row-desc"/>
+                </StackPanel>
+                <DockPanel DockPanel.Dock="Right" LastChildFill="False" VerticalAlignment="Center">
+                  <u:PathPicker DockPanel.Dock="Right" UsePickerType="OpenFolder" Title="{ex:Localize dialog.select_backup_dir}" ButtonContent="{ex:Localize btn.browse}" ToolTip.Tip="{ex:Localize dialog.select_backup_dir}" SelectedPathsText="{Binding BackupDirectory, Mode=TwoWay}" Classes="inline-input" HorizontalAlignment="Right"/>
+                </DockPanel>
+              </DockPanel>
+            </Border>
+            <Border Classes="row-divider"/>
+            <Border Classes="settings-row">
+              <DockPanel LastChildFill="False" VerticalAlignment="Center">
+                <StackPanel DockPanel.Dock="Left" Spacing="{DynamicResource SpaceXxs}">
+                  <TextBlock Text="{ex:Localize config.row.enable_quarantine}" Classes="row-label"/>
+                  <TextBlock Text="{ex:Localize config.desc.quarantine_enabled}" Classes="row-desc"/>
+                </StackPanel>
+                <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding QuarantineEnabled}" VerticalAlignment="Center" OnContent="" OffContent=""/>
+              </DockPanel>
+            </Border>
+            <Border Classes="row-divider"/>
+            <Border Classes="settings-row" IsVisible="{Binding QuarantineEnabled}">
+              <DockPanel LastChildFill="False" VerticalAlignment="Center">
+                <StackPanel DockPanel.Dock="Left" Spacing="{DynamicResource SpaceXxs}">
+                  <TextBlock Text="{ex:Localize settings.quarantine_dir}" Classes="row-label"/>
+                  <TextBlock Text="{ex:Localize config.desc.quarantine_dir}" Classes="row-desc"/>
+                </StackPanel>
+                <DockPanel DockPanel.Dock="Right" LastChildFill="False" VerticalAlignment="Center">
+                  <u:PathPicker DockPanel.Dock="Right" UsePickerType="OpenFolder" Title="{ex:Localize dialog.select_quarantine_dir}" ButtonContent="{ex:Localize btn.browse}" ToolTip.Tip="{ex:Localize dialog.select_quarantine_dir}" SelectedPathsText="{Binding QuarantineDirectory, Mode=TwoWay}" Classes="inline-input" HorizontalAlignment="Right"/>
+                </DockPanel>
+              </DockPanel>
+            </Border>
+            <Border Classes="settings-row">
+              <DockPanel LastChildFill="False">
+                <StackPanel DockPanel.Dock="Left" Spacing="{DynamicResource SpaceXxs}">
+                  <TextBlock Text="{ex:Localize settings.hide_on_startup}" Classes="row-label"/>
+                  <TextBlock Text="{ex:Localize config.desc.hide_on_startup}" Classes="row-desc"/>
+                </StackPanel>
+                <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding HideGuiOnStartup}" VerticalAlignment="Center" OnContent="" OffContent=""/>
+              </DockPanel>
+            </Border>
+            <Border Classes="row-divider"/>
+            <Border Classes="settings-row">
+              <DockPanel LastChildFill="False">
+                <StackPanel DockPanel.Dock="Left" Spacing="{DynamicResource SpaceXxs}">
+                  <TextBlock Text="{ex:Localize settings.hide_tray}" Classes="row-label"/>
+                  <TextBlock Text="{ex:Localize config.desc.hide_tray}" Classes="row-desc"/>
+                </StackPanel>
+                <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding HideTrayIcon}" VerticalAlignment="Center" OnContent="" OffContent=""/>
+              </DockPanel>
+            </Border>
+            <Border Classes="row-divider"/>
+            <Border Classes="settings-row">
+              <DockPanel LastChildFill="False">
+                <StackPanel DockPanel.Dock="Left" Spacing="{DynamicResource SpaceXxs}">
+                  <TextBlock Text="{ex:Localize settings.theme}" Classes="row-label"/>
+                  <TextBlock Text="{ex:Localize config.desc.theme}" Classes="row-desc"/>
+                </StackPanel>
+                <!-- 票 30：选中态 VM 属性驱动（SelectedIndex TwoWay 绑定）——原 SelectionChanged/SyncThemeVariantComboSelection 手动镜像删除 -->
+                <ComboBox x:Name="ThemeVariantComboBox" DockPanel.Dock="Right" Width="160" SelectedIndex="{Binding ThemeVariantIndex, Mode=TwoWay}">
+                  <ComboBoxItem Content="{ex:Localize theme.option.system}" Tag="system"/><ComboBoxItem Content="{ex:Localize theme.option.light}" Tag="light"/><ComboBoxItem Content="{ex:Localize theme.option.dark}" Tag="dark"/>
+                </ComboBox>
+              </DockPanel>
+            </Border>
+            <!-- ADR 0052 A3: Theme preset swatch grid — 5 community themes（票 24：Click 接线统一至 MainWindow） -->
+            <Border Classes="settings-row">
+              <StackPanel Spacing="{DynamicResource SpaceSm}">
+                <TextBlock Text="{ex:Localize settings.theme_preset}" Classes="row-label"/>
+                <!-- 票 25：ThemeSwatch 数据化色板 — 目录唯一权威 ThemeSwatchCatalog.Presets，GroupName=ThemePreset/Tag=ThemeId 语义保留（Click 路由 MainWindow.OnThemePresetSwatchClick） -->
+                <ItemsControl x:Name="ThemeSwatchList" ItemsSource="{x:Static controls:ThemeSwatchCatalog.Presets}">
+                  <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel ItemSpacing="{DynamicResource SpaceSm}"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="controls:ThemeSwatchPreset">
+                      <!-- 票 30：选中态 MultiBinding 接通 VM（OneWay 比较回填）—— 替代原 SyncThemeSwatchSelection/_pending+Loaded 手动回填 -->
+                      <controls:ThemeSwatch ThemeId="{Binding ThemeId}" LabelKey="{Binding LabelKey}" ColorHex="{Binding ColorHex}">
+                        <controls:ThemeSwatch.IsChecked>
+                          <MultiBinding Converter="{x:Static vm:ThemeSwatchSelectionConverter.Instance}">
+                            <Binding Path="$parent[ItemsControl].DataContext"/>
+                            <Binding Path="ThemeId"/>
+                          </MultiBinding>
+                        </controls:ThemeSwatch.IsChecked>
+                      </controls:ThemeSwatch>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </Border>
+            <Border Classes="row-divider"/>
+            <Border Classes="settings-row">
+              <DockPanel LastChildFill="False">
+                <StackPanel DockPanel.Dock="Left" Spacing="{DynamicResource SpaceXxs}">
+                  <TextBlock Text="{ex:Localize settings.language}" Classes="row-label"/>
+                  <TextBlock Text="{ex:Localize config.desc.language}" Classes="row-desc"/>
+                </StackPanel>
+                <!-- 票 30：选中态 VM 属性驱动（SelectedIndex TwoWay 绑定）——原 SelectionChanged/SyncLocaleComboSelection 手动镜像删除 -->
+                <ComboBox x:Name="LocaleVariantComboBox" DockPanel.Dock="Right" Width="160" SelectedIndex="{Binding CurrentLocaleIndex, Mode=TwoWay}">
+                  <ComboBoxItem Content="中文" Tag="zh-CN"/><ComboBoxItem Content="English" Tag="en"/><ComboBoxItem Content="日本語" Tag="ja"/><ComboBoxItem Content="한국어" Tag="ko"/><ComboBoxItem Content="Deutsch" Tag="de"/>
+                  <ComboBoxItem Content="Français" Tag="fr"/><ComboBoxItem Content="Español" Tag="es"/><ComboBoxItem Content="Português" Tag="pt"/><ComboBoxItem Content="Русский" Tag="ru"/><ComboBoxItem Content="العربية" Tag="ar"/>
+                </ComboBox>
+              </DockPanel>
+            </Border>
+          </StackPanel>
+        </Border>
+        <Border Classes="settings-card">
+          <StackPanel>
+            <TextBlock Text="{ex:Localize config.section.logs}" Classes="section-header"/>
+            <Border Classes="settings-row">
+              <DockPanel LastChildFill="False">
+                <StackPanel DockPanel.Dock="Left" Spacing="{DynamicResource SpaceXxs}">
+                  <TextBlock Text="{ex:Localize settings.log_level}" Classes="row-label"/>
+                  <TextBlock Text="{ex:Localize config.desc.log_level}" Classes="row-desc"/>
+                </StackPanel>
+                <!-- 票 30：选中态 VM 属性驱动（SelectedIndex TwoWay 绑定）——原 SelectionChanged/SyncLogLevelComboSelection 手动镜像删除 -->
+                <ComboBox x:Name="LogLevelComboBox" DockPanel.Dock="Right" Width="160" SelectedIndex="{Binding LogLevelIndex, Mode=TwoWay}">
+                  <ComboBoxItem Content="{ex:Localize loglevel.option.all}" Tag="all"/><ComboBoxItem Content="{ex:Localize loglevel.option.info}" Tag="info"/><ComboBoxItem Content="{ex:Localize loglevel.option.debug}" Tag="debug"/><ComboBoxItem Content="{ex:Localize loglevel.option.warn}" Tag="warn"/><ComboBoxItem Content="{ex:Localize loglevel.option.error}" Tag="error"/>
+                </ComboBox>
+              </DockPanel>
+            </Border>
+            <Border Classes="row-divider"/>
+            <Border Classes="settings-row">
+              <DockPanel LastChildFill="False">
+                <StackPanel DockPanel.Dock="Left" Spacing="{DynamicResource SpaceXxs}">
+                  <TextBlock Text="{ex:Localize settings.audit_log_dir_label}" Classes="row-label"/>
+                  <TextBlock Text="{ex:Localize config.desc.audit_log_dir}" Classes="row-desc"/>
+                </StackPanel>
+                <DockPanel DockPanel.Dock="Right" LastChildFill="False" VerticalAlignment="Center">
+                  <u:PathPicker DockPanel.Dock="Right" UsePickerType="OpenFolder" Title="{ex:Localize dialog.select_log_dir}" ButtonContent="{ex:Localize btn.browse}" ToolTip.Tip="{ex:Localize dialog.select_log_dir}" SelectedPathsText="{Binding AuditLogDirectory, Mode=TwoWay}" Classes="inline-input" HorizontalAlignment="Right"/>
+                </DockPanel>
+              </DockPanel>
+            </Border>
+          </StackPanel>
+        </Border>
+        <Border Classes="settings-card">
+          <StackPanel>
+            <TextBlock Text="{ex:Localize config.section.excluded}" Classes="section-header"/>
+            <Border Classes="settings-row">
+              <StackPanel Spacing="{DynamicResource SpaceXs}">
+                <TextBlock Text="{ex:Localize config.label.system_excluded}" Classes="row-label"/>
+                <TextBlock Text="{ex:Localize config.desc.system_excluded}" Classes="row-desc"/>
+                <ListBox ItemsSource="{Binding SystemAutoExcludedDirectories}" Height="80" BorderBrush="{DynamicResource SemiColorBorder}" BorderThickness="1"/>
+              </StackPanel>
+            </Border>
+            <Border Classes="row-divider"/>
+            <Border Classes="settings-row">
+              <StackPanel Spacing="{DynamicResource SpaceSm}">
+                <StackPanel Spacing="{DynamicResource SpaceXxs}">
+                  <TextBlock Text="{ex:Localize config.label.user_excluded}" Classes="row-label"/>
+                  <TextBlock Text="{ex:Localize config.desc.user_excluded}" Classes="row-desc"/>
+                </StackPanel>
+                <ListBox x:Name="UserExcludedDirectoriesListBox" ItemsSource="{Binding UserExcludedDirectories}" Height="80" BorderBrush="{DynamicResource SemiColorBorder}" BorderThickness="1"/>
+                <StackPanel Orientation="Horizontal" Spacing="{DynamicResource SpaceSm}">
+                  <Button x:Name="AddExcludedDirectoryButton" Classes="icon" ToolTip.Tip="{ex:Localize config.tooltip.add_excluded_dir}"><materialIcons:MaterialIcon Kind="Plus" Width="16" Height="16"/></Button>
+                  <Button x:Name="RemoveExcludedDirectoryButton" Classes="icon" ToolTip.Tip="{ex:Localize config.tooltip.remove_excluded_dir}"><materialIcons:MaterialIcon Kind="Minus" Width="16" Height="16"/></Button>
+                </StackPanel>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </Border>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10" Margin="0,8,0,0">
+          <TextBlock Text="{Binding SaveStatus}" Classes="caption" Foreground="{DynamicResource SemiColorText1}" VerticalAlignment="Center"/>
+        </StackPanel>
+      </StackPanel>
+    </ScrollViewer>
+  </Grid>
+</UserControl>

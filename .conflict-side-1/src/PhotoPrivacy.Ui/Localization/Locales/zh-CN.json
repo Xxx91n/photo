@@ -1,0 +1,278 @@
+{
+  "app": {
+    "title": "PhotoPrivacy"
+  },
+  "nav": {
+    "config": "配置",
+    "logs": "日志",
+    "service": "服务管理",
+    "service_manager": "服务管理器",
+    "rules": "规则"
+  },
+  "btn": {
+    "pause": "⏸ 暂停",
+    "resume": "▶ 恢复",
+    "save": "保存配置",
+    "clear_logs": "清空日志",
+    "browse": "浏览...",
+    "open_config_dir": "打开配置目录",
+    "ellipsis": "…",
+    "add": "+",
+    "remove": "-"
+  },
+  "status": {
+    "running": "运行中",
+    "paused": "已暂停",
+    "stopped": "已停止",
+    "detecting": "检测中…",
+    "connecting": "Worker 连接中...",
+    "exiftool_not_found": "未找到 ExifTool",
+    "auto_detected": "已自动检测到",
+    "service_mode": "服务模式",
+    "tray_mode": "托盘模式",
+    "service_running": "服务运行中",
+    "service_stopped": "服务已停止",
+    "tray_paused": "托盘已暂停",
+    "tray_running": "托盘运行中",
+    "pause_service_unavailable": "暂停（服务模式不可用）"
+  },
+  "mode": {
+    "tray": "托盘模式",
+    "service": "服务模式",
+    "background": "后台模式"
+  },
+  "settings": {
+    "exiftool_path": "ExifTool 路径",
+    "hot_folder": "监控目录",
+    "backup": "备份",
+    "backup_dir": "备份目录",
+    "theme": "主题",
+    "theme_preset": "主题预设",
+    "language": "语言",
+    "font": "字体",
+    "font_size": "字体大小",
+    "hide_on_startup": "启动时隐藏主窗口",
+    "hide_tray": "隐藏托盘图标",
+    "quarantine": "隔离区",
+    "quarantine_dir": "隔离目录",
+    "audit_log_dir": "审计日志目录",
+    "log_level": "日志级别",
+    "excluded_dirs": "排除目录",
+    "system_excluded": "系统自动排除",
+    "enable_backup": "启用备份",
+    "enable_backup_full": "启用备份",
+    "audit_log_dir_label": "日志保存路径"
+  },
+  "service": {
+    "status": "服务状态",
+    "install": "安装服务",
+    "uninstall": "卸载服务",
+    "start": "启动服务",
+    "stop": "停止服务",
+    "running": "运行中",
+    "stopped": "已停止",
+    "failed": "失败",
+    "section": {
+      "status": "CURRENT STATUS",
+      "actions": "ACTIONS"
+    },
+    "row": {
+      "install_start": "安装并启动服务",
+      "start_stop": "启动 / 停止服务",
+      "uninstall": "卸载服务"
+    },
+    "desc": {
+      "install": "将 PhotoPrivacyWorker 注册为 Windows 系统服务",
+      "start_stop": "手动控制已安装服务的运行状态",
+      "uninstall": "从系统移除服务，切换为托盘模式运行"
+    },
+    "btn": {
+      "install": "安装服务",
+      "start": "启动",
+      "stop": "停止",
+      "refresh": "刷新",
+      "uninstall": "卸载服务"
+    },
+    "status_format_skip": "{0} | 跳过：{1}",
+    "status_format_cancel": "{0} | 已取消：{1}",
+    "status_format_fail": "{0} | 失败：{1}",
+    "uninstalling": "正在卸载服务...",
+    "state": {
+      "not_installed": "未安装",
+      "start_pending": "启动中",
+      "pause_pending": "暂停中",
+      "continue_pending": "恢复中",
+      "stop_pending": "停止中",
+      "unknown": "未知",
+      "not_installed_short": "未安装"
+    },
+    "msg": {
+      "operation_success": "操作成功",
+      "use_systemd": "Linux/macOS 请使用 systemd 管理服务",
+      "must_use_worker": "安装服务必须使用 PhotoPrivacyWorker.exe",
+      "invalid_target": "服务运行目标必须是 PhotoPrivacyWorker.exe",
+      "path_empty": "路径不能为空",
+      "path_invalid_chars": "路径包含不允许的字符: {0}",
+      "path_must_be_absolute": "路径必须是绝对路径",
+      "elevation_cancelled": "用户取消了管理员授权"
+    },
+    "exitcode": {
+      "0": "操作成功",
+      "5": "权限不足，请以管理员身份运行",
+      "1053": "服务启动超时，请检查 ExifTool 路径和配置文件是否正确",
+      "1055": "服务数据库被锁定，请稍后重试",
+      "1056": "服务已在运行",
+      "1058": "服务已被禁用",
+      "1060": "服务不存在，请先安装",
+      "1062": "服务未运行，无需停止",
+      "1072": "服务已标记为删除，请重启系统后重试",
+      "1073": "服务已存在，已自动执行先卸载再安装",
+      "unknown": "未知错误（代码 {0}）"
+    }
+  },
+  "msg": {
+    "saved": "配置已保存",
+    "save_failed": "保存失败",
+    "exiftool_not_found": "未找到 ExifTool",
+    "worker_not_found": "未找到 Worker 可执行文件",
+    "tray_still_running": "托盘 Worker 仍在运行，已取消服务启动，请稍后重试",
+    "auto_saved": "已自动保存",
+    "auto_saved_worker_down": "已自动保存（Worker 未运行）",
+    "save_failed_exception": "保存失败：{0}",
+    "invalid_exiftool_path": "ExifTool 路径无效，请先选择正确的 exiftool.exe",
+    "saved_worker_down": "已保存（Worker 未运行，下次启动生效）",
+    "applied": "已应用",
+    "apply_failed_exception": "应用失败：{0}",
+    "config_apply_failed": "配置应用失败",
+    "worker_not_found_detail": "未找到 Worker 可执行文件（PhotoPrivacyWorker）",
+    "tray_worker_running": "托盘 Worker 仍在运行，已取消服务启动，请稍后重试"
+  },
+  "config": {
+    "section": {
+      "path": "路径设置",
+      "behavior": "行为设置",
+      "logs": "日志设置",
+      "excluded": "排除监听列表"
+    },
+    "row": {
+      "enable_backup": "启用备份",
+      "enable_quarantine": "启用隔离目录"
+    },
+    "desc": {
+      "exiftool_path": "exiftool 可执行文件的完整路径",
+      "hot_folder": "自动清理此目录下新增文件的元数据",
+      "backup_enabled": "清理前将原文件复制到备份目录",
+      "backup_dir": "留空默认使用监控目录/bak",
+      "quarantine_enabled": "处理失败的文件移入此目录隔离",
+      "quarantine_dir": "处理失败的文件存放路径",
+      "hide_on_startup": "启动后仅在托盘显示，不弹出主窗口",
+      "hide_tray": "在托盘模式下隐藏图标，仅保留后台处理",
+      "theme": "可在系统/亮色/暗色之间自由切换",
+      "language": "选择界面显示语言",
+      "log_level": "info=标准日志，debug=详细调试日志",
+      "audit_log_dir": "audit jsonl 文件的存放目录",
+      "system_excluded": "日志、备份、隔离目录自动被排除在文件监听之外",
+      "user_excluded": "可添加额外路径以排除监听"
+    },
+    "label": {
+      "system_excluded": "系统自动排除目录（只读）",
+      "user_excluded": "用户自定义排除目录"
+    },
+    "tooltip": {
+      "add_excluded_dir": "添加排除监听的目录",
+      "remove_excluded_dir": "移除选中的排除目录"
+    }
+  },
+  "theme": {
+    "option": {
+      "system": "跟随系统",
+      "light": "浅色",
+      "dark": "深色"
+    },
+    "preset": {
+      "catppuccin": "Catppuccin",
+      "dracula": "Dracula",
+      "nord": "Nord",
+      "onedarkpro": "One Dark Pro",
+      "tokyonight": "Tokyo Night"
+    }
+  },
+  "loglevel": {
+    "option": {
+      "all": "ALL（全部）",
+      "info": "INFO（标准）",
+      "debug": "DEBUG（调试）",
+      "warn": "WARN（警告）",
+      "error": "ERROR（错误）"
+    }
+  },
+  "log": {
+    "section": {
+      "logs": "日志"
+    },
+    "btn": {
+      "clear": "清空"
+    },
+    "empty": "暂无审计日志 — 等待文件监控事件"
+  },
+  "titlebar": {
+    "minimize": "最小化",
+    "maximize": "最大化",
+    "close": "关闭"
+  },
+  "tray": {
+    "pause": "暂停",
+    "resume": "恢复",
+    "open_window": "打开主窗口",
+    "exit": "退出",
+    "tooltip": "PhotoPrivacy"
+  },
+  "dialog": {
+    "select_exiftool": "选择 ExifTool 可执行文件",
+    "select_hot_folder": "选择监控目录",
+    "select_backup_dir": "选择备份目录",
+    "select_log_dir": "选择日志目录",
+    "select_quarantine_dir": "选择隔离目录",
+    "select_excluded_dir": "添加排除监听的目录"
+  },
+  "audit": {
+    "exiftool_started": "ExifTool 启动",
+    "service_started": "服务启动",
+    "file_cleaned": "清理完成",
+    "file_skipped": "已跳过",
+    "file_detected": "检测到文件",
+    "instance_conflict": "重复启动被拒",
+    "file_failed": "清理失败"
+  },
+  "rules": {
+    "panel": {
+      "title": "格式清理规则",
+      "subtitle": "按文件格式族配置元数据清理策略，专业模式可解锁危险选项"
+    },
+    "expert": {
+      "mode": "专业模式",
+      "infobar": "要解除保护，请启用专业模式。专业模式将放松安全护栏，请谨慎操作。"
+    },
+    "search": {
+      "placeholder": "搜索扩展名或格式族，如 jpg、raw、mp4…"
+    },
+    "btn": {
+      "save": "保存自定义规则",
+      "reset": "恢复默认"
+    },
+    "empty": "无匹配的清理规则",
+    "col": {
+      "family": "格式族",
+      "extensions": "扩展名",
+      "enabled": "启用",
+      "strip_all": "全部清除",
+      "preserve_icc": "保留 ICC",
+      "strip_exif": "EXIF",
+      "strip_xmp": "XMP",
+      "strip_iptc": "IPTC",
+      "strip_time": "时间",
+      "warning": "警告",
+      "effective_args": "生成参数"
+    }
+  }
+}

@@ -1,0 +1,278 @@
+{
+  "app": {
+    "title": "PhotoPrivacy"
+  },
+  "nav": {
+    "config": "設定",
+    "logs": "ログ",
+    "service": "サービス管理",
+    "service_manager": "サービスマネージャー",
+    "rules": "ルール"
+  },
+  "btn": {
+    "pause": "⏸ 一時停止",
+    "resume": "▶ 再開",
+    "save": "設定を保存",
+    "clear_logs": "ログをクリア",
+    "browse": "参照...",
+    "open_config_dir": "設定ディレクトリを開く",
+    "ellipsis": "…",
+    "add": "+",
+    "remove": "-"
+  },
+  "status": {
+    "running": "実行中",
+    "paused": "一時停止中",
+    "stopped": "停止中",
+    "detecting": "検出中…",
+    "connecting": "Worker接続中...",
+    "exiftool_not_found": "ExifTool が見つかりません",
+    "auto_detected": "自動検出されました",
+    "service_mode": "サービスモード",
+    "tray_mode": "トレイモード",
+    "service_running": "サービス実行中",
+    "service_stopped": "サービス停止",
+    "tray_paused": "トレイ一時停止中",
+    "tray_running": "トレイ実行中",
+    "pause_service_unavailable": "一時停止（サービスモードでは使用不可）"
+  },
+  "mode": {
+    "tray": "トレイモード",
+    "service": "サービスモード",
+    "background": "バックグラウンドモード"
+  },
+  "settings": {
+    "exiftool_path": "ExifTool パス",
+    "hot_folder": "監視フォルダ",
+    "backup": "バックアップ",
+    "backup_dir": "バックアップディレクトリ",
+    "theme": "テーマ",
+    "theme_preset": "テーマプリセット",
+    "language": "言語",
+    "font": "フォント",
+    "font_size": "フォントサイズ",
+    "hide_on_startup": "起動時にウィンドウを隠す",
+    "hide_tray": "トレイアイコンを隠す",
+    "quarantine": "隔離",
+    "quarantine_dir": "隔離ディレクトリ",
+    "audit_log_dir": "監査ログディレクトリ",
+    "log_level": "ログレベル",
+    "excluded_dirs": "除外ディレクトリ",
+    "system_excluded": "システム自動除外",
+    "enable_backup": "バックアップ有効",
+    "enable_backup_full": "バックアップ有効",
+    "audit_log_dir_label": "ログ保存パス"
+  },
+  "service": {
+    "status": "サービス状態",
+    "install": "サービスインストール",
+    "uninstall": "サービスアンインストール",
+    "start": "サービス開始",
+    "stop": "サービス停止",
+    "running": "実行中",
+    "stopped": "停止中",
+    "failed": "失敗",
+    "section": {
+      "status": "現在のステータス",
+      "actions": "アクション"
+    },
+    "row": {
+      "install_start": "サービスをインストール＆開始",
+      "start_stop": "サービス開始 / 停止",
+      "uninstall": "サービスをアンインストール"
+    },
+    "desc": {
+      "install": "PhotoPrivacyWorker を Windows システムサービスとして登録",
+      "start_stop": "インストール済みサービスの実行状態を手動制御",
+      "uninstall": "システムからサービスを削除、トレイモードに切替"
+    },
+    "btn": {
+      "install": "サービスをインストール",
+      "start": "開始",
+      "stop": "停止",
+      "refresh": "更新",
+      "uninstall": "サービスをアンインストール"
+    },
+    "status_format_skip": "{0} | スキップ：{1}",
+    "status_format_cancel": "{0} | キャンセル：{1}",
+    "status_format_fail": "{0} | 失敗：{1}",
+    "uninstalling": "サービスをアンインストール中...",
+    "state": {
+      "not_installed": "未インストール",
+      "start_pending": "起動中",
+      "pause_pending": "一時停止中",
+      "continue_pending": "再開中",
+      "stop_pending": "停止中",
+      "unknown": "不明",
+      "not_installed_short": "未インストール"
+    },
+    "msg": {
+      "operation_success": "操作成功",
+      "use_systemd": "Linux/macOS では systemd を使用してサービスを管理してください",
+      "must_use_worker": "サービスのインストールには PhotoPrivacyWorker.exe が必要です",
+      "invalid_target": "サービスの実行対象は PhotoPrivacyWorker.exe である必要があります",
+      "path_empty": "パスは空にできません",
+      "path_invalid_chars": "パスに不正な文字が含まれています: {0}",
+      "path_must_be_absolute": "パスは絶対パスである必要があります",
+      "elevation_cancelled": "ユーザーが管理者認証をキャンセルしました"
+    },
+    "exitcode": {
+      "0": "操作成功",
+      "5": "権限が不足しています。管理者として実行してください",
+      "1053": "サービス開始がタイムアウトしました。ExifTool パスと設定ファイルを確認してください",
+      "1055": "サービスデータベースがロックされています。後で再試行してください",
+      "1056": "サービスはすでに実行中です",
+      "1058": "サービスは無効化されています",
+      "1060": "サービスが存在しません。先にインストールしてください",
+      "1062": "サービスは実行されていません。停止の必要はありません",
+      "1072": "サービスは削除対象としてマークされています。システムを再起動して再試行してください",
+      "1073": "サービスはすでに存在します。自動的にアンインストール後に再インストールしました",
+      "unknown": "不明なエラー（コード {0}）"
+    }
+  },
+  "msg": {
+    "saved": "設定を保存しました",
+    "save_failed": "保存に失敗しました",
+    "exiftool_not_found": "ExifTool が見つかりません",
+    "worker_not_found": "Worker 実行ファイルが見つかりません",
+    "tray_still_running": "トレイ Worker がまだ実行中です。サービス開始をキャンセルしました。後で再試行してください。",
+    "auto_saved": "自動保存済み",
+    "auto_saved_worker_down": "自動保存済み（Worker 未実行）",
+    "save_failed_exception": "保存に失敗しました：{0}",
+    "invalid_exiftool_path": "ExifTool パスが無効です。正しい exiftool.exe を選択してください",
+    "saved_worker_down": "保存済み（Worker 未実行、次回起動時に反映）",
+    "applied": "適用済み",
+    "apply_failed_exception": "適用に失敗しました：{0}",
+    "config_apply_failed": "設定の適用に失敗しました",
+    "worker_not_found_detail": "Worker 実行ファイルが見つかりません（PhotoPrivacyWorker）",
+    "tray_worker_running": "トレイ Worker がまだ実行中です。サービス開始をキャンセルしました。後で再試行してください。"
+  },
+  "config": {
+    "section": {
+      "path": "パス設定",
+      "behavior": "動作設定",
+      "logs": "ログ設定",
+      "excluded": "除外リスト"
+    },
+    "row": {
+      "enable_backup": "バックアップ有効",
+      "enable_quarantine": "隔離有効"
+    },
+    "desc": {
+      "exiftool_path": "exiftool 実行ファイルの完全パス",
+      "hot_folder": "このディレクトリ内の新規ファイルのメタデータを自動消去",
+      "backup_enabled": "消去前に元ファイルをバックアップディレクトリにコピー",
+      "backup_dir": "空欄で監視ディレクトリ/bak を使用",
+      "quarantine_enabled": "処理失敗ファイルをこのディレクトリに隔離",
+      "quarantine_dir": "処理失敗ファイルの保存パス",
+      "hide_on_startup": "起動後トレイのみ表示、メインウィンドウを開かない",
+      "hide_tray": "トレイモードでアイコンを非表示、バックグラウンド処理のみ保持",
+      "theme": "システム/ライト/ダークを自由に切替",
+      "language": "インターフェースの表示言語を選択",
+      "log_level": "info=標準ログ、debug=詳細デバッグログ",
+      "audit_log_dir": "監査 JSONL ファイルの保存ディレクトリ",
+      "system_excluded": "ログ、バックアップ、隔離ディレクトリは自動除外",
+      "user_excluded": "監視から除外する追加パスを指定可能"
+    },
+    "label": {
+      "system_excluded": "システム自動除外ディレクトリ（読み取り専用）",
+      "user_excluded": "ユーザー定義除外ディレクトリ"
+    },
+    "tooltip": {
+      "add_excluded_dir": "監視対象外のディレクトリを追加",
+      "remove_excluded_dir": "選択した除外ディレクトリを削除"
+    }
+  },
+  "theme": {
+    "option": {
+      "system": "システムに従う",
+      "light": "ライト",
+      "dark": "ダーク"
+    },
+    "preset": {
+      "catppuccin": "Catppuccin",
+      "dracula": "ドラキュラ",
+      "nord": "Nord",
+      "onedarkpro": "One Dark Pro",
+      "tokyonight": "Tokyo Night"
+    }
+  },
+  "loglevel": {
+    "option": {
+      "all": "ALL（全て）",
+      "info": "INFO（標準）",
+      "debug": "DEBUG（デバッグ）",
+      "warn": "WARN（警告）",
+      "error": "ERROR（エラー）"
+    }
+  },
+  "log": {
+    "section": {
+      "logs": "ログ"
+    },
+    "btn": {
+      "clear": "クリア"
+    },
+    "empty": "監査ログはまだありません — ファイル監視イベントを待機中"
+  },
+  "tray": {
+    "pause": "一時停止",
+    "resume": "再開",
+    "open_window": "メインウィンドウを開く",
+    "exit": "終了",
+    "tooltip": "PhotoPrivacy"
+  },
+  "dialog": {
+    "select_exiftool": "ExifTool 実行ファイルを選択",
+    "select_hot_folder": "監視フォルダを選択",
+    "select_backup_dir": "バックアップディレクトリを選択",
+    "select_log_dir": "ログディレクトリを選択",
+    "select_quarantine_dir": "隔離ディレクトリを選択",
+    "select_excluded_dir": "除外するディレクトリを追加"
+  },
+  "audit": {
+    "exiftool_started": "ExifTool 起動",
+    "service_started": "サービス起動",
+    "file_cleaned": "クリーン完了",
+    "file_skipped": "スキップ",
+    "file_detected": "ファイル検出",
+    "instance_conflict": "重複起動が拒否されました",
+    "file_failed": "クリーン失敗"
+  },
+  "rules": {
+    "panel": {
+      "title": "形式別クリーンアップルール",
+      "subtitle": "形式ファミリーごとにメタデータクリーンアップ戦略を設定。エキスパートモードで危険なオプションを解放"
+    },
+    "expert": {
+      "mode": "エキスパートモード",
+      "infobar": "保護を解除するにはエキスパートモードを有効にしてください。ガードレールが緩和されます、慎重に操作してください。"
+    },
+    "search": {
+      "placeholder": "拡張子または形式ファミリーを検索（jpg、raw、mp4…）"
+    },
+    "btn": {
+      "save": "カスタムルールを保存",
+      "reset": "デフォルトに戻す"
+    },
+    "col": {
+      "family": "ファミリー",
+      "extensions": "拡張子",
+      "enabled": "有効",
+      "strip_all": "全削除",
+      "preserve_icc": "ICC 保持",
+      "strip_exif": "EXIF",
+      "strip_xmp": "XMP",
+      "strip_iptc": "IPTC",
+      "strip_time": "時間",
+      "warning": "警告",
+      "effective_args": "生成引数"
+    },
+    "empty": "一致するクリーンアップルールがありません"
+  },
+  "titlebar": {
+    "minimize": "最小化",
+    "maximize": "最大化",
+    "close": "閉じる"
+  }
+}

@@ -1,0 +1,178 @@
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using PhotoPrivacy.Core.Audit;
+using PhotoPrivacy.Core.Configuration;
+
+namespace PhotoPrivacy.Core.Watcher;
+
+public sealed class FswFolderWatcher
+{
+    private readonly AppConfig _config;
+    private readonly IRecoveryScanner _scanner;
+    private readonly IAuditLogger _audit;
+    private readonly Func<string, Task> _onPath;
+    private readonly IFileSystemWatcherFactory _factory;
+    private readonly IReadOnlyList<string> _autoExcludedSubdirectories;
+    private readonly ILogger _logger;
+
+    private FileSystemWatcher? _fsw;
+    private PollingFallbackScanner? _poller;
+    private readonly SemaphoreSlim _recoveryGate = new(1, 1);
+    private int _recoveryQueued;
+
+    public FswFolderWatcher(
+        AppConfig config,
+        IRecoveryScanner scanner,
+        IAuditLogger audit,
+        Func<string, Task> onPath,
+        IFileSystemWatcherFactory? factory = null,
+        ILogger? logger = null)
+    {
+        _config = config;
+        _scanner = scanner;
+        _audit = audit;
+        _onPath = onPath;
+        _factory = factory ?? (IFileSystemWatcherFactory)new DefaultFileSystemWatcherFactory();
+        _autoExcludedSubdirectories = WatchPathFilter.ResolveAutoExcludedSubdirectories(config);
+        _logger = logger ?? NullLogger.Instance;
+    }
+
+    public void Start()
+    {
+        _fsw = BuildWatcher();
+        _fsw.EnableRaisingEvents = true;
+
+        // Start polling fallback if configured (polling_interval_seconds > 0)
+        if (_config.Watch.PollingIntervalSeconds > 0)
+        {
+            var interval = TimeSpan.FromSeconds(_config.Watch.PollingIntervalSeconds);
+            _poller = new PollingFallbackScanner(
+                _config.Watch.HotFolder,
+                _onPath,
+                path => WatchPathFilter.ShouldSkipPath(path, _autoExcludedSubdirectories),
+                interval,
+                _logger);
+            _poller.Start();
+        }
+    }
+
+    public void Stop()
+    {
+        _poller?.Dispose();
+        _poller = null;
+        _fsw?.Dispose();
+        _fsw = null;
+    }
+
+    public void RecoverFromError(Exception ex)
+    {
+        _ = RecoverAsync(ex);
+    }
+
+    public Task RecoverFromErrorAsync(Exception ex)
+    {
+        return RecoverAsync(ex);
+    }
+
+    private FileSystemWatcher BuildWatcher()
+    {
+        var watcher = _factory.Create(_config.Watch.HotFolder);
+        watcher.IncludeSubdirectories = _config.Watch.IncludeSubdirectories;
+        // B03: the FSW buffer lives in the non-paged pool - only the hot-folder watcher
+        // is raised to 64KB (config default); the audit-log tail watcher keeps the 8KB default.
+        watcher.InternalBufferSize = _config.Watch.InternalBufferSize;
+        watcher.NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.DirectoryName;
+
+        watcher.Created += (_, e) => _ = OnFsEventAsync(e.FullPath);
+        watcher.Changed += (_, e) => _ = OnFsEventAsync(e.FullPath);
+        watcher.Renamed += (_, e) => _ = OnFsEventAsync(e.FullPath);
+        watcher.Error += (_, e) => _ = RecoverAsync(e.GetException() ?? new IOException("FileSystemWatcher error"));
+
+        return watcher;
+    }
+
+    private async Task RecoverAsync(Exception ex)
+    {
+        if (!_recoveryGate.Wait(0))
+        {
+            // A recovery pass is already rebuilding the watcher; a second concurrent
+            // Stop/Start would leak watchers/pollers and duplicate event delivery.
+            // Overflow errors need no per-error queueing - every pass rescans the whole
+            // tree - so just ask the running pass for one follow-up rescan.
+            Interlocked.Exchange(ref _recoveryQueued, 1);
+            return;
+        }
+
+        try
+        {
+            var cause = ex;
+            while (true)
+            {
+                Interlocked.Exchange(ref _recoveryQueued, 0);
+                await RecoverCoreAsync(cause);
+                cause = new IOException("FileSystemWatcher error (coalesced follow-up rescan)");
+                if (Interlocked.CompareExchange(ref _recoveryQueued, 0, 0) == 0)
+                {
+                    break;
+                }
+            }
+        }
+        finally
+        {
+            _recoveryGate.Release();
+        }
+    }
+
+    private async Task RecoverCoreAsync(Exception ex)
+    {
+        await _audit.WriteAsync(
+            new AuditEvent("fsw_error", AuditLevel.Warn, DateTimeOffset.UtcNow, Guid.NewGuid().ToString("N"), _config.Watch.HotFolder, ex.Message, null),
+            CancellationToken.None);
+
+        Stop();
+        Start();
+
+        // Force polling rescan immediately after FSW recovery to catch anything missed
+        if (_poller is not null)
+        {
+            await _poller.ForceRescanAsync();
+        }
+
+        foreach (var path in _scanner.ScanAll(_config.Watch.HotFolder))
+        {
+            if (WatchPathFilter.ShouldSkipPath(path, _autoExcludedSubdirectories))
+            {
+                continue;
+            }
+
+            await _onPath(path);
+        }
+
+        await _audit.WriteAsync(
+            new AuditEvent("fsw_recovered", AuditLevel.Info, DateTimeOffset.UtcNow, Guid.NewGuid().ToString("N"), _config.Watch.HotFolder, "recreated_watcher", null),
+            CancellationToken.None);
+    }
+
+    public IReadOnlyList<string> GetAutoExcludedSubdirectories()
+    {
+        return _autoExcludedSubdirectories;
+    }
+
+    private Task OnFsEventAsync(string fullPath)
+    {
+        if (WatchPathFilter.ShouldSkipPath(fullPath, _autoExcludedSubdirectories))
+        {
+            return Task.CompletedTask;
+        }
+
+        return _onPath(fullPath);
+    }
+
+    private sealed class DefaultFileSystemWatcherFactory : IFileSystemWatcherFactory
+    {
+        public FileSystemWatcher Create(string path)
+        {
+            return new FileSystemWatcher(path);
+        }
+    }
+}

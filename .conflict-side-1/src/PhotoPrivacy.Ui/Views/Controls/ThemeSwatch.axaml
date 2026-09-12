@@ -1,0 +1,16 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="using:PhotoPrivacy.Ui.Views.Controls"
+        x:Class="PhotoPrivacy.Ui.Views.Controls.ThemeSwatch"
+        x:DataType="controls:ThemeSwatch">
+  <!-- 票 25（架构恢复第六轮）：主题色板 — 色块 + 本地化 caption。
+       保留 ADR 0052 A3 语义：GroupName=ThemePreset（同组互斥）+ Tag=ThemeId（SyncThemeSwatchSelection 持久化回填依据）。 -->
+  <RadioButton x:Name="PART_Radio" Padding="8" CornerRadius="8"
+               GroupName="{Binding GroupName, RelativeSource={RelativeSource AncestorType=controls:ThemeSwatch}}"
+               Tag="{Binding ThemeId, RelativeSource={RelativeSource AncestorType=controls:ThemeSwatch}}">
+    <StackPanel Orientation="Vertical" Spacing="4" HorizontalAlignment="Center">
+      <Border x:Name="PART_Swatch" Width="40" Height="28" CornerRadius="4"/>
+      <TextBlock Text="{Binding Label, RelativeSource={RelativeSource AncestorType=controls:ThemeSwatch}}" Classes="caption" HorizontalAlignment="Center"/>
+    </StackPanel>
+  </RadioButton>
+</UserControl>

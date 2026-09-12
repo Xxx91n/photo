@@ -1,0 +1,278 @@
+{
+  "app": {
+    "title": "PhotoPrivacy"
+  },
+  "nav": {
+    "config": "Einstellungen",
+    "logs": "Protokolle",
+    "service": "Dienst",
+    "service_manager": "Dienstmanager",
+    "rules": "Regeln"
+  },
+  "btn": {
+    "pause": "⏸ Pause",
+    "resume": "▶ Fortsetzen",
+    "save": "Konfiguration speichern",
+    "clear_logs": "Protokolle löschen",
+    "browse": "Durchsuchen...",
+    "open_config_dir": "Konfigurationsverzeichnis öffnen",
+    "ellipsis": "…",
+    "add": "+",
+    "remove": "-"
+  },
+  "status": {
+    "running": "Läuft",
+    "paused": "Pausiert",
+    "stopped": "Gestoppt",
+    "detecting": "Erkennung läuft…",
+    "connecting": "Worker verbinden...",
+    "exiftool_not_found": "ExifTool nicht gefunden",
+    "auto_detected": "Automatisch erkannt",
+    "service_mode": "Dienstmodus",
+    "tray_mode": "Systemablage-Modus",
+    "service_running": "Dienst läuft",
+    "service_stopped": "Dienst gestoppt",
+    "tray_paused": "Systemablage pausiert",
+    "tray_running": "Systemablage läuft",
+    "pause_service_unavailable": "Pause (in Dienstmodus nicht verfügbar)"
+  },
+  "mode": {
+    "tray": "Systemablage-Modus",
+    "service": "Dienstmodus",
+    "background": "Hintergrundmodus"
+  },
+  "settings": {
+    "exiftool_path": "ExifTool-Pfad",
+    "hot_folder": "Watch-Ordner",
+    "backup": "Backup",
+    "backup_dir": "Backup-Verzeichnis",
+    "theme": "Thema",
+    "theme_preset": "Theme-Voreinstellung",
+    "language": "Sprache",
+    "font": "Schriftart",
+    "font_size": "Schriftgröße",
+    "hide_on_startup": "Fenster beim Start ausblenden",
+    "hide_tray": "Systemablage-Symbol ausblenden",
+    "quarantine": "Quarantäne",
+    "quarantine_dir": "Quarantäne-Verzeichnis",
+    "audit_log_dir": "Audit-Protokoll-Verzeichnis",
+    "log_level": "Protokollstufe",
+    "excluded_dirs": "Ausgeschlossene Verzeichnisse",
+    "system_excluded": "System automatisch ausgeschlossen",
+    "enable_backup": "Backup aktivieren",
+    "enable_backup_full": "Backup aktivieren",
+    "audit_log_dir_label": "Pfad zur Protokollspeicherung"
+  },
+  "service": {
+    "status": "Dienststatus",
+    "install": "Dienst installieren",
+    "uninstall": "Dienst deinstallieren",
+    "start": "Dienst starten",
+    "stop": "Dienst stoppen",
+    "running": "In Betrieb",
+    "stopped": "Gestoppt",
+    "failed": "Fehlgeschlagen",
+    "section": {
+      "status": "AKTUELLER STATUS",
+      "actions": "AKTIONEN"
+    },
+    "row": {
+      "install_start": "Dienst installieren & starten",
+      "start_stop": "Dienst starten / stoppen",
+      "uninstall": "Dienst deinstallieren"
+    },
+    "desc": {
+      "install": "PhotoPrivacyWorker als Windows-Systemdienst registrieren",
+      "start_stop": "Manuelles Steuerung des Laufzustands des installierten Dienstes",
+      "uninstall": "Dienst aus dem System entfernen, in den Tray-Modus wechseln"
+    },
+    "btn": {
+      "install": "Dienst installieren",
+      "start": "Start",
+      "stop": "Stopp",
+      "refresh": "Aktualisieren",
+      "uninstall": "Dienst deinstallieren"
+    },
+    "status_format_skip": "{0} | Übersprungen: {1}",
+    "status_format_cancel": "{0} | Abgebrochen: {1}",
+    "status_format_fail": "{0} | Fehlgeschlagen: {1}",
+    "uninstalling": "Deinstalliere Dienst...",
+    "state": {
+      "not_installed": "Nicht installiert",
+      "start_pending": "Startet",
+      "pause_pending": "Pausiert",
+      "continue_pending": "Fortsetzen",
+      "stop_pending": "Stoppt",
+      "unknown": "Unbekannt",
+      "not_installed_short": "Nicht installiert"
+    },
+    "msg": {
+      "operation_success": "Vorgang erfolgreich",
+      "use_systemd": "Verwenden Sie systemd zur Verwaltung von Diensten unter Linux/macOS",
+      "must_use_worker": "Dienstinstallation erfordert PhotoPrivacyWorker.exe",
+      "invalid_target": "Ziel des Dienstes muss PhotoPrivacyWorker.exe sein",
+      "path_empty": "Pfad darf nicht leer sein",
+      "path_invalid_chars": "Pfad enthält ungültige Zeichen: {0}",
+      "path_must_be_absolute": "Pfad muss absolut sein",
+      "elevation_cancelled": "Benutzer hat die Administratorberechtigung abgebrochen"
+    },
+    "exitcode": {
+      "0": "Vorgang erfolgreich",
+      "5": "Zugriff verweigert, bitte als Administrator ausführen",
+      "1053": "Dienststartzeitüberschreitung, Pfad von ExifTool und Config-Datei prüfen",
+      "1055": "Datenbank des Dienstes gesperrt, später erneut versuchen",
+      "1056": "Dienst läuft bereits",
+      "1058": "Dienst ist deaktiviert",
+      "1060": "Dienst existiert nicht, zuerst installieren",
+      "1062": "Dienst läuft nicht, kein Stop erforderlich",
+      "1072": "Dienst zum Löschen markiert, System neu starten und erneut versuchen",
+      "1073": "Dienst existiert bereits, Auto-Deinstallation und Neuinstallation",
+      "unknown": "Unbekannter Fehler (Code {0})"
+    }
+  },
+  "msg": {
+    "saved": "Konfiguration gespeichert",
+    "save_failed": "Speichern fehlgeschlagen",
+    "exiftool_not_found": "ExifTool nicht gefunden",
+    "worker_not_found": "Worker-Ausführbare Datei nicht gefunden",
+    "tray_still_running": "Tray Worker läuft noch. Dienststart abgebrochen, bitte später erneut versuchen.",
+    "auto_saved": "Automatisch gespeichert",
+    "auto_saved_worker_down": "Automatisch gespeichert (Worker läuft nicht)",
+    "save_failed_exception": "Speichern fehlgeschlagen: {0}",
+    "invalid_exiftool_path": "Ungültiger ExifTool-Pfad, bitte exiftool.exe korrekt auswählen",
+    "saved_worker_down": "Gespeichert (Worker läuft nicht, tritt beim nächsten Start in Kraft)",
+    "applied": "Übernommen",
+    "apply_failed_exception": "Übernahme fehlgeschlagen: {0}",
+    "config_apply_failed": "Config-Übernahme fehlgeschlagen",
+    "worker_not_found_detail": "Worker-Ausführbare Datei nicht gefunden (PhotoPrivacyWorker)",
+    "tray_worker_running": "Tray Worker läuft noch. Dienststart abgebrochen, bitte später erneut versuchen."
+  },
+  "config": {
+    "section": {
+      "path": "Pfad-Einstellungen",
+      "behavior": "Verhaltens-Einstellungen",
+      "logs": "Protokoll-Einstellungen",
+      "excluded": "Ausschluss-Watchliste"
+    },
+    "row": {
+      "enable_backup": "Sicherung aktivieren",
+      "enable_quarantine": "Quarantäne aktivieren"
+    },
+    "desc": {
+      "exiftool_path": "Voller Pfad zur ExifTool-Executable",
+      "hot_folder": "Metadaten automatisch aus neuen Dateien in diesem Verzeichnis bereinigen",
+      "backup_enabled": "Originaldateien vor dem Bereinigen in das Backup-Verzeichnis kopieren",
+      "backup_dir": "Leer lassen, um <hot_folder>/bak zu verwenden",
+      "quarantine_enabled": "Fehlgeschlagene Dateien in dieses Verzeichnis zur Isolation verschieben",
+      "quarantine_dir": "Pfad zum Speichern fehlgeschlagener Dateien",
+      "hide_on_startup": "Nur nach dem Start im Tray anzeigen, kein Hauptfenster-Popup",
+      "hide_tray": "Tray-Symbol im Tray-Modus ausblenden, Hintergrundverarbeitung aktiv halten",
+      "theme": "Wechsel frei zwischen System/Light/Dark",
+      "language": "Schnittstelle-Anzeigesprache auswählen",
+      "log_level": "info=Standard-Logging, debug=Ausführliche Debug-Logs",
+      "audit_log_dir": "Verzeichnis, in dem Audit JSONL-Dateien gespeichert werden",
+      "system_excluded": "Registerordner für Protokollierung, Backup und Quarantäne werden automatisch vom Dateiwächter ausgeschlossen",
+      "user_excluded": "Zusätzliche Pfade zum Ausschluss vom Watchen hinzufügen"
+    },
+    "label": {
+      "system_excluded": "Systematisch automatisch ausgeschlossene Verzeichnisse (nur Lesen)",
+      "user_excluded": "Vom Benutzer definierte Ausschlussverzeichnisse"
+    },
+    "tooltip": {
+      "add_excluded_dir": "Verzeichnis von der Überwachung ausschließen",
+      "remove_excluded_dir": "Ausgewähltes ausgeschlossenes Verzeichnis entfernen"
+    }
+  },
+  "theme": {
+    "option": {
+      "system": "System folgen",
+      "light": "Hell",
+      "dark": "Dunkel"
+    },
+    "preset": {
+      "catppuccin": "Catppuccin",
+      "dracula": "Dracula",
+      "nord": "Nord",
+      "onedarkpro": "One Dark Pro",
+      "tokyonight": "Tokyo Night"
+    }
+  },
+  "loglevel": {
+    "option": {
+      "all": "ALLE (alles)",
+      "info": "INFO (Standard)",
+      "debug": "DEBUG (ausführlich)",
+      "warn": "WARNUNG (Warnungen)",
+      "error": "FEHLER (Fehler)"
+    }
+  },
+  "log": {
+    "section": {
+      "logs": "Protokolle"
+    },
+    "btn": {
+      "clear": "Bereinigen"
+    },
+    "empty": "Noch keine Prüfprotokolle — warte auf Dateiüberwachungsereignisse"
+  },
+  "tray": {
+    "pause": "Anhalten",
+    "resume": "Fortsetzen",
+    "open_window": "Hauptfenster öffnen",
+    "exit": "Beenden",
+    "tooltip": "PhotoPrivacy"
+  },
+  "dialog": {
+    "select_exiftool": "ExifTool-Ausführbare Datei auswählen",
+    "select_hot_folder": "Watch-Ordner auswählen",
+    "select_backup_dir": "Backup-Verzeichnis auswählen",
+    "select_log_dir": "Protokollverzeichnis auswählen",
+    "select_quarantine_dir": "Quarantäne-Verzeichnis auswählen",
+    "select_excluded_dir": "Verzeichnis zur Überwachungsausnahme hinzufügen"
+  },
+  "audit": {
+    "exiftool_started": "ExifTool gestartet",
+    "service_started": "Dienst gestartet",
+    "file_cleaned": "Bereinigt",
+    "file_skipped": "Übersprungen",
+    "file_detected": "Datei erkannt",
+    "instance_conflict": "Doppelstart abgelehnt",
+    "file_failed": "Bereinigung fehlgeschlagen"
+  },
+  "rules": {
+    "panel": {
+      "title": "Format-spezifische Bereinigungsregeln",
+      "subtitle": "Metadaten-Bereinigungsstrategie pro Formatfamilie konfigurieren; Expertenmodus schaltet gefährliche Optionen frei"
+    },
+    "expert": {
+      "mode": "Expertenmodus",
+      "infobar": "Zum Aufheben des Schutzes aktivieren Sie den Expertenmodus. Der Expertenmodus lockert Schutzmaßnahmen — mit Vorsicht verwenden."
+    },
+    "search": {
+      "placeholder": "Erweiterungen oder Formatfamilie suchen, z.B. jpg, raw, mp4…"
+    },
+    "btn": {
+      "save": "Benutzerregeln speichern",
+      "reset": "Auf Standard zurücksetzen"
+    },
+    "col": {
+      "family": "Familie",
+      "extensions": "Erweiterungen",
+      "enabled": "Aktiviert",
+      "strip_all": "Alle löschen",
+      "preserve_icc": "ICC erhalten",
+      "strip_exif": "EXIF",
+      "strip_xmp": "XMP",
+      "strip_iptc": "IPTC",
+      "strip_time": "Zeit",
+      "warning": "Warnung",
+      "effective_args": "Generierte Args"
+    },
+    "empty": "Keine passenden Bereinigungsregeln"
+  },
+  "titlebar": {
+    "minimize": "Minimieren",
+    "maximize": "Maximieren",
+    "close": "Schließen"
+  }
+}

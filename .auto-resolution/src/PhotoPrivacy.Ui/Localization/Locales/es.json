@@ -1,0 +1,278 @@
+{
+  "app": {
+    "title": "PhotoPrivacy"
+  },
+  "nav": {
+    "config": "Configuración",
+    "logs": "Registros",
+    "service": "Servicio",
+    "service_manager": "Administrador de Servicio",
+    "rules": "Reglas"
+  },
+  "btn": {
+    "pause": "⏸ Pausa",
+    "resume": "▶ Reanudar",
+    "save": "Guardar Configuración",
+    "clear_logs": "Borrar Registros",
+    "browse": "Examinar...",
+    "open_config_dir": "Abrir directorio de configuración",
+    "ellipsis": "…",
+    "add": "+",
+    "remove": "-"
+  },
+  "status": {
+    "running": "En ejecución",
+    "paused": "En pausa",
+    "stopped": "Detenido",
+    "detecting": "Detectando…",
+    "connecting": "Worker conectando...",
+    "exiftool_not_found": "ExifTool no encontrado",
+    "auto_detected": "Detectado automáticamente",
+    "service_mode": "Modo de Servicio",
+    "tray_mode": "Modo Bandeja",
+    "service_running": "Servicio en ejecución",
+    "service_stopped": "Servicio detenido",
+    "tray_paused": "Bandeja en pausa",
+    "tray_running": "Bandeja en ejecución",
+    "pause_service_unavailable": "Pausar (no disponible en modo servicio)"
+  },
+  "mode": {
+    "tray": "Modo Bandeja",
+    "service": "Modo Servicio",
+    "background": "Modo de Fondo"
+  },
+  "settings": {
+    "exiftool_path": "Ruta de ExifTool",
+    "hot_folder": "Carpeta de Seguimiento",
+    "backup": "Respaldar",
+    "backup_dir": "Directorio de Respaldo",
+    "theme": "Tema",
+    "theme_preset": "Preset de tema",
+    "language": "Idioma",
+    "font": "Fuente",
+    "font_size": "Tamaño de Fuente",
+    "hide_on_startup": "Ocultar ventana al iniciar",
+    "hide_tray": "Ocultar icono de bandeja",
+    "quarantine": "Cuarentena",
+    "quarantine_dir": "Directorio de Cuarentena",
+    "audit_log_dir": "Directorio de Registros de Auditoría",
+    "log_level": "Nivel de Registro",
+    "excluded_dirs": " Directorios Excluidos",
+    "system_excluded": "Autoexcluido del Sistema",
+    "enable_backup": "Habilitar respaldo",
+    "enable_backup_full": "Habilitar respaldo",
+    "audit_log_dir_label": "Ruta de almacenamiento de registros"
+  },
+  "service": {
+    "status": "Estado del Servicio",
+    "install": "Instalar Servicio",
+    "uninstall": "Desinstalar Servicio",
+    "start": "Iniciar Servicio",
+    "stop": "Detener Servicio",
+    "running": "Ejecutándose",
+    "stopped": "Detenido",
+    "failed": "Fallido",
+    "section": {
+      "status": "ESTADO ACTUAL",
+      "actions": "ACCIONES"
+    },
+    "row": {
+      "install_start": "Instalar y iniciar servicio",
+      "start_stop": "Iniciar / detener servicio",
+      "uninstall": "Desinstalar servicio"
+    },
+    "desc": {
+      "install": "Registrar PhotoPrivacyWorker como un servicio de sistema de Windows",
+      "start_stop": "Controlar manualmente el estado de ejecución del servicio instalado",
+      "uninstall": "Eliminar el servicio del sistema, cambiar a modo bandeja"
+    },
+    "btn": {
+      "install": "Instalar servicio",
+      "start": "Iniciar",
+      "stop": "Detener",
+      "refresh": "Actualizar",
+      "uninstall": "Desinstalar servicio"
+    },
+    "status_format_skip": "{0} | Saltado: {1}",
+    "status_format_cancel": "{0} | Cancelado: {1}",
+    "status_format_fail": "{0} | Falló: {1}",
+    "uninstalling": "Desinstalando servicio...",
+    "state": {
+      "not_installed": "No instalado",
+      "start_pending": "Iniciando",
+      "pause_pending": "Pausando",
+      "continue_pending": "Reanudando",
+      "stop_pending": "Deteniendo",
+      "unknown": "Desconocido",
+      "not_installed_short": "No instalado"
+    },
+    "msg": {
+      "operation_success": "Operación exitosa",
+      "use_systemd": "Use systemd para gestionar servicios en Linux/macOS",
+      "must_use_worker": "La instalación del servicio requiere PhotoPrivacyWorker.exe",
+      "invalid_target": "El objetivo del servicio debe ser PhotoPrivacyWorker.exe",
+      "path_empty": "La ruta no puede estar vacía",
+      "path_invalid_chars": "La ruta contiene caracteres no válidos: {0}",
+      "path_must_be_absolute": "La ruta debe ser absoluta",
+      "elevation_cancelled": "El usuario canceló la autorización de administrador"
+    },
+    "exitcode": {
+      "0": "Operación exitosa",
+      "5": "Acceso denegado, por favor ejecute como administrador",
+      "1053": "Tiempo de espera al arrancar el servicio, verifique la ruta de ExifTool y el archivo de configuración",
+      "1055": "La base de datos del servicio está bloqueada, por favor reintente más tarde",
+      "1056": "El servicio ya está en ejecución",
+      "1058": "El servicio está deshabilitado",
+      "1060": "El servicio no existe, por favor instale primero",
+      "1062": "El servicio no se está ejecutando, no es necesario detenerlo",
+      "1072": "El servicio está marcado para eliminación, por favor reinicie el sistema y vuelva a intentar",
+      "1073": "El servicio ya existe, se desinstalará automáticamente y luego se volverá a instalar",
+      "unknown": "Error desconocido (código {0})"
+    }
+  },
+  "msg": {
+    "saved": "Configuración guardada",
+    "save_failed": "Guardado fallido",
+    "exiftool_not_found": "ExifTool no encontrado",
+    "worker_not_found": "Ejecutable del trabajador no encontrado",
+    "tray_still_running": "El Worker de la bandeja aún se está ejecutando. Inicio del servicio cancelado, por favor inténtelo de nuevo más tarde.",
+    "auto_saved": "Guardado automático",
+    "auto_saved_worker_down": "Guardado automático (Trabajador no en ejecución)",
+    "save_failed_exception": "Guardado fallido: {0}",
+    "invalid_exiftool_path": "Ruta de ExifTool inválida, por favor seleccione exiftool.exe correcto",
+    "saved_worker_down": "Guardado (Trabajador no en ejecución, entra en vigor en el próximo inicio)",
+    "applied": "Aplicado",
+    "apply_failed_exception": "Error al aplicar: {0}",
+    "config_apply_failed": "Error al aplicar configuración",
+    "worker_not_found_detail": "Ejecutable del trabajador no encontrado (PhotoPrivacyWorker)",
+    "tray_worker_running": "El Worker de la bandeja aún se está ejecutando. Inicio del servicio cancelado, por favor inténtelo de nuevo más tarde."
+  },
+  "config": {
+    "section": {
+      "path": "Configuración de ruta",
+      "behavior": "Configuración de comportamiento",
+      "logs": "Configuración de registros",
+      "excluded": "Excluir lista de vigilancia"
+    },
+    "row": {
+      "enable_backup": "Habilitar copia de seguridad",
+      "enable_quarantine": "Habilitar cuarentena"
+    },
+    "desc": {
+      "exiftool_path": "Ruta completa al ejecutable de exiftool",
+      "hot_folder": "Limpiar metadatos automáticamente de nuevos archivos en este directorio",
+      "backup_enabled": "Copiar archivos originales al directorio de respaldo antes de limpiar",
+      "backup_dir": "Dejar en blanco para usar <hot_folder>/bak",
+      "quarantine_enabled": "Mover archivos con fallo a este directorio para aislamiento",
+      "quarantine_dir": "Ruta para almacenar archivos fallidos",
+      "hide_on_startup": "Mostrar en la bandeja solo después del inicio, sin ventana principal",
+      "hide_tray": "Ocultar icono de la bandeja en modo de bandeja, procesamiento en segundo plano solo",
+      "theme": "Cambiar libremente entre sistema/ligero/oscuro",
+      "language": "Seleccionar idioma de visualización de la interfaz",
+      "log_level": "info=registro estándar, debug=registros de depuración detallados",
+      "audit_log_dir": "Directorio donde se almacenan los archivos JSONL de auditoría",
+      "system_excluded": "Los directorios de registro, respaldo y cuarentena se excluyen automáticamente del monitoreo de archivos",
+      "user_excluded": "Agregar rutas adicionales para excluir del monitoreo"
+    },
+    "label": {
+      "system_excluded": "Directorios autoexcluidos del sistema (solo lectura)",
+      "user_excluded": "Directorios de exclusión definidos por el usuario"
+    },
+    "tooltip": {
+      "add_excluded_dir": "Añadir directorio excluido de la vigilancia",
+      "remove_excluded_dir": "Eliminar el directorio excluido seleccionado"
+    }
+  },
+  "theme": {
+    "option": {
+      "system": "Seguir sistema",
+      "light": "Claro",
+      "dark": "Oscuro"
+    },
+    "preset": {
+      "catppuccin": "Catppuccin",
+      "dracula": "Drácula",
+      "nord": "Nord",
+      "onedarkpro": "One Dark Pro",
+      "tokyonight": "Tokyo Night"
+    }
+  },
+  "loglevel": {
+    "option": {
+      "all": "TODO (todo)",
+      "info": "INFO (estándar)",
+      "debug": "DEBUG (detallado)",
+      "warn": "WARN (advertencias)",
+      "error": "ERROR (errores)"
+    }
+  },
+  "log": {
+    "section": {
+      "logs": "Registros"
+    },
+    "btn": {
+      "clear": "Borrar"
+    },
+    "empty": "Aún no hay registros de auditoría — esperando eventos de vigilancia"
+  },
+  "tray": {
+    "pause": "Pausa",
+    "resume": "Reanudar",
+    "open_window": "Abrir ventana principal",
+    "exit": "Salir",
+    "tooltip": "PhotoPrivacy"
+  },
+  "dialog": {
+    "select_exiftool": "Seleccionar ejecutable de ExifTool",
+    "select_hot_folder": "Seleccionar carpeta de vigilancia",
+    "select_backup_dir": "Seleccionar directorio de respaldo",
+    "select_log_dir": "Seleccionar directorio de registros",
+    "select_quarantine_dir": "Seleccionar directorio de cuarentena",
+    "select_excluded_dir": "Agregar directorio para excluir de la vigilancia"
+  },
+  "audit": {
+    "exiftool_started": "ExifTool iniciado",
+    "service_started": "Servicio iniciado",
+    "file_cleaned": "Limpiado",
+    "file_skipped": "Omitido",
+    "file_detected": "Archivo detectado",
+    "instance_conflict": "Lanzamiento duplicado rechazado",
+    "file_failed": "Limpieza fallida"
+  },
+  "rules": {
+    "panel": {
+      "title": "Reglas de limpieza por formato",
+      "subtitle": "Configure la estrategia de limpieza de metadatos por familia de formato; el modo experto desbloquea opciones peligrosas"
+    },
+    "expert": {
+      "mode": "Modo experto",
+      "infobar": "Para omitir la protección, active el modo experto. El modo experto relaja las protecciones — use con precaución."
+    },
+    "search": {
+      "placeholder": "Buscar extensiones o familia de formato, ej. jpg, raw, mp4…"
+    },
+    "btn": {
+      "save": "Guardar reglas personalizadas",
+      "reset": "Restablecer valores"
+    },
+    "col": {
+      "family": "Familia",
+      "extensions": "Extensiones",
+      "enabled": "Activado",
+      "strip_all": "Borrar todo",
+      "preserve_icc": "Conservar ICC",
+      "strip_exif": "EXIF",
+      "strip_xmp": "XMP",
+      "strip_iptc": "IPTC",
+      "strip_time": "Tiempo",
+      "warning": "Aviso",
+      "effective_args": "Args generados"
+    },
+    "empty": "No hay reglas de limpieza coincidentes"
+  },
+  "titlebar": {
+    "minimize": "Minimizar",
+    "maximize": "Maximizar",
+    "close": "Cerrar"
+  }
+}

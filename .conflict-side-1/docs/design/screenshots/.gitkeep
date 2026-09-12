@@ -1,0 +1,9 @@
+# docs/design/screenshots/
+
+Visual Baseline 资产目录：4 页（配置 / 日志 / 规则 / 服务管理）× 关键态的同机位截图。
+
+- 拍摄规程（机位 / 窗口尺寸 / 主题档位 / 命名 / 目录结构）：docs/process/reports/32-ui-manual-smoke.md §5.2
+- 验收标尺（审美三锚 + before/after 对照流程）：docs/design/ui-visual-standard.md §7
+- 目录约定：<yyyymmdd>-before/ 与 <yyyymmdd>-after/ 成对出现；PNG 无损、整窗、不裁剪。
+
+> 本文件占位以保证空目录受版本控制；实际截图由用户在真实桌面执行探活时落盘（CI-only 政策约束 agent，不约束用户）。
