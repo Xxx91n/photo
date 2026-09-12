@@ -34,16 +34,24 @@
             <Border Classes="row-divider"/>
 
             <Border Classes="settings-row">
-              <DockPanel LastChildFill="False">
+              <!-- 票 03（ui-craft R1-1）：同组等宽 —— 启动/停止/刷新三枚改走 Grid + SharedSizeGroup，
+                   组内以最长文案定宽。不取固定 MinWidth：本项目 10 语言，长文案（德/俄）会撑破定值。
+                   IsSharedSizeScope 挂共同祖先（WPF/Avalonia 官方用法）；间距取规范 §5.2 P4 的 SpaceSm。 -->
+              <DockPanel LastChildFill="False" Grid.IsSharedSizeScope="True">
                 <StackPanel DockPanel.Dock="Left" Spacing="{DynamicResource SpaceXxs}">
                   <TextBlock Text="{ex:Localize service.row.start_stop}" Classes="row-label"/>
                   <TextBlock Text="{ex:Localize service.desc.start_stop}" Classes="row-desc"/>
                 </StackPanel>
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="{DynamicResource SpaceSm}">
-                  <Button x:Name="StartServiceButton" IsEnabled="{Binding ServiceButtons.StartEnabled}" Content="{ex:Localize service.btn.start}" Classes="ghost" VerticalAlignment="Center"/>
-                  <Button x:Name="StopServiceButton" IsEnabled="{Binding ServiceButtons.StopEnabled}" Content="{ex:Localize service.btn.stop}" Classes="ghost" VerticalAlignment="Center"/>
-                  <Button x:Name="RefreshServiceStatusButton" Content="{ex:Localize service.btn.refresh}" Classes="ghost" VerticalAlignment="Center"/>
-                </StackPanel>
+                <Grid DockPanel.Dock="Right" ColumnSpacing="{DynamicResource SpaceSm}" VerticalAlignment="Center">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" SharedSizeGroup="ServiceActions"/>
+                    <ColumnDefinition Width="Auto" SharedSizeGroup="ServiceActions"/>
+                    <ColumnDefinition Width="Auto" SharedSizeGroup="ServiceActions"/>
+                  </Grid.ColumnDefinitions>
+                  <Button Grid.Column="0" x:Name="StartServiceButton" IsEnabled="{Binding ServiceButtons.StartEnabled}" Content="{ex:Localize service.btn.start}" Classes="ghost" HorizontalAlignment="Stretch" VerticalAlignment="Center"/>
+                  <Button Grid.Column="1" x:Name="StopServiceButton" IsEnabled="{Binding ServiceButtons.StopEnabled}" Content="{ex:Localize service.btn.stop}" Classes="ghost" HorizontalAlignment="Stretch" VerticalAlignment="Center"/>
+                  <Button Grid.Column="2" x:Name="RefreshServiceStatusButton" Content="{ex:Localize service.btn.refresh}" Classes="ghost" HorizontalAlignment="Stretch" VerticalAlignment="Center"/>
+                </Grid>
               </DockPanel>
             </Border>
 
