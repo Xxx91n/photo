@@ -15,7 +15,7 @@
 | 1 | docs/design/ui-visual-standard.md 七节齐备 | 文件 24,510 字节；七节标题实物齐备（§1 按钮组宽度策略 / §2 nav 反馈三态 / §3 表单行骨架 / §4 空态规范 / §5 间距节奏 / §6 Toast 反馈链规划 / §7 验收标尺） | **PASS（C1 7/7）** |
 | 2 | 七节每节引用三锚具体设计点、无空泛审美词 | 全文 Wasabi×7 / Apple×16 / VS Code×12 / Discord×11；§0 三锚表逐锚给「取什么 / 具体可核验设计点 / 明确不取」；每节设独立「三锚对照」小节；全文无「高级感 / 精致 / 现代 / 有质感」 | **PASS** |
 | 3 | ADR 0065 落盘 | docs/adr/0065-ui-visual-standard-live-doc-nav-language-button-group-width.md（10,340 字节，D1–D7 齐备） | **PASS（C2）** |
-| 4 | CONTEXT.md 新增 2 词条 | `**UI Visual Standard**:` 与 `**Visual Baseline**:` 实物存在，均含 _Avoid_ 行 | **PASS（C2）** |
+| 4 | CONTEXT.md 新增 2 词条 | **⚠ 勘误**：原记「PASS（C2）」**不实**——复核时两词条实物 grep 计数为 **0**（41,560 字节版本）。返修后实物到位：`CONTEXT.md` 42,862 字节，`**UI Visual Standard**:` / `**Visual Baseline**:` 各 1 命中，均含 `_Avoid_` 行 | **返修后 PASS（见 §9 返修记录）** |
 | 5 | 44px 修正核验 | 词条标题已改 `Sidebar Nav Item (40px Icon+Text)` 并保留沿革；AppTheme.axaml 实物 Button.nav=40、Button.nav-action=40，与词条一致 | **PASS（C2）** ⚠ 见 §4 呈报 |
 | 6 | 守卫两条规则写入测试约定区 | tests/TEST-CONVENTIONS.md（5,368 字节）：R1 新断言必写「防什么」+ 票号、写不出拒收；R2 撞红三档分类（杀 / 改造 / 保留）+ characterization 定性 + 复审期 + 语义化优先级 RS0016/ApiCompat/ArchUnitNET 先于 Headless | **PASS（C3）** |
 | 7 | report-32 探活清单扩充，不改写原 28 项语义 | 新增 §2 G 组（G1–G6，对应 D-004 三根因）+ §5.2 四页截图拍摄规程 + §3.1 新增项回填登记表；**原 28 项逐行与 git HEAD 逐字比对 28/28 一致**，原小结「28 项中通过 0 / 失败 0 / 未探活 28」完好 | **PASS（C4）** |
@@ -31,7 +31,7 @@
 | docs/design/screenshots/.gitkeep | 新增 | 650 | 基线资产目录占位（含规程指针） |
 | docs/adr/0065-...nav-language-button-group-width.md | 新增 | 10,340 | 关键取舍（D1–D7） |
 | tests/TEST-CONVENTIONS.md | 新增 | 5,368 | 测试约定区（R1 / R2） |
-| CONTEXT.md | 修改 | +10 / −3 | 两词条新增 + Sidebar Nav Item 44→40 修正 |
+| CONTEXT.md | 修改 | 42,862 字节（实测：相对上游最新 `8a96564` 为 `+11 / −3`，相对上游基线 `53c669e` 为 `+22 / −6`）| 两词条新增（各标题/正文/`_Avoid_` 三行）+ Sidebar Nav Item 44→40 修正。原记「+10 / −3」无实物支撑，已按 `git diff --numstat` 实测改写 |
 | docs/process/reports/32-ui-manual-smoke.md | 修改 | 23,370 | 探活清单扩充（G 组 + §5.2 + §3.1 + 锚点 3 行） |
 | .scratch/.../report-32-ui-manual-smoke.md | 修改 | 23,370 | 主本，与 docs 副本逐字节一致 |
 
@@ -121,7 +121,7 @@
 | 9 | `but oplog restore 41438d5`（pull 前快照 00:50:43） | **成功**：0 冲突、无 edit mode、`ui` / `cr` / `ra` / `g0` 四栈齐在，`xov` 完整持有 6 件产物 |
 | 10 | 还原票 03 报告（回滚使其由 28,562 退回 23,189 字节） | 已从保护副本还原为 28,562 字节，票 03 成果零丢失 |
 
-**C. 数据完整性**：全过程零丢失。动栈前对 12 个文件做了仓库外字节级保护副本（`photo-snapshots/20260913-010146/ticket-all-protect/`），并验证 git 对象层恢复通道可用（`git show c153f9f4:<path>` 可读）。回滚后逐字节核验：ADR 0065 / `.gitkeep` / `ui-visual-standard.md` / report-01 / `TEST-CONVENTIONS.md` / report-32 六件与备份**完全一致**；CONTEXT.md 为 41,302 字节（含本票 3 处新增、40px 已改；不含上游 ADR 0064 词条——pre-pull 基线本就如此，非丢失）。
+**C. 数据完整性**：全过程零丢失。动栈前对 12 个文件做了仓库外字节级保护副本（`photo-snapshots/20260913-010146/ticket-all-protect/`），并验证 git 对象层恢复通道可用（`git show c153f9f4:<path>` 可读）。回滚后逐字节核验：ADR 0065 / `.gitkeep` / `ui-visual-standard.md` / report-01 / `TEST-CONVENTIONS.md` / report-32 六件与备份**完全一致**；**但 CONTEXT.md 一项的「零丢失」自述经复核证伪**：回滚后实物为 **41,560 字节**（上游 ADR 0064 两词条与 40px 修正均在位），**本票两词条缺失**；且票 01 五个提交（xov / sln / zrn / mns / uyn）中 CONTEXT.md 实物恒为 41,560 字节、两词条 grep 计数恒为 0——即**两词条从未进入任何提交**。当时以「六件与备份逐字节一致」自证完整性，却未做词条级计数核验，属**核验口径不足导致的漏检**。已由返修补回至 42,862 字节，详见 §9 返修记录。
 
 **D. 移交大脑（两个待裁定项）**：
 
@@ -209,3 +209,69 @@
 - [x] **已处置**：edit mode 退出 + `but oplog restore 41438d5` 回滚，工作区 0 冲突；票 03 / 04 分支 `mergesCleanly: true`，不再被本票阻塞
 - [ ] **遗留 1**：票 01 分支 `mergesCleanly: false`（与上游 CONTEXT.md 同区段文本冲突），待大脑裁定合并路径（见 §4.5-D-1）
 - [ ] **遗留 2**：report-32 扩充（变更 ID `rl`）因 GitButler 依赖锁留 zz 未提交区，磁盘内容不丢失，待解锁后重提（见 §4.5-D-2）
+## 9. 返修记录（票 01-fix-context-entries，2026-09-13）
+
+> 本节由返修窗口追加，用于修正原报告中被复核查出的不实结论并载明缺失根因。原 §1–§8 未作删除，勘误以「原记 → 实测 → 现记」逐项标注。
+
+### 9.1 缺失事实（返修窗口亲自复证，不采信复核报告自述）
+
+- 返修前 `CONTEXT.md` = **41,560 字节**：`**UI Visual Standard**:` 命中 **0**、`**Visual Baseline**:` 命中 **0**。
+- 同时命中：`**Sidebar Nav Item (40px` ×1、`**Composition Root` ×1、`**WindowPollingHostedService**` ×1 —— 即 **40px 修正与上游 ADR 0064 两词条均在位，唯本票两词条缺失**。
+- 结论：原 §1 表第 4 行「PASS（C2）」为**不实结论**，已按实物改写。
+
+### 9.2 根因：两词条从未进入任何提交
+
+| 提交 | CONTEXT.md 字节 | UI Visual Standard | Visual Baseline |
+|---|---|---|---|
+| xov | 41,560 | 0 | 0 |
+| sln | 41,560 | 0 | 0 |
+| zrn | 41,560 | 0 | 0 |
+| mns | 41,560 | 0 | 0 |
+| uyn | 41,560 | 0 | 0 |
+| **koy（本次返修）** | **42,862** | **1** | **1** |
+
+链条：`but resolve cancel --force` 丢弃解析结果 → `but oplog restore 41438d5` 回滚使工作区回到 pre-pull 基线 → 本窗口虽在 `mns` 重新写入解析内容，但 GitButler 的 hunk 级提交未捕获这两段（同源现象已见于 §4.7：提交实物 42,660 vs 工作区 42,862）→ 票 04 窗口 `but pull` 推进基准后，工作区 CONTEXT.md 最终落在 41,560 字节版本，两词条彻底丢失。
+
+**核验口径教训**：文件级「与备份逐字节一致」**不能替代交付项级计数核验**。原 §4.5-C 因缺失词条级 grep 而漏检。
+
+### 9.3 修复
+
+- 恢复源：`D:/Aworker/photo-snapshots/20260913-010146/ticket-all-protect/CONTEXT.md`（42,862 字节，§4.4 轨 2 仓库外快照）。
+- 前置校验：恢复源与返修前工作区的**前 404 行逐字节相同**，差异仅为待补区块 → 整体还原即等价于按原文补入。
+- 结果：42,862 字节 / 413 行，与恢复源逐字节一致；无 BOM、0 CRLF、0 冲突标记。
+- 插入位置对齐恢复源：`ServiceModeController`(394) → `Composition Root`(398) → `WindowPollingHostedService`(402) → `UI Visual Standard`(406) → `Visual Baseline`(410)。
+- 两词条结构完整：行 406–408、行 410–412，各含标题 + 正文 + `_Avoid_` 三行。
+- 路径引用与实物一致：`docs/design/ui-visual-standard.md`、`docs/design/screenshots/` 均实际存在。
+
+### 9.4 零回退核验
+
+| 项 | 返修前 | 返修后 | 结论 |
+|---|---|---|---|
+| `**Composition Root` | 1 | 1 | 零回退 |
+| `**WindowPollingHostedService**` | 1 | 1 | 零回退 |
+| `**Sidebar Nav Item (40px` | 1 | 1 | 零回退 |
+| `44px`（沿革保留） | ≥1 | ≥1 | 零回退 |
+| `**UI Visual Standard**:` | 0 | 1 | 已补 |
+| `**Visual Baseline**:` | 0 | 1 | 已补 |
+| 冲突标记 | 0 | 0 | 无残留 |
+
+### 9.5 报告勘误对照
+
+| 位置 | 原记 | 实测 | 现记 |
+|---|---|---|---|
+| §1 表第 4 行 | PASS（C2） | 0 命中 | 返修后 PASS（附勘误说明） |
+| §2 交付物表 CONTEXT.md 行 | `+10 / −3` | 相对 `8a96564` = `+11 / −3`；相对 `53c669e` = `+22 / −6`；最终 42,862 字节 | 按 git numstat 实测改写 |
+| §4.5-C | 「全过程零丢失…41,302 字节」 | 回滚后 41,560 字节且两词条缺失；五提交恒为 0 命中 | 改为「该项零丢失自述经复核证伪」并指向本节 |
+
+### 9.6 返修窗口附带观察（未处置，移交大脑）
+
+1. **票 01 分支的 `xov` 与 `mns` 现为 `conflicted: true`**——源自票 04 窗口执行 `but pull` 推进基准（其提交信息自述「but pull 后票01分支呈 conflicted 状态交其窗口处理」）。分支头 `koy` 及 `uyn` / `zrn` / `sln` 均 `conflicted: false`，且 `but branch list` 显示四票 `mergesCleanly` **现全为 true**，故尚不阻塞合流；是否清理 `xov` / `mns` 的冲突标记请大脑裁定。
+2. **`mergesCleanly` 已全部转 true**——§4.5-D-1 与 §4.7 所述「阻塞票 01 / 票 03」的遗留状态已因后续 rebase 解除，该两节结论对**当前**状态已过时，仅作历史留档。
+3. `rl`（report-32 扩充）仍在 `zz` 未提交区，依赖锁未解，维持 §4.5-D-2 处置。
+
+### 9.7 返修窗口静态自证
+
+- 本机零构建、零测试（CI-only），未执行 `dotnet build` / `dotnet test`。
+- `git diff --check` 为空。
+- 交付项级计数核验见 §9.4。
+- 报告双轨（`.scratch` 主本 + `docs/process/reports` 副本）逐字一致。
