@@ -10,11 +10,15 @@
   <x:Double x:Key="SpaceXxl">32</x:Double>
   <x:Double x:Key="SpaceXxxl">48</x:Double>
 
+  <!-- 票 02（ui-craft2 / D-005 / 规范 §5.1 + 附录 D.2）：圆角阶梯按 MangoDisk base 8 派生式重校
+       —— sm=base-4 / md=base-2 / lg=base / xl=base+4。Avalonia 无 calc()，派生关系以注释维护；
+       Xs=2 为基准下保留子档（hairline/badge 级）。消费档位约定：按钮/输入框=md、卡片/nav 胶囊=lg、
+       侧栏内状态卡=lg、caption 钮=0（chrome 直角惯例）。 -->
   <CornerRadius x:Key="RadiusXs">2</CornerRadius>
   <CornerRadius x:Key="RadiusSm">4</CornerRadius>
-  <CornerRadius x:Key="RadiusMd">8</CornerRadius>
-  <CornerRadius x:Key="RadiusLg">12</CornerRadius>
-  <CornerRadius x:Key="RadiusXl">16</CornerRadius>
+  <CornerRadius x:Key="RadiusMd">6</CornerRadius>
+  <CornerRadius x:Key="RadiusLg">8</CornerRadius>
+  <CornerRadius x:Key="RadiusXl">12</CornerRadius>
 
   <x:Double x:Key="DurationFast">75</x:Double>
   <x:Double x:Key="DurationNormal">150</x:Double>
@@ -37,12 +41,50 @@
   <FontFamily x:Key="DefaultFontFamily">fonts:Inter#Inter</FontFamily>
   <FontFamily x:Key="MonoFontFamily">fonts:CascadiaCode#Cascadia Code</FontFamily>
 
-  <!-- Elevation shadow ladder (ADR 0051 A1). 4-level BoxShadow token for sidebar/card/popover depth. -->
+  <!-- Elevation shadow ladder（票 02 / ui-craft2 重校，规范 §5.1 + 附录 D.2）：MangoDisk 阴影仅两档
+       —— subtle=黑 7%（Elevation1/2 同档，blur 微分侧栏发丝线与卡片）与 dialog=黑 18%
+       （Elevation4=基准原式 0 25 50 -12）。暗色主题下黑影几不可见，分层另由 SemiColorBorder
+       描边与 surface 色差承担（atomcode 调研 §2：Fluent/M3 同惯例）。 -->
   <BoxShadows x:Key="Elevation0">0 0 0 0 Transparent</BoxShadows>
-  <BoxShadows x:Key="Elevation1">0 1 2 0 #14000000</BoxShadows>
-  <BoxShadows x:Key="Elevation2">0 2 4 0 #1F000000</BoxShadows>
-  <BoxShadows x:Key="Elevation4">0 4 8 0 #29000000</BoxShadows>
+  <BoxShadows x:Key="Elevation1">0 1 2 0 #12000000</BoxShadows>
+  <BoxShadows x:Key="Elevation2">0 1 3 0 #12000000</BoxShadows>
+  <BoxShadows x:Key="Elevation4">0 25 50 -12 #2E000000</BoxShadows>
 
   <!-- 票 26（ADR 0062）: 色板标识色权威在票 25 ThemeSwatchCatalog（C# 数据层），DesignTokens 不再持有
        swatch token——Views axaml 内联 hex 由 source-lint 全禁（数据色与 chrome 色分层，见 ADR 0062）。 -->
+  <!-- 票 02（ui-craft2 / D-005 / 附录 D.1）：侧栏容器独立 surface —— SemiColorNavBackground 系本仓
+       自建 key（Semi.Avalonia 包未定义）；5 份暗色主题经 MergedDictionaries[1] 覆盖本回退值。
+       此处 ThemeDictionaries 仅兜底亮色档与无预设暗档：基准=侧栏比 background 深一档
+       （dark oklch0.14<bg0.18 / light oklch0.968<bg0.984，暖白向）。 -->
+  <ResourceDictionary.ThemeDictionaries>
+    <ResourceDictionary x:Key="Light">
+      <SolidColorBrush x:Key="SemiColorNavBackground" Color="#F4F3F1" />
+    </ResourceDictionary>
+    <ResourceDictionary x:Key="Dark">
+      <SolidColorBrush x:Key="SemiColorNavBackground" Color="#1B1C21" />
+    </ResourceDictionary>
+  </ResourceDictionary.ThemeDictionaries>
+
+  <!-- Layout token family（票 02 新增族，规范 §5.1「票 02 定值」/ 附录 D.2 MangoDisk 实测）。
+       x:Double 仅可消费于 Double 语义属性；Thickness（Margin/Padding）仍须字面量
+       （CONTEXT「Padding Literal Quantization」硬约束）。侧栏持久化默认宽 200 不动
+       （Core UiOptions 语义+§7 V2 机位 200），LayoutSidebarWidth=240 为基准登记档供收合态演进。 -->
+  <x:Double x:Key="LayoutSidebarWidth">240</x:Double>
+  <x:Double x:Key="LayoutSidebarCollapsedWidth">68</x:Double>
+  <x:Double x:Key="LayoutNavItemHeight">40</x:Double>
+  <x:Double x:Key="LayoutPageHeaderHeight">58</x:Double>
+  <x:Double x:Key="LayoutPagePaddingInline">20</x:Double>
+  <x:Double x:Key="LayoutPagePaddingTop">14</x:Double>
+  <x:Double x:Key="LayoutContentWidthReadable">1160</x:Double>
+  <x:Double x:Key="LayoutContentWidthWide">1280</x:Double>
+  <x:Double x:Key="LayoutToolbarHeight">36</x:Double>
+  <x:Double x:Key="LayoutResultRowHeight">44</x:Double>
+  <x:Double x:Key="LayoutDialogWidthSm">440</x:Double>
+  <x:Double x:Key="LayoutDialogWidthMd">520</x:Double>
+  <x:Double x:Key="LayoutDialogWidthLg">620</x:Double>
+  <x:Double x:Key="LayoutDialogWidthXl">720</x:Double>
+  <x:Double x:Key="LayoutDialogHeaderHeight">68</x:Double>
+  <x:Double x:Key="LayoutDialogFooterHeight">56</x:Double>
+  <x:Double x:Key="LayoutDialogBodyPaddingInline">20</x:Double>
+
 </ResourceDictionary>

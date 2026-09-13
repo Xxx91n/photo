@@ -8,7 +8,8 @@
   <SolidColorBrush x:Key="SemiColorBackground0" Color="{StaticResource SemiBackground0Color}" />
   <SolidColorBrush x:Key="SemiColorBackground1" Color="{StaticResource SemiBackground1Color}" />
   <SolidColorBrush x:Key="SemiColorBackground2" Color="{StaticResource SemiBackground2Color}" />
-  <SolidColorBrush x:Key="SemiColorNavBackground" Color="{StaticResource SemiBackground1Color}" />
+  <!-- 票 02（ui-craft2 / D.1）：侧栏须比 Bg0 深一档；Nord Bg1 #3B4252 反浅于 Bg0 #2E3440，改深档惯例色 -->
+  <SolidColorBrush x:Key="SemiColorNavBackground" Color="#242933" />
 
   <SolidColorBrush x:Key="SemiColorText0" Color="#ECEFF4" />
   <SolidColorBrush x:Key="SemiColorText1" Color="#D8DEE9" Opacity="0.8" />

@@ -18,7 +18,7 @@
     <Setter Property="Background" Value="{DynamicResource SemiColorPrimary}" />
     <Setter Property="Foreground" Value="White" />
     <Setter Property="BorderThickness" Value="0" />
-    <Setter Property="CornerRadius" Value="{DynamicResource RadiusSm}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusMd}" />
     <Setter Property="Padding" Value="12,6" />
     <Setter Property="Height" Value="32" />
   </Style>
@@ -37,7 +37,7 @@
     <Setter Property="Foreground" Value="{DynamicResource SemiColorText0}" />
     <Setter Property="BorderBrush" Value="{DynamicResource SemiColorBorder}" />
     <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="CornerRadius" Value="{DynamicResource RadiusSm}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusMd}" />
     <Setter Property="Padding" Value="12,6" />
     <Setter Property="Height" Value="32" />
   </Style>
@@ -50,7 +50,7 @@
     <Setter Property="Foreground" Value="{DynamicResource SemiColorDanger}" />
     <Setter Property="BorderBrush" Value="{DynamicResource SemiColorDanger}" />
     <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="CornerRadius" Value="{DynamicResource RadiusSm}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusMd}" />
     <Setter Property="Padding" Value="12,6" />
     <Setter Property="Height" Value="32" />
   </Style>
@@ -63,7 +63,7 @@
     <Setter Property="Foreground" Value="{DynamicResource SemiColorText0}" />
     <Setter Property="BorderBrush" Value="{DynamicResource SemiColorBorder}" />
     <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="CornerRadius" Value="{DynamicResource RadiusSm}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusMd}" />
     <Setter Property="Padding" Value="0" />
     <Setter Property="Height" Value="32" />
     <Setter Property="MinWidth" Value="32" />
@@ -274,13 +274,13 @@
     <Setter Property="IsVisible" Value="False" />
   </Style>
 
-  <!-- Elevated card with shadow (ADR 0050 A1). Lift the card above the
-       window background using Semi's elevation token. -->
+  <!-- Elevated card with shadow (ADR 0050 A1 + 票 02/ui-craft2 v2.0). Lift the card above the
+       window background using Semi's elevation token; corner = RadiusLg(8) = MangoDisk 卡片 lg 档（附录 D.2）。 -->
   <Style Selector="Border.settings-card">
     <Setter Property="Background" Value="{DynamicResource SemiColorBackground1}" />
     <Setter Property="BorderBrush" Value="{DynamicResource SemiColorBorder}" />
     <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="CornerRadius" Value="{DynamicResource RadiusMd}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusLg}" />
     <Setter Property="BoxShadow" Value="{DynamicResource Elevation2}" />
 <Setter Property="Padding" Value="16" /><!-- ponytail: literal Thickness, not DynamicResource Double; Avalonia ThicknessTypeConverter runs at compile, DynamicResource skips it -> InvalidCastException -->
   </Style>
@@ -353,7 +353,7 @@
 
   <Style Selector="TextBox.inline-input">
     <Setter Property="BorderBrush" Value="{DynamicResource SemiColorBorder}" />
-    <Setter Property="CornerRadius" Value="{DynamicResource RadiusSm}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusMd}" />
     <!-- 票 24（ADR 0061）：Width=280 ×4/×5 收敛为共享 class 单一权威（Views 禁止内联宽度） -->
     <Setter Property="Width" Value="280" />
   </Style>
@@ -369,7 +369,7 @@
   <!-- 票 25：路径行收敛为 Ursa PathPicker 后 Width=280 单一权威随控件迁移（原 TextBox.inline-input 保留供排除目录等余量场景） -->
   <Style Selector="u|PathPicker.inline-input">
     <Setter Property="BorderBrush" Value="{DynamicResource SemiColorBorder}" />
-    <Setter Property="CornerRadius" Value="{DynamicResource RadiusSm}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusMd}" />
     <!-- 票 24（ADR 0061）：Width=280 ×4/×5 收敛为共享 class 单一权威（Views 禁止内联宽度） -->
     <Setter Property="Width" Value="280" />
   </Style>

@@ -227,6 +227,20 @@ public sealed class DesignSystemTests
         Assert.Contains("{DynamicResource SemiColorText2}", source, StringComparison.Ordinal);
     }
 
+    // 票 02（ui-craft2 / D-004）：防 Avalonia #9660 式回归 —— ExtendClientArea + 不透明背景窗口
+    // 若依赖 WindowCornerPreference 默认值 Default，Win11 上曾出过硬边（hard edges）回归，上游修复
+    // 路径即显式 DwmSetWindowAttribute(Round)。本断言锁显式 Round 在位，防属性被删/回退缺省后
+    // 圆角静默失效回潮为直角。静态断言即可——DwmGetWindowAttribute 读回的是 preference 而非实际
+    // 圆角状态（MS 官方），禁做「读回 preference」断言。
+    [Fact]
+    public void MainWindow_Must_Set_Explicit_WindowCornerPreference_Round()
+    {
+        var path = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views", "MainWindow.axaml");
+        Assert.True(File.Exists(path), "MainWindow.axaml should exist");
+        var source = File.ReadAllText(path, Encoding.UTF8);
+        Assert.Contains("Win32Properties.WindowCornerPreference=\"Round\"", source, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void Titlebar_State_Pseudoclasses_Defined()
     {

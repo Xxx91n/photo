@@ -78,7 +78,7 @@
 | 态 | 背景 | 前景（文字 + 图标） | 过渡 |
 |---|---|---|---|
 | idle | Transparent | `SemiColorText2` | — |
-| hover | **半透明中性圆角胶囊底色块**（基准值：`sidebar-accent` 约 52% 透明叠加，圆角 8 = RadiusMd；Avalonia 落点 = Semi 语义刷等效，票 03 定值） | 沿用 D-004 定值 = 向 `SemiColorPrimary` 叙事（基准偏差见张力 T-3） | BrushTransition Background + Foreground 两路 ~150ms |
+| hover | **半透明中性圆角胶囊底色块**（基准值：`sidebar-accent` 约 52% 透明叠加，圆角 8 = RadiusLg（v2.0 阶梯，票 02 落地）；Avalonia 落点 = Semi 语义刷等效，票 03 定值） | 沿用 D-004 定值 = 向 `SemiColorPrimary` 叙事（基准偏差见张力 T-3） | BrushTransition Background + Foreground 两路 ~150ms |
 | pressed | 同族加深（基准值：`sidebar-accent` 约 72%） | 继承 | 同 hover |
 | active | **D-003 拍板：主色实心胶囊**（`SemiColorPrimary` 或等效主色），圆角 8 | **反白前景**（对主色底 ≥4.5:1 达 WCAG AA；五主题色板逐一验证，nord 3.81 / dracula 4.15 观察项必须解决或显式豁免登记） | 同 hover |
 | disabled | 继承 | `SemiColorText2` + `Opacity 0.5` | — |
@@ -141,7 +141,7 @@
 
 | 元素 | 实态 | 位置 |
 |---|---|---|
-| `Border.settings-card` | `SemiColorBackground1` + `SemiColorBorder` + `RadiusMd`(8) + `Elevation2` + `Padding 16` | `AppTheme.axaml:250-257` |
+| `Border.settings-card` | `SemiColorBackground1` + `SemiColorBorder` + `RadiusLg`(8) + `Elevation2` + `Padding 16` | `AppTheme.axaml:250-257` |
 | `Border.settings-row` | `Padding 16` | `AppTheme.axaml:259-261` |
 | `Border.row-divider` | `BorderThickness 0,0,0,1` + `Margin 16,0,16,0`（inset，票 04/ui-craft 落地） | `AppTheme.axaml:263-266` |
 | `TextBlock.section-header` / `.row-label` / `.row-desc` | 三级文本角色 | `AppTheme.axaml:306-320` |
@@ -196,17 +196,17 @@
 
 ## 5. 间距节奏
 
-> 本节是**页面级消费规则**（新增层）。token 本身的定义与数值不变，见 `src/PhotoPrivacy.Ui/Styling/DesignTokens.axaml`；v2.0 token 定值刷新（圆角阶梯 / 布局 token）在票 02（rounded-window-shell-tokens）。
+> 本节是**页面级消费规则**（新增层）。token 本身的定义与数值不变，见 `src/PhotoPrivacy.Ui/Styling/DesignTokens.axaml`；v2.0 token 定值刷新（圆角阶梯 / 布局 token / 阴影两档）票 02（rounded-window-shell-tokens）已落地。
 
 ### 5.1 token 表（实物）与 MangoDisk 布局 token 基准
 
 | 族 | 本项目档位（实物） | MangoDisk 基准（附录 D.2） |
 |---|---|---|
 | Space | Xxs 2 / Xs 4 / Sm 8 / Md 12 / Lg 16 / Xl 24 / Xxl 32 / Xxxl 48 | Tailwind 4px 基数，DIP 同值直用 |
-| Radius | Xs 2 / Sm 4 / Md 8 / Lg 12 / Xl 16 | base 8 → **sm 4 / md 6 / lg 8 / xl 12**（`--radius:0.5rem`，派生 sm=base-4 / md=base-2 / xl=base+4） |
+| Radius | Xs 2 / Sm 4 / Md 6 / Lg 8 / Xl 12（票 02 已按基准列落地） | base 8 → **sm 4 / md 6 / lg 8 / xl 12**（`--radius:0.5rem`，派生 sm=base-4 / md=base-2 / xl=base+4） |
 | Duration | Fast 75 / Normal 150 / Slow 250 | 色彩反馈 160ms ease；结构变化 240ms ease |
-| Elevation | 0 / 1 / 2 / 4 | 阴影仅两档：subtle = 黑 7%、dialog = 黑 18%（`0 25px 50px -12px`） |
-| 布局（新增族，票 02 定值） | — | 侧栏 240/68、nav 项高 40、页头 58、页 padding 20/14、readable 1160 / wide 1280、toolbar 36、结果行 44、dialog 宽 440/520/620/720（header 68 / footer 56 / body 20） |
+| Elevation | 0 / 1,2=subtle 7% / 4=dialog 18%（票 02 已落地：`0 1 2 0 #12000000` / `0 1 3 0 #12000000` / `0 25 50 -12 #2E000000`） | 阴影仅两档：subtle = 黑 7%、dialog = 黑 18%（`0 25px 50px -12px`） |
+| 布局（新增族，票 02 立 `Layout*` 17 枚） | LayoutSidebarWidth 240 / LayoutSidebarCollapsedWidth 68 / LayoutNavItemHeight 40 / LayoutPageHeaderHeight 58 / LayoutPagePaddingInline 20 / LayoutPagePaddingTop 14 / LayoutContentWidthReadable 1160 / LayoutContentWidthWide 1280 / LayoutToolbarHeight 36 / LayoutResultRowHeight 44 / LayoutDialogWidth{Sm,Md,Lg,Xl} 440/520/620/720 / LayoutDialogHeaderHeight 68 / LayoutDialogFooterHeight 56 / LayoutDialogBodyPaddingInline 20 | 侧栏 240/68、nav 项高 40、页头 58、页 padding 20/14、readable 1160 / wide 1280、toolbar 36、结果行 44、dialog 宽 440/520/620/720（header 68 / footer 56 / body 20） |
 
 ### 5.2 页面级消费规则
 
@@ -216,7 +216,7 @@
 | P2 | 卡片内边距 / section-header 与首行 | `16` / `SpaceMd`(12) | `settings-card` 与 `settings-row` 的 `Padding 16`；基准卡片 padding 24，页面票复核 |
 | P3 | 行内标签列与控件列之间 | ≥ `SpaceLg`(16) | 控件右对齐贴卡内边距 |
 | P4 | 同组内元素（如一组按钮） | `SpaceSm`(8) | 服务页按钮组；基准页头操作区 gap 8 同值 |
-| P5 | 侧栏导航项之间 | `SpaceXs`(4)，连续无 gap | `MainWindow.axaml` 两组导航 StackPanel（票 04：字面量 `4` → `{DynamicResource SpaceXs}`）；基准组内项距 2、组间距 10-12，票 02/03 复核 |
+| P5 | 侧栏导航项之间 | `SpaceXxs`(2)，连续无 gap（票 02 按基准组内项距 2 落） | `MainWindow.axaml` 两组导航 StackPanel；基准组间 10-12 由上下 Dock 分区布局承担，非相邻组距不适用 |
 | P6 | 标题栏按钮组 | `SpaceXxs`(2) | `MainWindow.axaml:27` |
 | P7 | **禁止等距均匀** | — | 不同层级必须用不同档位；等距均匀是 AI 感第一根因（ADR 0051 A1） |
 
@@ -421,4 +421,5 @@
 | v1.0 | 2026-09-12 | 票 01 / ui-craft | 立文档：七节齐备（按钮组宽度策略 / nav 反馈三态 / 表单行骨架 / 空态规范 / 间距节奏 / Toast 反馈链规划 / 验收标尺）+ §0 三锚表 + 附录 A（atomcode 控件级调研）；登记张力 T-1（nav hover 色彩叙事）与 T-2（页内按钮组等宽）待大脑裁定 |
 | v1.1 | 2026-09-13 | 票 03 / ui-craft | 新增附录 B（按钮变体使用对账表，16 枚全量）；§1.2 两处 R1-1 不符项落地——等宽机制取 `Grid` + `SharedSizeGroup`（不取固定 `MinWidth`，理由见附录 B）；订正「裸按钮」为单行 grep 假阳性，`nav-action` 两枚自首版即归队 |
 | v1.2 | 2026-09-13 | 票 04 / ui-craft | §3.3 B1/B2/B3 三处表单行偏差全部落地（分隔线 inset `16,0,16,0` / `ComboBox.inline-control` 共享 class / 卡片间 `SpaceLg`，并记明取 16 而非 WinUI 4 的理由）；§4.2 服务管理器页空态评估结论（无可空列表 / 表格，不构成 E1 缺口）；§5.2 P1 现状偏差修正、P5 落点 token 化；§5.4 A-008 清零（离轨 11 → 0，`Spacing` 字面量 → 0）并书面化 Thickness 技术硬约束与离轨值映射定值理由；新增附录 C（A-007 侧栏定宽处置：删硬钉 `Width="200"` 跟随列宽） |
+| v2.1 | 2026-09-14 | 票 02 / ui-craft2 | **tokens 刷新落地（D-004 / D-005）**：MainWindow 显式 `Win32Properties.WindowCornerPreference="Round"`；§5.1 Radius 实物列改 v2.0 阶梯（Sm4/Md6/Lg8/Xl12，Xs2 保留子档）+ Elevation 收两档制（1/2=subtle 7%、4=dialog 18% 原式）+ 新增 Layout 族 17 枚 `Layout*`；壳层侧栏深一档定值——Catppuccin/OneDarkPro/TokyoNight 本深于 Bg0，Dracula/NordDark 纠偏为深档惯例色，亮/暗回退档入 DesignTokens ThemeDictionaries；settings-card 角档改 RadiusLg、按钮/输入框改 RadiusMd（md=6）；§2.1/§3.2 半径引用订正 RadiusLg；§5.2 P5 落 SpaceXxs(2)；侧栏持久化默认宽 200 不动（Core 配置语义+§7 V2 机位同值） |
 | v2.0 | 2026-09-14 | 票 01 / ui-craft2 | **主基准切换（D-005 / A-001 / ADR 0067）**：§0 改 MangoDisk 观感级对标主基准表 + 上轮三锚降级为气质参考；§2 重写为胶囊三态目标规范（4px 槽位体系随 D-002 退役，施工在票 03），新增 §2.4 MangoDisk `nav-item` 实测公式对照并**登记张力 T-3**（D-003 主色实心胶囊+反白 vs 基准实物 accent 胶囊+3px×24px 主色 pill+字重 600；hover 前景叙事偏差并入）；§4 E2 按 `md-empty-state` 重校；§5.1 增 MangoDisk 布局 token 基准列；§6 Toast 规划按 vue-sonner 实物配置重校（T2/T3/T6 改值 + 新增 T7 动效档）；§7 V3 验收清单改 MangoDisk 对照项；新增附录 D 观感取证表（gh api 只读取证，GPL-3.0 零拷贝）；附录 A.2 张力表补 T-3 行、T-1 改并入 T-3 口径 |
