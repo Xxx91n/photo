@@ -1,11 +1,11 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:ex="using:PhotoPrivacy.Ui.Localization" xmlns:vm="using:PhotoPrivacy.Ui.ViewModels" xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia" xmlns:behaviors="using:PhotoPrivacy.Ui.Behaviors" xmlns:u="https://irihi.tech/ursa" xmlns:controls="using:PhotoPrivacy.Ui.Views.Controls" x:Class="PhotoPrivacy.Ui.Views.Pages.ConfigPage" x:DataType="vm:MainWindowViewModel">
   <!-- 票 24（ADR 0061）：自 MainWindow.axaml 拆出的配置页。路径输入宽度统一走 TextBox.inline-input 共享 class（Width=280 收敛为单一权威）。 -->
   <Grid RowDefinitions="Auto,*">
-    <Border Padding="24,20,24,16" BorderBrush="{DynamicResource SemiColorBorder}" BorderThickness="0,0,0,1">
+    <Border Padding="24,24,24,16" BorderBrush="{DynamicResource SemiColorBorder}" BorderThickness="0,0,0,1">
       <TextBlock Text="{ex:Localize nav.config}" Classes="title"/>
     </Border>
-    <ScrollViewer Grid.Row="1" Margin="24,16,24,20" VerticalScrollBarVisibility="Auto" behaviors:MiddleClickScrollBehavior.IsEnabled="True">
-      <StackPanel Spacing="0">
+    <ScrollViewer Grid.Row="1" Margin="24,16,24,24" VerticalScrollBarVisibility="Auto" behaviors:MiddleClickScrollBehavior.IsEnabled="True">
+      <StackPanel Spacing="{DynamicResource SpaceLg}">
         <Border Classes="settings-card">
           <StackPanel>
             <TextBlock Text="{ex:Localize config.section.path}" Classes="section-header"/>
@@ -110,7 +110,7 @@
                   <TextBlock Text="{ex:Localize config.desc.theme}" Classes="row-desc"/>
                 </StackPanel>
                 <!-- 票 30：选中态 VM 属性驱动（SelectedIndex TwoWay 绑定）——原 SelectionChanged/SyncThemeVariantComboSelection 手动镜像删除 -->
-                <ComboBox x:Name="ThemeVariantComboBox" DockPanel.Dock="Right" Width="160" SelectedIndex="{Binding ThemeVariantIndex, Mode=TwoWay}">
+                <ComboBox x:Name="ThemeVariantComboBox" DockPanel.Dock="Right" Classes="inline-control" SelectedIndex="{Binding ThemeVariantIndex, Mode=TwoWay}">
                   <ComboBoxItem Content="{ex:Localize theme.option.system}" Tag="system"/><ComboBoxItem Content="{ex:Localize theme.option.light}" Tag="light"/><ComboBoxItem Content="{ex:Localize theme.option.dark}" Tag="dark"/>
                 </ComboBox>
               </DockPanel>
@@ -146,7 +146,7 @@
                   <TextBlock Text="{ex:Localize config.desc.language}" Classes="row-desc"/>
                 </StackPanel>
                 <!-- 票 30：选中态 VM 属性驱动（SelectedIndex TwoWay 绑定）——原 SelectionChanged/SyncLocaleComboSelection 手动镜像删除 -->
-                <ComboBox x:Name="LocaleVariantComboBox" DockPanel.Dock="Right" Width="160" SelectedIndex="{Binding CurrentLocaleIndex, Mode=TwoWay}">
+                <ComboBox x:Name="LocaleVariantComboBox" DockPanel.Dock="Right" Classes="inline-control" SelectedIndex="{Binding CurrentLocaleIndex, Mode=TwoWay}">
                   <ComboBoxItem Content="中文" Tag="zh-CN"/><ComboBoxItem Content="English" Tag="en"/><ComboBoxItem Content="日本語" Tag="ja"/><ComboBoxItem Content="한국어" Tag="ko"/><ComboBoxItem Content="Deutsch" Tag="de"/>
                   <ComboBoxItem Content="Français" Tag="fr"/><ComboBoxItem Content="Español" Tag="es"/><ComboBoxItem Content="Português" Tag="pt"/><ComboBoxItem Content="Русский" Tag="ru"/><ComboBoxItem Content="العربية" Tag="ar"/>
                 </ComboBox>
@@ -164,7 +164,7 @@
                   <TextBlock Text="{ex:Localize config.desc.log_level}" Classes="row-desc"/>
                 </StackPanel>
                 <!-- 票 30：选中态 VM 属性驱动（SelectedIndex TwoWay 绑定）——原 SelectionChanged/SyncLogLevelComboSelection 手动镜像删除 -->
-                <ComboBox x:Name="LogLevelComboBox" DockPanel.Dock="Right" Width="160" SelectedIndex="{Binding LogLevelIndex, Mode=TwoWay}">
+                <ComboBox x:Name="LogLevelComboBox" DockPanel.Dock="Right" Classes="inline-control" SelectedIndex="{Binding LogLevelIndex, Mode=TwoWay}">
                   <ComboBoxItem Content="{ex:Localize loglevel.option.all}" Tag="all"/><ComboBoxItem Content="{ex:Localize loglevel.option.info}" Tag="info"/><ComboBoxItem Content="{ex:Localize loglevel.option.debug}" Tag="debug"/><ComboBoxItem Content="{ex:Localize loglevel.option.warn}" Tag="warn"/><ComboBoxItem Content="{ex:Localize loglevel.option.error}" Tag="error"/>
                 </ComboBox>
               </DockPanel>
@@ -209,9 +209,7 @@
             </Border>
           </StackPanel>
         </Border>
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10" Margin="0,8,0,0">
-          <TextBlock Text="{Binding SaveStatus}" Classes="caption" Foreground="{DynamicResource SemiColorText1}" VerticalAlignment="Center"/>
-        </StackPanel>
+        <TextBlock Text="{Binding SaveStatus}" Classes="caption" Foreground="{DynamicResource SemiColorText1}" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,8,0,0"/>
       </StackPanel>
     </ScrollViewer>
   </Grid>

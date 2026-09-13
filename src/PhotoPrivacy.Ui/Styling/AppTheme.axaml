@@ -263,6 +263,12 @@
   <Style Selector="Border.row-divider">
     <Setter Property="BorderBrush" Value="{DynamicResource SemiColorBorder}" />
     <Setter Property="BorderThickness" Value="0,0,0,1" />
+    <!-- 票 04（ui-craft 规范 §3.3 B1）：分隔线自标签列起点 inset —— settings-card Padding 16
+         + settings-row Padding 16 = 行文本自卡边起 32；分隔线加 Margin 16 后同为 32，与文本左缘对齐。
+         通栏线使行与行视觉粘连；Apple 系统设置与 WinUI SettingsCard 的行分隔线均为 inset。
+         Margin 属 Thickness，必须字面量：DynamicResource Double 赋 Thickness 会跳过
+         ThicknessTypeConverter 导致布局测量期 InvalidCastException（CONTEXT Padding Literal Quantization）。 -->
+    <Setter Property="Margin" Value="16,0,16,0" />
   </Style>
 
   <!-- Typography 6-role system (ADR 0050 A1). Each class consumes its own FontSize token. -->
@@ -321,6 +327,14 @@
     <Setter Property="CornerRadius" Value="{DynamicResource RadiusSm}" />
     <!-- 票 24（ADR 0061）：Width=280 ×4/×5 收敛为共享 class 单一权威（Views 禁止内联宽度） -->
     <Setter Property="Width" Value="280" />
+  </Style>
+
+  <!-- 票 04（ui-craft 规范 §3.3 B2）：下拉类控件的控件列宽度收归共享 class。
+       原 ConfigPage 三枚 ComboBox 各自行内 Width="160"（主题 / 语言 / 日志级别），
+       与票 24（ADR 0061）已立的「Views 禁止内联宽度」口径冲突；现收敛为单一权威。
+       取值 160 沿用既有实态（不改动视觉宽度），仅把权威位置从 Views 移到 Styling。 -->
+  <Style Selector="ComboBox.inline-control">
+    <Setter Property="Width" Value="160" />
   </Style>
 
   <!-- 票 25：路径行收敛为 Ursa PathPicker 后 Width=280 单一权威随控件迁移（原 TextBox.inline-input 保留供排除目录等余量场景） -->
