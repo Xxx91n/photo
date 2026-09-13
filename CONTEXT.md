@@ -295,8 +295,8 @@ MiddleClickScrollBehavior.cs 的 DispatcherTimer 16ms 换为 TopLevel.RequestAni
 _Avoid_: DispatcherTimer 16ms 非 vsync 对齐导致高刷屏抖动；偏离 Files.App 成熟常量值
 
 **Sidebar Nav Item (40px Icon+Text)**:
-企业级桌面侧栏导航项标准：40px 高、icon(20px)+text、4px 左侧 accent bar active 指示。Material Design 3 Navigation drawer / Fluent 2 NavViewItem / Apple HIG sidebar 均遵此规格。项目 Button.nav 4 按钮（Config/Logs/Rules/ServiceManager）统一 Padding、加 Material.Icons（Settings/FileDocumentOutline/ShieldCheckOutline/ServerNetwork）、active 态左侧 accent bar。初定 44px（ADR 0052 A1），后修订为 40px（ADR 0055 A1 / ADR 0056 票 01，与 Nav Group Split、Button Size Ladder 词条一致）。
-_Avoid_: 纯文字无图标、Padding 不统一、无 active indicator；44px 旧值回潮
+企业级桌面侧栏导航项标准：40px 高、icon(20px)+text、4px 左侧 accent bar active 指示。Material Design 3 Navigation drawer / Fluent 2 NavViewItem / Apple HIG sidebar 均遵此规格。项目 Button.nav / Button.nav-action 统一 Height=40 Padding=12,0 HorizontalContentAlignment=Stretch，icon 用 Material.Icons（Settings/FileDocumentOutline/ShieldCheckOutline/ServerNetwork），active 态 4px 左 accent bar（SemiColorPrimary 边框 + SemiColorPrimaryLight 背景）。**沿革（2026-09-12 ui-craft 票 01 修正）**：本词条原记 44px（ADR 0052 A1 原始规格），后由 ADR 0055 A1（Nav Group Split）与 ADR 0056 票 01（Button Size Ladder）统一为 40px；src/PhotoPrivacy.Ui/Styling/AppTheme.axaml 实物 Button.nav / Button.nav-action 的 Height 均为 40，44px 系 stale 值——该词条长期未随代码修订，2026-09-12 grill 对账时发现并更正（A-006）。三态反馈细则见 docs/design/ui-visual-standard.md §2。见 ADR 0052 A1 / ADR 0055 A1 / ADR 0056 票 01。
+_Avoid_: 纯文字无图标、Padding 不统一、无 active indicator；沿用 44px 旧值
 
 **Exponential Scroll Smoothing**:
 中键滚动指数平滑速度模型：`v += (targetV - v) * (1 - exp(-k*dt))`，k≈15 s⁻¹（半衰期 ~46ms），dt 钳制 ≤100ms，`|v|<1` 停机。消除三路"flash"根因：死区阶跃（targetV 瞬间 0→v）、松键急停（无减速）、高刷帧率依赖。Lembcke《Improved Lerp Smoothing》帧率无关数学 + LibreScroll 摩擦衰减 + SmoothScroll.Avalonia 停机阈值综合。见 ADR 0052 A2。
@@ -402,3 +402,11 @@ _Avoid_: MainWindow 构造内手写 new 服务链；容器外新建核心服务�
 **WindowPollingHostedService**:
 版本轮询（1s）+ 服务状态轮询（3s）的 IHostedService 承载（src/PhotoPrivacy.Ui/Services/WindowPollingHostedService.cs），与 ADR 0025 心跳同构。装配破环：宿主服务只依赖 VM 单例 + 惰性版本源工厂，服务模式轮询经 AttachServiceModePoll 委托由 MainWindow 构造挂载（ServiceModeController 构造需 MainWindow 视图适配器，直注成 MS DI 死环）。StartAsync 不拉起——InitializeRuntime 窗口就绪后 Activate，OnClosed 一行 StopAsync（版本→服务模式顺序取消）。见 ADR 0064 票 31。
 _Avoid_: MainWindow code-behind 内 Task.Run 轮询回潮；宿主服务构造直注 ServiceModeController；忘记 Activate 导致轮询不启动
+
+**UI Visual Standard**:
+页面级视觉规范的唯一现役权威：docs/design/ui-visual-standard.md 活文档（七节：按钮组宽度策略 / nav 反馈三态 / 表单行骨架 / 空态规范 / 间距节奏 / Toast 反馈链规划 / 验收标尺）。永远代表当前标准并随票演化版本化；ADR 只记「为什么」的取舍（D-009），CONTEXT.md 只做词条指针、不承载规范全文。后续 UI 票直接引用规范节号作为验收依据。见 ADR 0065。
+_Avoid_: 把规范全文冻结进单篇 ADR（演化会产生补丁链）；在 CONTEXT.md 内复述规范细则
+
+**Visual Baseline**:
+运行侧视觉验证的基线资产：docs/design/screenshots/ 下 4 页（配置/日志/规则/服务管理）× 关键态（默认 / hover / active / 空态）的同机位截图，配合 report-32 探活清单（docs/process/reports/32-ui-manual-smoke.md §2）共同构成 UI 票的验收对照物。每张 UI 票交付 = 同机位 before/after 人工对照 + 对照审美三锚（Wasabi 气场 / Apple 系统设置骨架 / VS Code·Discord 密度法）。拍摄规程见 ui-visual-standard.md §7；不上 CI 像素 diff 门禁（D-007 负向，降 backlog）。
+_Avoid_: 无基线资产的一次性人工探活；CI 视觉回归像素门禁（审查负担 + 环境漂移）

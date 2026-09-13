@@ -84,7 +84,24 @@
 | F4 | 用 Tab 键在按钮间移动焦点 | 获焦按钮出现约 2px 主色描边 ring（focus-visible 全局样式） | 截图 | 未探活 |
 | F5 | 标题栏：拖拽空白区 / 双击空白区 / 点最小化·最大化·关闭 | 空白区可拖动窗口、双击切换最大化；三键功能正确（关闭红色 hover/pressed 态）；窗口内不出现系统原生标题栏（自绘，ExtendClientArea） | 一句话记录 | 未探活 |
 
+### G. 侧栏 nav hover 反馈（对照 D-004 三根因 / docs/design/ui-visual-standard.md §2）
+
+> 本组为 ui-craft 票 01（2026-09-12）新增项，用于核验「鼠标移到左侧菜单栏按钮上的反馈很 AI 很塑料」这一主痛点的三条实物根因。
+> 三根因口径（decision-ledger D-004）：① 无过渡硬切；② 纯中性灰平移（无色彩叙事）；③ active 的 4px accent bar 与 hover 零联动。
+> 代码实态提示（窗口侧静态核验，2026-09-12）：AppTheme.axaml 全局 Button 选择器已含 BrushTransition Background/BorderBrush 150ms SineEaseOut（ADR 0062 / 票 26），故**背景**过渡大概率已存在；
+> Button.nav:pointerover 同时改 Foreground（Text2→Text0）而 **Foreground 无过渡**，故**文字与 20px 图标的颜色**仍可能 0ms 硬切——G1/G2 请把「背景」与「文字+图标」分开观察、分别记录。
+
+| # | 操作步骤 | 预期结果（锚点） | 证据方式 | 回填 |
+|---|---|---|---|---|
+| G1 | 鼠标从窗口空白区水平移到侧栏「配置」按钮上 → 停留 1 秒 → 快速移开 | 移入/移出时**背景**与**文字+图标颜色**均为约 150ms 渐变（SineEaseOut），无瞬跳。分别记录两路：背景=渐变/硬切；文字图标=渐变/硬切 | 一句话记录（可附慢动作录屏） | 未探活 |
+| G2 | 对全部导航项逐项重复 G1：主导航组「配置/日志/规则」+ 底部 utility 组「服务管理器 / 暂停·恢复 / 打开配置目录」 | 6 项行为一致；不存在「有的有过渡、有的硬切」的割裂（现状 NavButton 控件走 Classes=nav，PauseResume/OpenConfigDir 走 Classes=nav-action，两者 Height/Padding 已统一但 hover 段各自独立） | 一句话记录 | 未探活 |
+| G3 | hover 在「日志」上，观察背景色与图标/文字颜色 | 背景非纯中性灰平移——hover 时图标与文字向当前主题 primary 叙事（catppuccin 默认 primary ≈ #89B4FA），而非直接跳到近白 SemiColorText0。三锚对照：VS Code / Discord 侧栏 hover 时图标与文字向 accent 色靠拢 | 截图（与 §5.2 同机位） | 未探活 |
+| G4 | hover 在**未激活**的导航项上 → 观察左侧是否出现 4px accent bar 的低透明度预示 → 再点击该项激活 | hover 出现 accent bar 预示（约 30% 透明度），点击后由预示态过渡到实态 SemiColorPrimary；三态（idle/hover/active）视觉连贯 | 截图×2（hover 预示 / active 实态） | 未探活 |
+| G5 | 单按钮上依次走完：idle → hover → active → 在 active 项上再 hover → 移开 | 全程无突兀跳变；「塑料感」三要素（静态硬切 / 中性色平移 / 无色彩叙事）逐项记录是否仍存在 | 一句话记录 | 未探活 |
+| G6 | （对照项，不判失败）打开 VS Code 或 Discord，同机位拍其侧栏 hover 态 1 张 | 供大脑/用户按审美三锚（Wasabi 气场 / Apple 设置骨架 / VS Code·Discord 密度法）做人工并列对照 | 截图 | 未探活 |
+
 ## 3. 回填登记表（检查点 B — 用户执行后逐条登记）
+
 
 > 填写口径：结果 = 通过/失败/未探活；证据 = 截图文件路径或一句话步骤记录。无证据一律「未探活」，不虚构。
 
@@ -121,6 +138,25 @@
 
 **小结**：28 项中 通过 0 / 失败 0 / 未探活 28（终态，2026-09-07：用户未执行探活；按 handoff「无证据项标注未探活不虚构」如实登记，无任何项被虚构为通过/失败）。
 
+### 3.1 新增项回填登记表（票 01 扩充，2026-09-12）
+
+> 口径同 §3：结果 = 通过/失败/未探活；证据 = 截图文件路径或一句话步骤记录。无证据一律「未探活」，不虚构。
+> 本表与 §2 G 组（nav hover）+ §5.2 截图规程（Visual Baseline）对应；**§3 原 28 项语义与编号未被改写**。
+
+| 项 | 结果 | 证据（路径/记录） | 备注 |
+|---|---|---|---|
+| G1 | 未探活 | — | 背景/文字图标分两路记录 |
+| G2 | 未探活 | — | 6 个导航项逐项 |
+| G3 | 未探活 | — | 色彩叙事 |
+| G4 | 未探活 | — | accent 预示联动 |
+| G5 | 未探活 | — | 三态连贯性 |
+| G6 | 未探活 | — | 对照项，不判失败 |
+| S1 基线截图（before） | 未探活 | — | §5.2 规程，4 页 × 关键态 |
+| S2 交付截图（after） | 未探活 | — | 每票交付后同机位重拍 |
+
+**小结（新增项）**：8 项中 通过 0 / 失败 0 / 未探活 8（2026-09-12 票 01 扩充时的初始态，与 §3 原 28 项同口径）。
+
+
 ## 4. 锚点索引（源码实物，复核用）
 
 | 面 | 锚点 |
@@ -131,6 +167,9 @@
 | 语言 | ConfigPage.axaml:149-152（10 项下拉）；MainWindowViewModel.cs:252-278（CurrentLocale/CurrentLocaleIndex/SwitchLocale）；UiFlowDirection RTL（MainWindowViewModel.cs:17-33）；Localization/Locales/*.json 10 语言各 198 键 |
 | 中键 | Behaviors/MiddleClickScrollBehavior.cs（DeadZone 12 / SpeedFactor 0.12 / MaxSpeed 32 / 指数平滑 k=15 / Watchdog 32ms / Esc 退出）；挂点 ConfigPage.axaml:7、ServiceManagerPage.axaml:8 |
 | 拖宽 | MainWindow.axaml:40-42（ColumnDefinitions 200,4,*；Border Width=200 固定实态）；MainWindow.axaml.cs:798-830（RestoreSidebarWidth Clamp 170-400 / DragCompleted 防抖持久化） |
+| nav hover | Styling/AppTheme.axaml:78-99（Button.nav / :pointerover / .active）、:100-118（Button.nav-action / :pointerover）；Views/Controls/NavButton.axaml:10-14（Button Classes=nav + icon 20px + text Margin 12,0,0,0）；MainWindow.axaml:80-94（底部 utility 组 nav-action 两枚） |
+| 按钮过渡 | Styling/AppTheme.axaml:337-347（全局 Button BrushTransition Background/BorderBrush 150ms SineEaseOut；**无 Foreground 过渡**） |
+| 视觉规范 | docs/design/ui-visual-standard.md（§2 nav 反馈三态 / §7 验收标尺与截图规程） |
 | 日志流 | Views/Pages/LogsPage.axaml（ClearLogsButton/LogsList/log.empty 空态）；MainWindowViewModel.cs:440-509（LogEntries 500 上限/HasNoLogs/ClearLogs） |
 | 按钮态 | Styling/AppTheme.axaml:17-244（primary/ghost/danger/icon/nav/nav-action/caption-btn × idle/pointerover/pressed/disabled + 全局 focus-visible ring） |
 
@@ -148,6 +187,43 @@
   - 新鲜产物：运行 `scripts/release-readiness.ps1`（含 test+smoke+publish 完整 gate）产出含票 29–31 代码的新 exe——本机 CI-only 政策禁 agent 跑构建，publish 由用户亲自执行即不违反（政策约束 agent，不约束用户本机操作）。
 - **config.json 现状（已核验）**：无 ui 节 → 启动即全默认（catppuccin / system / zh-CN / 侧栏 200）+ ExifTool 路径已配（D:\tools\A_system\ExifToolGUI\ExifTool\ExifTool.exe）+ 监控目录 D:\hot 已配，E2 探活链路就绪；首次改设置后自动写入 ui 节（ADR 0037 防抖 500ms）。
 - **A4/A5 提示**：诊断打点落在 **logs/ui-YYYYMMDD.log**（该目录当前无 ui-*.log，首次运行 ThemeSwap 即产生）。
+
+## 5.2 四页截图拍摄规程（Visual Baseline，票 01 立，2026-09-12）
+
+> 用途：让「改丑了」在同机位 before/after 人工对照中被发现，而不是三个月后用户再骂一次。规范条目见 docs/design/ui-visual-standard.md §7。
+> 原则：CI 像素 diff 门禁**不建**（D-007 负向：审查负担 + 环境漂移），只做人工同机位对照。
+
+**机位（四页通用，固定不变）**
+
+| 项 | 规定值 | 说明 |
+|---|---|---|
+| 窗口尺寸 | 920×600（MainWindow.axaml Width/Height 默认） | **非最大化、非全屏**；如实际有偏差须在备注写明 |
+| 窗口位置 | 每次同一坐标（建议左上 0,0） | 避免背景差异干扰 before/after 并列对照 |
+| 显示缩放 | 记录实测 DPI（100% / 125% / 150%） | before 与 after 必须同档 |
+| 侧栏宽度 | 200（默认） | 若做过 D 组拖宽探活，拍摄前恢复 200；否则须记录实际值且两侧一致 |
+| 主题档位 | 预设 catppuccin + 明暗档位写明 | system 档须注明系统当前明暗；建议显式设为 dark 保证可复现 |
+| 语言 | zh-CN（默认） | 多语言对照另立子目录并注明 |
+
+**拍摄范围与格式**
+
+- 整窗截图（**含自绘标题栏**），不做区域裁剪；PNG 无损。
+- 命名：`<page>__<state>__<preset>-<variant>__<yyyymmdd>.png`
+- 目录：`docs/design/screenshots/<yyyymmdd>-before/` 与 `docs/design/screenshots/<yyyymmdd>-after/`
+
+**四页 × 关键态最小集（12 张，可按票增补）**
+
+| 页 | 关键态 | state 段 |
+|---|---|---|
+| 配置页 config | 默认（滚动到顶部）/ 导航项 hover（配置、日志、规则各 1）/ 路径行 hover | `default` `nav-hover-config` `nav-hover-log` `nav-hover-rules` `row-hover` |
+| 日志页 log | 默认（有条目）/ 空态（清空后） | `default` `empty` |
+| 规则页 rules | 默认（有规则）/ 空态（过滤无匹配） | `default` `empty` |
+| 服务管理器 service | 默认（未安装态，禁用按钮可见）/ 已安装态（如可复现） | `not-installed` `installed` |
+
+**节奏**
+
+1. **before 基线**：由用户执行本轮探活时补拍（票 01 交付时该目录尚无基线属预期，见 §3.1 S1）。
+2. **after**：每张 UI 票交付后，按同机位重拍该票受影响的页/态。
+3. **验收**：人工并列对照 + 按 ui-visual-standard.md §7 的三锚（Wasabi 气场 / Apple 设置骨架 / VS Code·Discord 密度法）过目；结论写进当票报告。
 
 ## 6. 结论（检查点 C — 终态）
 
