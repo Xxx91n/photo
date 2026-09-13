@@ -75,19 +75,37 @@
     <Setter Property="Background" Value="{DynamicResource SemiColorBackground1}" />
   </Style>
 
+  <!-- 票 02（ui-craft）：nav 三态重塑 —— 定值依据 docs/design/ui-visual-standard.md §2（D-004 三根因）。
+       BorderThickness 常驻 4,0,0,0、idle 以 Transparent 画笔占位：hover/active 只切换 BorderBrush（可过渡），
+       避免厚度 0->4 的内容位移（规范 §2.2 N1 禁位移），并消除 active 与非 active 之间的 4px 图标错位。
+       Transitions 须显式写全 Background/BorderBrush/Foreground 三路 —— nav 段一旦声明 Transitions 即整体
+       覆盖全局 Button 段，漏写任一路即丢过渡；规范 §2.2 N2 指明 Foreground 无过渡是「塑料感」残留第一现场。 -->
   <Style Selector="Button.nav">
     <Setter Property="Background" Value="Transparent" />
     <Setter Property="Foreground" Value="{DynamicResource SemiColorText2}" />
-    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="4,0,0,0" />
     <Setter Property="CornerRadius" Value="{DynamicResource RadiusSm}" />
     <Setter Property="HorizontalContentAlignment" Value="Stretch" />
     <Setter Property="Padding" Value="12,0" />
     <Setter Property="Height" Value="40" />
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Background" Duration="0:0:0.150" Easing="SineEaseOut" />
+        <BrushTransition Property="BorderBrush" Duration="0:0:0.150" Easing="SineEaseOut" />
+        <BrushTransition Property="Foreground" Duration="0:0:0.150" Easing="SineEaseOut" />
+      </Transitions>
+    </Setter>
   </Style>
 
+  <!-- 票 02（ui-craft）：hover 色彩叙事 —— 前景由中性近白 Text0 改为 SemiColorPrimary（20px 图标随
+       Foreground 继承一并染色，规范 §2.1 定值 / D-004 根因②）；并以 SemiColorPrimaryLight 点亮 4px 槽位
+       作 active 的预示（根因③ / 规范 §2.2 N3）。背景沿用规范定值 SemiColorBackground1，与侧栏底色
+       SemiColorNavBackground 同色故不产生底色块，符合 §2.4 Wasabi「不叠加底色块」约束。 -->
   <Style Selector="Button.nav:pointerover">
     <Setter Property="Background" Value="{DynamicResource SemiColorBackground1}" />
-    <Setter Property="Foreground" Value="{DynamicResource SemiColorText0}" />
+    <Setter Property="Foreground" Value="{DynamicResource SemiColorPrimary}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SemiColorPrimaryLight}" />
   </Style>
 
   <Style Selector="Button.nav.active">
@@ -97,19 +115,30 @@
     <Setter Property="BorderThickness" Value="4,0,0,0" />
   </Style>
 
+  <!-- 票 02（ui-craft）：nav-action 与 Button.nav 同构（规范 §2.1 三态表同样适用；accent 槽位与过渡
+       三路的理由见上方 Button.nav 段注释，此处不重复）。 -->
   <Style Selector="Button.nav-action">
     <Setter Property="Background" Value="Transparent" />
     <Setter Property="Foreground" Value="{DynamicResource SemiColorText2}" />
-    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="4,0,0,0" />
     <Setter Property="CornerRadius" Value="{DynamicResource RadiusSm}" />
     <Setter Property="HorizontalContentAlignment" Value="Stretch" />
     <Setter Property="Padding" Value="12,0" />
     <Setter Property="Height" Value="40" />
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Background" Duration="0:0:0.150" Easing="SineEaseOut" />
+        <BrushTransition Property="BorderBrush" Duration="0:0:0.150" Easing="SineEaseOut" />
+        <BrushTransition Property="Foreground" Duration="0:0:0.150" Easing="SineEaseOut" />
+      </Transitions>
+    </Setter>
   </Style>
 
   <Style Selector="Button.nav-action:pointerover">
     <Setter Property="Background" Value="{DynamicResource SemiColorBackground1}" />
-    <Setter Property="Foreground" Value="{DynamicResource SemiColorText0}" />
+    <Setter Property="Foreground" Value="{DynamicResource SemiColorPrimary}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource SemiColorPrimaryLight}" />
   </Style>
 
   <!-- Self-drawn titlebar caption buttons (ADR 0050 A4). Square hit area,
