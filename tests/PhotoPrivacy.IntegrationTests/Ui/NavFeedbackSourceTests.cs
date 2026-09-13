@@ -25,12 +25,12 @@ public class NavFeedbackSourceTests
         var raw = SourceLint.Read("src", "PhotoPrivacy.Ui", "Styling", "AppTheme.axaml");
         // 剥 XAML 注释是“失效即红”自检的硬要求：本票在 nav 段写有设计依据注释，
         // 注释里出现了 Foreground / BorderBrush / Transitions 等字面量，不断言注释会导致守卫恒绿。
-        return Regex.Replace(raw, "<!--[\s\S]*?-->", string.Empty);
+        return Regex.Replace(raw, @"<!--[\s\S]*?-->", string.Empty);
     }
 
     private static string StyleBlock(string source, string selector)
     {
-        var start = source.IndexOf("<Style Selector="" + selector + "">", StringComparison.Ordinal);
+        var start = source.IndexOf("<Style Selector=\"" + selector + "\">", StringComparison.Ordinal);
         Assert.True(start >= 0, "nav style block missing: " + selector);
         var end = source.IndexOf("</Style>", start, StringComparison.Ordinal);
         Assert.True(end > start, "nav style block unterminated: " + selector);
@@ -48,8 +48,8 @@ public class NavFeedbackSourceTests
         foreach (var selector in NavSelectors)
         {
             var block = StyleBlock(source, selector);
-            Assert.Contains("BrushTransition Property="Foreground"", block, StringComparison.Ordinal);
-            Assert.Contains("BrushTransition Property="Background"", block, StringComparison.Ordinal);
+            Assert.Contains("BrushTransition Property=\"Foreground\"", block, StringComparison.Ordinal);
+            Assert.Contains("BrushTransition Property=\"Background\"", block, StringComparison.Ordinal);
         }
     }
 
@@ -82,7 +82,7 @@ public class NavFeedbackSourceTests
             var hover = StyleBlock(source, selector + ":pointerover");
             Assert.Contains("BorderBrush", hover, StringComparison.Ordinal);
             var navBase = StyleBlock(source, selector);
-            Assert.Contains("BorderThickness" Value="4,0,0,0"", navBase, StringComparison.Ordinal);
+            Assert.Contains("BorderThickness\" Value=\"4,0,0,0\"", navBase, StringComparison.Ordinal);
         }
     }
 
