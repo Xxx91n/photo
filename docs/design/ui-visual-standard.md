@@ -120,11 +120,11 @@
 | `TextBlock.section-header` / `.row-label` / `.row-desc` | 三级文本角色 | `AppTheme.axaml:306-320` |
 | 控件列宽度（路径类） | `u|PathPicker.inline-input Width=280` 共享 class 收敛（ADR 0061 票 24 / 票 25） | `AppTheme.axaml:325-331` |
 
-### 3.3 待对齐的三处偏差（→ 票 04）
+### 3.3 表单行偏差（票 04 已落地）
 
-- **B1 分隔线通栏**：Apple 系统设置与 WinUI SettingsCard 的行分隔线均**自标签列起点 inset**，通栏线使行与行视觉粘连。
-- **B2 控件列宽度散落**：仅路径行被共享 class 收敛（u|PathPicker.inline-input Width=280），其余控件无统一控件列宽度。实证：ConfigPage.axaml:113 的 ComboBox Width=160 属**行内写宽**，与票 24（ADR 0061）已立的「Views 禁止内联宽度」口径冲突。WinUI SettingsCard 的同位概念是模板内置 SettingsCardContentMinWidth。
-- **B3 分组卡片之间零间距**：ConfigPage.axaml:8 的 StackPanel Spacing=0 使各 settings-card 直接相邻；WinUI SettingsCard 官方示例为 StackPanel Spacing=4，macOS 侧亦要求分组之间必须有间距以形成视觉簇。
+- **B1 分隔线通栏** —— 已落地（票 04）：AppTheme 的 Border.row-divider 增 Margin="16,0,16,0"，使分隔线与行文本左缘对齐（settings-card Padding 16 + settings-row Padding 16 = 文本自卡边起 32；分隔线加 16 后同为 32）。守卫：Row_Divider_Must_Be_Inset_To_Label_Column_Not_Full_Bleed
+- **B2 控件列宽度散落** —— 已落地（票 04）：ConfigPage 三枚 ComboBox 行内 Width="160" 收敛为共享 class ComboBox.inline-control（AppTheme，取值 160 沿用实态、仅迁移权威位置），与既有 u|PathPicker.inline-input Width=280 同族。守卫：Views_Must_Not_Inline_ComboBox_Width
+- **B3 分组卡片之间零间距** —— 已落地（票 04）：ConfigPage 与 ServiceManagerPage 的卡片容器均设 Spacing="{DynamicResource SpaceLg}"（16）。取 16 而非 WinUI 的 4：§5.3 Wasabi 锚要求卡片外间距 >=16，且 §5.2 P1 为规范定值（4 属 WinUI 官方示例，非本项目口径）。守卫：Settings_Cards_Must_Be_Separated_By_SpaceLg
 
 ### 3.4 三锚对照
 
@@ -155,7 +155,7 @@
 |---|---|---|
 | 日志页 | `LogsPage.axaml:57-62`（`log.empty`，`HasNoLogs`，`MainWindowViewModel:444/509` 收口联动） | 已落地（ADR 0062 D5） |
 | 规则页 | `RulesPage.axaml:63`（`rules.empty`，`RulesPanel.HasNoVisibleRules`，`ApplyFilter` 收口） | 已落地（ADR 0062 D5） |
-| 服务管理器页 | 「未安装服务」态 | **缺口** → 票 04 评估补齐 |
+| 服务管理器页 | 「未安装服务」态 | 已评估（票 04）：**不构成 E1 缺口** —— 该页无可空列表 / 表格，E1 适用对象不存在；「未安装服务」由 ServiceStatus 文案 + ServiceStatusDotColor 状态点承载（ServiceManagerPage 状态卡），属状态展示而非空态，不新增占位 |
 | 配置页 | 路径行空值由 `Watermark` 承载，不属空态 | 不适用 |
 
 ### 4.3 三锚对照
@@ -183,11 +183,11 @@
 
 | 编号 | 场景 | 档位 | 落点 |
 |---|---|---|---|
-| P1 | 同级分组卡片之间 | `SpaceLg`(16) | **现状偏差**：ConfigPage.axaml:8 为 Spacing=0（卡片直接相邻），见 §3.3 B3 → 票 04 |
+| P1 | 同级分组卡片之间 | `SpaceLg`(16) | 已修正（票 04）：ConfigPage / ServiceManagerPage 卡片容器均设 `Spacing="{DynamicResource SpaceLg}"`，见 §3.3 B3 |
 | P2 | 卡片内边距 / section-header 与首行 | `16` / `SpaceMd`(12) | `settings-card` 与 `settings-row` 的 `Padding 16` |
 | P3 | 行内标签列与控件列之间 | ≥ `SpaceLg`(16) | 控件右对齐贴卡内边距 |
 | P4 | 同组内元素（如一组按钮） | `SpaceSm`(8) | 服务页按钮组 |
-| P5 | 侧栏导航项之间 | `SpaceXs`(4)，连续无 gap | `MainWindow.axaml:79/83` |
+| P5 | 侧栏导航项之间 | `SpaceXs`(4)，连续无 gap | `MainWindow.axaml` 两组导航 StackPanel（票 04：字面量 `4` → `{DynamicResource SpaceXs}`） |
 | P6 | 标题栏按钮组 | `SpaceXxs`(2) | `MainWindow.axaml:27` |
 | P7 | **禁止等距均匀** | — | 不同层级必须用不同档位；等距均匀是 AI 感第一根因（ADR 0051 A1） |
 
@@ -197,9 +197,14 @@
 - **VS Code / Discord**：列表行密排（4–8），区块之间 16–24。
 - **Wasabi**：大留白是气场来源——卡片外间距**不得小于 16**。
 
-### 5.4 待清理
+### 5.4 间距字面量（A-008）—— 票 04 已清零
 
-- **A-008**：6 个 axaml 文件共 14 处 `Margin` / `Spacing` 字面量残留，随票清至 `SpaceXxx`（撞见才改，不做全仓扫荡票）。
+- **历史登记**：6 个 axaml 共 14 处 `Margin` / `Spacing` 字面量残留（旧口径）。
+- **票 04 复算**：22 处间距字面量，其中**离轨 11 处**（值 `20` ×7 / `10` ×3 / `6` ×1）；`0` 为合法零间距，**不计离轨**。
+- **终态（票 04）**：**离轨 0**；`Spacing` 字面量 **0**（全部 `{DynamicResource SpaceXxx}`）；余 25 处 `Margin` / `Padding` 字面量**全部落在 ramp 上**。
+- **技术硬约束（不可绕过）**：`Margin` / `Padding` 属 **Thickness**，受 CONTEXT「Padding Literal Quantization」约束必须保持**字面量字符串**——`DynamicResource` Double 赋 Thickness 会跳过 `ThicknessTypeConverter`，导致布局测量期 `InvalidCastException`。故 Thickness 的「token 化」= **量化到 ramp 字面量**，**不等于**改成 `DynamicResource`。`Spacing` 属 Double，**可且应**改 `{DynamicResource SpaceXxx}`。
+- **离轨值映射（票 04 定值，规范 P1–P7 未覆盖故由本票定值）**：`20` → `24`（`SpaceXl`）；`10` → `8`（`SpaceSm`，对齐同侧栏兄弟元素）／→ `12`（`SpaceMd`，卡内垂直）；`6` → `8`（`SpaceSm`，事件徽章）。**取上档 24 而非下档 16 的决定性理由 = P7 禁等距均匀**：取 16 会使页头 `24,16,24,16` 与内容区 `24,16,24,24` 两个层级取同一档位。
+- **守卫**：`PagesVisualAlignmentSourceTests` —— `Views_Margin_Padding_Literals_Must_Sit_On_Space_Ramp` + `Views_Spacing_Must_Use_DynamicResource_Not_Literal`。
 
 ---
 
@@ -299,9 +304,23 @@
 
 ---
 
+## 附录 C. A-007 侧栏定宽处置（票 04 / ui-craft，2026-09-13）
+
+| 项 | 内容 |
+|---|---|
+| 现象 | 侧栏内部 Border 固定 `Width="200"`，`GridSplitter` 拖动改变列宽但面板视觉宽度不跟随（report-32 D3 观察项） |
+| 实态 | `MainWindow.axaml` 列宽由 `ColumnDefinitions="200,4,*"` + `MainWindow.axaml.cs` 的 `RestoreSidebarWidth` / `OnSidebarSplitterDragCompleted` 控制在 **170–400**；内部面板硬钉 200，两者冲突 |
+| 判定 | **缺陷，非设计意图** —— 列宽既已开放可调（ADR 0052 A5 显式交付「可拖拽侧栏」），内部定宽与之直接冲突，且无任何注释 / ADR 声明该定宽为设计 |
+| 后果 | 列宽 > 200 → 面板右侧留空、露出 `SemiColorBackground0`（侧栏视觉宽度与内容区断裂）；列宽 < 200 → 面板溢出被裁 |
+| 处置 | 删除 `Width="200"`；Border 位于 Grid cell 内默认 `HorizontalAlignment=Stretch`，移除后自动跟随 Column[0] 实际宽度（改动 1 行，零副作用） |
+| 与 §0 的关系 | §0 Wasabi 锚记「窄侧栏（默认 200，拖宽 170–400）」——「拖宽」语义要求面板跟随列宽，本处置与之**一致**，不触发 §0 修订 |
+| 守卫 | `PagesVisualAlignmentSourceTests.Sidebar_Panel_Must_Follow_Column_Width_Not_Fixed_200` |
+
+---
 ## 8. 修订记录
 
 | 版本 | 日期 | 票 | 修订摘要 |
 |---|---|---|---|
 | v1.0 | 2026-09-12 | 票 01 / ui-craft | 立文档：七节齐备（按钮组宽度策略 / nav 反馈三态 / 表单行骨架 / 空态规范 / 间距节奏 / Toast 反馈链规划 / 验收标尺）+ §0 三锚表 + 附录 A（atomcode 控件级调研）；登记张力 T-1（nav hover 色彩叙事）与 T-2（页内按钮组等宽）待大脑裁定 |
 | v1.1 | 2026-09-13 | 票 03 / ui-craft | 新增附录 B（按钮变体使用对账表，16 枚全量）；§1.2 两处 R1-1 不符项落地——等宽机制取 `Grid` + `SharedSizeGroup`（不取固定 `MinWidth`，理由见附录 B）；订正「裸按钮」为单行 grep 假阳性，`nav-action` 两枚自首版即归队 |
+| v1.2 | 2026-09-13 | 票 04 / ui-craft | §3.3 B1/B2/B3 三处表单行偏差全部落地（分隔线 inset `16,0,16,0` / `ComboBox.inline-control` 共享 class / 卡片间 `SpaceLg`，并记明取 16 而非 WinUI 4 的理由）；§4.2 服务管理器页空态评估结论（无可空列表 / 表格，不构成 E1 缺口）；§5.2 P1 现状偏差修正、P5 落点 token 化；§5.4 A-008 清零（离轨 11 → 0，`Spacing` 字面量 → 0）并书面化 Thickness 技术硬约束与离轨值映射定值理由；新增附录 C（A-007 侧栏定宽处置：删硬钉 `Width="200"` 跟随列宽） |
