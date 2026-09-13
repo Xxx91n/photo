@@ -24,10 +24,17 @@
             </Border>
           </StackPanel>
         </Border>
-        <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Stretch">
+        <StackPanel Orientation="Horizontal" Spacing="{DynamicResource SpaceSm}" HorizontalAlignment="Stretch" Grid.IsSharedSizeScope="True">
           <TextBox x:Name="RulesSearchBox" Text="{Binding RulesPanel.SearchFilter, Mode=TwoWay}" PlaceholderText="{ex:Localize rules.search.placeholder}" MinWidth="260" />
-          <Button x:Name="SaveRulesButton" Classes="ghost" Content="{ex:Localize rules.btn.save}" />
-          <Button x:Name="ResetRulesButton" Classes="ghost" Content="{ex:Localize rules.btn.reset}" />
+          <!-- 票 03（ui-craft R1-1）：保存 / 重置同组等宽 —— Grid + SharedSizeGroup，组内最长文案定宽 -->
+          <Grid ColumnSpacing="{DynamicResource SpaceSm}" VerticalAlignment="Center">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto" SharedSizeGroup="RuleActions"/>
+              <ColumnDefinition Width="Auto" SharedSizeGroup="RuleActions"/>
+            </Grid.ColumnDefinitions>
+            <Button Grid.Column="0" x:Name="SaveRulesButton" Classes="ghost" Content="{ex:Localize rules.btn.save}" HorizontalAlignment="Stretch"/>
+            <Button Grid.Column="1" x:Name="ResetRulesButton" Classes="ghost" Content="{ex:Localize rules.btn.reset}" HorizontalAlignment="Stretch"/>
+          </Grid>
           <TextBlock x:Name="RulesSaveStatus" Text="{Binding RulesPanel.SaveStatus}" Classes="caption" VerticalAlignment="Center" Margin="8,0,0,0" Opacity="0.6" />
         </StackPanel>
         <Grid MinHeight="280">

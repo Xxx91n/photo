@@ -506,6 +506,38 @@ public sealed class DesignSystemTests
     }
 
     [Fact]
+    public void Button_Elements_Must_Carry_A_Variant_Class()
+    {
+        // 票 03（ui-craft / A-001）——防的 bug：新增 Button 忘记挂 Classes 变体类，吃 Semi 默认样式，
+        // 尺寸与反馈脱离七变体体系（用户原话「按钮长度和大小都不统一」的字面来源）。
+        // D-006 定性：本断言是变更探测器而非契约——只能证明现役按钮全部归队，不能证明视觉等宽。
+        var viewsDir = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views");
+        var source = string.Concat(Directory.GetFiles(viewsDir, "*.axaml", SearchOption.AllDirectories)
+            .Select(f => File.ReadAllText(f, Encoding.UTF8)));
+        // 与 MainWindow_Buttons_Must_Not_Override_Size_Inline 同一口径：<Button ...> 起始标签整体匹配（含跨行）。
+        var buttons = System.Text.RegularExpressions.Regex.Matches(source, "<Button[^>]*>");
+        Assert.True(buttons.Count >= 10, $"Expected >=10 Button tags, got {buttons.Count}");
+        foreach (System.Text.RegularExpressions.Match b in buttons)
+        {
+            Assert.Contains("Classes=", b.Value);
+        }
+    }
+
+    [Fact]
+    public void Button_Groups_Must_Use_Equal_Width_Mechanism()
+    {
+        // 票 03（ui-craft R1-1）——防的 bug：按钮组回退到 StackPanel 内容宽度，同组按钮长短不一（A-001）。
+        // 等宽走 Grid + SharedSizeGroup（按组内最长文案动态定宽），不取固定 MinWidth——
+        // 本项目 10 语言，长文案（德/俄）会撑破定值导致等宽失效。
+        var servicePath = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views", "Pages", "ServiceManagerPage.axaml");
+        var rulesPath = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views", "Pages", "RulesPage.axaml");
+        var service = File.ReadAllText(servicePath, Encoding.UTF8);
+        var rules = File.ReadAllText(rulesPath, Encoding.UTF8);
+        Assert.Contains("SharedSizeGroup", service, StringComparison.Ordinal);
+        Assert.Contains("SharedSizeGroup", rules, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void All_Xaml_FontSize_Must_Be_On_Token_Ladder()
     {
         // Ladder: 11/12/14/16/18/20 — anything else (e.g. 11.5, 13) reintroduces

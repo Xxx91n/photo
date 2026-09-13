@@ -279,8 +279,29 @@
 
 ---
 
+## 附录 B. 按钮变体使用对账表（票 03 / ui-craft，2026-09-13）
+
+> 本节随票演化。数据由 `DesignSystemTests.Button_Elements_Must_Carry_A_Variant_Class`（零裸按钮）与 `Button_Groups_Must_Use_Equal_Width_Mechanism`（等宽机制不回退）两条 source-lint 断言锁定。
+
+| 变体 | 实例数 | 落点 | 五态 | 备注 |
+|---|---|---|---|---|
+| `primary` | 1 | ServiceManagerPage:30 安装 | ADR 0062 D3 全矩阵 | 单枚 hug（R1-2） |
+| `ghost` | 6 | LogsPage:15；RulesPage:35-36；ServiceManagerPage:51-53 | 同上 | 后两组已按 R1-1 等宽 |
+| `danger` | 1 | ServiceManagerPage:58 卸载 | 同上 | 单枚 hug（R1-2） |
+| `icon` | 2 | ConfigPage:205-206 | 同上 | `Button.icon` 32×32，天然等宽 |
+| `nav` | 1（组件内） | Views/Controls/NavButton.axaml:10 | 同上 | 侧栏主导航组，全宽 Stretch |
+| `nav-action` | 2 | MainWindow:85 / :90 | 同上 | 自 2026-04-27 首版即归队；票面「裸按钮」为单行 grep 假阳性 |
+| `caption-btn` | 3（含 1 枚 `danger`） | MainWindow:28 / :31 / :34 | 同上 | 标题栏组，`Padding 16,6` 由既有断言锁定 |
+
+- **合计 16 枚：零裸按钮、零行内尺寸覆盖**（ADR 0056 票 01 的清零成果保持）。
+- **等宽落点仅两处**：`ServiceManagerPage`（`ServiceActions` 组，3 枚）与 `RulesPage`（`RuleActions` 组，2 枚）。机制 = `Grid` + `ColumnDefinition SharedSizeGroup`（组内最长文案动态定宽）+ `ColumnSpacing="{DynamicResource SpaceSm}"`（§5.2 P4）。
+- **不取固定 `MinWidth` 的理由**：本项目 10 语言，组内最长文案随语言变化，定值在长文案语言（德 / 俄）下失效；`SharedSizeGroup` 按运行时测量结果定宽，任何语言下都成立。
+
+---
+
 ## 8. 修订记录
 
 | 版本 | 日期 | 票 | 修订摘要 |
 |---|---|---|---|
 | v1.0 | 2026-09-12 | 票 01 / ui-craft | 立文档：七节齐备（按钮组宽度策略 / nav 反馈三态 / 表单行骨架 / 空态规范 / 间距节奏 / Toast 反馈链规划 / 验收标尺）+ §0 三锚表 + 附录 A（atomcode 控件级调研）；登记张力 T-1（nav hover 色彩叙事）与 T-2（页内按钮组等宽）待大脑裁定 |
+| v1.1 | 2026-09-13 | 票 03 / ui-craft | 新增附录 B（按钮变体使用对账表，16 枚全量）；§1.2 两处 R1-1 不符项落地——等宽机制取 `Grid` + `SharedSizeGroup`（不取固定 `MinWidth`，理由见附录 B）；订正「裸按钮」为单行 grep 假阳性，`nav-action` 两枚自首版即归队 |
