@@ -1,12 +1,12 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:ex="using:PhotoPrivacy.Ui.Localization" xmlns:vm="using:PhotoPrivacy.Ui.ViewModels" xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia" xmlns:behaviors="using:PhotoPrivacy.Ui.Behaviors" x:Class="PhotoPrivacy.Ui.Views.Pages.ServiceManagerPage" x:DataType="vm:MainWindowViewModel">
   <!-- 票 24（ADR 0061）：自 MainWindow.axaml 拆出的服务管理页；按钮可用性经 VM ServiceButtons 绑定（直写清零）。 -->
   <Grid RowDefinitions="Auto,*">
-    <Border Padding="24,20,24,16" BorderBrush="{DynamicResource SemiColorBorder}" BorderThickness="0,0,0,1">
+    <Border Padding="24,24,24,16" BorderBrush="{DynamicResource SemiColorBorder}" BorderThickness="0,0,0,1">
       <TextBlock Text="{ex:Localize nav.service_manager}" Classes="title"/>
     </Border>
 
-    <ScrollViewer Grid.Row="1" Margin="24,16,24,20" VerticalScrollBarVisibility="Auto" behaviors:MiddleClickScrollBehavior.IsEnabled="True">
-      <StackPanel>
+    <ScrollViewer Grid.Row="1" Margin="24,16,24,24" VerticalScrollBarVisibility="Auto" behaviors:MiddleClickScrollBehavior.IsEnabled="True">
+      <StackPanel Spacing="{DynamicResource SpaceLg}">
         <Border Classes="settings-card">
           <StackPanel>
             <TextBlock Text="{ex:Localize service.section.status}" Classes="section-header" Margin="16,12,16,8"/>

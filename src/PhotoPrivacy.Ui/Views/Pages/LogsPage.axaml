@@ -1,11 +1,11 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:ex="using:PhotoPrivacy.Ui.Localization" xmlns:vm="using:PhotoPrivacy.Ui.ViewModels" xmlns:audit="using:PhotoPrivacy.Ui" x:Class="PhotoPrivacy.Ui.Views.Pages.LogsPage" x:DataType="vm:MainWindowViewModel">
   <!-- 票 24（ADR 0061）：自 MainWindow.axaml 拆出的日志页（AuditTailService 日志流绑定保持不变）。 -->
   <Grid RowDefinitions="Auto,*">
-    <Border Padding="24,20,24,16" BorderBrush="{DynamicResource SemiColorBorder}" BorderThickness="0,0,0,1">
+    <Border Padding="24,24,24,16" BorderBrush="{DynamicResource SemiColorBorder}" BorderThickness="0,0,0,1">
       <TextBlock Text="{ex:Localize nav.logs}" Classes="title"/>
     </Border>
 
-    <DockPanel Grid.Row="1" Margin="24,12,24,20">
+    <DockPanel Grid.Row="1" Margin="24,12,24,24">
       <Border DockPanel.Dock="Top"
               Padding="16,8"
               Background="{DynamicResource SemiColorNavBackground}"
@@ -31,7 +31,7 @@
                          VerticalAlignment="Center"/>
               <Border Grid.Column="1"
                       CornerRadius="4"
-                      Padding="6,2"
+                      Padding="8,2"
                       Background="{DynamicResource SemiColorNavBackground}"
                       Margin="0,0,8,0"
                       VerticalAlignment="Center"
