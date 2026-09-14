@@ -48,7 +48,7 @@
 | 位置 | 组 | 现状 | R1 判定 | 处置 |
 |---|---|---|---|---|
 | `ServiceManagerPage.axaml:43-45` | 启动 / 停止 / 刷新（三枚 `ghost`） | 无等宽约束，宽度 = 文案长度 | **不符 R1-1** | 票 03（ui-craft）已落地 SharedSizeGroup，见附录 B |
-| `RulesPage.axaml:29-30` | 保存 / 重置（两枚 `ghost`） | 同上 | **不符 R1-1** | 同上 |
+| `RulesPage.axaml` 页头操作区 | 保存 / 重置（两枚 `ghost`） | 票 03（ui-craft）已落地 SharedSizeGroup；票 06（ui-craft2）迁入页头右侧操作区沿用 | 符合 | — |
 | `MainWindow.axaml:82-94` | 暂停·恢复 / 打开配置目录（两枚 `nav-action`） | `HorizontalAlignment=Stretch` 已全宽 | 符合 | — |
 | `ServiceManagerPage.axaml:30` / `:58` | 安装（`primary`）/ 卸载（`danger`） | 各占独立行、右对齐 | 符合 R1-2 | — |
 | `LogsPage.axaml:15` | 清空日志（`ghost`） | 单枚 | 符合 R1-2 | — |
@@ -193,7 +193,7 @@
 | 面 | 落点 | 状态 |
 |---|---|---|
 | 日志页 | `LogsPage.axaml` 空态区（`log.empty`/`log.empty_desc`/`log.empty_filtered`，`HasNoLogs` 收口 + `LogLevelFilterActive` 空因区分，AppTheme `empty-icon`/`empty-title`/`empty-desc` 骨架 class） | **E2 已落地（票 05 / ui-craft2）**；图标盒经 md-empty-state.vue 源码复核为 52×52 无底色定位盒（非带底卡片盒），36 主色字形直渲 |
-| 规则页 | `RulesPage.axaml:63`（`rules.empty`，`RulesPanel.HasNoVisibleRules`，`ApplyFilter` 收口） | 已落地（ADR 0062 D5）；E2 新骨架对齐在各页面票 |
+| 规则页 | `RulesPage.axaml` 空态区（`rules.empty`/`rules.empty_desc`/`rules.empty_filtered`，`RulesPanel.HasNoVisibleRules` 收口 + `SearchFilterActive` 空因区分，AppTheme `empty-icon`/`empty-title`/`empty-desc` 骨架 class） | **E2 已落地（票 06 / ui-craft2）**；图标盒 52×52 无底色定位盒 + ShieldCheckOutline 36 主色字形；成因二分（atomcode 调研裁决二） |
 | 服务管理器页 | 「未安装服务」态 | 已评估（票 04）：**不构成 E1 缺口** —— 该页无可空列表 / 表格，E1 适用对象不存在；「未安装服务」由 ServiceStatus 文案 + ServiceStatusDotColor 状态点承载（ServiceManagerPage 状态卡），属状态展示而非空态，不新增占位 |
 | 配置页 | 路径行空值由 `Watermark` 承载，不属空态 | 不适用 |
 
@@ -437,3 +437,4 @@
 | v2.3 | 2026-09-14 | 票 04 / ui-craft2 | ConfigPage 整页对齐落地（D-005/D-006）：§3.1 骨架升组标签外置+行集合卡模型；§3.2 实态刷新（settings-card.grouped / settings-row 16,8+MinHeight60 / group-label / page-title 四段新实态）；§3.3 新增 B4–B7（组标签出卡、页壳 58+readable1160、条件行分隔线联动、孤图标清除）；§3.4 卡片 padding 复核改判（卡 0 + 行承载，附录 D 原 p-6=24 取证误差订正）；§5.2 P1 上档 SpaceXl、P2 改判卡零内边距；§5.4 复算 24 处零离轨；登记张力 T-4（MangoDisk 行 40px 图标列未引入，待大脑裁定）与 T-5（字号阶梯：基准 6+1 档 vs 本项目 6-role——行标题 13/节标题 15 无对应 token，page-title 22 与 group-label 12 已先行补齐） |
 | v2.0 | 2026-09-14 | 票 01 / ui-craft2 | **主基准切换（D-005 / A-001 / ADR 0067）**：§0 改 MangoDisk 观感级对标主基准表 + 上轮三锚降级为气质参考；§2 重写为胶囊三态目标规范（4px 槽位体系随 D-002 退役，施工在票 03），新增 §2.4 MangoDisk `nav-item` 实测公式对照并**登记张力 T-3**（D-003 主色实心胶囊+反白 vs 基准实物 accent 胶囊+3px×24px 主色 pill+字重 600；hover 前景叙事偏差并入）；§4 E2 按 `md-empty-state` 重校；§5.1 增 MangoDisk 布局 token 基准列；§6 Toast 规划按 vue-sonner 实物配置重校（T2/T3/T6 改值 + 新增 T7 动效档）；§7 V3 验收清单改 MangoDisk 对照项；新增附录 D 观感取证表（gh api 只读取证，GPL-3.0 零拷贝）；附录 A.2 张力表补 T-3 行、T-1 改并入 T-3 口径 |
 | v2.4 | 2026-09-15 | 票 05 / ui-craft2 | **LogsPage 整页对齐落地（D-005/D-006）**：页壳 58+page-title；工具条 36（LayoutToolbarHeight，级别过滤 ComboBox 左/清空右，裸条对齐 md-result-filter-toolbar 无底色无边框实态）；日志行 MinHeight=LayoutResultRowHeight(44)+事件徽章 RadiusXl 胶囊化（md radius-999 等效）；§4.2 日志页 E2 骨架落地（`empty-icon`/`empty-title`/`empty-desc` 三 class + 空因双文案 E5，`empty_desc`/`empty_filtered` ×10 语言）；图标盒源码复核订正为无底色定位盒；`MapEventStyle` emoji/Unicode 前缀清零（§6 T3/§7 V3）；新增 token `EmptyDescFontSize=12`；VM 联动通知修复（LogLevel 热重载回填 ComboBox 选中态缺口） |
+| v2.5 | 2026-09-15 | 票 06 / ui-craft2 | **RulesPage 整页对齐落地（D-005/D-006）**：页壳 58+page-title+副标题+右侧操作区（保存/重置 SharedSizeGroup 组+SaveStatus 迁入页头，atomcode 调研裁决一：页面级操作放页头右侧操作区、绝不进过滤工具条）；专家横幅卡沿用裸 settings-card（§3.1 明许非行集合卡）；36px 过滤工具条（LayoutToolbarHeight，搜索左置=数据作用域）；DataGrid `RowHeight=LayoutResultRowHeight`(44)；§4.2 规则页 E2 骨架落地（empty-icon/title/desc + 空因双文案 E5 随 `SearchFilterActive` 切换，`rules.empty_desc`/`rules.empty_filtered` ×10 语言新增、`rules.panel.title` 孤儿键清除）；VM +`SearchFilterActive` 收口通知 |
