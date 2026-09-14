@@ -9,8 +9,8 @@
 | W1 | 01 | visual-standard-v2 | — | **ACCEPT**（首脑复核 2026-09-14，双轨一致/首件 8a9dea9/4 词条 verbatim/ADR0067+v2.0 实物验证；T-3 张力登记待裁定，不阻塞 W2） |
 | W2 | 02 | rounded-window-shell-tokens | 01 | **ACCEPT**（首脑复核 2026-09-14：双轨 13603B 逐字一致；ead97bb 实物验证——显式 Round+守卫 R1 注释+禁读回断言、不动项零 diff、tokens 对照表逐项吻合（Radius 4/6/8/12、Elevation #12/#2E 两档、Layout 17 枚、Dracula/Nord 深档纠偏）、静态门禁复演 5/5 平衡+无 BOM 纯 LF+FullScreen 判省依据成立+既有断言无钉旧值；R3 侧栏默认宽 200vs240 呈报待大脑裁定） |
 | W3 | 03 | nav-capsule-tri-state | 02 | **ACCEPT**（首脑复核 2026-09-14：双轨 18265B 逐字一致；uur+lwm 实物验证——槽位零残留、hover 中性胶囊无前景 setter、active 实心+深字+SemiBold+pointerover 锁、五主题两新刷、对比度七行独立复算全数一致（5.00–7.79 过 AA，nord/dracula 实解）、守卫 5Fact 健全+旧版必红逻辑成立、8/8 XAML 平衡无 BOM 纯 LF、D-008 含用户原话；账本偏差 1 项已补落地注记：NavItemHover@0.7 vs 草拟 NavHover@0.55；01 分支因 pull 呈 conflicted 移交大脑） |
-| W4 | 04 | page-config | 03 | **可开工（frontier）** |
-| W5 | 05 | page-logs | 04 | 待开工 |
+| W4 | 04 | page-config | 03 | **ACCEPT**（首脑复核 2026-09-14：双轨 15104B 逐字一致；xzs/mkm/yox 三提交实物验证——页壳 58/22/右操作位、内容 1160 居中、4 组 group-label 出卡+grouped 卡零内边距、离轨值独立复算 0/24 与报告一致、缺陷修复×2 IsVisible 联动在位、守卫改造1/新增2/保留5 断言体健全非恒绿、settings-card 存量供给 3 处不失效、3/3 XAML 平衡无 BOM 纯 LF、规范 v2.3+取证误差订正留痕；新增张力 T-4/T-5 登记待裁定，不阻塞 W5） |
+| W5 | 05 | page-logs | 04 | **可开工（frontier）** |
 | W6 | 06 | page-rules | 05 | 待开工 |
 | W7 | 07 | page-service-manager | 06 | 待开工 |
 | W8 | 08 | toast | 07 | 待开工 |
@@ -33,4 +33,5 @@
 - 票 02（2026-09-14）：首脑复核 **ACCEPT**——声明→证据→结论对照全 PASS（issue 验收 4/4+D-001 承接注）；上游权威独立复核（Avalonia 12.1.1 Win32Properties.cs 源码直读：附加属性/默认 Default/<22000 ignored 与票面一致）；过程呈报 3 项：R6 启动器必读清单第 3 项字面 `undefined`（大脑模板缺陷，已由大脑修复 8 份 prompts）、R7 同值 setter replace 误中自愈（终态核验无残留）、报告 §3.2 措辞"任务书"实为 prompts/（口径偏差不追责）；R3（侧栏默认宽 200 vs 基准 240）呈报待大脑裁定；T-3 维持待裁定（票 02 未碰 nav，零立场）。
 - 票 03（2026-09-14）：首脑复核 **ACCEPT**——声明→证据→结论对照全 PASS（issue 验收 5/5+D-001 承接注）；T-3 已裁定入 D-008（含用户原话：T-3a=C 折中/T-3b=hover 中性），流程合法；WCAG 对比度独立复算七行零偏差；守卫断言体健全非恒绿。过程呈报 3 项：①账本-实现落地偏差（D-008 草拟 NavHover@0.55 vs 实现 NavItemHover@0.7）报告未登记，大脑已补落地注记；②uur 提交信息记报告 17372B vs 实际入库 18265B（定稿后增量，提交内容正确，仅信息数字漂移）；③报告记 nav-action 裸 Button 行号 89/94 vs 实物 90/96（微漂不追责）。
 - **移交大脑**：票 03 窗口 but pull（§4.4 快照 20260914-094037 ZERO-LOSS 100/100 先行）后 `ui-craft2/01-visual-standard-v2` 车道呈 conflicted（上游 b77a970/cbcc852 + 大脑收尾件 kzx）——票 03 按纪律不代解析；属票 01 领地+大脑件，处置（rebase 重放或 land 时解析）待大脑/用户裁定，不阻塞 W4（03 分支自身干净）。
-- frontier：**W4 = 票 04**（page-config）。T-3 已裁定，无开工前置阻塞。
+- 票 04（2026-09-14）：首脑复核 **ACCEPT**——声明→证据→结论对照全 PASS（issue 验收 3/3+D-001 承接注）。独立复算离轨值与报告完全一致（Spacing 字面量 0 / Margin·Padding 24 处全在 ramp / 离轨 0）。取证误差订正按纪律留痕（附录 D 原「卡片 p-6=24」经 md-settings-group.vue 源码复核改判「卡 0 + 行 7/14」，旧值标 revised 未静默改向）。过程呈报 3 项：①ConfigPage 行数报告记 234 实测 233（尾行口径）②报告 §10 记「必读清单 7 份」而启动器模板为 8 份（第 7/8 项 atomcode-verdict/adr0050 系票 02 专属前提，对本票非必需，口径不追责）③阻塞核查自述属实（03-report 双轨我上轮已独立验证一致）。**新增张力 T-4**（MangoDisk 设置行 40px 图标列未引入——本票反向删唯一孤图标使 15 行统一，全行引入属跨页设计变更待裁）与 **T-5**（字号阶梯：基准行标题 13/节标题 15 无对应 token，本票仅先补 page-title22/group-label12，全面对齐属全局决策）登记待裁定，二者均不阻塞 W5。
+- frontier：**W5 = 票 05**（page-logs）。无开工前置阻塞。
