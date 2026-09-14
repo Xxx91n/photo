@@ -295,7 +295,7 @@ MiddleClickScrollBehavior.cs 的 DispatcherTimer 16ms 换为 TopLevel.RequestAni
 _Avoid_: DispatcherTimer 16ms 非 vsync 对齐导致高刷屏抖动；偏离 Files.App 成熟常量值
 
 **Sidebar Nav Item (40px Icon+Text)**:
-企业级桌面侧栏导航项标准：40px 高、icon(20px)+text、4px 左侧 accent bar active 指示。Material Design 3 Navigation drawer / Fluent 2 NavViewItem / Apple HIG sidebar 均遵此规格。项目 Button.nav 4 按钮（Config/Logs/Rules/ServiceManager）与 nav-action 统一 Height=40 Padding=12,0 HorizontalContentAlignment=Stretch，icon 用 Material.Icons（Settings/FileDocumentOutline/ShieldCheckOutline/ServerNetwork），active 态 4px 左 accent bar（SemiColorPrimary 边框 + SemiColorPrimaryLight 背景）。**沿革（2026-09-12 ui-craft 票 01 修正）**：本词条原记 44px（ADR 0052 A1 原始规格），后由 ADR 0055 A1（Nav Group Split）与 ADR 0056 票 01（Button Size Ladder）统一为 40px；src/PhotoPrivacy.Ui/Styling/AppTheme.axaml 实物 Button.nav / Button.nav-action 的 Height 均为 40，44px 系 stale 值——该词条长期未随代码修订，2026-09-12 grill 对账时发现并更正（A-006）。三态反馈细则见 docs/design/ui-visual-standard.md §2。见 ADR 0052 A1 / ADR 0055 A1 / ADR 0056 票 01。
+企业级桌面侧栏导航项标准：40px 高、icon(20px)+text、active 态圆角胶囊高亮指示（ui-craft2 起为胶囊语言）。Material Design 3 Navigation drawer / Fluent 2 NavViewItem / Apple HIG sidebar 均遵此规格。项目侧栏导航 4 按钮（Config/Logs/Rules/ServiceManager）由 NavButton 组件承载，Button.nav / Button.nav-action 统一 Height=40 Padding=12,0 HorizontalContentAlignment=Stretch，icon 用 Material.Icons（Settings/FileDocumentOutline/ShieldCheckOutline/ServerNetwork），active 态主色实心胶囊（SemiColorPrimary 底 + SemiColorNavActiveForeground on-primary 深字 + SemiBold），hover 中性半透明胶囊（SemiColorNavItemHover）。**沿革（2026-09-12 ui-craft 票 01 修正）**：本词条原记 44px（ADR 0052 A1 原始规格），后由 ADR 0055 A1（Nav Group Split）与 ADR 0056 票 01（Button Size Ladder）统一为 40px；src/PhotoPrivacy.Ui/Styling/AppTheme.axaml 实物 Button.nav / Button.nav-action 的 Height 均为 40，44px 系 stale 值——该词条长期未随代码修订，2026-09-12 grill 对账时发现并更正（A-006）。**沿革（2026-09-14 ui-craft2 票 03 修正）**：本词条原记「4px 左侧 accent bar active 指示」系 v1.2 左缘指示条语言（上轮票 02 交付），ui-craft2 D-002 随胶囊体系退役，三态改为 idle 透明 / hover 中性半透明胶囊 / active 主色实心胶囊（D-003 / D-008）。三态反馈细则见 docs/design/ui-visual-standard.md §2。见 ADR 0052 A1 / ADR 0055 A1 / ADR 0056 票 01。
 _Avoid_: 纯文字无图标、Padding 不统一、无 active indicator；沿用 44px 旧值
 
 **Exponential Scroll Smoothing**:
@@ -412,7 +412,7 @@ _Avoid_: 把规范全文冻结进单篇 ADR（演化会产生补丁链）；在 
 _Avoid_: 无基线资产的一次性人工探活；CI 视觉回归像素门禁（审查负担 + 环境漂移）
 
 **Nav Capsule Language（胶囊导航语言）**:
-侧栏导航按钮（Button.nav / Button.nav-action）的视觉语言：idle 透明 → hover 半透明中性圆角胶囊底色块 → active 主色实心胶囊 + 反白前景，三态层次分明（ui-craft2 D-002/D-003）。上轮的 4px 左缘 accent 指示条槽位体系（BorderThickness 4,0,0,0 + Transparent 占位）随之退役；BrushTransition 三路过渡机制（Background/BorderBrush/Foreground ~150ms）保留复用。反白前景对主色底的对比度须达 WCAG AA（≥4.5:1），五主题色板逐一验证（nord/dracula 上轮观察项须解决或显式豁免）。落地载体 docs/design/ui-visual-standard.md（T0 票升级）。
+侧栏导航按钮（Button.nav / Button.nav-action）的视觉语言：idle 透明 → hover 半透明中性圆角胶囊底色块 → active 主色实心胶囊 + on-primary 深字前景 + SemiBold，三态层次分明（ui-craft2 D-002/D-003/D-008：「反白」按 M3 on-primary 语义落地为各主题 Bg0 深字——pastel 主色上白字不达 AA）。上轮的 4px 左缘 accent 指示条槽位体系（BorderThickness 4,0,0,0 + Transparent 占位）随之退役；BrushTransition 三路过渡机制（Background/BorderBrush/Foreground ~150ms）保留复用。on-primary 前景对主色底的对比度须达 WCAG AA（≥4.5:1），五主题色板逐一验证——票 03 实测深字 5.90–7.79 全过，nord/dracula 上轮观察项就此解决。落地载体 docs/design/ui-visual-standard.md（v2.0 §2 / 票 03 落地）。
 _Avoid_: hover 无实体底色块的"纯变色"反馈（用户判塑料感的直接原因）；active 与 hover 同为浅色导致看不出选中
 
 **Rounded Window (DWM Corner Preference)**:
