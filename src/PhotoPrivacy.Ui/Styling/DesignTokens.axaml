@@ -32,6 +32,11 @@
   <x:Double x:Key="BodyFontSize">14</x:Double>
   <x:Double x:Key="CaptionFontSize">11</x:Double>
   <x:Double x:Key="MonoFontSize">12</x:Double>
+  <!-- 票 04（ui-craft2 / D-005 / 附录 D.2）：页头 h1 = 22 / font-normal（md-page-shell）；
+       卡片外组标签 = 12px / 600 / muted（md-settings-group.vue margin 1px 0 6px 2px）。
+       两者为新增消费档，不动既有 6-role 梯度（20/18/16/14/12/11 角色语义不变）。 -->
+  <x:Double x:Key="PageTitleFontSize">22</x:Double>
+  <x:Double x:Key="GroupLabelFontSize">12</x:Double>
 
   <!-- Surface 4th layer: Overlay (ADR 0050 A1). Alias SemiColorBackground2 to let dialog/popover
        groove lift above cards (SemiColorSurface). Without this alias apps directly consume the
@@ -90,5 +95,8 @@
   <x:Double x:Key="LayoutDialogHeaderHeight">68</x:Double>
   <x:Double x:Key="LayoutDialogFooterHeight">56</x:Double>
   <x:Double x:Key="LayoutDialogBodyPaddingInline">20</x:Double>
+  <!-- 票 04（ui-craft2）：设置行 min-height 60 —— MangoDisk md-settings-row.vue 实测
+       min-height:60px;padding:7px 14px（调研 §2.3）；x:Double 供 Style setter MinHeight 消费。 -->
+  <x:Double x:Key="LayoutSettingsRowHeight">60</x:Double>
 
 </ResourceDictionary>

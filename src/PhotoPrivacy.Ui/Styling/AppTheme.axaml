@@ -279,16 +279,30 @@
 <Setter Property="Padding" Value="16" /><!-- ponytail: literal Thickness, not DynamicResource Double; Avalonia ThicknessTypeConverter runs at compile, DynamicResource skips it -> InvalidCastException -->
   </Style>
 
+  <!-- 票 04（ui-craft2 / D-005 / atomcode 调研 §2.1）：行集合卡变体 —— MangoDisk
+       md-settings-group 卡片零内边距（padding 下沉到行 7px/14px），分隔线 inset 与行水平
+       padding 天然对齐。用法 Classes="settings-card grouped"：通用卡外观（底/描边/圆角/投影）
+       + 零内边距；不带 grouped 的 settings-card 保 Padding 16（如 RulesPage 专家横幅卡）。 -->
+  <Style Selector="Border.settings-card.grouped">
+    <Setter Property="Padding" Value="0" />
+  </Style>
+
+  <!-- 票 04（ui-craft2 / 调研 §2.3）：行承载卡内 inset —— 水平 16（grouped 卡零内边距时
+       文本自卡边起 16，分隔线 Margin 16 对齐同值）；垂直 8 → 行间内容间距 16（基准 7px
+       垂直 padding 量化到 ramp 8）。MinHeight 60 = md-settings-row 实测（min-height:60px）；
+       Padding 属 Thickness 保持字面量，MinHeight 属 Double 可走 DynamicResource。 -->
   <Style Selector="Border.settings-row">
-<Setter Property="Padding" Value="16" /><!-- ponytail: literal Thickness, not DynamicResource Double; Avalonia ThicknessTypeConverter runs at compile, DynamicResource skips it -> InvalidCastException -->
+    <Setter Property="Padding" Value="16,8" />
+    <Setter Property="MinHeight" Value="{DynamicResource LayoutSettingsRowHeight}" />
   </Style>
 
   <Style Selector="Border.row-divider">
     <Setter Property="BorderBrush" Value="{DynamicResource SemiColorBorder}" />
     <Setter Property="BorderThickness" Value="0,0,0,1" />
-    <!-- 票 04（ui-craft 规范 §3.3 B1）：分隔线自标签列起点 inset —— settings-card Padding 16
-         + settings-row Padding 16 = 行文本自卡边起 32；分隔线加 Margin 16 后同为 32，与文本左缘对齐。
-         通栏线使行与行视觉粘连；Apple 系统设置与 WinUI SettingsCard 的行分隔线均为 inset。
+    <!-- 票 04（ui-craft 规范 §3.3 B1）落地；票 04（ui-craft2）复核续用：inset 定值 = 行水平
+         padding —— settings-row Padding 16,8 的水平分量 16（MangoDisk md-settings-group 分隔线
+         ::before left/right=14px = 其行 padding 14，同规则）。通栏线使行与行视觉粘连；
+         Apple 系统设置与 WinUI SettingsCard 的行分隔线均为 inset。
          Margin 属 Thickness，必须字面量：DynamicResource Double 赋 Thickness 会跳过
          ThicknessTypeConverter 导致布局测量期 InvalidCastException（CONTEXT Padding Literal Quantization）。 -->
     <Setter Property="Margin" Value="16,0,16,0" />
@@ -343,6 +357,24 @@
 
   <Style Selector="TextBlock.row-desc">
     <Setter Property="Foreground" Value="{DynamicResource SemiColorText2}" />
+  </Style>
+
+  <!-- 票 04（ui-craft2 / 调研 §2.2）：组标签在卡片外上方 —— MangoDisk md-settings-group
+       标题 12px/600/muted（margin 1px 0 6px 2px；左 inset 2px 取 SpaceXxs 档），
+       WinUI 节标题同为「正文级字号 + 600」。Avalonia TextBlock 无 letter-spacing，基准 0.04em 字距略。 -->
+  <Style Selector="TextBlock.group-label">
+    <Setter Property="FontSize" Value="{DynamicResource GroupLabelFontSize}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{DynamicResource SemiColorText2}" />
+    <Setter Property="Margin" Value="2,0,0,0" />
+  </Style>
+
+  <!-- 票 04（ui-craft2 / 附录 D.5）：页头标题 h1 = 22 / font-normal / tracking-tight
+       （md-page-shell）；Avalonia 无 tracking 等价物，取 22/Normal/Text0。 -->
+  <Style Selector="TextBlock.page-title">
+    <Setter Property="FontSize" Value="{DynamicResource PageTitleFontSize}" />
+    <Setter Property="FontWeight" Value="Normal" />
+    <Setter Property="Foreground" Value="{DynamicResource SemiColorText0}" />
   </Style>
 
   <Style Selector="TextBox.inline-input">
