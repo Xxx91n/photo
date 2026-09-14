@@ -377,6 +377,29 @@
     <Setter Property="Foreground" Value="{DynamicResource SemiColorText0}" />
   </Style>
 
+  <!-- 票 05（ui-craft2 / 规范 §4 E2 + gh api 源码复核 md-empty-state.vue）：空态骨架角色。
+       标题 = content-empty-title 20 card-fg；说明 = content-body 12 muted max-w 520 居中；
+       图标容器 52×52 仅为定位盒（基准源码：盒无底色无边框，36 主色字形直接渲染）。 -->
+  <Style Selector="TextBlock.empty-title">
+    <Setter Property="FontSize" Value="{DynamicResource DisplayFontSize}" />
+    <Setter Property="FontWeight" Value="Normal" />
+    <Setter Property="Foreground" Value="{DynamicResource SemiColorText0}" />
+    <Setter Property="TextAlignment" Value="Center" />
+  </Style>
+  <Style Selector="TextBlock.empty-desc">
+    <Setter Property="FontSize" Value="{DynamicResource EmptyDescFontSize}" />
+    <Setter Property="FontWeight" Value="Normal" />
+    <Setter Property="Foreground" Value="{DynamicResource SemiColorText2}" />
+    <Setter Property="MaxWidth" Value="520" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+    <Setter Property="TextAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Border.empty-icon">
+    <Setter Property="Width" Value="52" />
+    <Setter Property="Height" Value="52" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+  </Style>
+
   <Style Selector="TextBox.inline-input">
     <Setter Property="BorderBrush" Value="{DynamicResource SemiColorBorder}" />
     <Setter Property="CornerRadius" Value="{DynamicResource RadiusMd}" />

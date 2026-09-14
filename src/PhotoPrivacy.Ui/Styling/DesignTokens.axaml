@@ -37,6 +37,9 @@
        两者为新增消费档，不动既有 6-role 梯度（20/18/16/14/12/11 角色语义不变）。 -->
   <x:Double x:Key="PageTitleFontSize">22</x:Double>
   <x:Double x:Key="GroupLabelFontSize">12</x:Double>
+  <!-- 票 05（ui-craft2 / 规范 §4 E2）：空态说明字号 —— MangoDisk text-content-body=12；
+       6-role 阶梯无 12 非等宽档（MonoFontSize 绑定 CascadiaCode 不可复用语义）。 -->
+  <x:Double x:Key="EmptyDescFontSize">12</x:Double>
 
   <!-- Surface 4th layer: Overlay (ADR 0050 A1). Alias SemiColorBackground2 to let dialog/popover
        groove lift above cards (SemiColorSurface). Without this alias apps directly consume the

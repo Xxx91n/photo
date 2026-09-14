@@ -213,7 +213,9 @@
     "btn": {
       "clear": "Borrar"
     },
-    "empty": "Aún no hay registros de auditoría — esperando eventos de vigilancia"
+    "empty": "Aún no hay registros de auditoría — esperando eventos de vigilancia",
+    "empty_desc": "Los eventos de auditoría aparecen aquí a medida que se procesan los archivos.",
+    "empty_filtered": "No hay entradas con el filtro de nivel actual — baje el nivel o espere eventos coincidentes."
   },
   "tray": {
     "pause": "Pausa",

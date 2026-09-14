@@ -213,7 +213,9 @@
     "btn": {
       "clear": "Bereinigen"
     },
-    "empty": "Noch keine Prüfprotokolle — warte auf Dateiüberwachungsereignisse"
+    "empty": "Noch keine Prüfprotokolle — warte auf Dateiüberwachungsereignisse",
+    "empty_desc": "Audit-Ereignisse erscheinen hier, sobald Dateien verarbeitet werden.",
+    "empty_filtered": "Keine Einträge unter dem aktuellen Ebenenfilter — Ebene senken oder auf passende Ereignisse warten."
   },
   "tray": {
     "pause": "Anhalten",

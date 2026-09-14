@@ -213,7 +213,9 @@
     "btn": {
       "clear": "Effacer"
     },
-    "empty": "Aucun journal d'audit pour l'instant — en attente d'événements de surveillance"
+    "empty": "Aucun journal d'audit pour l'instant — en attente d'événements de surveillance",
+    "empty_desc": "Les événements d'audit apparaissent ici au fur et à mesure du traitement des fichiers.",
+    "empty_filtered": "Aucune entrée sous le filtre de niveau actuel — abaissez le niveau ou attendez des événements correspondants."
   },
   "tray": {
     "pause": "Pause",

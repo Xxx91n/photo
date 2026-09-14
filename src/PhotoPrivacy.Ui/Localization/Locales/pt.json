@@ -213,7 +213,9 @@
     "btn": {
       "clear": "Limpar"
     },
-    "empty": "Ainda não há registos de auditoria — aguardando eventos de monitorização"
+    "empty": "Ainda não há registos de auditoria — aguardando eventos de monitorização",
+    "empty_desc": "Os eventos de auditoria aparecem aqui à medida que os ficheiros são processados.",
+    "empty_filtered": "Sem entradas no filtro de nível atual — baixe o nível ou aguarde eventos correspondentes."
   },
   "tray": {
     "pause": "Pause",

@@ -213,7 +213,9 @@
     "btn": {
       "clear": "Clear"
     },
-    "empty": "No audit entries yet — waiting for file watch events"
+    "empty": "No audit entries yet — waiting for file watch events",
+    "empty_desc": "Audit events appear here as files are processed.",
+    "empty_filtered": "No entries under the current level filter — lower the level or wait for matching events."
   },
   "titlebar": {
     "minimize": "Minimize",
