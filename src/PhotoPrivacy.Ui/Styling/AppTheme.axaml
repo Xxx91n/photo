@@ -75,70 +75,64 @@
     <Setter Property="Background" Value="{DynamicResource SemiColorBackground1}" />
   </Style>
 
-  <!-- 票 02（ui-craft）：nav 三态重塑 —— 定值依据 docs/design/ui-visual-standard.md §2（D-004 三根因）。
-       BorderThickness 常驻 4,0,0,0、idle 以 Transparent 画笔占位：hover/active 只切换 BorderBrush（可过渡），
-       避免厚度 0->4 的内容位移（规范 §2.2 N1 禁位移），并消除 active 与非 active 之间的 4px 图标错位。
-       Transitions 须显式写全 Background/BorderBrush/Foreground 三路 —— nav 段一旦声明 Transitions 即整体
-       覆盖全局 Button 段，漏写任一路即丢过渡；规范 §2.2 N2 指明 Foreground 无过渡是「塑料感」残留第一现场。 -->
+  <!-- 票 03（ui-craft2 / D-002 / D-003 / D-008）：nav 胶囊三态 —— 定值依据 docs/design/ui-visual-standard.md §2.1。
+       上轮 4px 左缘 accent 槽位体系（BorderThickness 4,0,0,0 + Transparent 占位）随 D-002 退役；
+       胶囊圆角 RadiusLg(8)。Transitions 须显式写全 Background/Foreground 两路 —— nav 段一旦声明
+       Transitions 即整体覆盖全局 Button 段，漏写任一路即丢过渡（规范 §2.2 N2 防前景 0ms 硬切）。 -->
   <Style Selector="Button.nav">
     <Setter Property="Background" Value="Transparent" />
     <Setter Property="Foreground" Value="{DynamicResource SemiColorText2}" />
-    <Setter Property="BorderBrush" Value="Transparent" />
-    <Setter Property="BorderThickness" Value="4,0,0,0" />
-    <Setter Property="CornerRadius" Value="{DynamicResource RadiusSm}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusLg}" />
     <Setter Property="HorizontalContentAlignment" Value="Stretch" />
     <Setter Property="Padding" Value="12,0" />
     <Setter Property="Height" Value="40" />
     <Setter Property="Transitions">
       <Transitions>
         <BrushTransition Property="Background" Duration="0:0:0.150" Easing="SineEaseOut" />
-        <BrushTransition Property="BorderBrush" Duration="0:0:0.150" Easing="SineEaseOut" />
         <BrushTransition Property="Foreground" Duration="0:0:0.150" Easing="SineEaseOut" />
       </Transitions>
     </Setter>
   </Style>
 
-  <!-- 票 02（ui-craft）：hover 色彩叙事 —— 前景由中性近白 Text0 改为 SemiColorPrimary（20px 图标随
-       Foreground 继承一并染色，规范 §2.1 定值 / D-004 根因②）；并以 SemiColorPrimaryLight 点亮 4px 槽位
-       作 active 的预示（根因③ / 规范 §2.2 N3）。背景沿用规范定值 SemiColorBackground1，与侧栏底色
-       SemiColorNavBackground 同色故不产生底色块，符合 §2.4 Wasabi「不叠加底色块」约束。 -->
+  <!-- hover = 中性半透明圆角胶囊底色块（SemiColorNavItemHover，规范 §2.1 / 附录 D.3 基准公式）。
+       D-008 裁定：hover 前景不变色——MangoDisk/VS Code/WinUI/Discord 实物 hover 前景均中性，
+       上轮 D-004「向 SemiColorPrimary 叙事」就此 revised。 -->
   <Style Selector="Button.nav:pointerover">
-    <Setter Property="Background" Value="{DynamicResource SemiColorBackground1}" />
-    <Setter Property="Foreground" Value="{DynamicResource SemiColorPrimary}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource SemiColorPrimaryLight}" />
+    <Setter Property="Background" Value="{DynamicResource SemiColorNavItemHover}" />
   </Style>
 
+  <!-- active = 主色实心胶囊 + on-primary 深字 + SemiBold（D-003 / D-008 C 折中）。深字非白字：
+       五主题 pastel 主色上白字对比度 2.0–2.5 全灭，M3 on-primary 语义修正为各主题 Bg0 深字
+       （实测 5.90–7.79 全过 AA，规范 §2.4 T-3 登记）。active:pointerover 保持实心不褪回 hover 底。 -->
   <Style Selector="Button.nav.active">
-    <Setter Property="Background" Value="{DynamicResource SemiColorPrimaryLight}" />
-    <Setter Property="Foreground" Value="{DynamicResource SemiColorPrimary}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource SemiColorPrimary}" />
-    <Setter Property="BorderThickness" Value="4,0,0,0" />
+    <Setter Property="Background" Value="{DynamicResource SemiColorPrimary}" />
+    <Setter Property="Foreground" Value="{DynamicResource SemiColorNavActiveForeground}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
   </Style>
 
-  <!-- 票 02（ui-craft）：nav-action 与 Button.nav 同构（规范 §2.1 三态表同样适用；accent 槽位与过渡
-       三路的理由见上方 Button.nav 段注释，此处不重复）。 -->
+  <Style Selector="Button.nav.active:pointerover">
+    <Setter Property="Background" Value="{DynamicResource SemiColorPrimary}" />
+    <Setter Property="Foreground" Value="{DynamicResource SemiColorNavActiveForeground}" />
+  </Style>
+
+  <!-- nav-action 与 Button.nav 同构（规范 §2.1 三态表同样适用；胶囊与过渡两路的理由见上方注释）。 -->
   <Style Selector="Button.nav-action">
     <Setter Property="Background" Value="Transparent" />
     <Setter Property="Foreground" Value="{DynamicResource SemiColorText2}" />
-    <Setter Property="BorderBrush" Value="Transparent" />
-    <Setter Property="BorderThickness" Value="4,0,0,0" />
-    <Setter Property="CornerRadius" Value="{DynamicResource RadiusSm}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusLg}" />
     <Setter Property="HorizontalContentAlignment" Value="Stretch" />
     <Setter Property="Padding" Value="12,0" />
     <Setter Property="Height" Value="40" />
     <Setter Property="Transitions">
       <Transitions>
         <BrushTransition Property="Background" Duration="0:0:0.150" Easing="SineEaseOut" />
-        <BrushTransition Property="BorderBrush" Duration="0:0:0.150" Easing="SineEaseOut" />
         <BrushTransition Property="Foreground" Duration="0:0:0.150" Easing="SineEaseOut" />
       </Transitions>
     </Setter>
   </Style>
 
   <Style Selector="Button.nav-action:pointerover">
-    <Setter Property="Background" Value="{DynamicResource SemiColorBackground1}" />
-    <Setter Property="Foreground" Value="{DynamicResource SemiColorPrimary}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource SemiColorPrimaryLight}" />
+    <Setter Property="Background" Value="{DynamicResource SemiColorNavItemHover}" />
   </Style>
 
   <!-- Self-drawn titlebar caption buttons (ADR 0050 A4). Square hit area,

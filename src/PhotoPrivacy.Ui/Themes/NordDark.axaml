@@ -11,6 +11,10 @@
   <!-- 票 02（ui-craft2 / D.1）：侧栏须比 Bg0 深一档；Nord Bg1 #3B4252 反浅于 Bg0 #2E3440，改深档惯例色 -->
   <SolidColorBrush x:Key="SemiColorNavBackground" Color="#242933" />
 
+  <!-- 票 03（ui-craft2 / D-008）：nav 胶囊三态用刷 —— hover 中性半透明胶囊（Bg2@0.7 叠 navbg，MangoDisk sidebar-accent 档位等效），active 前景 on-primary 深字（Bg0，pastel 主色上白字不达 AA）。 -->
+  <SolidColorBrush x:Key="SemiColorNavItemHover" Color="{StaticResource SemiBackground2Color}" Opacity="0.7" />
+  <SolidColorBrush x:Key="SemiColorNavActiveForeground" Color="{StaticResource SemiBackground0Color}" />
+
   <SolidColorBrush x:Key="SemiColorText0" Color="#ECEFF4" />
   <SolidColorBrush x:Key="SemiColorText1" Color="#D8DEE9" Opacity="0.8" />
   <SolidColorBrush x:Key="SemiColorText2" Color="#81A1C1" Opacity="0.62" />

@@ -78,9 +78,9 @@
 | 态 | 背景 | 前景（文字 + 图标） | 过渡 |
 |---|---|---|---|
 | idle | Transparent | `SemiColorText2` | — |
-| hover | **半透明中性圆角胶囊底色块**（基准值：`sidebar-accent` 约 52% 透明叠加，圆角 8 = RadiusLg（v2.0 阶梯，票 02 落地）；Avalonia 落点 = Semi 语义刷等效，票 03 定值） | 沿用 D-004 定值 = 向 `SemiColorPrimary` 叙事（基准偏差见张力 T-3） | BrushTransition Background + Foreground 两路 ~150ms |
+| hover | **半透明中性圆角胶囊底色块**（基准值：`sidebar-accent` 约 52% 透明叠加，圆角 8 = RadiusLg；Avalonia 落点 = `SemiColorNavItemHover` 票 03 落地，各主题 `SemiBackground2Color` @ Opacity 0.7 + 亮/暗回退） | 不变色（D-008 裁定：对齐 MangoDisk/VS Code/WinUI/Discord 实物中性叙事；上轮 D-004「向 primary 叙事」revised） | BrushTransition Background + Foreground 两路 ~150ms |
 | pressed | 同族加深（基准值：`sidebar-accent` 约 72%） | 继承 | 同 hover |
-| active | **D-003 拍板：主色实心胶囊**（`SemiColorPrimary` 或等效主色），圆角 8 | **反白前景**（对主色底 ≥4.5:1 达 WCAG AA；五主题色板逐一验证，nord 3.81 / dracula 4.15 观察项必须解决或显式豁免登记） | 同 hover |
+| active | **D-003 拍板：主色实心胶囊**（`SemiColorPrimary` 或等效主色），圆角 8 | **on-primary 深字** `SemiColorNavActiveForeground`（D-008 语义修正：「反白」按 M3 on-primary 取对比安全色而非默认白——五主题 pastel 主色上白字 2.0–2.5 全灭，各主题 Bg0 深字 5.90–7.79 全过 AA，nord/dracula 观察项就此解决）+ `FontWeight=SemiBold`（取基准字重 600 信号） | 同 hover |
 | disabled | 继承 | `SemiColorText2` + `Opacity 0.5` | — |
 | focus-visible | 继承 | 继承 | 全局 2px 焦点环（基准：nav 用 inset box-shadow 2px `primary` 约 32% 透明，与 ADR 0051 A1 描边兼容） |
 
@@ -94,9 +94,9 @@
 
 | 项 | 现状 | 目标 | 处置 |
 |---|---|---|---|
-| 视觉语言 | 4px 左缘 accent 槽位体系（v1.2，票 02/ui-craft 交付） | 胶囊三态（D-002 / D-003） | 票 03 |
-| 过渡机制 | BrushTransition 三路（Background / BorderBrush / Foreground 150ms SineEaseOut）已就位 | 保留复用 | — |
-| `NavFeedbackSourceTests` 既有断言（4px 槽位等） | 撞红预演对象 | 三档处置（杀 / 改造 / 保留+characterization） | 票 03（A-004） |
+| 视觉语言 | 胶囊三态已落地（票 03，2026-09-14）：idle 透明 / hover `SemiColorNavItemHover` / active `SemiColorPrimary` 实心 + `SemiColorNavActiveForeground` + SemiBold | — | **已落地** |
+| 过渡机制 | BrushTransition 两路（Background / Foreground 150ms SineEaseOut）——BorderBrush 路随槽位退役收窄 | — | **已落地** |
+| `NavFeedbackSourceTests` 既有断言（4px 槽位等） | 撞红三档已处置：杀 0 / 改造 2 / 保留 2 / 新增 1（明细见票 03 报告 §4） | — | **已落地** |
 | 尺寸 | nav / nav-action Height=40、Padding=12,0 | 保留（基准 nav 项高同 40；icon 盒 24、label 14 见附录 D.3，票 03 对齐细节） | — |
 
 ### 2.4 基准对照（MangoDisk `nav-item` 实测公式）
@@ -104,13 +104,13 @@
 | 态 | MangoDisk 实测（md-sidebar.vue） | 本项目目标标准（§2.1） |
 |---|---|---|
 | idle | `background: transparent`，fg 继承 sidebar-foreground | Transparent / Text2 |
-| hover | `sidebar-accent` 52% 透明圆角胶囊（radius 8），**前景不变色** | 半透明中性胶囊 +（现行决策）前景向 primary 叙事 ⚠ T-3 |
+| hover | `sidebar-accent` 52% 透明圆角胶囊（radius 8），**前景不变色** | 半透明中性胶囊 + 前景不变色（D-008 对齐基准实物） |
 | pressed | `sidebar-accent` 72% | 同族加深 |
-| active | `sidebar-accent` 实心 + `sidebar-accent-foreground` + **字重 600** + **3px×24px 圆头主色左缘条**（`::before`，radius 999） | 主色实心胶囊 + 反白（D-003）⚠ T-3 |
+| active | `sidebar-accent` 实心 + `sidebar-accent-foreground` + **字重 600** + **3px×24px 圆头主色左缘条**（`::before`，radius 999） | 主色实心胶囊 + on-primary 深字 + SemiBold（D-003 / D-008 C 折中：取基准字重信号、舍左缘 pill——atomcode 注意点：实心 accent 底与 accent pill 不可叠加；且 nav-action 裸 Button 不经 NavButton 模板，pill 覆盖不可达） |
 | focus-visible | inset box-shadow 2px，primary 约 32% | 全局 2px 焦点环 |
 | 过渡 | `background-color / color / box-shadow 0.16s ease` + 结构变化 240ms | BrushTransition ~150ms 白名单 |
 
-> **张力 T-3（登记待裁定，本规范不静默改向）**：D-003 拍板「active = 主色实心胶囊 + 反白」在 MangoDisk 参照物进入决策（D-005）**之前**；MangoDisk 实物 active 并非主色实心，而是「accent 实心胶囊 + 3px×24px 主色左缘 pill + 字重 600」。hover 前景亦不同（基准不变色 vs 现行向 primary 叙事）。票 03 施工前须由用户 / 大脑裁定：维持 D-003 实色胶囊，或按基准实物 revised。台账处置建议随票 03 报告呈报。
+> **张力 T-3（已裁定，2026-09-14 / D-008）**：用户拍板 **C 折中**——维持 D-003 主色实心胶囊方向（不取基准的 accent 浅底 + 左缘 pill），但取基准的字重 600 信号；「反白」按 M3 on-primary 语义落地为各主题 Bg0 深字（白字在五主题 pastel 主色上 2.0–2.5 全灭无豁免空间，实测深字 5.90–7.79 全过 AA）。hover 前景裁定对齐基准实物**不变色**（上轮 D-004 primary 叙事 revised）。舍 pill 的工程理由：nav-action 两枚为裸 `Button`（MainWindow）不经 NavButton 控件模板，pill 须 Button 模板级手术，且实心 accent 底与 accent pill 不可叠加（atomcode 票 03 调研）。
 
 ### 2.5 气质参考对照（上轮证据保留）
 
@@ -421,5 +421,6 @@
 | v1.0 | 2026-09-12 | 票 01 / ui-craft | 立文档：七节齐备（按钮组宽度策略 / nav 反馈三态 / 表单行骨架 / 空态规范 / 间距节奏 / Toast 反馈链规划 / 验收标尺）+ §0 三锚表 + 附录 A（atomcode 控件级调研）；登记张力 T-1（nav hover 色彩叙事）与 T-2（页内按钮组等宽）待大脑裁定 |
 | v1.1 | 2026-09-13 | 票 03 / ui-craft | 新增附录 B（按钮变体使用对账表，16 枚全量）；§1.2 两处 R1-1 不符项落地——等宽机制取 `Grid` + `SharedSizeGroup`（不取固定 `MinWidth`，理由见附录 B）；订正「裸按钮」为单行 grep 假阳性，`nav-action` 两枚自首版即归队 |
 | v1.2 | 2026-09-13 | 票 04 / ui-craft | §3.3 B1/B2/B3 三处表单行偏差全部落地（分隔线 inset `16,0,16,0` / `ComboBox.inline-control` 共享 class / 卡片间 `SpaceLg`，并记明取 16 而非 WinUI 4 的理由）；§4.2 服务管理器页空态评估结论（无可空列表 / 表格，不构成 E1 缺口）；§5.2 P1 现状偏差修正、P5 落点 token 化；§5.4 A-008 清零（离轨 11 → 0，`Spacing` 字面量 → 0）并书面化 Thickness 技术硬约束与离轨值映射定值理由；新增附录 C（A-007 侧栏定宽处置：删硬钉 `Width="200"` 跟随列宽） |
+| v2.2 | 2026-09-14 | 票 03 / ui-craft2 | **nav 胶囊三态落地（D-002 / D-003 / D-008）**：4px 左缘 accent 槽位体系退役；§2.1 hover 落 `SemiColorNavItemHover`（Bg2@0.7 各主题 + 亮/暗回退）、active 落 `SemiColorPrimary` 实心 + `SemiColorNavActiveForeground` on-primary 深字 + SemiBold、active:pointerover 保持实心；§2.3 现状对账全项转落地态；§2.4 T-3 登记改已裁定（C 折中 + hover 前景中性）；`NavFeedbackSourceTests` 撞红三档处置（改造 2 / 保留 2 / 新增 1） |
 | v2.1 | 2026-09-14 | 票 02 / ui-craft2 | **tokens 刷新落地（D-004 / D-005）**：MainWindow 显式 `Win32Properties.WindowCornerPreference="Round"`；§5.1 Radius 实物列改 v2.0 阶梯（Sm4/Md6/Lg8/Xl12，Xs2 保留子档）+ Elevation 收两档制（1/2=subtle 7%、4=dialog 18% 原式）+ 新增 Layout 族 17 枚 `Layout*`；壳层侧栏深一档定值——Catppuccin/OneDarkPro/TokyoNight 本深于 Bg0，Dracula/NordDark 纠偏为深档惯例色，亮/暗回退档入 DesignTokens ThemeDictionaries；settings-card 角档改 RadiusLg、按钮/输入框改 RadiusMd（md=6）；§2.1/§3.2 半径引用订正 RadiusLg；§5.2 P5 落 SpaceXxs(2)；侧栏持久化默认宽 200 不动（Core 配置语义+§7 V2 机位同值） |
 | v2.0 | 2026-09-14 | 票 01 / ui-craft2 | **主基准切换（D-005 / A-001 / ADR 0067）**：§0 改 MangoDisk 观感级对标主基准表 + 上轮三锚降级为气质参考；§2 重写为胶囊三态目标规范（4px 槽位体系随 D-002 退役，施工在票 03），新增 §2.4 MangoDisk `nav-item` 实测公式对照并**登记张力 T-3**（D-003 主色实心胶囊+反白 vs 基准实物 accent 胶囊+3px×24px 主色 pill+字重 600；hover 前景叙事偏差并入）；§4 E2 按 `md-empty-state` 重校；§5.1 增 MangoDisk 布局 token 基准列；§6 Toast 规划按 vue-sonner 实物配置重校（T2/T3/T6 改值 + 新增 T7 动效档）；§7 V3 验收清单改 MangoDisk 对照项；新增附录 D 观感取证表（gh api 只读取证，GPL-3.0 零拷贝）；附录 A.2 张力表补 T-3 行、T-1 改并入 T-3 口径 |

@@ -59,9 +59,13 @@
   <ResourceDictionary.ThemeDictionaries>
     <ResourceDictionary x:Key="Light">
       <SolidColorBrush x:Key="SemiColorNavBackground" Color="#F4F3F1" />
+      <SolidColorBrush x:Key="SemiColorNavItemHover" Color="#1B1C21" Opacity="0.08" />
+      <SolidColorBrush x:Key="SemiColorNavActiveForeground" Color="#FFFFFF" />
     </ResourceDictionary>
     <ResourceDictionary x:Key="Dark">
       <SolidColorBrush x:Key="SemiColorNavBackground" Color="#1B1C21" />
+      <SolidColorBrush x:Key="SemiColorNavItemHover" Color="#FFFFFF" Opacity="0.12" />
+      <SolidColorBrush x:Key="SemiColorNavActiveForeground" Color="#1B1C21" />
     </ResourceDictionary>
   </ResourceDictionary.ThemeDictionaries>
 
