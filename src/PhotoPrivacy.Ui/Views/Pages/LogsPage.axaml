@@ -1,65 +1,82 @@
-<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:ex="using:PhotoPrivacy.Ui.Localization" xmlns:vm="using:PhotoPrivacy.Ui.ViewModels" xmlns:audit="using:PhotoPrivacy.Ui" x:Class="PhotoPrivacy.Ui.Views.Pages.LogsPage" x:DataType="vm:MainWindowViewModel">
-  <!-- 票 24（ADR 0061）：自 MainWindow.axaml 拆出的日志页（AuditTailService 日志流绑定保持不变）。 -->
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:ex="using:PhotoPrivacy.Ui.Localization" xmlns:vm="using:PhotoPrivacy.Ui.ViewModels" xmlns:audit="using:PhotoPrivacy.Ui" xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia" x:Class="PhotoPrivacy.Ui.Views.Pages.LogsPage" x:DataType="vm:MainWindowViewModel">
+  <!-- 票 24（ADR 0061）：自 MainWindow.axaml 拆出的日志页（AuditTailService 日志流绑定保持不变）。
+       票 05（ui-craft2 / D-005/D-006）：整页对齐 v2.0 —— 页壳（页头 MinHeight 58 + page-title）
+       + 36px 工具条（LayoutToolbarHeight；级别过滤左 / 清空右，去原 NavBackground 条底与上下边线）
+       + 日志流（行高 LayoutResultRowHeight 44、事件徽章 RadiusXl 胶囊化）
+       + E2 空态骨架（empty-icon 52 定位盒 + 36 主色字形 + empty-title 20 + empty-desc 12
+       双文案：真空 log.empty_desc / 过滤无结果 log.empty_filtered，规范 §4 E2+E5）。 -->
   <Grid RowDefinitions="Auto,*">
-    <Border Padding="24,24,24,16" BorderBrush="{DynamicResource SemiColorBorder}" BorderThickness="0,0,0,1">
-      <TextBlock Text="{ex:Localize nav.logs}" Classes="title"/>
+    <Border MinHeight="{DynamicResource LayoutPageHeaderHeight}" Padding="24,0,24,0" BorderBrush="{DynamicResource SemiColorBorder}" BorderThickness="0,0,0,1">
+      <DockPanel LastChildFill="False">
+        <TextBlock Text="{ex:Localize nav.logs}" Classes="page-title" VerticalAlignment="Center"/>
+      </DockPanel>
     </Border>
 
-    <DockPanel Grid.Row="1" Margin="24,12,24,24">
-      <Border DockPanel.Dock="Top"
-              Padding="16,8"
-              Background="{DynamicResource SemiColorNavBackground}"
-              BorderBrush="{DynamicResource SemiColorBorder}"
-              BorderThickness="0,1,0,1">
-        <DockPanel>
-          <Button DockPanel.Dock="Right" x:Name="ClearLogsButton" Content="{ex:Localize log.btn.clear}" Classes="ghost"/>
-        </DockPanel>
-      </Border>
+    <DockPanel Grid.Row="1" Margin="24,16,24,24">
+      <!-- 工具条（附录 D.2 workspace toolbar=36 / md-result-filter-toolbar 裸条无底色无边框）：
+           左 = 级别过滤（与 ConfigPage 同一 LogLevelIndex 绑定，AuditTailService.ShouldInclude
+           解析期过滤语义）；右 = 清空。 -->
+      <DockPanel DockPanel.Dock="Top" MinHeight="{DynamicResource LayoutToolbarHeight}" Margin="0,0,0,8" LastChildFill="False">
+        <ComboBox x:Name="LogLevelComboBox" Classes="inline-control" SelectedIndex="{Binding LogLevelIndex, Mode=TwoWay}" VerticalAlignment="Center" ToolTip.Tip="{ex:Localize settings.log_level}">
+          <ComboBoxItem Content="{ex:Localize loglevel.option.all}" Tag="all"/><ComboBoxItem Content="{ex:Localize loglevel.option.info}" Tag="info"/><ComboBoxItem Content="{ex:Localize loglevel.option.debug}" Tag="debug"/><ComboBoxItem Content="{ex:Localize loglevel.option.warn}" Tag="warn"/><ComboBoxItem Content="{ex:Localize loglevel.option.error}" Tag="error"/>
+        </ComboBox>
+        <Button DockPanel.Dock="Right" x:Name="ClearLogsButton" Content="{ex:Localize log.btn.clear}" Classes="ghost" VerticalAlignment="Center"/>
+      </DockPanel>
 
-      <ListBox x:Name="LogsList"
-               ItemsSource="{Binding LogEntries}"
-               Background="{DynamicResource SemiColorBackground0}"
-               BorderThickness="0"
-               Padding="4"
-               ><!-- ADR 0051 A1: BaselinePixelAlignment deferred — TextOptions static setters need code-behind in Avalonia 12.1.1 (no XxxProperty field exposed; TigerMajor on 12.2+ road). FontFeatures tabular numbers below is the fully XAML-compatible survivor. -->
-        <ListBox.ItemTemplate>
-          <DataTemplate x:DataType="audit:AuditLogEntry">
-            <Grid ColumnDefinitions="68,108,*,1.6*" Height="32" Background="Transparent">
-              <TextBlock Text="{Binding TimeText}"
-                         Classes="caption"
-                         FontFeatures="+tnum"
-                         VerticalAlignment="Center"/>
-              <Border Grid.Column="1"
-                      CornerRadius="4"
-                      Padding="8,2"
-                      Background="{DynamicResource SemiColorNavBackground}"
-                      Margin="0,0,8,0"
-                      VerticalAlignment="Center"
-                      HorizontalAlignment="Left">
-                <TextBlock Text="{Binding DisplayEvent}" Classes="caption" Foreground="{Binding ColorHex}" FontWeight="Medium"/>
-              </Border>
-              <TextBlock Grid.Column="2"
-                         Text="{Binding SourcePathMasked}"
-                         Classes="caption"
-                         VerticalAlignment="Center"
-                         Foreground="{DynamicResource SemiColorText1}"
-                         TextTrimming="CharacterEllipsis"/>
-              <TextBlock Grid.Column="3"
-                         Classes="mono"
-                         Text="{Binding Message}"
-                         VerticalAlignment="Center"
-                         Foreground="{DynamicResource SemiColorText0}"
-                         TextTrimming="CharacterEllipsis"/>
-            </Grid>
-          </DataTemplate>
-        </ListBox.ItemTemplate>
-      </ListBox>
-      <!-- 票 26（ADR 0062）: 空审计流占位 — HasNoLogs 由 VM 在 Append/Clear 收口处联动刷新 -->
-      <TextBlock Text="{ex:Localize log.empty}"
-                 Classes="caption"
-                 HorizontalAlignment="Center"
-                 VerticalAlignment="Center"
-                 IsVisible="{Binding HasNoLogs}"/>
+      <Grid>
+        <ListBox x:Name="LogsList"
+                 ItemsSource="{Binding LogEntries}"
+                 Background="{DynamicResource SemiColorBackground0}"
+                 BorderThickness="0"
+                 Padding="4"
+                 ><!-- ADR 0051 A1: BaselinePixelAlignment deferred — TextOptions static setters need code-behind in Avalonia 12.1.1 (no XxxProperty field exposed; TigerMajor on 12.2+ road). FontFeatures tabular numbers below is the fully XAML-compatible survivor. -->
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="audit:AuditLogEntry">
+              <Grid ColumnDefinitions="68,108,*,1.6*" MinHeight="{DynamicResource LayoutResultRowHeight}" Background="Transparent">
+                <TextBlock Text="{Binding TimeText}"
+                           Classes="caption"
+                           FontFeatures="+tnum"
+                           VerticalAlignment="Center"/>
+                <Border Grid.Column="1"
+                        CornerRadius="{DynamicResource RadiusXl}"
+                        Padding="8,2"
+                        Background="{DynamicResource SemiColorNavBackground}"
+                        Margin="0,0,8,0"
+                        VerticalAlignment="Center"
+                        HorizontalAlignment="Left">
+                  <TextBlock Text="{Binding DisplayEvent}" Classes="caption" Foreground="{Binding ColorHex}" FontWeight="Medium"/>
+                </Border>
+                <TextBlock Grid.Column="2"
+                           Text="{Binding SourcePathMasked}"
+                           Classes="caption"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource SemiColorText1}"
+                           TextTrimming="CharacterEllipsis"/>
+                <TextBlock Grid.Column="3"
+                           Classes="mono"
+                           Text="{Binding Message}"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource SemiColorText0}"
+                           TextTrimming="CharacterEllipsis"/>
+              </Grid>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+        <!-- 票 26（ADR 0062）: 空审计流占位 — HasNoLogs 由 VM 在 Append/Clear 收口处联动刷新。
+             票 05（ui-craft2 / 规范 §4 E2+E5）：升 md-empty-state 骨架 —— 52 定位盒（无底色
+             无边框，基准源码复核）+ 36 主色字形 + 标题 20 + 说明 12 居中偏上（下侧留白 48
+             补偿视觉中心）；过滤无结果文案随 LogLevelFilterActive 切换（E5 区分空因）。 -->
+        <Border IsVisible="{Binding HasNoLogs}" Background="{DynamicResource SemiColorBackground0}" Padding="24,24,24,48">
+          <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="{DynamicResource SpaceMd}">
+            <Border Classes="empty-icon">
+              <materialIcons:MaterialIcon Kind="FileDocumentOutline" Width="36" Height="36" Foreground="{DynamicResource SemiColorPrimary}"/>
+            </Border>
+            <TextBlock Text="{ex:Localize log.empty}" Classes="empty-title"/>
+            <TextBlock Text="{ex:Localize log.empty_desc}" Classes="empty-desc" IsVisible="{Binding !LogLevelFilterActive}"/>
+            <TextBlock Text="{ex:Localize log.empty_filtered}" Classes="empty-desc" IsVisible="{Binding LogLevelFilterActive}"/>
+          </StackPanel>
+        </Border>
+      </Grid>
     </DockPanel>
   </Grid>
 </UserControl>

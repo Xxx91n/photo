@@ -641,8 +641,11 @@ public partial class MainWindow : Window
     {
         var svc = LocalizationService.Instance;
         var configPage = ConfigPage;
+        var logsPage = LogPage;
         RefreshComboBoxItems(configPage.ThemeVariantComboBoxControl, ThemeVariantTagToLocaleKey, svc);
         RefreshComboBoxItems(configPage.LogLevelComboBoxControl, LogLevelTagToLocaleKey, svc);
+        // 票 05（ui-craft2）：LogsPage 工具条级别下拉同一套 Tag→key 映射 + SelectionBoxItem 缓存刷新。
+        RefreshComboBoxItems(logsPage.LogLevelComboBoxControl, LogLevelTagToLocaleKey, svc);
         // Force Avalonia ComboBox SelectionBoxItem to re-render: setting Content
         // on ComboBoxItem does NOT propagate to the closed dropdown display
         // (SelectionBoxItemPresenter caches the selected item's content). The
@@ -650,6 +653,7 @@ public partial class MainWindow : Window
         // which forces the ComboBox to re-evaluate its SelectionBoxItem.
         ForceComboBoxSelectionBoxRefresh(configPage.ThemeVariantComboBoxControl);
         ForceComboBoxSelectionBoxRefresh(configPage.LogLevelComboBoxControl);
+        ForceComboBoxSelectionBoxRefresh(logsPage.LogLevelComboBoxControl);
         // LocaleVariantComboBox items are native-language labels (not i18n keys),
         // so they don't change on locale switch — no refresh needed.
     }

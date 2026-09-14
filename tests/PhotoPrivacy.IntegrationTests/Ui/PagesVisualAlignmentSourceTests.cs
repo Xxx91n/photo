@@ -190,6 +190,40 @@ public class PagesVisualAlignmentSourceTests
     }
 
     [Fact]
+    public void LogsPage_PageShell_Toolbar_And_Rows_Must_Consume_V20_Layout_Tokens()
+    {
+        // 防：票 05 / ui-craft2 页壳+工具条+行高回潮 —— 页头高度/页标题/工具条高度/日志行高
+        // 回退为散值或旧 class。页头 MinHeight=LayoutPageHeaderHeight(58)+page-title、
+        // 工具条 MinHeight=LayoutToolbarHeight(36)、日志行 MinHeight=LayoutResultRowHeight(44)
+        // —— 均为 v2.0 附录 D.2/D.5 基准落位，四者同场才构成 md-page-shell+workspace 骨架。
+        var source = ReadXaml(new[] { "src", "PhotoPrivacy.Ui", "Views", "Pages", "LogsPage.axaml" });
+        Assert.True(
+            source.Contains("LayoutPageHeaderHeight")
+                && source.Contains("LayoutToolbarHeight")
+                && source.Contains("LayoutResultRowHeight")
+                && source.Contains("page-title"),
+            "LogsPage 须消费 LayoutPageHeaderHeight / LayoutToolbarHeight / LayoutResultRowHeight / page-title（规范 §5.1/§7 页壳与工具条基准）");
+    }
+
+    [Fact]
+    public void LogsPage_EmptyState_Must_Follow_E2_Skeleton()
+    {
+        // 防：规范 §4 E2 回潮 —— 空态退回单行 caption 或缺图标盒/标题/说明三级骨架。
+        // E2 落位 = empty-icon 定位盒 + empty-title(20) + empty-desc(12 muted) 三 class 同场；
+        // E5 落位 = 真空 log.empty_desc 与过滤无结果 log.empty_filtered 双文案随
+        // LogLevelFilterActive 切换（过滤无结果须提示可清筛）；HasNoLogs 收口开关不动。
+        var source = ReadXaml(new[] { "src", "PhotoPrivacy.Ui", "Views", "Pages", "LogsPage.axaml" });
+        Assert.True(
+            source.Contains("empty-icon") && source.Contains("empty-title") && source.Contains("empty-desc"),
+            "LogsPage 空态须用 E2 骨架 class（empty-icon / empty-title / empty-desc，规范 §4 E2）");
+        Assert.Contains("{ex:Localize log.empty}", source, StringComparison.Ordinal);
+        Assert.Contains("log.empty_desc", source, StringComparison.Ordinal);
+        Assert.Contains("log.empty_filtered", source, StringComparison.Ordinal);
+        Assert.Contains("HasNoLogs", source, StringComparison.Ordinal);
+        Assert.Contains("LogLevelFilterActive", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Views_Must_Not_Inline_ComboBox_Width()
     {
         // 防：规范 §3.3 B2 回潮 —— 下拉控件重新行内写 Width（历史形态 Width="160" ×3），

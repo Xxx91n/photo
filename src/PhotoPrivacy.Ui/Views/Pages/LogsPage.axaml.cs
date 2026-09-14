@@ -8,4 +8,7 @@ public partial class LogsPage : UserControl
     public LogsPage() => InitializeComponent();
 
     internal Button ClearLogsButtonControl => ClearLogsButton;
+
+    // 票 05（ui-craft2）：级别过滤下拉访问器 —— MainWindow.RefreshI18nComboBoxItems 刷新接线用。
+    internal ComboBox LogLevelComboBoxControl => LogLevelComboBox;
 }

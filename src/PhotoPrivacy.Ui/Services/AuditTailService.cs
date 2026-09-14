@@ -647,15 +647,17 @@ public sealed class AuditTailService
 
     private static (string Display, string ColorHex) MapEventStyle(string eventType)
     {
+        // 票 05（ui-craft2 / 规范 §6 T3 + §7 V3 克制气场 / ADR 0050 A2）：DisplayEvent 去
+        // emoji/Unicode 符号前缀 —— 状态语义由 ColorHex 语义色承载，不再叠符号字形。
         return eventType switch
         {
-            "exiftool_started" => ($"🟢 {LocalizationService.Instance.Get("audit.exiftool_started")}", "#2E7D32"),
-            "service_started" => ($"🟢 {LocalizationService.Instance.Get("audit.service_started")}", "#2E7D32"),
-            "file_processing_succeeded" => ($"✅ {LocalizationService.Instance.Get("audit.file_cleaned")}", "#D8DEE9"),
-            "file_skipped" => ($"⏭ {LocalizationService.Instance.Get("audit.file_skipped")}", "#9E9E9E"),
-            "file_detected" => ($"🔍 {LocalizationService.Instance.Get("audit.file_detected")}", "#90A4AE"),
-            "instance_conflict" => ($"⚠️ {LocalizationService.Instance.Get("audit.instance_conflict")}", "#F57C00"),
-            "file_processing_failed" => ($"❌ {LocalizationService.Instance.Get("audit.file_failed")}", "#C62828"),
+            "exiftool_started" => (LocalizationService.Instance.Get("audit.exiftool_started"), "#2E7D32"),
+            "service_started" => (LocalizationService.Instance.Get("audit.service_started"), "#2E7D32"),
+            "file_processing_succeeded" => (LocalizationService.Instance.Get("audit.file_cleaned"), "#D8DEE9"),
+            "file_skipped" => (LocalizationService.Instance.Get("audit.file_skipped"), "#9E9E9E"),
+            "file_detected" => (LocalizationService.Instance.Get("audit.file_detected"), "#90A4AE"),
+            "instance_conflict" => (LocalizationService.Instance.Get("audit.instance_conflict"), "#F57C00"),
+            "file_processing_failed" => (LocalizationService.Instance.Get("audit.file_failed"), "#C62828"),
             _ => (eventType, "#D8DEE9")
         };
     }

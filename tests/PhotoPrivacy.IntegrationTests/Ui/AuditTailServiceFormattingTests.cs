@@ -13,7 +13,8 @@ public sealed class AuditTailServiceFormattingTests
         var parsed = AuditTailService.ParseAuditLine(line, "info");
 
         Assert.NotNull(parsed);
-        Assert.Equal("✅ 清理完成", parsed!.DisplayEvent);
+        // 票 05（ui-craft2）：DisplayEvent 去 emoji/Unicode 符号前缀 —— 断言意图=事件映射正确性不变。
+        Assert.Equal("清理完成", parsed!.DisplayEvent);
         Assert.Equal("D:/hot/***/a.jpg", parsed.SourcePathMasked);
         Assert.Equal("ok", parsed.Message);
     }
@@ -36,7 +37,8 @@ public sealed class AuditTailServiceFormattingTests
         var parsed = AuditTailService.ParseAuditLine(line, "all");
 
         Assert.NotNull(parsed);
-        Assert.Equal("🔍 检测到文件", parsed!.DisplayEvent);
+        // 票 05（ui-craft2）：DisplayEvent 去 emoji/Unicode 符号前缀 —— 断言意图=级别过滤放行不变。
+        Assert.Equal("检测到文件", parsed!.DisplayEvent);
     }
 
     [Fact]

@@ -299,8 +299,21 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public string LogLevel
     {
         get => _logLevel;
-        set => SetField(ref _logLevel, value);
+        set
+        {
+            if (SetField(ref _logLevel, value))
+            {
+                // 票 05（ui-craft2）：联动通知派生属性 —— 原缺口：热重载直赋 LogLevel 时
+                // LogLevelIndex 绑定（ComboBox SelectedIndex）与过滤态不回填刷新。
+                OnPropertyChanged(nameof(LogLevelIndex));
+                OnPropertyChanged(nameof(LogLevelFilterActive));
+            }
+        }
     }
+
+    // 票 05（ui-craft2 / 规范 §4 E5）：级别过滤生效标记 —— 空态区分「真空」与「过滤无结果」
+    // （all=0 即不过滤；info/debug/warn/error 均在 AuditTailService.ShouldInclude 解析期裁剪事件）。
+    public bool LogLevelFilterActive => LogLevelIndex != 0;
 
     // 票 30：日志级别下拉选中态绑定 —— 顺序与 ConfigPage.axaml 的 5 个 ComboBoxItem 一致；
     // 未知级别回落 1（info），与原 SyncLogLevelComboSelection 的 SelectedIndex=1 兜底一致。
