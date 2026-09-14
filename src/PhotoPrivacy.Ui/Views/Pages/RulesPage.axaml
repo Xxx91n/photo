@@ -1,32 +1,23 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:ex="using:PhotoPrivacy.Ui.Localization" xmlns:vm="using:PhotoPrivacy.Ui.ViewModels" xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia" x:Class="PhotoPrivacy.Ui.Views.Pages.RulesPage" x:DataType="vm:MainWindowViewModel">
-  <!-- 票 24（ADR 0061）：自 MainWindow.axaml 拆出的规则页；h2 违例收敛为 title（report-22 B 节）。Save/Reset 接线统一至 MainWindow。 -->
+  <!-- 票 24（ADR 0061）：自 MainWindow.axaml 拆出的规则页。Save/Reset 接线统一至 MainWindow。
+       票 06（ui-craft2 / D-005/D-006）：整页对齐 v2.0 —— 页壳（页头 MinHeight 58 + page-title
+       + 副标题 + 右侧操作区 [SaveStatus + 保存/重置 SharedSizeGroup 等宽组]；atomcode 调研
+       裁决一：页面级操作放页头右侧操作区，绝不进过滤工具条）+ 专家横幅卡（裸 settings-card，
+       规范 §3.1 明许的非行集合卡）+ 36px 过滤工具条（LayoutToolbarHeight，仅承载数据作用域
+       的搜索过滤）+ 规则矩阵（DataGrid RowHeight=LayoutResultRowHeight 44 = md 结果行）
+       + E2 空态骨架按成因二分（E5：真空 rules.empty_desc / 过滤无结果 rules.empty_filtered，
+       随 RulesPanel.SearchFilterActive 切换）。 -->
   <Grid RowDefinitions="Auto,*">
-    <Border Padding="24,24,24,16" BorderBrush="{DynamicResource SemiColorBorder}" BorderThickness="0,0,0,1">
-      <StackPanel Spacing="{DynamicResource SpaceSm}">
-        <TextBlock Text="{ex:Localize rules.panel.title}" Classes="title" />
-        <TextBlock Text="{ex:Localize rules.panel.subtitle}" Classes="caption" Opacity="0.7" />
-      </StackPanel>
-    </Border>
-    <ScrollViewer Grid.Row="1" Padding="24,16" HorizontalScrollBarVisibility="Disabled">
-      <StackPanel Spacing="{DynamicResource SpaceLg}">
-        <Border Classes="settings-card">
-          <StackPanel Spacing="{DynamicResource SpaceSm}">
-            <StackPanel Orientation="Horizontal" Spacing="{DynamicResource SpaceMd}" VerticalAlignment="Center">
-              <materialIcons:MaterialIcon Kind="ShieldAccountOutline" Width="20" Height="20"/>
-              <TextBlock Text="{ex:Localize rules.expert.mode}" Classes="body" VerticalAlignment="Center"/>
-              <ToggleSwitch x:Name="ExpertModeToggle" IsChecked="{Binding RulesPanel.IsExpertMode, Mode=TwoWay}" OnContent="" OffContent="" />
-            </StackPanel>
-            <Border x:Name="ExpertModeInfobar" Background="{DynamicResource SemiColorWarningBg}" CornerRadius="6" Padding="12,8" IsVisible="{Binding !RulesPanel.IsExpertMode}">
-              <StackPanel Orientation="Horizontal" Spacing="{DynamicResource SpaceSm}">
-                <materialIcons:MaterialIcon Kind="AlertOutline" Width="16" Height="16" Foreground="{DynamicResource SemiColorWarning}"/>
-                <TextBlock Text="{ex:Localize rules.expert.infobar}" Classes="caption" VerticalAlignment="Center" TextWrapping="Wrap"/>
-              </StackPanel>
-            </Border>
-          </StackPanel>
-        </Border>
-        <StackPanel Orientation="Horizontal" Spacing="{DynamicResource SpaceSm}" HorizontalAlignment="Stretch" Grid.IsSharedSizeScope="True">
-          <TextBox x:Name="RulesSearchBox" Text="{Binding RulesPanel.SearchFilter, Mode=TwoWay}" PlaceholderText="{ex:Localize rules.search.placeholder}" MinWidth="260" />
-          <!-- 票 03（ui-craft R1-1）：保存 / 重置同组等宽 —— Grid + SharedSizeGroup，组内最长文案定宽 -->
+    <Border MinHeight="{DynamicResource LayoutPageHeaderHeight}" Padding="24,0,24,0" BorderBrush="{DynamicResource SemiColorBorder}" BorderThickness="0,0,0,1">
+      <DockPanel LastChildFill="False">
+        <StackPanel DockPanel.Dock="Left" Spacing="{DynamicResource SpaceXxs}" VerticalAlignment="Center">
+          <TextBlock Text="{ex:Localize nav.rules}" Classes="page-title"/>
+          <TextBlock Text="{ex:Localize rules.panel.subtitle}" Classes="caption"/>
+        </StackPanel>
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="{DynamicResource SpaceSm}" VerticalAlignment="Center" Grid.IsSharedSizeScope="True">
+          <TextBlock x:Name="RulesSaveStatus" Text="{Binding RulesPanel.SaveStatus}" Classes="caption" VerticalAlignment="Center"/>
+          <!-- 票 03（ui-craft R1-1）：保存 / 重置同组等宽 —— Grid + SharedSizeGroup，组内最长文案定宽；
+               票 06：机制沿用，落点迁入页头右侧操作区（md-page-shell 操作区 gap 8 = SpaceSm）。 -->
           <Grid ColumnSpacing="{DynamicResource SpaceSm}" VerticalAlignment="Center">
             <Grid.ColumnDefinitions>
               <ColumnDefinition Width="Auto" SharedSizeGroup="RuleActions"/>
@@ -35,9 +26,33 @@
             <Button Grid.Column="0" x:Name="SaveRulesButton" Classes="ghost" Content="{ex:Localize rules.btn.save}" HorizontalAlignment="Stretch"/>
             <Button Grid.Column="1" x:Name="ResetRulesButton" Classes="ghost" Content="{ex:Localize rules.btn.reset}" HorizontalAlignment="Stretch"/>
           </Grid>
-          <TextBlock x:Name="RulesSaveStatus" Text="{Binding RulesPanel.SaveStatus}" Classes="caption" VerticalAlignment="Center" Margin="8,0,0,0" Opacity="0.6" />
         </StackPanel>
-        <Grid MinHeight="280">
+      </DockPanel>
+    </Border>
+    <DockPanel Grid.Row="1" Margin="24,16,24,24">
+      <!-- 专家横幅卡：非行集合卡，沿用裸 settings-card（Padding 16，规范 §3.1/§3.2 明许）；
+           BleachBit 范式同构 = 模式开关 + 警示 infobar（atomcode 调研对比矩阵）。 -->
+      <Border DockPanel.Dock="Top" Classes="settings-card" Margin="0,0,0,24">
+        <StackPanel Spacing="{DynamicResource SpaceSm}">
+          <StackPanel Orientation="Horizontal" Spacing="{DynamicResource SpaceMd}" VerticalAlignment="Center">
+            <materialIcons:MaterialIcon Kind="ShieldAccountOutline" Width="20" Height="20"/>
+            <TextBlock Text="{ex:Localize rules.expert.mode}" Classes="body" VerticalAlignment="Center"/>
+            <ToggleSwitch x:Name="ExpertModeToggle" IsChecked="{Binding RulesPanel.IsExpertMode, Mode=TwoWay}" OnContent="" OffContent="" />
+          </StackPanel>
+          <Border x:Name="ExpertModeInfobar" Background="{DynamicResource SemiColorWarningBg}" CornerRadius="{DynamicResource RadiusMd}" Padding="12,8" IsVisible="{Binding !RulesPanel.IsExpertMode}">
+            <StackPanel Orientation="Horizontal" Spacing="{DynamicResource SpaceSm}">
+              <materialIcons:MaterialIcon Kind="AlertOutline" Width="16" Height="16" Foreground="{DynamicResource SemiColorWarning}"/>
+              <TextBlock Text="{ex:Localize rules.expert.infobar}" Classes="caption" VerticalAlignment="Center" TextWrapping="Wrap"/>
+            </StackPanel>
+          </Border>
+        </StackPanel>
+      </Border>
+      <!-- 过滤工具条（附录 D.2 workspace toolbar=36 / md-result-filter-toolbar 裸条无底色无边框）：
+           仅承载数据作用域操作 —— 搜索过滤（atomcode 调研裁决一：页面级操作绝不进过滤工具条）。 -->
+      <DockPanel DockPanel.Dock="Top" MinHeight="{DynamicResource LayoutToolbarHeight}" Margin="0,0,0,8" LastChildFill="False">
+        <TextBox x:Name="RulesSearchBox" DockPanel.Dock="Left" Text="{Binding RulesPanel.SearchFilter, Mode=TwoWay}" PlaceholderText="{ex:Localize rules.search.placeholder}" MinWidth="260" VerticalAlignment="Center"/>
+      </DockPanel>
+      <Grid MinHeight="280">
         <DataGrid x:Name="RulesDataGrid"
                   ItemsSource="{Binding RulesPanel.Rules}"
                   AutoGenerateColumns="False"
@@ -47,6 +62,7 @@
                   SelectionMode="Single"
                   HeadersVisibility="Column"
                   CanUserSortColumns="True"
+                  RowHeight="{DynamicResource LayoutResultRowHeight}"
                   Classes="data-grid">
           <DataGrid.Columns>
             <DataGridTextColumn Header="{ex:Localize rules.col.family}" Binding="{Binding FamilyName}" Width="90" IsReadOnly="True"/>
@@ -62,14 +78,22 @@
             <DataGridTextColumn Header="{ex:Localize rules.col.effective_args}" Binding="{Binding EffectiveArgs}" Width="*" IsReadOnly="True"/>
           </DataGrid.Columns>
         </DataGrid>
-          <!-- 票 26（ADR 0062）: 规则空态占位 — 筛选无命中 / 加载为空时可见 -->
-          <TextBlock Text="{ex:Localize rules.empty}"
-                     Classes="caption"
-                     HorizontalAlignment="Center"
-                     VerticalAlignment="Center"
-                     IsVisible="{Binding RulesPanel.HasNoVisibleRules}"/>
-        </Grid>
-      </StackPanel>
-    </ScrollViewer>
+        <!-- 票 26（ADR 0062）: 规则空态占位 — HasNoVisibleRules 由 VM 在 ApplyFilter 收口处联动刷新。
+             票 06（ui-craft2 / 规范 §4 E2+E5）：升 md-empty-state 骨架 —— 52 定位盒（无底色
+             无边框）+ 36 主色字形 + 标题 20 + 说明 12 居中偏上（下侧留白 48 补偿视觉中心）；
+             成因二分随 SearchFilterActive 切换（atomcode 调研裁决二：空态按成因键控，
+             过滤无结果须提示可清筛）。空态覆盖整个表格区含列头（Carbon 指引）。 -->
+        <Border IsVisible="{Binding RulesPanel.HasNoVisibleRules}" Background="{DynamicResource SemiColorBackground0}" Padding="24,24,24,48">
+          <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="{DynamicResource SpaceMd}">
+            <Border Classes="empty-icon">
+              <materialIcons:MaterialIcon Kind="ShieldCheckOutline" Width="36" Height="36" Foreground="{DynamicResource SemiColorPrimary}"/>
+            </Border>
+            <TextBlock Text="{ex:Localize rules.empty}" Classes="empty-title"/>
+            <TextBlock Text="{ex:Localize rules.empty_desc}" Classes="empty-desc" IsVisible="{Binding !RulesPanel.SearchFilterActive}"/>
+            <TextBlock Text="{ex:Localize rules.empty_filtered}" Classes="empty-desc" IsVisible="{Binding RulesPanel.SearchFilterActive}"/>
+          </StackPanel>
+        </Border>
+      </Grid>
+    </DockPanel>
   </Grid>
 </UserControl>

@@ -68,6 +68,10 @@ public sealed class RulesPanelViewModel : INotifyPropertyChanged
         private set => SetField(ref _hasNoVisibleRules, value);
     }
 
+    // 票 06（ui-craft2 / 规范 §4 E5）：空态成因标志 —— 搜索过滤激活态；空态层按成因二分
+    // 「真空 / 过滤无结果」双文案（atomcode 调研裁决二；同构 MainWindowViewModel.LogLevelFilterActive，票 05）。
+    public bool SearchFilterActive => !string.IsNullOrEmpty(_searchFilter);
+
     public RulesPanelViewModel(FormatRulesStore store)
     {
         _store = store;
@@ -136,6 +140,7 @@ public sealed class RulesPanelViewModel : INotifyPropertyChanged
             }
         }
         HasNoVisibleRules = Rules.Count == 0;
+        OnPropertyChanged(nameof(SearchFilterActive));
     }
 
     public void SaveCustomRules()
