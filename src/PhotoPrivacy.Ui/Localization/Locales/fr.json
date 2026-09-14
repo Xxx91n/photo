@@ -243,7 +243,6 @@
   },
   "rules": {
     "panel": {
-      "title": "Règles de nettoyage par format",
       "subtitle": "Configurer la stratégie de nettoyage des métadonnées par famille de format ; mode expert débloque les options dangereuses"
     },
     "expert": {
@@ -270,7 +269,9 @@
       "warning": "Avertissement",
       "effective_args": "Args générés"
     },
-    "empty": "Aucune règle de nettoyage correspondante"
+    "empty": "Aucune règle de nettoyage correspondante",
+    "empty_desc": "Les règles de nettoyage de chaque famille de formats apparaissent ici – utilisez « Réinitialiser » pour recharger l’ensemble intégré.",
+    "empty_filtered": "Aucune règle ne correspond à la recherche actuelle – effacez le champ de recherche pour tout afficher."
   },
   "titlebar": {
     "minimize": "Réduire",

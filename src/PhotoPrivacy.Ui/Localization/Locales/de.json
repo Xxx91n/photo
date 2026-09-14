@@ -243,7 +243,6 @@
   },
   "rules": {
     "panel": {
-      "title": "Format-spezifische Bereinigungsregeln",
       "subtitle": "Metadaten-Bereinigungsstrategie pro Formatfamilie konfigurieren; Expertenmodus schaltet gefährliche Optionen frei"
     },
     "expert": {
@@ -270,7 +269,9 @@
       "warning": "Warnung",
       "effective_args": "Generierte Args"
     },
-    "empty": "Keine passenden Bereinigungsregeln"
+    "empty": "Keine passenden Bereinigungsregeln",
+    "empty_desc": "Bereinigungsregeln für jede Formatfamilie erscheinen hier – über „Auf Standard zurücksetzen“ lässt sich der integrierte Satz erneut laden.",
+    "empty_filtered": "Keine Regeln entsprechen der aktuellen Suche – Suchfeld leeren, um alle anzuzeigen."
   },
   "titlebar": {
     "minimize": "Minimieren",

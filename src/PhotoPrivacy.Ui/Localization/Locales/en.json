@@ -248,7 +248,6 @@
   },
   "rules": {
     "panel": {
-      "title": "Per-Format Wipe Rules",
       "subtitle": "Configure metadata wipe strategy per format family; expert mode unlocks dangerous options"
     },
     "expert": {
@@ -263,6 +262,8 @@
       "reset": "Reset to defaults"
     },
     "empty": "No matching wipe rules",
+    "empty_desc": "Wipe rules for each format family appear here — use 'Reset to defaults' to reload the built-in set.",
+    "empty_filtered": "No rules match the current search — clear the search box to show all.",
     "col": {
       "family": "Family",
       "extensions": "Extensions",

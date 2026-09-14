@@ -243,7 +243,6 @@
   },
   "rules": {
     "panel": {
-      "title": "Reglas de limpieza por formato",
       "subtitle": "Configure la estrategia de limpieza de metadatos por familia de formato; el modo experto desbloquea opciones peligrosas"
     },
     "expert": {
@@ -270,7 +269,9 @@
       "warning": "Aviso",
       "effective_args": "Args generados"
     },
-    "empty": "No hay reglas de limpieza coincidentes"
+    "empty": "No hay reglas de limpieza coincidentes",
+    "empty_desc": "Las reglas de limpieza de cada familia de formatos aparecen aquí – use «Restablecer valores» para recargar el conjunto integrado.",
+    "empty_filtered": "Ninguna regla coincide con la búsqueda actual – borre el cuadro de búsqueda para mostrarlas todas."
   },
   "titlebar": {
     "minimize": "Minimizar",
