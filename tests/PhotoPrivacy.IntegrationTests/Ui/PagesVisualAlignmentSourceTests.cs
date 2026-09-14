@@ -117,8 +117,10 @@ public class PagesVisualAlignmentSourceTests
     {
         // 防：规范 §3.3 B1 回潮 —— 行分隔线退回通栏（只有 BorderThickness 0,0,0,1 而无 inset），
         // 行与行视觉粘连，失去 Apple 系统设置 / WinUI SettingsCard 的「分隔线自标签列起点对齐」。
-        // 定值：settings-card Padding 16 + settings-row Padding 16 = 行文本自卡边起 32，
-        // 分隔线加 Margin 16,0,16,0 后同为 32，与文本左缘对齐。
+        // 定值（票 04 / ui-craft2 复核）：分隔线 inset = 行水平 padding —— settings-row
+        // Padding 16,8 的水平分量 16（MangoDisk md-settings-group ::before left/right=14px =
+        // 其行 padding 14 同规则）。行集合卡（settings-card.grouped Padding 0）文本自卡边起 16；
+        // 通用卡（Padding 16）文本起 32 —— 两种模式分隔线均与文本左缘对齐。
         // 票 04 / ui-craft
         var source = ReadXaml(new[] { "src", "PhotoPrivacy.Ui", "Styling", "AppTheme.axaml" });
         var start = source.IndexOf("<Style Selector=\"Border.row-divider\">", StringComparison.Ordinal);
@@ -132,19 +134,59 @@ public class PagesVisualAlignmentSourceTests
     }
 
     [Fact]
-    public void Settings_Cards_Must_Be_Separated_By_SpaceLg()
+    public void Settings_Groups_Must_Be_Separated_By_Per_Page_Spacing()
     {
-        // 防：规范 §3.3 B3 / §5.2 P1 回潮 —— 分组卡片的容器回到 Spacing="0" 或漏写 Spacing，
-        // 卡片直接相邻形成「均匀网格」，是 AI 感第一根因（ADR 0051 A1 / 规范 §5.2 P7）。
-        // 定值 SpaceLg(16)：§5.3 Wasabi「卡片外间距不得小于 16」，Apple 分组间距 20-24 明显大于行内 8-12。
-        // 票 04 / ui-craft
-        foreach (var page in new[] { "ConfigPage.axaml", "ServiceManagerPage.axaml" })
+        // 防：规范 §3.3 B3 / §5.2 P1 回潮 —— 分组容器回到 Spacing="0" 或漏写 Spacing，
+        // 分组直接相邻形成「均匀网格」，是 AI 感第一根因（ADR 0051 A1 / 规范 §5.2 P7）。
+        // 票 04 / ui-craft2 复核上档：MangoDisk 基准组间约 24（附录 D.5），ConfigPage 取
+        // SpaceXl(24)；ServiceManagerPage 过渡态维持 SpaceLg(16)，票 07 跟进后统一收紧为 SpaceXl。
+        // per-page map 逐页钉死当前裁定值，防止施工顺序造成静默回退。
+        var expected = new Dictionary<string, string>
         {
-            var source = ReadXaml(new[] { "src", "PhotoPrivacy.Ui", "Views", "Pages", page });
+            ["ConfigPage.axaml"] = "SpaceXl",
+            ["ServiceManagerPage.axaml"] = "SpaceLg",
+        };
+        foreach (var kv in expected)
+        {
+            var source = ReadXaml(new[] { "src", "PhotoPrivacy.Ui", "Views", "Pages", kv.Key });
             Assert.True(
-                source.Contains("Spacing=\"{DynamicResource SpaceLg}\""),
-                page + " 的分组卡片容器须设 Spacing={DynamicResource SpaceLg}（规范 §5.2 P1 / §3.3 B3）");
+                source.Contains("Spacing="{DynamicResource " + kv.Value + "}""),
+                kv.Key + " 的分组容器须设 Spacing={DynamicResource " + kv.Value + "}（规范 §5.2 P1 / §3.3 B3，票 04/ui-craft2 复核）");
         }
+    }
+
+    [Fact]
+    public void ConfigPage_Group_Label_Must_Sit_Above_Card_Not_Inside()
+    {
+        // 防：票 04 / ui-craft2 组标签骨架回潮 —— 分组标题退回 settings-card 内部
+        // （卡内标题吃掉卡片顶部节奏且与行 padding 规则耦合）。MangoDisk md-settings-group
+        // 与 WinUI SettingsCard 节的组标题均在卡片外上方（muted 小标签），
+        // ConfigPage 已迁移为 .group-label（卡外）+ settings-card.grouped（卡零内边距）。
+        // 其它页面（RulesPage/ServiceManagerPage）仍可用 section-header，由各自页面票迁移。
+        var source = ReadXaml(new[] { "src", "PhotoPrivacy.Ui", "Views", "Pages", "ConfigPage.axaml" });
+        Assert.False(
+            source.Contains("section-header"),
+            "ConfigPage 不得再使用 section-header（组标签须在卡外上方走 .group-label，规范 §3.3 B4）");
+        var count = Regex.Matches(source, "Classes=\"group-label\"").Count;
+        Assert.True(
+            count >= 4,
+            "ConfigPage 应有 4 个 .group-label（path/behavior/logs/excluded 四组），实测 " + count);
+        Assert.True(
+            source.Contains("settings-card grouped"),
+            "ConfigPage 行集合卡须用 settings-card grouped（卡零内边距，padding 下沉到行）");
+    }
+
+    [Fact]
+    public void ConfigPage_PageShell_Must_Consume_V20_Layout_Tokens()
+    {
+        // 防：票 04 / ui-craft2 页壳回潮 —— 页头高度 / 页标题 / 可读宽度档回退为散值或旧 class。
+        // 页头 MinHeight=LayoutPageHeaderHeight(58)、标题 .page-title(22/Normal)、
+        // 内容 MaxWidth=LayoutContentWidthReadable(1160) 居中 —— 均为 v2.0 附录 D.2/D.5 基准落位，
+        // 三个消费点同时在场才构成 md-page-shell 骨架。
+        var source = ReadXaml(new[] { "src", "PhotoPrivacy.Ui", "Views", "Pages", "ConfigPage.axaml" });
+        Assert.True(
+            source.Contains("LayoutPageHeaderHeight") && source.Contains("LayoutContentWidthReadable") && source.Contains("page-title"),
+            "ConfigPage 页壳须消费 LayoutPageHeaderHeight / LayoutContentWidthReadable / page-title（规范 §7 页壳基准）");
     }
 
     [Fact]
