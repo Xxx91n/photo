@@ -19,7 +19,7 @@
 | 基准族 | 取什么 | MangoDisk 具体可核验设计点（取证出处见附录 D） | 明确不取 |
 |---|---|---|---|
 | **设计 tokens** | 圆角阶梯 / 暖中性色板 / 内容字号阶梯 / 低投影 | radius 基准 8（阶梯 sm4 / md6 / lg8 / xl12，`--radius:0.5rem` + 派生式）；暖白 / 暖棕黑双层色板（oklch 值离线转 sRGB，Avalonia 无 oklch）；内容字号 6 档 = 20/15/13/12/11/10 + 页头 h1=22；阴影仅两档 subtle 7% 与 dialog 18% | 高饱和品牌色大面积铺陈；多重阴影层级堆叠；任意字号字面量 |
-| **布局骨架** | 可收合侧栏 + 页壳 + 分组卡片 | 侧栏展开 240 / 收合 68（仅图标 + tooltip）；nav 项高 40、圆角 8、icon 24 盒 + label 14；组标签 11px / 字重 600 / 字距 0.04em；页头高 58（h1 22 + 右侧操作区 min-height 36 / gap 8）；内容宽度档 readable 1160 / wide 1280 居中；卡片 = bg + border + radius + padding 24 | IDE 式高密度双列排布；无宽度档的通栏内容；侧栏不可收合的固定形态 |
+| **布局骨架** | 可收合侧栏 + 页壳 + 分组卡片 | 侧栏展开 240 / 收合 68（仅图标 + tooltip）；nav 项高 40、圆角 8、icon 24 盒 + label 14；组标签 11px / 字重 600 / 字距 0.04em；页头高 58（h1 22 + 右侧操作区 min-height 36 / gap 8）；内容宽度档 readable 1160 / wide 1280 居中；设置卡片 = bg + border + radius + 卡零内边距（padding 下沉到行；D.5 订正） | IDE 式高密度双列排布；无宽度档的通栏内容；侧栏不可收合的固定形态 |
 | **交互范式** | toast / 确认流 / 空态 / 按钮无 transform | toast = sonner 形态：应用级右下堆叠、gap 10、同屏 4 条、hover 展开、rich-colors、close-button、约 364px 宽、默认 4s；确认对话框 = cancel(outline) + confirm(语义变体) + busy spinner 双禁用；空态 = icon 盒 52 / 字形 36 主色 + 标题 20 + 说明 12（max-w 520 居中）；**按钮全局禁 transform**（位移/缩放被 `!important` 清零），过渡白名单 = color / background / border / shadow / opacity | hover 无实体底色块的「纯变色」；每个操作都弹 toast；按钮带位移 / 缩放 / 弹性缓动 |
 
 ### 0.2 气质参考（上轮三锚，降级保留）
@@ -132,30 +132,40 @@
 ### 3.1 骨架定义
 
 ```
-页 = 1..N 张 settings-card（分组卡片）
-卡 = section-header + N × ( settings-row + row-divider )
+页 = 页头（MinHeight 58 / page-title / 右操作位）+ 1..N 个分组单元（内容列 readable 1160 居中）
+组 = group-label（卡外上方，12/600/muted）+ settings-card.grouped（行集合卡，卡零内边距）
+卡 = N × ( settings-row + row-divider )；行 Padding 16,8 / MinHeight 60；分隔线 inset = 行水平 padding
 行 = 左：row-label(.body) [+ row-desc(.caption)]  ｜  右：控件（Dock=Right / HorizontalAlignment=Right）
 ```
+
+> v2.3（票 04 / ui-craft2）：组标签由卡内 section-header 迁移为卡外上方 group-label，卡内边距下沉到行——MangoDisk md-settings-group / WinUI SettingsCard 节同构（调研票 04 §2.1/§2.2）。非行集合卡（如规则页专家横幅卡）仍用裸 settings-card（Padding 16）。
 
 ### 3.2 现状（ConfigPage.axaml / ServiceManagerPage.axaml 实物）
 
 | 元素 | 实态 | 位置 |
 |---|---|---|
-| `Border.settings-card` | `SemiColorBackground1` + `SemiColorBorder` + `RadiusLg`(8) + `Elevation2` + `Padding 16` | `AppTheme.axaml:250-257` |
-| `Border.settings-row` | `Padding 16` | `AppTheme.axaml:259-261` |
-| `Border.row-divider` | `BorderThickness 0,0,0,1` + `Margin 16,0,16,0`（inset，票 04/ui-craft 落地） | `AppTheme.axaml:263-266` |
-| `TextBlock.section-header` / `.row-label` / `.row-desc` | 三级文本角色 | `AppTheme.axaml:306-320` |
-| 控件列宽度（路径类） | `u|PathPicker.inline-input Width=280` 共享 class 收敛（ADR 0061 票 24 / 票 25） | `AppTheme.axaml:325-331` |
+| `Border.settings-card` | `SemiColorBackground1` + `SemiColorBorder` + `RadiusLg`(8) + `Elevation2` + `Padding 16`（通用卡） | `AppTheme.axaml:273-284` |
+| `Border.settings-card.grouped` | `Padding 0`（行集合卡变体：padding 下沉到行；用法 `Classes="settings-card grouped"`，票 04/ui-craft2 新增） | `AppTheme.axaml:286-289` |
+| `Border.settings-row` | `Padding 16,8`（水平 16 承担卡内 inset / 垂直 8 → 行间内容距 16）+ `MinHeight` = `LayoutSettingsRowHeight`(60) | `AppTheme.axaml:294-298` |
+| `Border.row-divider` | `BorderThickness 0,0,0,1` + `Margin 16,0,16,0`（inset = 行水平 padding 16；票 04/ui-craft 落地，票 04/ui-craft2 复核续用） | `AppTheme.axaml:299-310` |
+| `TextBlock.section-header` / `.row-label` / `.row-desc` | 三级文本角色（section-header 卡内用法仅余 ServiceManagerPage，待票 07 迁移） | `AppTheme.axaml:349-362` |
+| `TextBlock.group-label` / `.page-title` | 组标签（GroupLabelFontSize 12 / SemiBold / Text2 muted，卡外上方）与页头标题（PageTitleFontSize 22 / Normal / Text0）——票 04/ui-craft2 新增 | `AppTheme.axaml:365-377` |
+| `ComboBox.inline-control` | `Width=160` 共享 class | `AppTheme.axaml:391-394` |
+| 控件列宽度（路径类） | `u|PathPicker.inline-input Width=280` 共享 class 收敛（ADR 0061 票 24 / 票 25） | `AppTheme.axaml:396-401` |
 
 ### 3.3 表单行偏差（票 04 已落地）
 
 - **B1 分隔线通栏** —— 已落地（票 04）：AppTheme 的 Border.row-divider 增 Margin="16,0,16,0"，使分隔线与行文本左缘对齐（settings-card Padding 16 + settings-row Padding 16 = 文本自卡边起 32；分隔线加 16 后同为 32）。守卫：Row_Divider_Must_Be_Inset_To_Label_Column_Not_Full_Bleed
 - **B2 控件列宽度散落** —— 已落地（票 04）：ConfigPage 三枚 ComboBox 行内 Width="160" 收敛为共享 class ComboBox.inline-control（AppTheme，取值 160 沿用实态、仅迁移权威位置），与既有 u|PathPicker.inline-input Width=280 同族。守卫：Views_Must_Not_Inline_ComboBox_Width
 - **B3 分组卡片之间零间距** —— 已落地（票 04）：ConfigPage 与 ServiceManagerPage 的卡片容器均设 Spacing="{DynamicResource SpaceLg}"（16）。取 16 而非 WinUI 的 4：§5.3 Wasabi 锚要求卡片外间距 >=16，且 §5.2 P1 为规范定值（4 属 WinUI 官方示例，非本项目口径）。守卫：Settings_Cards_Must_Be_Separated_By_SpaceLg
+- **B4 组标题在卡片内部 + 卡片行混承内边距** —— 已落地（票 04 / ui-craft2）：组标签移出卡片上方走 `TextBlock.group-label`（12/SemiBold/Text2；对齐 MangoDisk md-settings-group 标题 12px/600/muted margin 1px 0 6px 2px 与 WinUI 节标题卡外位 BodyStrong 14/600 margin 1,30,0,6——本项取 MangoDisk 定值，WinUI 上 30px 间距由组间 SpaceXl 承担）；行集合卡改 `settings-card.grouped`（Padding 0，padding 下沉到行）；`settings-row` Padding 16→`16,8`（行间内容距 16 = 基准 7px 垂直 padding 的 ramp 量化）+ `MinHeight` = `LayoutSettingsRowHeight`(60，md-settings-row 实测）。守卫：`ConfigPage_Group_Label_Must_Sit_Above_Card_Not_Inside`
+- **B5 页壳未对齐基准** —— 已落地（票 04 / ui-craft2）：页头 `MinHeight=LayoutPageHeaderHeight`(58) + `.page-title`(22/Normal) + 右侧操作位（SaveStatus 自页底迁入 DockPanel.Dock=Right）；内容列 `MaxWidth=LayoutContentWidthReadable`(1160) + `HorizontalAlignment=Center`；分组单位间距 SpaceLg(16) 上档 SpaceXl(24)（基准组间约 24，§5.2 P1 复核结论）。守卫：`ConfigPage_PageShell_Must_Consume_V20_Layout_Tokens` + `Settings_Groups_Must_Be_Separated_By_Per_Page_Spacing`
+- **B6 条件可见行致分隔线异常** —— 已修复（票 04 / ui-craft2）：备份目录行（IsVisible=BackupEnabled）隐藏时其前后两条 row-divider 相邻成双划线 → 尾随分隔线随同一 IsVisible；隔离目录行与下行之间原缺分隔线 → 补带 IsVisible=QuarantineEnabled 联动。沉淀规则：条件行的尾随分隔线必须随同一可见性绑定。
+- **B7 单行孤图标** —— 已清除（票 04 / ui-craft2）：exiftool 行独挂 16px MaterialIcon（SemiColorPrimary）与其余 14 行无图标不一致，违反 §0.1 克制气场（点缀色仅用于 active/状态点）——移除后全页 15 行统一「标签+描述｜控件」骨架。MangoDisk 行公式另有 40px 图标列（34×34 容器），全行引入属另行设计变更 → 登记张力 T-4 交大脑裁定。
 
 ### 3.4 基准对照
 
-- **MangoDisk**：设置页 = Card 组合——每组一张 `bg-card` + `border` + `rounded` + `p-6`(24) 卡，卡内标题 + 行控件右对齐，行间 16、组间约 24；对话框内容区 padding 20 inline（附录 D.5）。本项目 `settings-card` 现 Padding 16 为既有定值，与基准 24 的差异交页面票按 P 族规则复核（不做行内字面量回潮）。
+- **MangoDisk**：设置页 = Card 组合——每组一张 `bg-card` + `border` + `rounded` 卡（组标题在卡外上方、行控件右对齐，行间 16、组间约 24）；对话框内容区 padding 20 inline（附录 D.5）。本项目已按 MangoDisk 实物改判为「卡零内边距 + 行承载 padding」模型（票 04/ui-craft2 落地，调研 §2.1 复核：p-6=24 一值系附录 D 取证误差，源码实态为卡 0 + 行 7/14）；通用卡 Padding 16 保留（WinUI SettingsCard 同值）。
 - **Apple 系统设置**（气质参考）：分组卡片 + 左标签右控件 + 行间 inset 分隔线；本项目已具雏形。
 - **WinUI SettingsCard**（同族对照）：Header + Description 左、控件右、卡片内行分隔 → 佐证「左标签右控件」是桌面设置页的共识骨架，而非 Apple 独有。
 - **VS Code / Discord**（气质参考）：只取列表 / icon 密度法，**不把 IDE 密度带进表单**（D-002）：表单行保持呼吸感，不做 8px 高密度行。
@@ -212,8 +222,8 @@
 
 | 编号 | 场景 | 档位 | 落点 |
 |---|---|---|---|
-| P1 | 同级分组卡片之间 | `SpaceLg`(16) | 已修正（票 04）：ConfigPage / ServiceManagerPage 卡片容器均设 `Spacing="{DynamicResource SpaceLg}"`，见 §3.3 B3；MangoDisk 基准组间约 24，页面票可复核 |
-| P2 | 卡片内边距 / section-header 与首行 | `16` / `SpaceMd`(12) | `settings-card` 与 `settings-row` 的 `Padding 16`；基准卡片 padding 24，页面票复核 |
+| P1 | 同级分组单位（组标签+卡）之间 | `SpaceXl`(24)（票 04/ui-craft2 复核上档；票 04/ui-craft 初落 SpaceLg(16)） | ConfigPage 分组容器 `Spacing={DynamicResource SpaceXl}`；ServiceManagerPage 过渡态 SpaceLg，票 07 跟进后统一收紧；基准组间约 24（附录 D.5） |
+| P2 | 卡片内边距 / 组标签与卡片 | `0`（grouped 行集合卡）/ `SpaceXs`(4) | 票 04/ui-craft2 复核改判：行集合卡零内边距、padding 下沉到行（行 Padding 16,8）；通用卡保 16；组标签→卡 SpaceXs(4)（基准 margin-bottom 6 取近档），组标签左 inset 2 |
 | P3 | 行内标签列与控件列之间 | ≥ `SpaceLg`(16) | 控件右对齐贴卡内边距 |
 | P4 | 同组内元素（如一组按钮） | `SpaceSm`(8) | 服务页按钮组；基准页头操作区 gap 8 同值 |
 | P5 | 侧栏导航项之间 | `SpaceXxs`(2)，连续无 gap（票 02 按基准组内项距 2 落） | `MainWindow.axaml` 两组导航 StackPanel；基准组间 10-12 由上下 Dock 分区布局承担，非相邻组距不适用 |
@@ -222,7 +232,7 @@
 
 ### 5.3 基准对照
 
-- **MangoDisk**：页面 padding 20 inline / 14 top；侧栏 padding-inline 8（收合）→10（展开）；组内项距 2、组间距 10-12；卡片 p-6=24；dialog body 20、footer padding 7/20。**层级靠档位差表达**（附录 D.2）。
+- **MangoDisk**：页面 padding 20 inline / 14 top；侧栏 padding-inline 8（收合）→10（展开）；组内项距 2、组间距 10-12；设置卡片零内边距 + 行 padding 7/14（订正：原 p-6=24 系取证误差，票 04/ui-craft2 源码复核）；dialog body 20、footer padding 7/20。**层级靠档位差表达**（附录 D.2）。
 - **气质参考**：Apple（分组间距明显大于行内间距，层级靠间距差表达）；VS Code / Discord（列表密排 4-8、区块间 16-24）；Wasabi（大留白是气场来源——卡片外间距不得小于 16）。
 
 ### 5.4 间距字面量（A-008）—— 票 04 已清零
@@ -230,6 +240,7 @@
 - **历史登记**：6 个 axaml 共 14 处 `Margin` / `Spacing` 字面量残留（旧口径）。
 - **票 04 复算**：22 处间距字面量，其中**离轨 11 处**（值 `20` ×7 / `10` ×3 / `6` ×1）；`0` 为合法零间距，**不计离轨**。
 - **终态（票 04）**：**离轨 0**；`Spacing` 字面量 **0**（全部 `{DynamicResource SpaceXxx}`）；余 25 处 `Margin` / `Padding` 字面量**全部落在 ramp 上**。
+- **终态（票 04 / ui-craft2 复算）**：离轨仍 **0**；`Spacing` 字面量 **0**；`Margin` / `Padding` 字面量 **24** 处全部在 ramp 上（净 -1：页头 Padding 改 `24,0`、SaveStatus 底行随迁入页头撤除、组标签左 inset 2 入 class）。基准页 padding 20/14 属 Layout* 族 Double token，不可消费于 Thickness（Padding Literal Quantization 硬约束）→ 页 padding 维持 ramp 值 `24,16,24,24`，差异登记为结构性约束而非离轨。
 - **技术硬约束（不可绕过）**：`Margin` / `Padding` 属 **Thickness**，受 CONTEXT「Padding Literal Quantization」约束必须保持**字面量字符串**——`DynamicResource` Double 赋 Thickness 会跳过 `ThicknessTypeConverter`，导致布局测量期 `InvalidCastException`。故 Thickness 的「token 化」= **量化到 ramp 字面量**，**不等于**改成 `DynamicResource`。`Spacing` 属 Double，**可且应**改 `{DynamicResource SpaceXxx}`。
 - **离轨值映射（票 04 定值，规范 P1–P7 未覆盖故由本票定值）**：`20` → `24`（`SpaceXl`）；`10` → `8`（`SpaceSm`，对齐同侧栏兄弟元素）／→ `12`（`SpaceMd`，卡内垂直）；`6` → `8`（`SpaceSm`，事件徽章）。**取上档 24 而非下档 16 的决定性理由 = P7 禁等距均匀**：取 16 会使页头 `24,16,24,16` 与内容区 `24,16,24,24` 两个层级取同一档位。
 - **守卫**：`PagesVisualAlignmentSourceTests` —— `Views_Margin_Padding_Literals_Must_Sit_On_Space_Ramp` + `Views_Spacing_Must_Use_DynamicResource_Not_Literal`。
@@ -423,4 +434,5 @@
 | v1.2 | 2026-09-13 | 票 04 / ui-craft | §3.3 B1/B2/B3 三处表单行偏差全部落地（分隔线 inset `16,0,16,0` / `ComboBox.inline-control` 共享 class / 卡片间 `SpaceLg`，并记明取 16 而非 WinUI 4 的理由）；§4.2 服务管理器页空态评估结论（无可空列表 / 表格，不构成 E1 缺口）；§5.2 P1 现状偏差修正、P5 落点 token 化；§5.4 A-008 清零（离轨 11 → 0，`Spacing` 字面量 → 0）并书面化 Thickness 技术硬约束与离轨值映射定值理由；新增附录 C（A-007 侧栏定宽处置：删硬钉 `Width="200"` 跟随列宽） |
 | v2.2 | 2026-09-14 | 票 03 / ui-craft2 | **nav 胶囊三态落地（D-002 / D-003 / D-008）**：4px 左缘 accent 槽位体系退役；§2.1 hover 落 `SemiColorNavItemHover`（Bg2@0.7 各主题 + 亮/暗回退）、active 落 `SemiColorPrimary` 实心 + `SemiColorNavActiveForeground` on-primary 深字 + SemiBold、active:pointerover 保持实心；§2.3 现状对账全项转落地态；§2.4 T-3 登记改已裁定（C 折中 + hover 前景中性）；`NavFeedbackSourceTests` 撞红三档处置（改造 2 / 保留 2 / 新增 1） |
 | v2.1 | 2026-09-14 | 票 02 / ui-craft2 | **tokens 刷新落地（D-004 / D-005）**：MainWindow 显式 `Win32Properties.WindowCornerPreference="Round"`；§5.1 Radius 实物列改 v2.0 阶梯（Sm4/Md6/Lg8/Xl12，Xs2 保留子档）+ Elevation 收两档制（1/2=subtle 7%、4=dialog 18% 原式）+ 新增 Layout 族 17 枚 `Layout*`；壳层侧栏深一档定值——Catppuccin/OneDarkPro/TokyoNight 本深于 Bg0，Dracula/NordDark 纠偏为深档惯例色，亮/暗回退档入 DesignTokens ThemeDictionaries；settings-card 角档改 RadiusLg、按钮/输入框改 RadiusMd（md=6）；§2.1/§3.2 半径引用订正 RadiusLg；§5.2 P5 落 SpaceXxs(2)；侧栏持久化默认宽 200 不动（Core 配置语义+§7 V2 机位同值） |
+| v2.3 | 2026-09-14 | 票 04 / ui-craft2 | ConfigPage 整页对齐落地（D-005/D-006）：§3.1 骨架升组标签外置+行集合卡模型；§3.2 实态刷新（settings-card.grouped / settings-row 16,8+MinHeight60 / group-label / page-title 四段新实态）；§3.3 新增 B4–B7（组标签出卡、页壳 58+readable1160、条件行分隔线联动、孤图标清除）；§3.4 卡片 padding 复核改判（卡 0 + 行承载，附录 D 原 p-6=24 取证误差订正）；§5.2 P1 上档 SpaceXl、P2 改判卡零内边距；§5.4 复算 24 处零离轨；登记张力 T-4（MangoDisk 行 40px 图标列未引入，待大脑裁定）与 T-5（字号阶梯：基准 6+1 档 vs 本项目 6-role——行标题 13/节标题 15 无对应 token，page-title 22 与 group-label 12 已先行补齐） |
 | v2.0 | 2026-09-14 | 票 01 / ui-craft2 | **主基准切换（D-005 / A-001 / ADR 0067）**：§0 改 MangoDisk 观感级对标主基准表 + 上轮三锚降级为气质参考；§2 重写为胶囊三态目标规范（4px 槽位体系随 D-002 退役，施工在票 03），新增 §2.4 MangoDisk `nav-item` 实测公式对照并**登记张力 T-3**（D-003 主色实心胶囊+反白 vs 基准实物 accent 胶囊+3px×24px 主色 pill+字重 600；hover 前景叙事偏差并入）；§4 E2 按 `md-empty-state` 重校；§5.1 增 MangoDisk 布局 token 基准列；§6 Toast 规划按 vue-sonner 实物配置重校（T2/T3/T6 改值 + 新增 T7 动效档）；§7 V3 验收清单改 MangoDisk 对照项；新增附录 D 观感取证表（gh api 只读取证，GPL-3.0 零拷贝）；附录 A.2 张力表补 T-3 行、T-1 改并入 T-3 口径 |
