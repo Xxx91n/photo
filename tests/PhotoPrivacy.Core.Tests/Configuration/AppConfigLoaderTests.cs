@@ -1,4 +1,5 @@
 using PhotoPrivacy.Core.Configuration;
+using PhotoPrivacy.Core.Constants;
 
 namespace PhotoPrivacy.Core.Tests.Configuration;
 
@@ -188,6 +189,103 @@ public sealed class AppConfigLoaderTests
             var cfg = AppConfigLoader.Load(configPath);
 
             Assert.False(cfg.Ui.HideMainWindowOnStartup);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // 票 02（A-002）：空配置兜底 —— quarantine.directory / audit.log_directory 空串回落 DefaultPaths。
+    // 原 bug：空串直传 → Path.Combine("", 文件名) 退化成相对路径 → 隔离/审计文件落进进程 CWD
+    //（config.sample.json 这两项就是空串，跟着 README 第一步走即命中）。
+    // 断言口径：回落值必须是 DefaultPaths 的绝对路径 —— 原 bug 下是空串（非绝对路径）。
+    // ---------------------------------------------------------------------------------------
+
+    [Fact]
+    public void Load_Should_Fall_Back_To_DefaultPaths_When_Quarantine_And_Audit_Directories_Are_Empty()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+
+        try
+        {
+            var configPath = Path.Combine(dir, "config.json");
+            File.WriteAllText(configPath, """
+            {
+              "schema_version": 1,
+              "watch": { "hot_folder": "D:\\hot" },
+              "quarantine": { "enabled": true, "directory": "" },
+              "audit": { "log_directory": "", "retain_days": 30 }
+            }
+            """);
+
+            var cfg = AppConfigLoader.Load(configPath);
+
+            Assert.Equal(DefaultPaths.DefaultQuarantineDirectory, cfg.Quarantine.Directory);
+            Assert.Equal(DefaultPaths.DefaultAuditLogDirectory, cfg.Audit.LogDirectory);
+
+            Assert.True(Path.IsPathFullyQualified(cfg.Quarantine.Directory),
+                $"quarantine.directory 必须是绝对路径，实际：'{cfg.Quarantine.Directory}'");
+            Assert.True(Path.IsPathFullyQualified(cfg.Audit.LogDirectory),
+                $"audit.log_directory 必须是绝对路径，实际：'{cfg.Audit.LogDirectory}'");
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Load_Should_Fall_Back_To_DefaultPaths_When_Directories_Are_Whitespace()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+
+        try
+        {
+            var configPath = Path.Combine(dir, "config.json");
+            File.WriteAllText(configPath, """
+            {
+              "schema_version": 1,
+              "quarantine": { "directory": "   " },
+              "audit": { "log_directory": "\t" }
+            }
+            """);
+
+            var cfg = AppConfigLoader.Load(configPath);
+
+            Assert.Equal(DefaultPaths.DefaultQuarantineDirectory, cfg.Quarantine.Directory);
+            Assert.Equal(DefaultPaths.DefaultAuditLogDirectory, cfg.Audit.LogDirectory);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Load_Should_Keep_Explicit_Quarantine_And_Audit_Directories()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+
+        try
+        {
+            var configPath = Path.Combine(dir, "config.json");
+            File.WriteAllText(configPath, """
+            {
+              "schema_version": 1,
+              "quarantine": { "directory": "D:\\hot\\_quarantine" },
+              "audit": { "log_directory": "D:\\hot\\_audit" }
+            }
+            """);
+
+            var cfg = AppConfigLoader.Load(configPath);
+
+            Assert.Equal(@"D:\hot\_quarantine", cfg.Quarantine.Directory);
+            Assert.Equal(@"D:\hot\_audit", cfg.Audit.LogDirectory);
         }
         finally
         {

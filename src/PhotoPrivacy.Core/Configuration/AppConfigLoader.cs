@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using PhotoPrivacy.Core.Constants;
 
 namespace PhotoPrivacy.Core.Configuration;
 
@@ -62,9 +63,17 @@ public static class AppConfigLoader
                 RetainDays: dto.Backup.RetainDays),
             Quarantine: new QuarantineOptions(
                 Enabled: dto.Quarantine.Enabled,
-                Directory: dto.Quarantine.Directory),
+                // 票 02（A-002）：空串/空白回落 DefaultPaths —— 对齐 Backup.Suffix 先例。
+                // 空串直传会让 Path.Combine("", 文件名) 退化成相对路径，隔离文件落进进程 CWD
+                // （config.sample.json 的 quarantine.directory 就是空串，跟着 README 第一步走即命中）。
+                Directory: string.IsNullOrWhiteSpace(dto.Quarantine.Directory)
+                    ? DefaultPaths.DefaultQuarantineDirectory
+                    : dto.Quarantine.Directory),
             Audit: new AuditOptions(
-                LogDirectory: dto.Audit.LogDirectory,
+                // 票 02（A-002）：同上——审计日志目录空串回落 DefaultPaths，绝不落 CWD。
+                LogDirectory: string.IsNullOrWhiteSpace(dto.Audit.LogDirectory)
+                    ? DefaultPaths.DefaultAuditLogDirectory
+                    : dto.Audit.LogDirectory,
                 RetainDays: dto.Audit.RetainDays,
                 DiagnosticMode: dto.Audit.DiagnosticMode,
                 LogLevel: dto.Audit.LogLevel),
