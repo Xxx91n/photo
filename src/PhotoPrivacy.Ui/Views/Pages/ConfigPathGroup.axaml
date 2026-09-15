@@ -1,0 +1,36 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:ex="using:PhotoPrivacy.Ui.Localization" xmlns:vm="using:PhotoPrivacy.Ui.ViewModels" xmlns:u="https://irihi.tech/ursa" x:Class="PhotoPrivacy.Ui.Views.Pages.ConfigPathGroup" x:DataType="vm:MainWindowViewModel">
+  <!-- 票 04（ui-craft2）返工轮：ConfigPage 拆分组子件 —— 路径组（组标签卡外上方 + 行集合卡）。
+       拆分动机：Pages_Should_Exist_And_Not_Exceed_220_Lines（ADR 0061 页面文件规约）对 ConfigPage
+       实测 234>220；结构迁移纯移动，视觉/行为零变化。 -->
+  <StackPanel Spacing="{DynamicResource SpaceXs}">
+    <TextBlock Text="{ex:Localize config.section.path}" Classes="group-label"/>
+    <Border Classes="settings-card grouped">
+      <StackPanel>
+        <Border Classes="settings-row">
+          <DockPanel LastChildFill="False">
+            <StackPanel DockPanel.Dock="Left" Spacing="{DynamicResource SpaceXxs}" VerticalAlignment="Center">
+              <TextBlock Text="{ex:Localize settings.exiftool_path}" Classes="row-label"/>
+              <TextBlock Text="{ex:Localize config.desc.exiftool_path}" Classes="row-desc"/>
+            </StackPanel>
+            <StackPanel DockPanel.Dock="Right" Spacing="{DynamicResource SpaceXxs}" VerticalAlignment="Center">
+              <u:PathPicker UsePickerType="OpenFile" Title="{ex:Localize dialog.select_exiftool}" ButtonContent="{ex:Localize btn.browse}" ToolTip.Tip="{ex:Localize dialog.select_exiftool}" FileFilter="[ExifTool, exiftool.exe, exiftool]" SelectedPathsText="{Binding ExifToolPath, Mode=TwoWay}" Classes="inline-input" HorizontalAlignment="Right"/>
+              <TextBlock Text="{Binding ExifToolPathHint}" Classes="caption" IsVisible="{Binding HasExifToolHint}"/>
+            </StackPanel>
+          </DockPanel>
+        </Border>
+        <Border Classes="row-divider"/>
+        <Border Classes="settings-row">
+          <DockPanel LastChildFill="False">
+            <StackPanel DockPanel.Dock="Left" Spacing="{DynamicResource SpaceXxs}" VerticalAlignment="Center">
+              <TextBlock Text="{ex:Localize settings.hot_folder}" Classes="row-label"/>
+              <TextBlock Text="{ex:Localize config.desc.hot_folder}" Classes="row-desc"/>
+            </StackPanel>
+            <DockPanel DockPanel.Dock="Right" LastChildFill="False" VerticalAlignment="Center">
+              <u:PathPicker DockPanel.Dock="Right" UsePickerType="OpenFolder" Title="{ex:Localize dialog.select_hot_folder}" ButtonContent="{ex:Localize btn.browse}" ToolTip.Tip="{ex:Localize dialog.select_hot_folder}" SelectedPathsText="{Binding HotFolderPath, Mode=TwoWay}" Classes="inline-input" HorizontalAlignment="Right"/>
+            </DockPanel>
+          </DockPanel>
+        </Border>
+      </StackPanel>
+    </Border>
+  </StackPanel>
+</UserControl>

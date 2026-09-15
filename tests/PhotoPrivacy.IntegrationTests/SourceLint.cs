@@ -37,6 +37,27 @@ public static class SourceLint
                 .Select(StripLineComment));
     }
 
+    /// <summary>
+    /// 票 04（ui-craft2）返工轮：ConfigPage 组合件文件清单 —— 页壳 + 4 分组子件。
+    /// 拆分为 Pages<=220 守卫消红（ADR 0061 页面文件规约）；凡钉「ConfigPage 页面内容」的断言
+    /// 一律读组合件合并文本，断言语义与原单文件形态等价。
+    /// </summary>
+    public static readonly string[] ConfigPageCompositionFiles =
+    {
+        "ConfigPage.axaml",
+        "ConfigPathGroup.axaml",
+        "ConfigBehaviorGroup.axaml",
+        "ConfigLogsGroup.axaml",
+        "ConfigExcludedGroup.axaml",
+    };
+
+    /// <summary>读取 ConfigPage 组合件合并原文（不剥注释；XAML 注释剥除由调用方按 <!-- --> 自行处理）。</summary>
+    public static string ReadConfigPageComposition()
+    {
+        return string.Concat(ConfigPageCompositionFiles.Select(f =>
+            Read("src", "PhotoPrivacy.Ui", "Views", "Pages", f)));
+    }
+
     /// <summary>枚举 src/PhotoPrivacy.Ui 全部手写 .cs（排除 bin/obj 与生成代码）。</summary>
     public static List<string> UiCsFiles()
     {

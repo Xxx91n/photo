@@ -1,0 +1,31 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:ex="using:PhotoPrivacy.Ui.Localization" xmlns:vm="using:PhotoPrivacy.Ui.ViewModels" xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia" x:Class="PhotoPrivacy.Ui.Views.Pages.ConfigExcludedGroup" x:DataType="vm:MainWindowViewModel">
+  <!-- 票 04（ui-craft2）返工轮：ConfigPage 拆分组子件 —— 排除目录组（组标签卡外上方 + 行集合卡）。 -->
+  <StackPanel Spacing="{DynamicResource SpaceXs}">
+    <TextBlock Text="{ex:Localize config.section.excluded}" Classes="group-label"/>
+    <Border Classes="settings-card grouped">
+      <StackPanel>
+        <Border Classes="settings-row">
+          <StackPanel Spacing="{DynamicResource SpaceXs}" VerticalAlignment="Center">
+            <TextBlock Text="{ex:Localize config.label.system_excluded}" Classes="row-label"/>
+            <TextBlock Text="{ex:Localize config.desc.system_excluded}" Classes="row-desc"/>
+            <ListBox ItemsSource="{Binding SystemAutoExcludedDirectories}" Height="80" BorderBrush="{DynamicResource SemiColorBorder}" BorderThickness="1"/>
+          </StackPanel>
+        </Border>
+        <Border Classes="row-divider"/>
+        <Border Classes="settings-row">
+          <StackPanel Spacing="{DynamicResource SpaceSm}" VerticalAlignment="Center">
+            <StackPanel Spacing="{DynamicResource SpaceXxs}">
+              <TextBlock Text="{ex:Localize config.label.user_excluded}" Classes="row-label"/>
+              <TextBlock Text="{ex:Localize config.desc.user_excluded}" Classes="row-desc"/>
+            </StackPanel>
+            <ListBox x:Name="UserExcludedDirectoriesListBox" ItemsSource="{Binding UserExcludedDirectories}" Height="80" BorderBrush="{DynamicResource SemiColorBorder}" BorderThickness="1"/>
+            <StackPanel Orientation="Horizontal" Spacing="{DynamicResource SpaceSm}">
+              <Button x:Name="AddExcludedDirectoryButton" Classes="icon" ToolTip.Tip="{ex:Localize config.tooltip.add_excluded_dir}"><materialIcons:MaterialIcon Kind="Plus" Width="16" Height="16"/></Button>
+              <Button x:Name="RemoveExcludedDirectoryButton" Classes="icon" ToolTip.Tip="{ex:Localize config.tooltip.remove_excluded_dir}"><materialIcons:MaterialIcon Kind="Minus" Width="16" Height="16"/></Button>
+            </StackPanel>
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </Border>
+  </StackPanel>
+</UserControl>

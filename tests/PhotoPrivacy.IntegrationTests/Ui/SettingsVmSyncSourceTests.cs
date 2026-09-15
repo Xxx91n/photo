@@ -61,7 +61,9 @@ public sealed class SettingsVmSyncSourceTests
     [Fact]
     public void ConfigPage_ComboBoxes_Should_Bind_SelectedIndex_To_Vm()
     {
-        var source = Read(UiPath("Views", "Pages", "ConfigPage.axaml"));
+        // 票 04 返工轮：三枚 ComboBox 与色板 MultiBinding 随分组迁入 Config*Group 子件 ——
+        // 按组合件合并文本断言（ConfigPage = 页壳 + 4 子件），断言语义与绑定契约不变。
+        var source = SourceLint.ReadConfigPageComposition();
         Assert.Contains("SelectedIndex=\"{Binding ThemeVariantIndex, Mode=TwoWay}\"", source, StringComparison.Ordinal);
         Assert.Contains("SelectedIndex=\"{Binding CurrentLocaleIndex, Mode=TwoWay}\"", source, StringComparison.Ordinal);
         Assert.Contains("SelectedIndex=\"{Binding LogLevelIndex, Mode=TwoWay}\"", source, StringComparison.Ordinal);

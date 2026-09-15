@@ -1,0 +1,34 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:ex="using:PhotoPrivacy.Ui.Localization" xmlns:vm="using:PhotoPrivacy.Ui.ViewModels" xmlns:u="https://irihi.tech/ursa" x:Class="PhotoPrivacy.Ui.Views.Pages.ConfigLogsGroup" x:DataType="vm:MainWindowViewModel">
+  <!-- 票 04（ui-craft2）返工轮：ConfigPage 拆分组子件 —— 日志组（组标签卡外上方 + 行集合卡）。 -->
+  <StackPanel Spacing="{DynamicResource SpaceXs}">
+    <TextBlock Text="{ex:Localize config.section.logs}" Classes="group-label"/>
+    <Border Classes="settings-card grouped">
+      <StackPanel>
+        <Border Classes="settings-row">
+          <DockPanel LastChildFill="False">
+            <StackPanel DockPanel.Dock="Left" Spacing="{DynamicResource SpaceXxs}" VerticalAlignment="Center">
+              <TextBlock Text="{ex:Localize settings.log_level}" Classes="row-label"/>
+              <TextBlock Text="{ex:Localize config.desc.log_level}" Classes="row-desc"/>
+            </StackPanel>
+            <!-- 票 30：选中态 VM 属性驱动（SelectedIndex TwoWay 绑定）——原 SelectionChanged/SyncLogLevelComboSelection 手动镜像删除 -->
+            <ComboBox x:Name="LogLevelComboBox" DockPanel.Dock="Right" Classes="inline-control" SelectedIndex="{Binding LogLevelIndex, Mode=TwoWay}" VerticalAlignment="Center">
+              <ComboBoxItem Content="{ex:Localize loglevel.option.all}" Tag="all"/><ComboBoxItem Content="{ex:Localize loglevel.option.info}" Tag="info"/><ComboBoxItem Content="{ex:Localize loglevel.option.debug}" Tag="debug"/><ComboBoxItem Content="{ex:Localize loglevel.option.warn}" Tag="warn"/><ComboBoxItem Content="{ex:Localize loglevel.option.error}" Tag="error"/>
+            </ComboBox>
+          </DockPanel>
+        </Border>
+        <Border Classes="row-divider"/>
+        <Border Classes="settings-row">
+          <DockPanel LastChildFill="False">
+            <StackPanel DockPanel.Dock="Left" Spacing="{DynamicResource SpaceXxs}" VerticalAlignment="Center">
+              <TextBlock Text="{ex:Localize settings.audit_log_dir_label}" Classes="row-label"/>
+              <TextBlock Text="{ex:Localize config.desc.audit_log_dir}" Classes="row-desc"/>
+            </StackPanel>
+            <DockPanel DockPanel.Dock="Right" LastChildFill="False" VerticalAlignment="Center">
+              <u:PathPicker DockPanel.Dock="Right" UsePickerType="OpenFolder" Title="{ex:Localize dialog.select_log_dir}" ButtonContent="{ex:Localize btn.browse}" ToolTip.Tip="{ex:Localize dialog.select_log_dir}" SelectedPathsText="{Binding AuditLogDirectory, Mode=TwoWay}" Classes="inline-input" HorizontalAlignment="Right"/>
+            </DockPanel>
+          </DockPanel>
+        </Border>
+      </StackPanel>
+    </Border>
+  </StackPanel>
+</UserControl>

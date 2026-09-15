@@ -135,9 +135,10 @@ public sealed class MainWindowShellSourceTests
             Assert.DoesNotContain("Classes=\"icon\" ToolTip.Tip=\"{ex:Localize dialog.select", source, StringComparison.Ordinal);
         }
         // PathPicker 弹窗标题权威仍在 localization key（dialog.select_*）— 5 处经 u:PathPicker 声明
-        var configPage = ReadAll(UiPath("Views", "Pages", "ConfigPage.axaml"));
-        var pickerCount = Regex.Matches(configPage, "<u:PathPicker").Count;
-        Assert.True(pickerCount == 5, $"expected 5 u:PathPicker rows in ConfigPage, got {pickerCount}");
+        // 票 04 返工轮：PathPicker 随 4 分组迁入 Config*Group 子件 —— 按组合件合并文本计数，断言值不变。
+        var configComposition = SourceLint.ReadConfigPageComposition();
+        var pickerCount = Regex.Matches(configComposition, "<u:PathPicker").Count;
+        Assert.True(pickerCount == 5, $"expected 5 u:PathPicker rows in ConfigPage composition, got {pickerCount}");
     }
 
     [Fact]
@@ -155,9 +156,10 @@ public sealed class MainWindowShellSourceTests
     public void Theme_Swatches_Must_Be_DataDriven_From_Catalog()
     {
         // 检查点 B 验收：5 色板数据化 — 唯一权威 ThemeSwatchCatalog.Presets，inline RadioButton 色板块不得回潮。
-        var configPage = ReadAll(UiPath("Views", "Pages", "ConfigPage.axaml"));
-        Assert.Contains("ThemeSwatchCatalog.Presets", configPage, StringComparison.Ordinal);
-        Assert.DoesNotContain("GroupName=\"ThemePreset\"", configPage, StringComparison.Ordinal);
+        // 票 04 返工轮：色板块迁入 ConfigBehaviorGroup 子件 —— 按组合件合并文本断言，语义不变。
+        var configComposition = SourceLint.ReadConfigPageComposition();
+        Assert.Contains("ThemeSwatchCatalog.Presets", configComposition, StringComparison.Ordinal);
+        Assert.DoesNotContain("GroupName=\"ThemePreset\"", configComposition, StringComparison.Ordinal);
         var controls = UiPath("Views", "Controls", "ThemeSwatch.axaml.cs");
         var catalog = ReadAll(controls);
         foreach (var theme in new[] { "catppuccin", "dracula", "nord", "onedarkpro", "tokyonight" })
