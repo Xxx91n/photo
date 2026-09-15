@@ -127,6 +127,17 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
 
     public async Task<WipeResult> WipeMetadataAsync(string targetPath, CancellationToken cancellationToken)
     {
+        // 票 01（A-001）/ ADR 0053 M6f：未知扩展名一律立即跳过——不进 ExifTool、不写协议块、不注册等待 marker。
+        // 必须早于 EnsureStartedAsync：不支持的格式不值得拉起进程，也不允许出现
+        // “等一个永不出现的 TASK_DONE_ marker”的挂死路径。
+        if (WipeStrategyResolver.ResolveFamily(targetPath) is WipeFormatFamily.Unknown)
+        {
+            _logger.LogWarning(
+                "Skipping {Path}: extension is not in the wipe format family map; ExifTool was not invoked.",
+                targetPath);
+            return WipeResult.UnknownFormat;
+        }
+
         await EnsureStartedAsync(cancellationToken);
 
         var id = Interlocked.Increment(ref _taskId).ToString();
@@ -203,6 +214,21 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
         }
 
         // Phase 3: Wipe
+        // 票 01（A-001）：写盘前再解析一次策略。skip 情形（unknown_format / no_rules）绝不注册
+        // 等待 marker——否则命令块里没有 TASK_DONE_，TCS 会挂到取消为止（原挂死链）。
+        var wipeStrategy = WipeStrategyResolver.Resolve(effectiveTarget, _wipeRules);
+        if (wipeStrategy.SkipReason is not null)
+        {
+            _logger.LogWarning(
+                "Skipping wipe for {Path}: wipe strategy skip reason {Reason}.",
+                effectiveTarget,
+                wipeStrategy.SkipReason);
+
+            return string.Equals(wipeStrategy.SkipReason, "unknown_format", StringComparison.Ordinal)
+                ? WipeResult.UnknownFormat
+                : WipeResult.Cleaned_NoOp;
+        }
+
         var wipeMarker = $"TASK_DONE_{id}";
         var wipeTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         _pending[wipeMarker] = wipeTcs;

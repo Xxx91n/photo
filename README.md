@@ -25,8 +25,9 @@ PhotoPrivacy 自动清除热文件夹中图片/视频/PDF 的隐私元数据（E
 - 支持连接池（`stay_open_pool_size`）并发处理
 
 ### 格式支持
-- **109 种扩展名**：JPEG/TIFF/PNG/HEIF/AVIF/PSD/PDF/RAW/视频等
-- 覆盖 ExifTool 98.2% 可写格式（仅 `.crm`、`.mie` 因极小众未纳入）
+- **34 种扩展名**（与擦除策略映射表一一对应）：JPEG（jpg/jpeg/jpe/jps/jph）、TIFF/DNG、RAW（cr2/cr3/arw/nef/orf/raf/rw2/pef/srw/sr2）、PNG/APNG、HEIF/AVIF、MOV/MP4（mov/mp4/m4v/qt/3gp/3g2）、PDF、EPS/PS/AI
+- **不支持格式明确跳过**：映射面之外的格式（如 `.webp`、`.gif`、`.psd`、长尾 RAW 变体）不做任何清理，立即跳过并写入 `wipe_skipped_unknown` 审计事件（fail-closed，绝不静默处理）
+- 数字口径由 CI 断言钉死：`allowed_extensions` ⊆ `ExtensionFamilyMap` 且集合差 = 0（含本行数字），宣称与实现脱钩即红灯
 
 ### Worker 健壮性
 - **指数退避重试**：瞬态异常自动 1s→2s→4s→...→60s 退避，连续 10 次失败才停止宿主

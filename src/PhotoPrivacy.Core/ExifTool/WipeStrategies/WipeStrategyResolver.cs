@@ -13,9 +13,11 @@ public static class WipeStrategyResolver
     public static readonly IReadOnlyDictionary<string, WipeFormatFamily> ExtensionFamilyMap = new Dictionary<string, WipeFormatFamily>(StringComparer.OrdinalIgnoreCase)
     {
         // JPEG family
+        // 票 01：删除 jhc 死条目——它从不在 allowed_extensions 里，映射面上永远不可达
+        // （FormatCoverageReconciliationTests 以 mapped ⊆ allowed 钉死“无死条目”）。
         ["jpg"] = WipeFormatFamily.Jpeg, ["jpeg"] = WipeFormatFamily.Jpeg,
         ["jpe"] = WipeFormatFamily.Jpeg, ["jps"] = WipeFormatFamily.Jpeg,
-        ["jph"] = WipeFormatFamily.Jpeg, ["jhc"] = WipeFormatFamily.Jpeg,
+        ["jph"] = WipeFormatFamily.Jpeg,
 
         // TIFF/DNG
         ["tif"] = WipeFormatFamily.Tiff, ["tiff"] = WipeFormatFamily.Tiff,

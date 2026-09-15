@@ -62,9 +62,7 @@ public sealed class RuleEngineTests
     [InlineData(".arw")]
     [InlineData(".nef")]
     [InlineData(".tiff")]
-    [InlineData(".webp")]
     [InlineData(".avif")]
-    [InlineData(".psd")]
     [InlineData(".ai")]
     [InlineData(".eps")]
     [InlineData(".heif")]
@@ -73,25 +71,44 @@ public sealed class RuleEngineTests
     [InlineData(".rw2")]
     [InlineData(".orf")]
     [InlineData(".mov")]
-    [InlineData(".gif")]
     [InlineData(".heic")]
     [InlineData(".m4v")]
     [InlineData(".3gp")]
     [InlineData(".cr2")]
-    [InlineData(".ori")]
     [InlineData(".3g2")]
     [InlineData(".sr2")]
-    [InlineData(".mpo")]
-    [InlineData(".x3f")]
-    [InlineData(".crm")]
-    [InlineData(".mie")]
     public void Decide_Should_Process_Writable_Extensions(string ext)
     {
         var cfg = AppConfig.Default;
         var engine = new RuleEngine(cfg);
-        var decision = engine.Decide(Path.Combine(@"D:\hot", $"test{ext}"));
+        var decision = engine.Decide(Path.Combine(@"D:hot", $"test{ext}"));
 
         Assert.True(decision.ShouldProcess);
+    }
+
+    /// <summary>
+    /// 票 01 宣称收敛（D-005.1）：以下扩展名原先在 allowed_extensions 里但不在
+    /// WipeStrategyResolver.ExtensionFamilyMap 映射面——即“宣称支持但没有擦除策略”。
+    /// 收敛后默认不再处理（fail-closed）；即使被用户旧配置放进来，ExifToolBridge 也会立即跳过
+    /// 并落 wipe_skipped_unknown 审计（见 UnsupportedFormatPipelineTests）。
+    /// </summary>
+    [Theory]
+    [InlineData(".webp")]
+    [InlineData(".psd")]
+    [InlineData(".gif")]
+    [InlineData(".ori")]
+    [InlineData(".mpo")]
+    [InlineData(".x3f")]
+    [InlineData(".crm")]
+    [InlineData(".mie")]
+    public void Decide_Should_Reject_Extensions_Outside_Wipe_Family_Map(string ext)
+    {
+        var cfg = AppConfig.Default;
+        var engine = new RuleEngine(cfg);
+        var decision = engine.Decide(Path.Combine(@"D:hot", $"test{ext}"));
+
+        Assert.False(decision.ShouldProcess);
+        Assert.Equal("extension_not_allowed", decision.Reason);
     }
 
     [Theory]
