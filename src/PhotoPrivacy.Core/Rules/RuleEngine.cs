@@ -72,10 +72,11 @@ public sealed class RuleEngine
             ? Pipeline.BackupPathResolver.ResolveDefaultBackupDir(_config.Watch.HotFolder)
             : backup.Directory;
 
-        var fileName = Path.GetFileName(sourcePath);
-        var backupFileName = fileName + backup.Suffix;
-
-        return Path.Combine(backupDir, backupFileName);
+        // 票 03（A-006 / D-006）：镜像相对路径布局——备份根下按源文件相对监控根的
+        // 子路径镜像，结构性消除跨子目录同名文件的备份互相覆盖；无法归位监控子树时
+        // 回退 "_unsorted/文件名.短哈希" 兜底。防穿越/规范化/保留名由 Resolver 收口。
+        return Pipeline.BackupPathResolver.ResolveBackupSlot(
+            sourcePath, _config.Watch.HotFolder, backupDir, backup.Suffix);
     }
 
     /// <summary>

@@ -206,16 +206,16 @@ public sealed class FileTaskPipeline
 
                                 if (needsTempRoute)
                                 {
-                                    // sourcePath 仍是原始状态，直接备份
-                                    await _fileOperations.AtomicCopyAsync(sourcePath, decision.BackupPath!, overwrite: true, cancellationToken).ConfigureAwait(false);
+                                    // sourcePath 仍是原始状态，直接备份（冲突分流见 WriteBackupAsync）
+                                    await WriteBackupAsync(sourcePath, decision.BackupPath!, cancellationToken).ConfigureAwait(false);
                                     // 再把清除后的临时文件移回原路径，完成"原地清除"的最终效果
                                     _fileOperations.Move(tempPath!, target);
                                     tempPath = null; // 标记已消费，finally 块不用清理
                                 }
                                 else
                                 {
-                                    // target != sourcePath 的正常路径，原逻辑不变
-                                    await _fileOperations.AtomicCopyAsync(sourcePath, decision.BackupPath!, overwrite: true, cancellationToken).ConfigureAwait(false);
+                                    // target != sourcePath 的正常路径，原逻辑不变（冲突分流见 WriteBackupAsync）
+                                    await WriteBackupAsync(sourcePath, decision.BackupPath!, cancellationToken).ConfigureAwait(false);
                                 }
                             }
                             else if (needsTempRoute)
@@ -311,6 +311,80 @@ public sealed class FileTaskPipeline
 
             ExitInflight(sourcePath);
         }
+    }
+
+    /// <summary>
+    /// 票 03（A-006 / D-006）备份冲突分流——绝不静默覆盖：
+    /// 1. 源或槽位为符号链接/ReparsePoint → 拒绝并写可见告警（fail-closed，Borg create 语义）；
+    /// 2. 槽位不存在 → 直接原子写入；
+    /// 3. 槽位存在且内容相同 → 跳过（幂等，承接"同文件重处理保留最新"的合法语义）；
+    /// 4. 槽位存在且内容不同 → 写 <c>名字.时间戳.扩展名</c> 旁路版本（绝不覆盖）。
+    /// </summary>
+    private async Task WriteBackupAsync(string sourcePath, string backupSlot, CancellationToken cancellationToken)
+    {
+        if (BackupPathResolver.IsReparsePoint(sourcePath) || BackupPathResolver.IsReparsePoint(backupSlot))
+        {
+            await _audit.WriteAsync(
+                new AuditEvent(
+                    "backup_skipped",
+                    AuditLevel.Warn,
+                    DateTimeOffset.UtcNow,
+                    Guid.NewGuid().ToString("N"),
+                    sourcePath,
+                    "reparse_point_refused",
+                    new Dictionary<string, string> { ["backup_path"] = backupSlot }),
+                cancellationToken);
+            return;
+        }
+
+        var backupDir = Path.GetDirectoryName(backupSlot);
+        if (!string.IsNullOrWhiteSpace(backupDir))
+        {
+            _fileOperations.EnsureDirectory(backupDir);
+        }
+
+        var slotExists = File.Exists(backupSlot);
+        if (!slotExists)
+        {
+            // 槽位空闲：原子写入，不存在覆盖问题。
+            await _fileOperations.AtomicCopyAsync(sourcePath, backupSlot, overwrite: false, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        if (BackupPathResolver.ContentsEqual(sourcePath, backupSlot))
+        {
+            // 同槽位+内容相同 → 跳过（幂等，不产旁路版本）。
+            await _audit.WriteAsync(
+                new AuditEvent(
+                    "backup_skipped",
+                    AuditLevel.Info,
+                    DateTimeOffset.UtcNow,
+                    Guid.NewGuid().ToString("N"),
+                    sourcePath,
+                    "identical_content_slot_kept",
+                    new Dictionary<string, string> { ["backup_path"] = backupSlot }),
+                cancellationToken);
+            return;
+        }
+
+        // 槽位存在且内容分歧 → 旁路版本（绝不静默覆盖）。
+        var sidecar = BackupPathResolver.ResolveSidecarPath(
+            backupSlot, _config.Backup.Suffix, DateTimeOffset.UtcNow, File.Exists);
+        await _fileOperations.AtomicCopyAsync(sourcePath, sidecar, overwrite: false, cancellationToken).ConfigureAwait(false);
+        await _audit.WriteAsync(
+            new AuditEvent(
+                "backup_sidecar_versioned",
+                AuditLevel.Info,
+                DateTimeOffset.UtcNow,
+                Guid.NewGuid().ToString("N"),
+                sourcePath,
+                "content_diverged_sidecar_written",
+                new Dictionary<string, string>
+                {
+                    ["slot"] = backupSlot,
+                    ["sidecar"] = sidecar,
+                }),
+            cancellationToken);
     }
 
     private bool TryEnterInflight(string path)
