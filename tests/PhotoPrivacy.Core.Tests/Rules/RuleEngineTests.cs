@@ -233,7 +233,7 @@ public sealed class RuleEngineTests
     [Theory]
     [InlineData("a.jpg", true)]
     [InlineData("aa.jpg", false)]
-    [InlineData("a.jpg.bak", false)]
+    [InlineData("a.jpg.jpg", false)]
     public void Decide_Should_Anchor_Excluded_Pattern_To_The_Whole_File_Name(string fileName, bool shouldExclude)
     {
         var decision = DecideWithPatterns(fileName, "a.jpg");
