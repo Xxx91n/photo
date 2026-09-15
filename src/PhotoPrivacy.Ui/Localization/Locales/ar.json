@@ -135,8 +135,7 @@
   },
   "service": {
     "section": {
-      "status": "الحالة الحالية",
-      "actions": "الإجراءات"
+      "service": "الخدمة"
     },
     "status": "حالة الخدمة",
     "install": "تثبيت الخدمة",

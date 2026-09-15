@@ -73,8 +73,7 @@
     "stopped": "Detenido",
     "failed": "Fallido",
     "section": {
-      "status": "ESTADO ACTUAL",
-      "actions": "ACCIONES"
+      "service": "Servicio"
     },
     "row": {
       "install_start": "Instalar y iniciar servicio",

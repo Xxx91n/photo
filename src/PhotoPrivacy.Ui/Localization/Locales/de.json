@@ -73,8 +73,7 @@
     "stopped": "Gestoppt",
     "failed": "Fehlgeschlagen",
     "section": {
-      "status": "AKTUELLER STATUS",
-      "actions": "AKTIONEN"
+      "service": "Dienst"
     },
     "row": {
       "install_start": "Dienst installieren & starten",

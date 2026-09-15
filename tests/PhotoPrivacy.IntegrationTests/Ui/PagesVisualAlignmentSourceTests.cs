@@ -18,11 +18,17 @@ namespace PhotoPrivacy.IntegrationTests.Ui;
 /// </summary>
 public class PagesVisualAlignmentSourceTests
 {
-    // 受审文件：四页 + MainWindow（票 04 领地）+ 侧栏控件
+    // 受审文件：四页 + MainWindow + 侧栏控件 + ConfigPage 分组子件（票 04 返工轮拆分）
     private static readonly string[][] ViewFiles =
     {
         new[] { "src", "PhotoPrivacy.Ui", "Views", "MainWindow.axaml" },
         new[] { "src", "PhotoPrivacy.Ui", "Views", "Pages", "ConfigPage.axaml" },
+        // 票 04 返工轮：4 分组子件纳入受审面 —— ramp/Spacing/inline-Width 纪律对全部视图源生效。
+        // （行数守卫 Pages<=220 不纳入：其为 ADR 0061「页面文件」复杂度预算口径，子件是组合单元非页面文件。）
+        new[] { "src", "PhotoPrivacy.Ui", "Views", "Pages", "ConfigPathGroup.axaml" },
+        new[] { "src", "PhotoPrivacy.Ui", "Views", "Pages", "ConfigBehaviorGroup.axaml" },
+        new[] { "src", "PhotoPrivacy.Ui", "Views", "Pages", "ConfigLogsGroup.axaml" },
+        new[] { "src", "PhotoPrivacy.Ui", "Views", "Pages", "ConfigExcludedGroup.axaml" },
         new[] { "src", "PhotoPrivacy.Ui", "Views", "Pages", "LogsPage.axaml" },
         new[] { "src", "PhotoPrivacy.Ui", "Views", "Pages", "RulesPage.axaml" },
         new[] { "src", "PhotoPrivacy.Ui", "Views", "Pages", "ServiceManagerPage.axaml" },
@@ -139,18 +145,21 @@ public class PagesVisualAlignmentSourceTests
         // 防：规范 §3.3 B3 / §5.2 P1 回潮 —— 分组容器回到 Spacing="0" 或漏写 Spacing，
         // 分组直接相邻形成「均匀网格」，是 AI 感第一根因（ADR 0051 A1 / 规范 §5.2 P7）。
         // 票 04 / ui-craft2 复核上档：MangoDisk 基准组间约 24（附录 D.5），ConfigPage 取
-        // SpaceXl(24)；ServiceManagerPage 过渡态维持 SpaceLg(16)，票 07 跟进后统一收紧为 SpaceXl。
+        // SpaceXl(24)；ServiceManagerPage 票 07 / ui-craft2 已跟进，统一收紧为 SpaceXl。
         // per-page map 逐页钉死当前裁定值，防止施工顺序造成静默回退。
         var expected = new Dictionary<string, string>
         {
             ["ConfigPage.axaml"] = "SpaceXl",
-            ["ServiceManagerPage.axaml"] = "SpaceLg",
+            ["ServiceManagerPage.axaml"] = "SpaceXl",
         };
         foreach (var kv in expected)
         {
             var source = ReadXaml(new[] { "src", "PhotoPrivacy.Ui", "Views", "Pages", kv.Key });
+            // '"' 字符字面量代替 \" 转义 —— 杜绝写盘链路再次吞掉反斜杠（票 04 返工轮实测教训）；
+            // 变量名 needle 避开外层 expected（Dictionary 映射）重名。
+            var needle = "Spacing=" + '"' + "{DynamicResource " + kv.Value + "}" + '"';
             Assert.True(
-                source.Contains("Spacing="{DynamicResource " + kv.Value + "}""),
+                source.Contains(needle),
                 kv.Key + " 的分组容器须设 Spacing={DynamicResource " + kv.Value + "}（规范 §5.2 P1 / §3.3 B3，票 04/ui-craft2 复核）");
         }
     }
@@ -160,20 +169,28 @@ public class PagesVisualAlignmentSourceTests
     {
         // 防：票 04 / ui-craft2 组标签骨架回潮 —— 分组标题退回 settings-card 内部
         // （卡内标题吃掉卡片顶部节奏且与行 padding 规则耦合）。MangoDisk md-settings-group
-        // 与 WinUI SettingsCard 节的组标题均在卡片外上方（muted 小标签），
-        // ConfigPage 已迁移为 .group-label（卡外）+ settings-card.grouped（卡零内边距）。
-        // 其它页面（RulesPage/ServiceManagerPage）仍可用 section-header，由各自页面票迁移。
-        var source = ReadXaml(new[] { "src", "PhotoPrivacy.Ui", "Views", "Pages", "ConfigPage.axaml" });
+        // 与 WinUI SettingsCard 节的组标题均在卡片外上方（muted 小标签）。
+        // 返工轮：4 分组迁移为 Config*Group 子件 —— 断言升级为逐文件：每组恰 1 个 group-label
+        // + 恰 1 张 settings-card grouped + 无 section-header；页壳本体不得再含分组形态。
+        var dq = '"';
+        var groupLabel = "Classes=" + dq + "group-label" + dq;
+        foreach (var file in SourceLint.ConfigPageCompositionFiles.Skip(1))
+        {
+            var source = ReadXaml(new[] { "src", "PhotoPrivacy.Ui", "Views", "Pages", file });
+            Assert.False(
+                source.Contains("section-header"),
+                file + " 不得使用 section-header（组标签须在卡外上方走 .group-label，规范 §3.3 B4）");
+            Assert.True(
+                Regex.Matches(source, groupLabel).Count == 1,
+                file + " 应恰有 1 个 .group-label（组标签外置规范 §3.3 B4）");
+            Assert.True(
+                source.Contains("settings-card grouped"),
+                file + " 行集合卡须用 settings-card grouped（卡零内边距，padding 下沉到行）");
+        }
+        var shell = ReadXaml(new[] { "src", "PhotoPrivacy.Ui", "Views", "Pages", "ConfigPage.axaml" });
         Assert.False(
-            source.Contains("section-header"),
-            "ConfigPage 不得再使用 section-header（组标签须在卡外上方走 .group-label，规范 §3.3 B4）");
-        var count = Regex.Matches(source, "Classes=\"group-label\"").Count;
-        Assert.True(
-            count >= 4,
-            "ConfigPage 应有 4 个 .group-label（path/behavior/logs/excluded 四组），实测 " + count);
-        Assert.True(
-            source.Contains("settings-card grouped"),
-            "ConfigPage 行集合卡须用 settings-card grouped（卡零内边距，padding 下沉到行）");
+            shell.Contains("section-header") || shell.Contains("settings-card"),
+            "ConfigPage 页壳不得再含 section-header/settings-card（4 分组已迁入 Config*Group 子件）");
     }
 
     [Fact]
@@ -257,6 +274,38 @@ public class PagesVisualAlignmentSourceTests
         Assert.Contains("rules.empty_filtered", source, StringComparison.Ordinal);
         Assert.Contains("HasNoVisibleRules", source, StringComparison.Ordinal);
         Assert.Contains("SearchFilterActive", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ServiceManagerPage_PageShell_And_ServiceCard_Must_Consume_V20_Layout_Tokens()
+    {
+        // 防：票 07 / ui-craft2 页壳 + 分组卡骨架回潮 —— 页头高度 / 页标题 / 可读宽度档回退为
+        // 散值或旧 class，或组标签退回卡内 section-header。页头 MinHeight=LayoutPageHeaderHeight(58)
+        // + page-title、内容 MaxWidth=LayoutContentWidthReadable(1160) 居中、组标签 .group-label
+        // 在卡外上方、行集合卡 settings-card.grouped —— 均为 v2.0 附录 D.2/D.5 + §3.1 基准落位。
+        // 状态展示语义（规范 §0.2 / §4.2 评估口径：状态展示非空态）：状态点 + 文案双要素
+        //（ServiceStatusDotColor + ServiceStatus）必须在场，禁 empty-* 骨架（无空态对象）与
+        // 硬编码段头回潮（原 "ACTIONS" 字面量未走 Localize）。
+        var source = ReadXaml(new[] { "src", "PhotoPrivacy.Ui", "Views", "Pages", "ServiceManagerPage.axaml" });
+        Assert.True(
+            source.Contains("LayoutPageHeaderHeight")
+                && source.Contains("LayoutContentWidthReadable")
+                && source.Contains("page-title")
+                && source.Contains("group-label")
+                && source.Contains("settings-card grouped"),
+            "ServiceManagerPage 须消费 LayoutPageHeaderHeight / LayoutContentWidthReadable / page-title / group-label / settings-card grouped（规范 §3.1/§5.1/§7）");
+        Assert.False(
+            source.Contains("section-header"),
+            "ServiceManagerPage 组标签须在卡外走 .group-label，不得回退卡内 section-header（规范 §3.3 B4）");
+        Assert.False(
+            source.Contains("empty-"),
+            "ServiceManagerPage 状态展示非空态，不得引入 empty-* 骨架（规范 §4.2 评估口径：无可空列表）");
+        Assert.False(
+            source.Contains("Text=\"ACTIONS\""),
+            "ServiceManagerPage 不得出现未走 Localize 的硬编码段头（i18n 缺口回潮防钉）");
+        Assert.True(
+            source.Contains("ServiceStatusDotColor") && source.Contains("{Binding ServiceStatus}"),
+            "ServiceManagerPage 状态行须为状态点+文案双要素（ServiceStatusDotColor + ServiceStatus，规范 §0.2）");
     }
 
     [Fact]

@@ -73,8 +73,7 @@
     "stopped": "Stopped",
     "failed": "Failed",
     "section": {
-      "status": "CURRENT STATUS",
-      "actions": "ACTIONS"
+      "service": "Service"
     },
     "row": {
       "install_start": "Install & start service",

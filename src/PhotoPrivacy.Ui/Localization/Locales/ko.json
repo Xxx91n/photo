@@ -73,8 +73,7 @@
     "stopped": "중지됨",
     "failed": "실패",
     "section": {
-      "status": "현재 상태",
-      "actions": "작업"
+      "service": "서비스"
     },
     "row": {
       "install_start": "서비스 설치 및 시작",

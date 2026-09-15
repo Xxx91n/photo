@@ -1,73 +1,87 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:ex="using:PhotoPrivacy.Ui.Localization" xmlns:vm="using:PhotoPrivacy.Ui.ViewModels" xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia" xmlns:behaviors="using:PhotoPrivacy.Ui.Behaviors" x:Class="PhotoPrivacy.Ui.Views.Pages.ServiceManagerPage" x:DataType="vm:MainWindowViewModel">
-  <!-- 票 24（ADR 0061）：自 MainWindow.axaml 拆出的服务管理页；按钮可用性经 VM ServiceButtons 绑定（直写清零）。 -->
+  <!-- 票 24（ADR 0061）：自 MainWindow.axaml 拆出的服务管理页；按钮可用性经 VM ServiceButtons 绑定（直写清零）。
+       票 07（ui-craft2 / D-005/D-006）：整页对齐 v2.0 —— 页壳（页头 MinHeight 58=LayoutPageHeaderHeight
+       + page-title=nav.service_manager）+ 内容列 readable 1160 居中 + 组间 SpaceXl（规范 §5.2 P1 收紧，
+       原过渡态 SpaceLg 随本票升档）；状态卡 + 操作卡合并为单组单卡（atomcode 调研裁决三：状态展示
+       自成服务卡首行、不独立成卡——状态是只读信息、操作是其写路径，同一服务对象的读写两面）；
+       组标签出卡上方走 group-label（service.section.service），行集合卡 settings-card.grouped
+       零内边距；状态行 = 左 service.status 标签 + 右 状态点(ServiceStatusDotColor)+文案(ServiceStatus)
+       —— 状态展示非空态（规范 §4.2 评估口径），状态点+文案双要素齐备（§0.2 / 调研裁决一：颜色不单载语义）；
+       硬编码 "ACTIONS" 段头清零（原即未走 Localize 的 i18n 缺口；孤儿键 service.section.status/actions
+       随本票清除，十语言 JSON + 内嵌兜底字典同步）。 -->
   <Grid RowDefinitions="Auto,*">
-    <Border Padding="24,24,24,16" BorderBrush="{DynamicResource SemiColorBorder}" BorderThickness="0,0,0,1">
-      <TextBlock Text="{ex:Localize nav.service_manager}" Classes="title"/>
+    <Border MinHeight="{DynamicResource LayoutPageHeaderHeight}" Padding="24,0,24,0" BorderBrush="{DynamicResource SemiColorBorder}" BorderThickness="0,0,0,1">
+      <TextBlock Text="{ex:Localize nav.service_manager}" Classes="page-title" VerticalAlignment="Center"/>
     </Border>
 
     <ScrollViewer Grid.Row="1" Margin="24,16,24,24" VerticalScrollBarVisibility="Auto" behaviors:MiddleClickScrollBehavior.IsEnabled="True">
-      <StackPanel Spacing="{DynamicResource SpaceLg}">
-        <Border Classes="settings-card">
-          <StackPanel>
-            <TextBlock Text="{ex:Localize service.section.status}" Classes="section-header" Margin="16,12,16,8"/>
-            <StackPanel Orientation="Horizontal" Spacing="{DynamicResource SpaceSm}" VerticalAlignment="Center" Margin="16,0,16,12">
-              <Ellipse Width="10" Height="10" Fill="{Binding ServiceStatusDotColor}" VerticalAlignment="Center"/>
-              <TextBlock Text="{Binding ServiceStatus}" Classes="headline" VerticalAlignment="Center"/>
+      <StackPanel Spacing="{DynamicResource SpaceXl}" MaxWidth="{DynamicResource LayoutContentWidthReadable}" HorizontalAlignment="Center">
+        <StackPanel Spacing="{DynamicResource SpaceXs}">
+          <TextBlock Text="{ex:Localize service.section.service}" Classes="group-label"/>
+          <Border Classes="settings-card grouped">
+            <StackPanel>
+              <Border Classes="settings-row">
+                <DockPanel LastChildFill="False">
+                  <StackPanel DockPanel.Dock="Left" Spacing="{DynamicResource SpaceXxs}" VerticalAlignment="Center">
+                    <TextBlock Text="{ex:Localize service.status}" Classes="row-label"/>
+                  </StackPanel>
+                  <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="{DynamicResource SpaceSm}" VerticalAlignment="Center">
+                    <Ellipse Width="10" Height="10" Fill="{Binding ServiceStatusDotColor}" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding ServiceStatus}" Classes="body" VerticalAlignment="Center"/>
+                  </StackPanel>
+                </DockPanel>
+              </Border>
+
+              <Border Classes="row-divider"/>
+
+              <Border Classes="settings-row">
+                <DockPanel LastChildFill="False">
+                  <StackPanel DockPanel.Dock="Left" Spacing="{DynamicResource SpaceXxs}" VerticalAlignment="Center">
+                    <TextBlock Text="{ex:Localize service.row.install_start}" Classes="row-label"/>
+                    <TextBlock Text="{ex:Localize service.desc.install}" Classes="row-desc"/>
+                  </StackPanel>
+                  <Button x:Name="InstallServiceButton" IsEnabled="{Binding ServiceButtons.InstallEnabled}" DockPanel.Dock="Right" Content="{ex:Localize service.btn.install}" Classes="primary" VerticalAlignment="Center"/>
+                </DockPanel>
+              </Border>
+
+              <Border Classes="row-divider"/>
+
+              <Border Classes="settings-row">
+                <!-- 票 03（ui-craft R1-1）：同组等宽 —— 启动/停止/刷新三枚改走 Grid + SharedSizeGroup，
+                     组内以最长文案定宽。不取固定 MinWidth：本项目 10 语言，长文案（德/俄）会撑破定值。
+                     IsSharedSizeScope 挂共同祖先（WPF/Avalonia 官方用法）；间距取规范 §5.2 P4 的 SpaceSm。 -->
+                <DockPanel LastChildFill="False" Grid.IsSharedSizeScope="True">
+                  <StackPanel DockPanel.Dock="Left" Spacing="{DynamicResource SpaceXxs}" VerticalAlignment="Center">
+                    <TextBlock Text="{ex:Localize service.row.start_stop}" Classes="row-label"/>
+                    <TextBlock Text="{ex:Localize service.desc.start_stop}" Classes="row-desc"/>
+                  </StackPanel>
+                  <Grid DockPanel.Dock="Right" ColumnSpacing="{DynamicResource SpaceSm}" VerticalAlignment="Center">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="Auto" SharedSizeGroup="ServiceActions"/>
+                      <ColumnDefinition Width="Auto" SharedSizeGroup="ServiceActions"/>
+                      <ColumnDefinition Width="Auto" SharedSizeGroup="ServiceActions"/>
+                    </Grid.ColumnDefinitions>
+                    <Button Grid.Column="0" x:Name="StartServiceButton" IsEnabled="{Binding ServiceButtons.StartEnabled}" Content="{ex:Localize service.btn.start}" Classes="ghost" HorizontalAlignment="Stretch" VerticalAlignment="Center"/>
+                    <Button Grid.Column="1" x:Name="StopServiceButton" IsEnabled="{Binding ServiceButtons.StopEnabled}" Content="{ex:Localize service.btn.stop}" Classes="ghost" HorizontalAlignment="Stretch" VerticalAlignment="Center"/>
+                    <Button Grid.Column="2" x:Name="RefreshServiceStatusButton" Content="{ex:Localize service.btn.refresh}" Classes="ghost" HorizontalAlignment="Stretch" VerticalAlignment="Center"/>
+                  </Grid>
+                </DockPanel>
+              </Border>
+
+              <Border Classes="row-divider"/>
+
+              <Border Classes="settings-row">
+                <DockPanel LastChildFill="False">
+                  <StackPanel DockPanel.Dock="Left" Spacing="{DynamicResource SpaceXxs}" VerticalAlignment="Center">
+                    <TextBlock Text="{ex:Localize service.row.uninstall}" Classes="row-label" Foreground="{DynamicResource SemiColorDanger}"/>
+                    <TextBlock Text="{ex:Localize service.desc.uninstall}" Classes="row-desc"/>
+                  </StackPanel>
+                  <Button x:Name="UninstallServiceButton" IsEnabled="{Binding ServiceButtons.UninstallEnabled}" DockPanel.Dock="Right" Content="{ex:Localize service.row.uninstall}" Classes="danger" VerticalAlignment="Center"/>
+                </DockPanel>
+              </Border>
             </StackPanel>
-          </StackPanel>
-        </Border>
-
-        <Border Classes="settings-card">
-          <StackPanel>
-            <TextBlock Text="ACTIONS" Classes="section-header"/>
-
-            <Border Classes="settings-row">
-              <DockPanel LastChildFill="False">
-                <StackPanel DockPanel.Dock="Left" Spacing="{DynamicResource SpaceXxs}">
-                  <TextBlock Text="{ex:Localize service.row.install_start}" Classes="row-label"/>
-                  <TextBlock Text="{ex:Localize service.desc.install}" Classes="row-desc"/>
-                </StackPanel>
-                <Button x:Name="InstallServiceButton" IsEnabled="{Binding ServiceButtons.InstallEnabled}" DockPanel.Dock="Right" Content="{ex:Localize service.btn.install}" Classes="primary" VerticalAlignment="Center"/>
-              </DockPanel>
-            </Border>
-
-            <Border Classes="row-divider"/>
-
-            <Border Classes="settings-row">
-              <!-- 票 03（ui-craft R1-1）：同组等宽 —— 启动/停止/刷新三枚改走 Grid + SharedSizeGroup，
-                   组内以最长文案定宽。不取固定 MinWidth：本项目 10 语言，长文案（德/俄）会撑破定值。
-                   IsSharedSizeScope 挂共同祖先（WPF/Avalonia 官方用法）；间距取规范 §5.2 P4 的 SpaceSm。 -->
-              <DockPanel LastChildFill="False" Grid.IsSharedSizeScope="True">
-                <StackPanel DockPanel.Dock="Left" Spacing="{DynamicResource SpaceXxs}">
-                  <TextBlock Text="{ex:Localize service.row.start_stop}" Classes="row-label"/>
-                  <TextBlock Text="{ex:Localize service.desc.start_stop}" Classes="row-desc"/>
-                </StackPanel>
-                <Grid DockPanel.Dock="Right" ColumnSpacing="{DynamicResource SpaceSm}" VerticalAlignment="Center">
-                  <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" SharedSizeGroup="ServiceActions"/>
-                    <ColumnDefinition Width="Auto" SharedSizeGroup="ServiceActions"/>
-                    <ColumnDefinition Width="Auto" SharedSizeGroup="ServiceActions"/>
-                  </Grid.ColumnDefinitions>
-                  <Button Grid.Column="0" x:Name="StartServiceButton" IsEnabled="{Binding ServiceButtons.StartEnabled}" Content="{ex:Localize service.btn.start}" Classes="ghost" HorizontalAlignment="Stretch" VerticalAlignment="Center"/>
-                  <Button Grid.Column="1" x:Name="StopServiceButton" IsEnabled="{Binding ServiceButtons.StopEnabled}" Content="{ex:Localize service.btn.stop}" Classes="ghost" HorizontalAlignment="Stretch" VerticalAlignment="Center"/>
-                  <Button Grid.Column="2" x:Name="RefreshServiceStatusButton" Content="{ex:Localize service.btn.refresh}" Classes="ghost" HorizontalAlignment="Stretch" VerticalAlignment="Center"/>
-                </Grid>
-              </DockPanel>
-            </Border>
-
-            <Border Classes="row-divider"/>
-
-            <Border Classes="settings-row">
-              <DockPanel LastChildFill="False">
-                <StackPanel DockPanel.Dock="Left" Spacing="{DynamicResource SpaceXxs}">
-                  <TextBlock Text="{ex:Localize service.row.uninstall}" Classes="row-label" Foreground="{DynamicResource SemiColorDanger}"/>
-                  <TextBlock Text="{ex:Localize service.desc.uninstall}" Classes="row-desc"/>
-                </StackPanel>
-                <Button x:Name="UninstallServiceButton" IsEnabled="{Binding ServiceButtons.UninstallEnabled}" DockPanel.Dock="Right" Content="{ex:Localize service.row.uninstall}" Classes="danger" VerticalAlignment="Center"/>
-              </DockPanel>
-            </Border>
-          </StackPanel>
-        </Border>
+          </Border>
+        </StackPanel>
       </StackPanel>
     </ScrollViewer>
   </Grid>

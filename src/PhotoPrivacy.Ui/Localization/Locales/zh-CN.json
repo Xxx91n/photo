@@ -73,8 +73,7 @@
     "stopped": "已停止",
     "failed": "失败",
     "section": {
-      "status": "CURRENT STATUS",
-      "actions": "ACTIONS"
+      "service": "服务"
     },
     "row": {
       "install_start": "安装并启动服务",

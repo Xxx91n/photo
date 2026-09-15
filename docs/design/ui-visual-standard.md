@@ -47,10 +47,10 @@
 
 | 位置 | 组 | 现状 | R1 判定 | 处置 |
 |---|---|---|---|---|
-| `ServiceManagerPage.axaml:43-45` | 启动 / 停止 / 刷新（三枚 `ghost`） | 无等宽约束，宽度 = 文案长度 | **不符 R1-1** | 票 03（ui-craft）已落地 SharedSizeGroup，见附录 B |
+| `ServiceManagerPage.axaml:64-66` | 启动 / 停止 / 刷新（三枚 `ghost`） | 无等宽约束，宽度 = 文案长度 | **不符 R1-1** | 票 03（ui-craft）已落地 SharedSizeGroup，见附录 B |
 | `RulesPage.axaml` 页头操作区 | 保存 / 重置（两枚 `ghost`） | 票 03（ui-craft）已落地 SharedSizeGroup；票 06（ui-craft2）迁入页头右侧操作区沿用 | 符合 | — |
 | `MainWindow.axaml:82-94` | 暂停·恢复 / 打开配置目录（两枚 `nav-action`） | `HorizontalAlignment=Stretch` 已全宽 | 符合 | — |
-| `ServiceManagerPage.axaml:30` / `:58` | 安装（`primary`）/ 卸载（`danger`） | 各占独立行、右对齐 | 符合 R1-2 | — |
+| `ServiceManagerPage.axaml:43` / `:79` | 安装（`primary`）/ 卸载（`danger`） | 各占独立行、右对齐 | 符合 R1-2 | — |
 | `LogsPage.axaml:15` | 清空日志（`ghost`） | 单枚 | 符合 R1-2 | — |
 | `MainWindow.axaml:85` / `:90` | 原裸按钮两枚 | 已归队 `nav-action`（A-001 已闭合） | 符合 | — |
 
@@ -148,7 +148,7 @@
 | `Border.settings-card.grouped` | `Padding 0`（行集合卡变体：padding 下沉到行；用法 `Classes="settings-card grouped"`，票 04/ui-craft2 新增） | `AppTheme.axaml:286-289` |
 | `Border.settings-row` | `Padding 16,8`（水平 16 承担卡内 inset / 垂直 8 → 行间内容距 16）+ `MinHeight` = `LayoutSettingsRowHeight`(60) | `AppTheme.axaml:294-298` |
 | `Border.row-divider` | `BorderThickness 0,0,0,1` + `Margin 16,0,16,0`（inset = 行水平 padding 16；票 04/ui-craft 落地，票 04/ui-craft2 复核续用） | `AppTheme.axaml:299-310` |
-| `TextBlock.section-header` / `.row-label` / `.row-desc` | 三级文本角色（section-header 卡内用法仅余 ServiceManagerPage，待票 07 迁移） | `AppTheme.axaml:349-362` |
+| `TextBlock.section-header` / `.row-label` / `.row-desc` | 三级文本角色（section-header 卡内用法票 07/ui-craft2 清零——已无页内消费方，class 定义保留待用） | `AppTheme.axaml:349-362` |
 | `TextBlock.group-label` / `.page-title` | 组标签（GroupLabelFontSize 12 / SemiBold / Text2 muted，卡外上方）与页头标题（PageTitleFontSize 22 / Normal / Text0）——票 04/ui-craft2 新增 | `AppTheme.axaml:365-377` |
 | `ComboBox.inline-control` | `Width=160` 共享 class | `AppTheme.axaml:391-394` |
 | 控件列宽度（路径类） | `u|PathPicker.inline-input Width=280` 共享 class 收敛（ADR 0061 票 24 / 票 25） | `AppTheme.axaml:396-401` |
@@ -157,7 +157,7 @@
 
 - **B1 分隔线通栏** —— 已落地（票 04）：AppTheme 的 Border.row-divider 增 Margin="16,0,16,0"，使分隔线与行文本左缘对齐（settings-card Padding 16 + settings-row Padding 16 = 文本自卡边起 32；分隔线加 16 后同为 32）。守卫：Row_Divider_Must_Be_Inset_To_Label_Column_Not_Full_Bleed
 - **B2 控件列宽度散落** —— 已落地（票 04）：ConfigPage 三枚 ComboBox 行内 Width="160" 收敛为共享 class ComboBox.inline-control（AppTheme，取值 160 沿用实态、仅迁移权威位置），与既有 u|PathPicker.inline-input Width=280 同族。守卫：Views_Must_Not_Inline_ComboBox_Width
-- **B3 分组卡片之间零间距** —— 已落地（票 04）：ConfigPage 与 ServiceManagerPage 的卡片容器均设 Spacing="{DynamicResource SpaceLg}"（16）。取 16 而非 WinUI 的 4：§5.3 Wasabi 锚要求卡片外间距 >=16，且 §5.2 P1 为规范定值（4 属 WinUI 官方示例，非本项目口径）。守卫：Settings_Cards_Must_Be_Separated_By_SpaceLg
+- **B3 分组卡片之间零间距** —— 已落地（票 04）：ConfigPage 与 ServiceManagerPage 的卡片容器均设分组 Spacing（票 04 落 SpaceLg；票 07/ui-craft2 双双升档 SpaceXl，见 §5.2 P1）。取 16 而非 WinUI 的 4：§5.3 Wasabi 锚要求卡片外间距 >=16，且 §5.2 P1 为规范定值（4 属 WinUI 官方示例，非本项目口径）。守卫：Settings_Cards_Must_Be_Separated_By_SpaceLg
 - **B4 组标题在卡片内部 + 卡片行混承内边距** —— 已落地（票 04 / ui-craft2）：组标签移出卡片上方走 `TextBlock.group-label`（12/SemiBold/Text2；对齐 MangoDisk md-settings-group 标题 12px/600/muted margin 1px 0 6px 2px 与 WinUI 节标题卡外位 BodyStrong 14/600 margin 1,30,0,6——本项取 MangoDisk 定值，WinUI 上 30px 间距由组间 SpaceXl 承担）；行集合卡改 `settings-card.grouped`（Padding 0，padding 下沉到行）；`settings-row` Padding 16→`16,8`（行间内容距 16 = 基准 7px 垂直 padding 的 ramp 量化）+ `MinHeight` = `LayoutSettingsRowHeight`(60，md-settings-row 实测）。守卫：`ConfigPage_Group_Label_Must_Sit_Above_Card_Not_Inside`
 - **B5 页壳未对齐基准** —— 已落地（票 04 / ui-craft2）：页头 `MinHeight=LayoutPageHeaderHeight`(58) + `.page-title`(22/Normal) + 右侧操作位（SaveStatus 自页底迁入 DockPanel.Dock=Right）；内容列 `MaxWidth=LayoutContentWidthReadable`(1160) + `HorizontalAlignment=Center`；分组单位间距 SpaceLg(16) 上档 SpaceXl(24)（基准组间约 24，§5.2 P1 复核结论）。守卫：`ConfigPage_PageShell_Must_Consume_V20_Layout_Tokens` + `Settings_Groups_Must_Be_Separated_By_Per_Page_Spacing`
 - **B6 条件可见行致分隔线异常** —— 已修复（票 04 / ui-craft2）：备份目录行（IsVisible=BackupEnabled）隐藏时其前后两条 row-divider 相邻成双划线 → 尾随分隔线随同一 IsVisible；隔离目录行与下行之间原缺分隔线 → 补带 IsVisible=QuarantineEnabled 联动。沉淀规则：条件行的尾随分隔线必须随同一可见性绑定。
@@ -194,7 +194,7 @@
 |---|---|---|
 | 日志页 | `LogsPage.axaml` 空态区（`log.empty`/`log.empty_desc`/`log.empty_filtered`，`HasNoLogs` 收口 + `LogLevelFilterActive` 空因区分，AppTheme `empty-icon`/`empty-title`/`empty-desc` 骨架 class） | **E2 已落地（票 05 / ui-craft2）**；图标盒经 md-empty-state.vue 源码复核为 52×52 无底色定位盒（非带底卡片盒），36 主色字形直渲 |
 | 规则页 | `RulesPage.axaml` 空态区（`rules.empty`/`rules.empty_desc`/`rules.empty_filtered`，`RulesPanel.HasNoVisibleRules` 收口 + `SearchFilterActive` 空因区分，AppTheme `empty-icon`/`empty-title`/`empty-desc` 骨架 class） | **E2 已落地（票 06 / ui-craft2）**；图标盒 52×52 无底色定位盒 + ShieldCheckOutline 36 主色字形；成因二分（atomcode 调研裁决二） |
-| 服务管理器页 | 「未安装服务」态 | 已评估（票 04）：**不构成 E1 缺口** —— 该页无可空列表 / 表格，E1 适用对象不存在；「未安装服务」由 ServiceStatus 文案 + ServiceStatusDotColor 状态点承载（ServiceManagerPage 状态卡），属状态展示而非空态，不新增占位 |
+| 服务管理器页 | 「未安装服务」态 | 已评估（票 04）：**不构成 E1 缺口** —— 该页无可空列表 / 表格，E1 适用对象不存在；「未安装服务」由 ServiceStatus 文案 + ServiceStatusDotColor 状态点承载，属状态展示而非空态，不新增占位。**票 07/ui-craft2 落地**：状态展示迁入服务卡首行（settings-row：左 service.status 标签 + 右 状态点+文案），状态卡/操作卡合并为单组单卡（atomcode 裁决三：同一服务对象读写两面共卡） |
 | 配置页 | 路径行空值由 `Watermark` 承载，不属空态 | 不适用 |
 
 ### 4.3 基准对照
@@ -222,7 +222,7 @@
 
 | 编号 | 场景 | 档位 | 落点 |
 |---|---|---|---|
-| P1 | 同级分组单位（组标签+卡）之间 | `SpaceXl`(24)（票 04/ui-craft2 复核上档；票 04/ui-craft 初落 SpaceLg(16)） | ConfigPage 分组容器 `Spacing={DynamicResource SpaceXl}`；ServiceManagerPage 过渡态 SpaceLg，票 07 跟进后统一收紧；基准组间约 24（附录 D.5） |
+| P1 | 同级分组单位（组标签+卡）之间 | `SpaceXl`(24)（票 04/ui-craft2 复核上档；票 04/ui-craft 初落 SpaceLg(16)） | ConfigPage 与 ServiceManagerPage（票 07/ui-craft2 收紧）分组容器均 `Spacing={DynamicResource SpaceXl}`；基准组间约 24（附录 D.5） |
 | P2 | 卡片内边距 / 组标签与卡片 | `0`（grouped 行集合卡）/ `SpaceXs`(4) | 票 04/ui-craft2 复核改判：行集合卡零内边距、padding 下沉到行（行 Padding 16,8）；通用卡保 16；组标签→卡 SpaceXs(4)（基准 margin-bottom 6 取近档），组标签左 inset 2 |
 | P3 | 行内标签列与控件列之间 | ≥ `SpaceLg`(16) | 控件右对齐贴卡内边距 |
 | P4 | 同组内元素（如一组按钮） | `SpaceSm`(8) | 服务页按钮组；基准页头操作区 gap 8 同值 |
@@ -337,9 +337,9 @@
 
 | 变体 | 实例数 | 落点 | 五态 | 备注 |
 |---|---|---|---|---|
-| `primary` | 1 | ServiceManagerPage:30 安装 | ADR 0062 D3 全矩阵 | 单枚 hug（R1-2） |
-| `ghost` | 6 | LogsPage:15；RulesPage:35-36；ServiceManagerPage:51-53 | 同上 | 后两组已按 R1-1 等宽 |
-| `danger` | 1 | ServiceManagerPage:58 卸载 | 同上 | 单枚 hug（R1-2） |
+| `primary` | 1 | ServiceManagerPage:43 安装 | ADR 0062 D3 全矩阵 | 单枚 hug（R1-2） |
+| `ghost` | 6 | LogsPage:15；RulesPage:35-36；ServiceManagerPage:64-66 | 同上 | 后两组已按 R1-1 等宽 |
+| `danger` | 1 | ServiceManagerPage:79 卸载 | 同上 | 单枚 hug（R1-2） |
 | `icon` | 2 | ConfigPage:205-206 | 同上 | `Button.icon` 32×32，天然等宽 |
 | `nav` | 1（组件内） | Views/Controls/NavButton.axaml:10 | 同上 | 侧栏主导航组，全宽 Stretch |
 | `nav-action` | 2 | MainWindow:85 / :90 | 同上 | 自 2026-04-27 首版即归队；票面「裸按钮」为单行 grep 假阳性 |
@@ -438,3 +438,4 @@
 | v2.0 | 2026-09-14 | 票 01 / ui-craft2 | **主基准切换（D-005 / A-001 / ADR 0067）**：§0 改 MangoDisk 观感级对标主基准表 + 上轮三锚降级为气质参考；§2 重写为胶囊三态目标规范（4px 槽位体系随 D-002 退役，施工在票 03），新增 §2.4 MangoDisk `nav-item` 实测公式对照并**登记张力 T-3**（D-003 主色实心胶囊+反白 vs 基准实物 accent 胶囊+3px×24px 主色 pill+字重 600；hover 前景叙事偏差并入）；§4 E2 按 `md-empty-state` 重校；§5.1 增 MangoDisk 布局 token 基准列；§6 Toast 规划按 vue-sonner 实物配置重校（T2/T3/T6 改值 + 新增 T7 动效档）；§7 V3 验收清单改 MangoDisk 对照项；新增附录 D 观感取证表（gh api 只读取证，GPL-3.0 零拷贝）；附录 A.2 张力表补 T-3 行、T-1 改并入 T-3 口径 |
 | v2.4 | 2026-09-15 | 票 05 / ui-craft2 | **LogsPage 整页对齐落地（D-005/D-006）**：页壳 58+page-title；工具条 36（LayoutToolbarHeight，级别过滤 ComboBox 左/清空右，裸条对齐 md-result-filter-toolbar 无底色无边框实态）；日志行 MinHeight=LayoutResultRowHeight(44)+事件徽章 RadiusXl 胶囊化（md radius-999 等效）；§4.2 日志页 E2 骨架落地（`empty-icon`/`empty-title`/`empty-desc` 三 class + 空因双文案 E5，`empty_desc`/`empty_filtered` ×10 语言）；图标盒源码复核订正为无底色定位盒；`MapEventStyle` emoji/Unicode 前缀清零（§6 T3/§7 V3）；新增 token `EmptyDescFontSize=12`；VM 联动通知修复（LogLevel 热重载回填 ComboBox 选中态缺口） |
 | v2.5 | 2026-09-15 | 票 06 / ui-craft2 | **RulesPage 整页对齐落地（D-005/D-006）**：页壳 58+page-title+副标题+右侧操作区（保存/重置 SharedSizeGroup 组+SaveStatus 迁入页头，atomcode 调研裁决一：页面级操作放页头右侧操作区、绝不进过滤工具条）；专家横幅卡沿用裸 settings-card（§3.1 明许非行集合卡）；36px 过滤工具条（LayoutToolbarHeight，搜索左置=数据作用域）；DataGrid `RowHeight=LayoutResultRowHeight`(44)；§4.2 规则页 E2 骨架落地（empty-icon/title/desc + 空因双文案 E5 随 `SearchFilterActive` 切换，`rules.empty_desc`/`rules.empty_filtered` ×10 语言新增、`rules.panel.title` 孤儿键清除）；VM +`SearchFilterActive` 收口通知 |
+| v2.6 | 2026-09-15 | 票 07 / ui-craft2 | **ServiceManagerPage 整页对齐落地（D-005/D-006）**：页壳 58+page-title（nav.service_manager）+内容 readable 1160 居中；状态卡/操作卡合并为单组单卡（atomcode 裁决三：状态自成服务卡首行不独立成卡），组标签 service.section.service 出卡上方 + settings-card.grouped 四行（状态行=service.status 标签+状态点/文案、安装 primary、启停刷 ghost SharedSizeGroup 沿用、卸载 danger）；§5.2 P1 组间距 SpaceLg→SpaceXl 收紧完成（过渡态注记消除）；硬编码 "ACTIONS" 段头清零（i18n 缺口修复）；孤儿键 service.section.status/actions 十语言+内嵌兜底同步清除、service.status 孤儿键激活为状态行标签；§1.2/§3.2/§3.3 B3/§4.2/附录 B 实态与行号跟随；登记张力 T-6（卸载缺确认对话框——调研裁决二建议 danger 操作配确认流，属行为变更超本票审美范围，交大脑裁定） |
