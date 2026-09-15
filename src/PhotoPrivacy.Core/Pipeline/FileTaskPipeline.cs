@@ -160,6 +160,24 @@ public sealed class FileTaskPipeline
                                 cancellationToken);
                             return;
 
+                        case WipeResult.UnknownFormat:
+                            // 票 01（A-001 / A-009）：未知格式的可见跳过事件——全链路可消费。
+                            await _audit.WriteAsync(
+                                new AuditEvent(
+                                    "wipe_skipped_unknown",
+                                    AuditLevel.Warn,
+                                    DateTimeOffset.UtcNow,
+                                    Guid.NewGuid().ToString("N"),
+                                    sourcePath,
+                                    "unsupported_format",
+                                    new Dictionary<string, string>
+                                    {
+                                        ["extension"] = Path.GetExtension(sourcePath),
+                                        ["reason"] = "not_in_wipe_family_map"
+                                    }),
+                                cancellationToken);
+                            return;
+
                         case WipeResult.Cleaned_NoOp:
                             await _audit.WriteAsync(
                                 new AuditEvent(
