@@ -83,7 +83,26 @@ public static class WatchPathFilter
         return IsSubPathRelative(relative);
     }
 
-    private static bool IsSameOrSubPath(string path, string directory)
+    /// <summary>
+    /// 票 03（A-006）：公开的组件级边界判定——备份镜像槽位归位（BackupPathResolver）与
+    /// 监控排除（ShouldSkipPath）共用同一实现：GetRelativePath + ".." / 根路径检测，
+    /// 禁止裸字符串 startswith（"/a/repo" vs "/a/repo-backup" 兄弟目录陷阱）。
+    /// 入参须为已 NormalizePath 的绝对路径。
+    /// </summary>
+    public static bool TryGetSubPathRelative(string parentDirectory, string candidate, out string? relative)
+    {
+        var computed = Path.GetRelativePath(parentDirectory, candidate);
+        if (IsSubPathRelative(computed))
+        {
+            relative = computed;
+            return true;
+        }
+
+        relative = null;
+        return false;
+    }
+
+    public static bool IsSameOrSubPath(string path, string directory)
     {
         if (string.Equals(path, directory, StringComparison.OrdinalIgnoreCase))
         {

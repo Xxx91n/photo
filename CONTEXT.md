@@ -13,8 +13,8 @@ _Avoid_: Access log, activity log
 _Avoid_: System log, debug log
 
 **Backup**:
-源文件的原始副本，在 ExifTool 清理前创建，用于恢复原始照片。单文件覆盖模式（同文件只保留最新备份）。
-_Avoid_: Snapshot, checkpoint, archive
+源文件的原始副本，在 ExifTool 清理前创建，用于恢复原始照片。镜像相对路径布局：备份根下按源文件相对监控根（Hot Folder）的子路径镜像目录结构，结构性消除跨子目录同名文件冲突；源路径无法归位监控子树时回退 `_unsorted/文件名.路径短哈希` 兜底。冲突规则：目标槽位存在时内容相同→跳过（幂等，即"同文件重处理保留最新"语义）；内容不同→写 `名字.时间戳.扩展名` 旁路版本；绝不静默覆盖。旁路版本受 ADR 0006 retention（size+TTL）递归兜底。
+_Avoid_: Snapshot, checkpoint, archive；单文件覆盖模式（旧扁平布局把跨子目录同名互覆盖追认成设计，已由票 03 修复）
 
 **Quarantine**:
 隔离区，存放处理失败或可疑文件的目录。
