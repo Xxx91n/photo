@@ -277,4 +277,17 @@
     "maximize": "Maximizar",
     "close": "Fechar"
   }
-}
+
+,
+  "toast": {
+    "config_saved": "Salvo automaticamente",
+    "config_saved_worker_down": "Salvo automaticamente (Worker parado)",
+    "config_save_failed": "Falha ao salvar",
+    "rules_saved": "Regras salvas",
+    "rules_reset": "Regras restauradas",
+    "service_success": "Operação de serviço concluída",
+    "service_failed": "Falha na operação de serviço",
+    "service_cancelled": "Operação cancelada",
+    "service_skipped": "Operação ignorada",
+    "dismiss": "Fechar"
+  }}

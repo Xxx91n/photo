@@ -277,4 +277,17 @@
     "maximize": "Развернуть",
     "close": "Закрыть"
   }
-}
+
+,
+  "toast": {
+    "config_saved": "Автосохранено",
+    "config_saved_worker_down": "Автосохранено (Worker не запущен)",
+    "config_save_failed": "Ошибка сохранения",
+    "rules_saved": "Правила сохранены",
+    "rules_reset": "Правила сброшены",
+    "service_success": "Операция со службой выполнена",
+    "service_failed": "Ошибка операции со службой",
+    "service_cancelled": "Операция отменена",
+    "service_skipped": "Операция пропущена",
+    "dismiss": "Закрыть"
+  }}

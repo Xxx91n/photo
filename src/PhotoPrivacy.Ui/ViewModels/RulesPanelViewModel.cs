@@ -4,6 +4,8 @@ using System.Runtime.CompilerServices;
 using PhotoPrivacy.Core.Configuration;
 using PhotoPrivacy.Core.ExifTool;
 using PhotoPrivacy.Core.Rules;
+using PhotoPrivacy.Ui.Localization;
+using PhotoPrivacy.Ui.Services;
 
 namespace PhotoPrivacy.Ui.ViewModels;
 
@@ -72,9 +74,14 @@ public sealed class RulesPanelViewModel : INotifyPropertyChanged
     // 「真空 / 过滤无结果」双文案（atomcode 调研裁决二；同构 MainWindowViewModel.LogLevelFilterActive，票 05）。
     public bool SearchFilterActive => !string.IsNullOrEmpty(_searchFilter);
 
-    public RulesPanelViewModel(FormatRulesStore store)
+    // 票 08（ui-craft2 / D-007 / 规范 §6 T1）：规则保存/重置反馈经应用级 toast 链；
+    // 可选注入保测试构造兼容（RulesPanelViewModelTests 单参调用）。
+    private readonly ToastService? _toast;
+
+    public RulesPanelViewModel(FormatRulesStore store, ToastService? toast = null)
     {
         _store = store;
+        _toast = toast;
         LoadRules();
     }
 
@@ -158,6 +165,7 @@ public sealed class RulesPanelViewModel : INotifyPropertyChanged
         }
         _store.Save(rules);
         SaveStatus = "Saved";
+        _toast?.Show("rules.save", ToastKind.Success, LocalizationService.Instance.Get("toast.rules_saved"));
     }
 
     public void ResetToDefaults()
@@ -165,6 +173,7 @@ public sealed class RulesPanelViewModel : INotifyPropertyChanged
         _store.ResetToDefaults();
         LoadRules();
         SaveStatus = "Reset to defaults";
+        _toast?.Show("rules.save", ToastKind.Information, LocalizationService.Instance.Get("toast.rules_reset"));
     }
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)

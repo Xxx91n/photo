@@ -1,0 +1,53 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ex="using:PhotoPrivacy.Ui.Localization"
+             xmlns:vm="using:PhotoPrivacy.Ui.ViewModels"
+             xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+             x:Class="PhotoPrivacy.Ui.Views.Controls.ToastHost"
+             x:DataType="vm:MainWindowViewModel"
+             Focusable="False">
+  <!-- 票 08（ui-craft2 / D-007 / 规范 §6 升现役）：sonner 形态 toast 宿主 —— 应用级右下堆叠。
+       ItemsControl + StackPanel（SpaceSm 间距）整列铺排，折叠态经非底卡负底 margin 重叠
+       露出 14px 上缘 + 卡宽收窄 18px/层；Margin/Width/Opacity 由 ToastService RecalculateStack
+       逐卡驱动（ThicknessTransition / DoubleTransition 400ms CubicEaseOut 可中断）；
+       Height 绑 HostHeight：折叠态高覆盖堆叠 hit 区、展开态整列高，hover 展开由 PointerEntered/
+       Exited 驱动 SetExpanded；ClipToBounds=False 允许折叠态堆叠上缘超出容器渲染。不抢焦点
+       （Focusable=False 全链，关闭钮单独可聚焦保键盘可达，规范 §6 T5）。 -->
+  <ItemsControl ItemsSource="{Binding Toast.Items}" Height="{Binding Toast.HostHeight}"
+                HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                ClipToBounds="False" Focusable="False"
+                PointerEntered="OnItemsPointerEntered" PointerExited="OnItemsPointerExited">
+    <ItemsControl.Transitions>
+      <Transitions>
+        <DoubleTransition Property="Height" Duration="0:0:0.4" Easing="CubicEaseOut"/>
+      </Transitions>
+    </ItemsControl.Transitions>
+    <ItemsControl.ItemsPanel>
+      <ItemsPanelTemplate>
+        <StackPanel Spacing="{DynamicResource SpaceSm}" VerticalAlignment="Bottom"/>
+      </ItemsPanelTemplate>
+    </ItemsControl.ItemsPanel>
+    <ItemsControl.ItemTemplate>
+      <DataTemplate DataType="vm:ToastItem">
+        <Border Classes="toast-card"
+                Classes.success="{Binding IsSuccess}" Classes.info="{Binding IsInformation}"
+                Classes.warning="{Binding IsWarning}" Classes.error="{Binding IsError}"
+                Margin="{Binding CardMargin}" Width="{Binding CardWidth}"
+                Opacity="{Binding CardOpacity}" IsHitTestVisible="{Binding IsCardVisible}"
+                AutomationProperties.Name="{Binding Title}" AutomationProperties.LiveSetting="Polite"
+                Focusable="False"
+                HorizontalAlignment="Right" VerticalAlignment="Bottom">
+          <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="{DynamicResource SpaceSm}">
+            <materialIcons:MaterialIcon Classes="toast-icon" Kind="{Binding Icon}" Width="16" Height="16" VerticalAlignment="Center"/>
+            <TextBlock Grid.Column="1" Text="{Binding Title}" Classes="body" VerticalAlignment="Center"
+                       TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding ToolTipText}"/>
+            <Button Grid.Column="2" Classes="icon" Click="OnDismissClick"
+                    ToolTip.Tip="{ex:Localize toast.dismiss}">
+              <materialIcons:MaterialIcon Kind="CloseThick" Width="14" Height="14"/>
+            </Button>
+          </Grid>
+        </Border>
+      </DataTemplate>
+    </ItemsControl.ItemTemplate>
+  </ItemsControl>
+</UserControl>

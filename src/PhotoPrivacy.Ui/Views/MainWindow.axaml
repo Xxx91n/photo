@@ -115,5 +115,8 @@
       <views:ServiceManagerPage x:Name="ServiceManagerTab" IsVisible="False" />
     </Grid>
   </Grid>
+    <!-- 票 08（ui-craft2 / D-007 / 规范 §6）：应用级 toast 宿主 —— 根 Grid 末位子元素天然置顶，
+         跨标题栏+内容区两行右下锚定（sonner position=bottom-right，跨页面/对话框恒定）。 -->
+    <controls:ToastHost Grid.RowSpan="2" Margin="0,0,24,24" HorizontalAlignment="Right" VerticalAlignment="Bottom"/>
   </Grid>
 </Window>

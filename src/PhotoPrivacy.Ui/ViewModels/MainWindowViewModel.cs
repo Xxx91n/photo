@@ -39,13 +39,18 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     // 票 29（架构恢复第七轮）：构造注入 —— LocalizationService 经组合根容器注入
     //（检查点 B：静态单例收敛第一例，容器与 Instance 为同一实例）。
     // 可选参数默认回落 Instance，保留既有无参调用/测试兼容（行为不变）。
-    public MainWindowViewModel(LocalizationService? localization = null, FormatRulesStore? rulesStore = null)
+    public MainWindowViewModel(LocalizationService? localization = null, FormatRulesStore? rulesStore = null, ToastService? toast = null)
     {
         _localization = localization ?? LocalizationService.Instance;
         _runtimeStatus = _localization.Get("status.running");
         _exifToolVersion = _localization.Get("msg.exiftool_not_found");
-        RulesPanel = new RulesPanelViewModel(rulesStore ?? new FormatRulesStore(Path.Combine(AppContext.BaseDirectory, "config")));
+        Toast = toast;
+        RulesPanel = new RulesPanelViewModel(rulesStore ?? new FormatRulesStore(Path.Combine(AppContext.BaseDirectory, "config")), toast);
     }
+
+    // 票 08（ui-craft2 / D-007）：应用级 toast 服务引用 —— ToastHost 经 {Binding Toast.Items} 消费，
+    // 可选注入保无参/测试构造兼容。
+    public ToastService? Toast { get; }
 
     private string _currentMode = "background";
     private string _runtimeStatus;

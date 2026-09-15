@@ -25,6 +25,9 @@ public partial class MainWindow : Window
     // 票 31：版本/服务状态轮询已下沉 WindowPollingHostedService（_versionSnapshot/_versionPollCts/
     // _versionPollTask/_serviceModePollCts/_serviceModePollTask 五字段随之删除）。
     private readonly WindowPollingHostedService _pollingHostedService;
+    // 票 08（ui-craft2 / D-007 / 规范 §6）：应用级 toast 服务（DI 单例）——配置保存/规则/服务操作
+    // 反馈链统一出口；SaveStatus 行内文本保留为持久态，toast 承载瞬时反馈。
+    private readonly ToastService _toastService;
     private string _exifToolHint = string.Empty;
     private CancellationTokenSource? _saveStatusResetCts;
     private CancellationTokenSource? _configApplyDebounceCts;
@@ -66,17 +69,20 @@ public partial class MainWindow : Window
         IServiceManagerOps serviceManagerOps,
         WorkerProcessManager workerManager,
         WorkerIpcClient workerIpc,
-        WindowPollingHostedService pollingHostedService)
+        WindowPollingHostedService pollingHostedService,
+        ToastService toastService)
     {
         InitializeComponent();
         _workerIpc = workerIpc;
         _pollingHostedService = pollingHostedService;
+        _toastService = toastService;
         _serviceModeController = new ServiceModeController(
             serviceManagerOps,
             workerManager,
             _workerIpc,
             new MainWindowUiHost(this),
-            new MainWindowViewModelView(this));
+            new MainWindowViewModelView(this),
+            toastService);
         // 票 31：服务模式轮询委托挂载（破 DI 环，见 WindowPollingHostedService 类注释）。
         _pollingHostedService.AttachServiceModePoll(_serviceModeController.PollServiceModeTransitionAsync);
         DataContext = viewModel;
@@ -883,16 +889,19 @@ public partial class MainWindow : Window
             catch
             {
                 vm.SaveStatus = LocalizationService.Instance.Get("msg.auto_saved_worker_down");
+                _toastService.Show("config.save", ToastKind.Information, LocalizationService.Instance.Get("toast.config_saved_worker_down"));
                 ScheduleSaveStatusClear();
                 return;
             }
             ApplyRuntimeConfigToUiState();
             vm.SaveStatus = LocalizationService.Instance.Get("msg.auto_saved");
+            _toastService.Show("config.save", ToastKind.Success, LocalizationService.Instance.Get("toast.config_saved"));
             ScheduleSaveStatusClear();
         }
         catch (Exception ex)
         {
             vm.SaveStatus = LocalizationService.Instance.Get("msg.save_failed_exception", ex.Message);
+            _toastService.Show("config.save", ToastKind.Error, LocalizationService.Instance.Get("toast.config_save_failed"), ex.Message);
             ScheduleSaveStatusClear();
         }
     }

@@ -1,6 +1,7 @@
 <Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:u="https://irihi.tech/ursa">
+        xmlns:u="https://irihi.tech/ursa"
+        xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia">
 
   <Style Selector="Window">
     <Setter Property="Background" Value="{DynamicResource SemiColorBackground0}" />
@@ -452,5 +453,52 @@
         <BrushTransition Property="BorderBrush" Duration="0:0:0.150" />
       </Transitions>
     </Setter>
+  </Style>
+  <!-- 票 08（ui-craft2 / D-007 / 规范 §6 T3/T4/T7 升现役）：sonner 形态 toast 卡 ——
+       popover 同族容器（border 1px + RadiusLg 8 + Elevation4 dialog 级投影 + Padding 12,8）
+       + rich-colors 语义淡色底四型（Semi*Light 系，图标用同族饱和色）+ 约 364px 定宽；
+       400ms CubicEaseOut 可中断过渡（折叠态负底 margin 重叠露 14px 上缘 + 卡宽收窄
+       18px/层由 ToastService RecalculateStack 驱动；Avalonia 12.1.1 无 RenderTransform 专用过渡通道
+       ——缩放以卡宽近似，Transitions 从当前值续动天然可中断）。
+       MinHeight 48 = Padding 8×2 + 32px icon 关闭钮行高（Layout token 无 48 档，实物定值）。 -->
+  <Style Selector="Border.toast-card">
+    <Setter Property="BorderBrush" Value="{DynamicResource SemiColorBorder}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource RadiusLg}" />
+    <Setter Property="BoxShadow" Value="{DynamicResource Elevation4}" />
+    <Setter Property="Padding" Value="12,8" />
+    <Setter Property="MinHeight" Value="48" />
+    <Setter Property="Width" Value="364" />
+    <Setter Property="Transitions">
+      <Transitions>
+        <ThicknessTransition Property="Margin" Duration="0:0:0.4" Easing="CubicEaseOut" />
+        <DoubleTransition Property="Width" Duration="0:0:0.4" Easing="CubicEaseOut" />
+        <DoubleTransition Property="Opacity" Duration="0:0:0.4" Easing="CubicEaseOut" />
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Border.toast-card.success">
+    <Setter Property="Background" Value="{DynamicResource SemiColorSuccessLight}" />
+  </Style>
+  <Style Selector="Border.toast-card.info">
+    <Setter Property="Background" Value="{DynamicResource SemiColorInformationLight}" />
+  </Style>
+  <Style Selector="Border.toast-card.warning">
+    <Setter Property="Background" Value="{DynamicResource SemiColorWarningLight}" />
+  </Style>
+  <Style Selector="Border.toast-card.error">
+    <Setter Property="Background" Value="{DynamicResource SemiColorDangerLight}" />
+  </Style>
+  <Style Selector="Border.toast-card.success materialIcons|MaterialIcon.toast-icon">
+    <Setter Property="Foreground" Value="{DynamicResource SemiColorSuccess}" />
+  </Style>
+  <Style Selector="Border.toast-card.info materialIcons|MaterialIcon.toast-icon">
+    <Setter Property="Foreground" Value="{DynamicResource SemiColorInformation}" />
+  </Style>
+  <Style Selector="Border.toast-card.warning materialIcons|MaterialIcon.toast-icon">
+    <Setter Property="Foreground" Value="{DynamicResource SemiColorWarning}" />
+  </Style>
+  <Style Selector="Border.toast-card.error materialIcons|MaterialIcon.toast-icon">
+    <Setter Property="Foreground" Value="{DynamicResource SemiColorDanger}" />
   </Style>
 </Styles>

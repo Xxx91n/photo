@@ -277,4 +277,17 @@
       "effective_args": "Effective args"
     }
   }
-}
+
+,
+  "toast": {
+    "config_saved": "Auto-saved",
+    "config_saved_worker_down": "Auto-saved (Worker not running)",
+    "config_save_failed": "Save failed",
+    "rules_saved": "Rules saved",
+    "rules_reset": "Rules reset to defaults",
+    "service_success": "Service operation succeeded",
+    "service_failed": "Service operation failed",
+    "service_cancelled": "Operation cancelled",
+    "service_skipped": "Operation skipped",
+    "dismiss": "Dismiss"
+  }}

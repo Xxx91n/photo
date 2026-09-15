@@ -277,4 +277,17 @@
     "maximize": "Agrandir",
     "close": "Fermer"
   }
-}
+
+,
+  "toast": {
+    "config_saved": "Enregistrement automatique",
+    "config_saved_worker_down": "Enregistrement automatique (Worker inactif)",
+    "config_save_failed": "Échec de l'enregistrement",
+    "rules_saved": "Règles enregistrées",
+    "rules_reset": "Règles réinitialisées",
+    "service_success": "Opération réussie",
+    "service_failed": "Échec de l'opération",
+    "service_cancelled": "Opération annulée",
+    "service_skipped": "Opération ignorée",
+    "dismiss": "Fermer"
+  }}

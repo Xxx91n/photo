@@ -16,6 +16,9 @@ public sealed class ServiceModeController
     private readonly WorkerIpcClient _workerIpc;
     private readonly IUiHost _host;
     private readonly IViewModelView _view;
+    // 票 08（ui-craft2 / D-007 / 规范 §6 T1）：服务操作结果反馈经应用级 toast 链；
+    // 可选参数保测试构造兼容（ServiceModeControllerTests 五参调用不破坏）。
+    private readonly ToastService? _toast;
 
     private BackgroundUiOptions? _options;
     private bool _isSwitchingMode;
@@ -25,13 +28,15 @@ public sealed class ServiceModeController
         WorkerProcessManager workerManager,
         WorkerIpcClient workerIpc,
         IUiHost host,
-        IViewModelView view)
+        IViewModelView view,
+        ToastService? toast = null)
     {
         _serviceManager = serviceManager;
         _workerManager = workerManager;
         _workerIpc = workerIpc;
         _host = host;
         _view = view;
+        _toast = toast;
     }
 
     /// <summary>由 MainWindow.InitializeRuntime 绑定真实运行时选项；null 表示 UI 未就绪，全部编排为 no-op。</summary>
@@ -304,6 +309,23 @@ public sealed class ServiceModeController
 
         _view.SetServiceStatusText(text);
         UpdateServiceButtons();
+
+        // 票 08（规范 §6 T1）：服务安装/卸载/启停结果统一走 toast 反馈链（同 key 合并刷新）。
+        var toastKind = result.Status switch
+        {
+            ServiceCommandStatus.Success => ToastKind.Success,
+            ServiceCommandStatus.ElevationCancelled => ToastKind.Warning,
+            ServiceCommandStatus.Failed => ToastKind.Error,
+            _ => ToastKind.Information,
+        };
+        var toastTextKey = result.Status switch
+        {
+            ServiceCommandStatus.Success => "toast.service_success",
+            ServiceCommandStatus.ElevationCancelled => "toast.service_cancelled",
+            ServiceCommandStatus.Failed => "toast.service_failed",
+            _ => "toast.service_skipped",
+        };
+        _toast?.Show("service.operation", toastKind, LocalizationService.Instance.Get(toastTextKey), result.Message);
     }
 
     private async Task SwitchToDefaultModeAsync(CancellationToken token, Func<ServiceRuntimeState>? getServiceRuntimeStateOverride = null)

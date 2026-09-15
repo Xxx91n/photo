@@ -45,6 +45,9 @@ public static class AppComposition
 
         // FormatRulesStore 注册使容器可完整解析 MainWindowViewModel 构造（与 VM 可选参数默认值同一 config 目录）。
         services.AddSingleton<FormatRulesStore>(_ => new FormatRulesStore(Path.Combine(AppContext.BaseDirectory, "config")));
+        // 票 08（ui-craft2 / D-007）：应用级 toast 服务单例 —— MainWindow / ServiceModeController /
+        // MainWindowViewModel→RulesPanelViewModel 三路消费同一实例。
+        services.AddSingleton<ToastService>();
         services.AddSingleton<MainWindowViewModel>();
 
         // 票 31：轮询宿主服务 —— 只依赖 VM 单例（服务模式轮询经 AttachServiceModePoll 委托

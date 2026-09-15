@@ -277,4 +277,17 @@
     "maximize": "최대화",
     "close": "닫기"
   }
-}
+
+,
+  "toast": {
+    "config_saved": "자동 저장됨",
+    "config_saved_worker_down": "자동 저장됨(Worker 미실행)",
+    "config_save_failed": "저장 실패",
+    "rules_saved": "규칙 저장됨",
+    "rules_reset": "기본 규칙으로 복원됨",
+    "service_success": "서비스 작업 성공",
+    "service_failed": "서비스 작업 실패",
+    "service_cancelled": "작업이 취소됨",
+    "service_skipped": "작업 건너뜀",
+    "dismiss": "닫기"
+  }}

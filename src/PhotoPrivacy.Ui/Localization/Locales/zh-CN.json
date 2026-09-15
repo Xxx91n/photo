@@ -277,4 +277,17 @@
       "effective_args": "生成参数"
     }
   }
-}
+
+,
+  "toast": {
+    "config_saved": "已自动保存",
+    "config_saved_worker_down": "已自动保存（Worker 未运行）",
+    "config_save_failed": "保存失败",
+    "rules_saved": "规则已保存",
+    "rules_reset": "已恢复默认规则",
+    "service_success": "服务操作成功",
+    "service_failed": "服务操作失败",
+    "service_cancelled": "操作已取消",
+    "service_skipped": "操作已跳过",
+    "dismiss": "关闭"
+  }}

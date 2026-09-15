@@ -277,4 +277,17 @@
     "maximize": "تكبير",
     "close": "إغلاق"
   }
-}
+
+,
+  "toast": {
+    "config_saved": "تم الحفظ تلقائيًا",
+    "config_saved_worker_down": "تم الحفظ تلقائيًا (Worker غير قيد التشغيل)",
+    "config_save_failed": "فشل الحفظ",
+    "rules_saved": "تم حفظ القواعد",
+    "rules_reset": "تمت إعادة القواعد إلى الوضع الافتراضي",
+    "service_success": "نجحت عملية الخدمة",
+    "service_failed": "فشلت عملية الخدمة",
+    "service_cancelled": "تم إلغاء العملية",
+    "service_skipped": "تم تخطي العملية",
+    "dismiss": "إغلاق"
+  }}

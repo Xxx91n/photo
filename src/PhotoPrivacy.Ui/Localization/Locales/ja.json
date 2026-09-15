@@ -277,4 +277,17 @@
     "maximize": "最大化",
     "close": "閉じる"
   }
-}
+
+,
+  "toast": {
+    "config_saved": "自動保存しました",
+    "config_saved_worker_down": "自動保存しました（Worker 未実行）",
+    "config_save_failed": "保存に失敗しました",
+    "rules_saved": "ルールを保存しました",
+    "rules_reset": "既定のルールに戻しました",
+    "service_success": "サービス操作に成功しました",
+    "service_failed": "サービス操作に失敗しました",
+    "service_cancelled": "操作がキャンセルされました",
+    "service_skipped": "操作をスキップしました",
+    "dismiss": "閉じる"
+  }}

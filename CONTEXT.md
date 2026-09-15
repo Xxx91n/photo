@@ -404,7 +404,7 @@ _Avoid_: MainWindow 构造内手写 new 服务链；容器外新建核心服务�
 _Avoid_: MainWindow code-behind 内 Task.Run 轮询回潮；宿主服务构造直注 ServiceModeController；忘记 Activate 导致轮询不启动
 
 **UI Visual Standard**:
-页面级视觉规范的唯一现役权威：docs/design/ui-visual-standard.md 活文档（七节：按钮组宽度策略 / nav 反馈三态 / 表单行骨架 / 空态规范 / 间距节奏 / Toast 反馈链规划 / 验收标尺）。永远代表当前标准并随票演化版本化；ADR 只记「为什么」的取舍（D-009），CONTEXT.md 只做词条指针、不承载规范全文。后续 UI 票直接引用规范节号作为验收依据。见 ADR 0065。
+页面级视觉规范的唯一现役权威：docs/design/ui-visual-standard.md 活文档（七节：按钮组宽度策略 / nav 反馈三态 / 表单行骨架 / 空态规范 / 间距节奏 / Toast 反馈链 / 验收标尺）。永远代表当前标准并随票演化版本化；ADR 只记「为什么」的取舍（D-009），CONTEXT.md 只做词条指针、不承载规范全文。后续 UI 票直接引用规范节号作为验收依据。见 ADR 0065。
 _Avoid_: 把规范全文冻结进单篇 ADR（演化会产生补丁链）；在 CONTEXT.md 内复述规范细则
 
 **Visual Baseline**:

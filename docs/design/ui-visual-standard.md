@@ -247,19 +247,19 @@
 
 ---
 
-## 6. Toast 反馈链规划（规划面，非现役标准）
+## 6. Toast 反馈链（现役标准，票 08 落地）
 
-> 本节是**规划**。实现票 = 票 08（toast，ui-craft2 轮）。形态基准 = MangoDisk 的 vue-sonner 配置实物（附录 D.4）；组件选型（Ursa Toast / Notification 现成 vs 自绘 ItemsControl）由票 08 内调研定，禁新 NuGet 依赖除非票内调研结论 + 用户确认（A-003）。
+> 本节原为规划（v2.0 按 MangoDisk 的 vue-sonner 配置实物重校，附录 D.4），票 08（toast，ui-craft2 轮）落地转**现役**。**组件选型结论**（票内 atomcode 调研，A-003 合规 = 零新 NuGet 依赖）：自绘 ItemsControl overlay——Ursa 2.2.0 `WindowNotificationManager`/`WindowToastManager` 仅覆盖位置 / 上限 / 语义型 / 手动关 / 时长 5 维，sonner 核心交互（hover 展开 + 暂停、堆叠位移缩放、可中断过渡、同 key 去重、播报）全缺且 fork 补齐依赖 internal 契约，成本高于自绘。**实态落点**：宿主 `Views/Controls/ToastHost.axaml` 挂 `MainWindow.axaml` 根 Grid 末位（RowSpan=2 右下）；服务 `Services/ToastService.cs`（DI 单例，`AppComposition` 注册）；卡片样式 `Styling/AppTheme.axaml` `Border.toast-card` 族。
 
-| 编号 | 维度 | 规划内容（v2.0 按 sonner 基准重校） |
+| 编号 | 维度 | 标准定值（v2.0 sonner 基准 + 票 08 实态） |
 |---|---|---|
-| T1 | 触发点 | 配置防抖自动保存成功 / 失败（升级现有 `SaveStatus` 文本反馈）、规则保存、服务安装 / 卸载完成、清理异常 |
-| T2 | 位置与时长 | **应用级右下堆叠**（viewport 右下，跨页面 / 对话框恒定；基准 `position="bottom-right"`），默认 **4s**（sonner 默认；文档隐藏时暂停计时），可手动关闭（close-button） |
-| T3 | 视觉 | **popover 同族容器**（基准 `--normal-bg=popover` + `--normal-border=border` + radius 8 + `shadow-lg` 级投影 + `ring-1 black/5`）；约 **364px** 最大宽；**禁用 emoji / Unicode 符号**（ADR 0050 A2 已清零），状态用 Material.Icons 16px（基准 lucide size-4：CircleCheck / Info / TriangleAlert / OctagonX / 加载 spin / X 关闭） |
-| T4 | 语义色 | rich-colors 模式：成功 `primary`（或 success 绿）/ 警告 `warning` / 失败 `danger`（destructive）/ 信息 `info`，各 10 语言文案 |
-| T5 | 无障碍 | 可被屏幕阅读器播报（LiveRegion 语义）且不抢焦点（WCAG） |
-| T6 | 去重与排队 | 同 key 连续触发合并刷新（覆盖上一条）；**同屏堆叠上限 4 条**（基准 `visible-toasts=4`）、堆叠间距 10（`gap=10`）；hover 时展开（`expand`）露出全部 |
-| T7 | 动效 | 堆叠位移 **14px/层** + 缩放 **0.05/层**；过渡 **400ms ease 可中断**（Avalonia `Transitions` / `TransformOperationsTransition` 天然可中断重定向，行为对齐 sonner 从 keyframes 改 transition 的决策） |
+| T1 | 触发点 | 配置防抖自动保存成功 / 失败（`SaveStatus` 行内文本保留为持久态、toast 叠加瞬时反馈）、规则保存 / 重置、服务安装 / 卸载 / 启停结果（Success/Failed/ElevationCancelled/Skipped 分型）；清理异常类反馈归 error 型统一出口（UI 侧无独立清理入口，Worker 管线异常经审计日志呈现）；不做处处弹 |
+| T2 | 位置与时长 | **应用级右下堆叠**（MainWindow 根 Grid 末位跨两行右下锚定，跨页面恒定），默认 **4s** `DispatcherTimer` 自动消失（sonner 的文档隐藏暂停属浏览器语义，桌面端 N/A 不实现，登记取舍），手动关闭钮归队 `Button.icon` 变体 |
+| T3 | 视觉 | **popover 同族容器**：`SemiColorBorder` 1px + `RadiusLg`(8) + `Elevation4`（dialog 级投影）+ Padding 12,8；定宽 **364px**；**禁用 emoji / Unicode 符号**（沿用 ADR 0050 A2 纪律）；Material.Icons 16px 四型（CheckCircleOutline / InformationOutline / AlertOutline / CloseCircleOutline + Close 14 关闭） |
+| T4 | 语义色 | rich-colors 四型：`SemiColor{Success,Information,Warning,Danger}Light` 语义浅底 + 同族饱和色 `.toast-icon`（success / info / warning / error class）；`toast.*` 10 键 ×10 语言 + BuiltIn 双兜底 |
+| T5 | 无障碍 | `AutomationProperties.Name` 播报标题（LiveSetting 平台支持度以 Windows UIA 为准，Linux/macOS 未验证——信息缺口登记报告 §信息缺口）；容器 / 卡片 `Focusable=False` 不抢焦点、非模态，关闭钮单独可聚焦保键盘可达 |
+| T6 | 去重与排队 | 同 key 连续触发合并刷新（移除旧条 + 重置计时 + 置最新位）；折叠态**同屏上限 4 条**（`MaxVisible=4`，超出层 Opacity=0 不可命中）；hover 展开（`SetExpanded`）露出全部 + 暂停全部计时（Stopwatch 剩余恢复）；展开态卡间距基准 gap=10 按 §5.2 P4 同组档量化落 `SpaceSm`(8)（离轨映射登记） |
+| T7 | 动效 | 堆叠露出 **14px/层**（折叠态非底卡负底 margin 重叠）+ 缩放 **0.05/层**（API 核验纠偏：`TransformOperationsTransition` 在 Avalonia 12.1.1 不存在，缩放以卡宽收窄 18px/层≈364×0.05 近似）；过渡 **400ms CubicEaseOut**（`ThicknessTransition` on Margin + `DoubleTransition` on Width / Opacity / Height，Transitions 从当前值续动天然可中断） |
 | T8 | 反例 | 每个操作都弹（噪声）；用 Unicode 符号；自动消失但无手动关闭；抢焦点 / 模态化 |
 
 ---
@@ -439,3 +439,4 @@
 | v2.4 | 2026-09-15 | 票 05 / ui-craft2 | **LogsPage 整页对齐落地（D-005/D-006）**：页壳 58+page-title；工具条 36（LayoutToolbarHeight，级别过滤 ComboBox 左/清空右，裸条对齐 md-result-filter-toolbar 无底色无边框实态）；日志行 MinHeight=LayoutResultRowHeight(44)+事件徽章 RadiusXl 胶囊化（md radius-999 等效）；§4.2 日志页 E2 骨架落地（`empty-icon`/`empty-title`/`empty-desc` 三 class + 空因双文案 E5，`empty_desc`/`empty_filtered` ×10 语言）；图标盒源码复核订正为无底色定位盒；`MapEventStyle` emoji/Unicode 前缀清零（§6 T3/§7 V3）；新增 token `EmptyDescFontSize=12`；VM 联动通知修复（LogLevel 热重载回填 ComboBox 选中态缺口） |
 | v2.5 | 2026-09-15 | 票 06 / ui-craft2 | **RulesPage 整页对齐落地（D-005/D-006）**：页壳 58+page-title+副标题+右侧操作区（保存/重置 SharedSizeGroup 组+SaveStatus 迁入页头，atomcode 调研裁决一：页面级操作放页头右侧操作区、绝不进过滤工具条）；专家横幅卡沿用裸 settings-card（§3.1 明许非行集合卡）；36px 过滤工具条（LayoutToolbarHeight，搜索左置=数据作用域）；DataGrid `RowHeight=LayoutResultRowHeight`(44)；§4.2 规则页 E2 骨架落地（empty-icon/title/desc + 空因双文案 E5 随 `SearchFilterActive` 切换，`rules.empty_desc`/`rules.empty_filtered` ×10 语言新增、`rules.panel.title` 孤儿键清除）；VM +`SearchFilterActive` 收口通知 |
 | v2.6 | 2026-09-15 | 票 07 / ui-craft2 | **ServiceManagerPage 整页对齐落地（D-005/D-006）**：页壳 58+page-title（nav.service_manager）+内容 readable 1160 居中；状态卡/操作卡合并为单组单卡（atomcode 裁决三：状态自成服务卡首行不独立成卡），组标签 service.section.service 出卡上方 + settings-card.grouped 四行（状态行=service.status 标签+状态点/文案、安装 primary、启停刷 ghost SharedSizeGroup 沿用、卸载 danger）；§5.2 P1 组间距 SpaceLg→SpaceXl 收紧完成（过渡态注记消除）；硬编码 "ACTIONS" 段头清零（i18n 缺口修复）；孤儿键 service.section.status/actions 十语言+内嵌兜底同步清除、service.status 孤儿键激活为状态行标签；§1.2/§3.2/§3.3 B3/§4.2/附录 B 实态与行号跟随；登记张力 T-6（卸载缺确认对话框——调研裁决二建议 danger 操作配确认流，属行为变更超本票审美范围，交大脑裁定） |
+| v2.7 | 2026-09-15 | 票 08 / ui-craft2 | **Toast 反馈链落地（D-007 / A-003）**：§6 规划转现役——组件选型 atomcode 调研裁决自绘 ItemsControl overlay（Ursa WindowNotificationManager/WindowToastManager 仅覆盖 5/10 维，sonner 核心交互全缺，零新 NuGet 依赖）；ToastService DI 单例 + ToastHost 挂 MainWindow 根 Grid 末位右下锚定；T1 触发点接入配置防抖保存三态 / 规则保存重置 / 服务操作四分型；rich-colors 四型落 Semi*Light 语义浅底 + Material.Icons 16px；400ms CubicEaseOut TransformOperationsTransition 可中断堆叠过渡；gap=10 基准按 §5.2 P4 同组档量化落 SpaceSm(8)（离轨映射登记） |
