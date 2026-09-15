@@ -216,12 +216,12 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
         // Phase 3: Wipe
         // 票 01（A-001）：写盘前再解析一次策略。skip 情形（unknown_format / no_rules）绝不注册
         // 等待 marker——否则命令块里没有 TASK_DONE_，TCS 会挂到取消为止（原挂死链）。
-        var wipeStrategy = WipeStrategyResolver.Resolve(effectiveTarget, _wipeRules);
+        var wipeStrategy = WipeStrategyResolver.Resolve(targetPath, _wipeRules);
         if (wipeStrategy.SkipReason is not null)
         {
             _logger.LogWarning(
                 "Skipping wipe for {Path}: wipe strategy skip reason {Reason}.",
-                effectiveTarget,
+                targetPath,
                 wipeStrategy.SkipReason);
 
             return string.Equals(wipeStrategy.SkipReason, "unknown_format", StringComparison.Ordinal)
