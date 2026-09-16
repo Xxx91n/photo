@@ -15,9 +15,12 @@ internal sealed class PosixSignalHooks : IDisposable
 
     /// <summary>
     /// Register signal hooks. onSignal is called for SIGINT/SIGTERM/SIGQUIT.
-    /// onReload is called for SIGHUP (ADR 0027: config reload).
+    /// onReload is called for SIGHUP (ADR 0027: config reload) — async 委托；
+    /// 票 06（T1 承接 / 票 05 A-005 同族）：信号回调线程不得 sync-over-async，
+    /// reload 由本层 Task.Run 编组到线程池并立即返回；重入串行化由
+    /// MetadataCleanerWorker._reloadGate 兜底，异常由调用方在 onReload 内部记录。
     /// </summary>
-    public static PosixSignalHooks Register(Action onSignal, Action? onReload = null)
+    public static PosixSignalHooks Register(Action onSignal, Func<Task>? onReload = null)
     {
         var hooks = new PosixSignalHooks();
 
@@ -33,9 +36,10 @@ internal sealed class PosixSignalHooks : IDisposable
             hooks._sigQuit = PosixSignalRegistration.Create(PosixSignal.SIGQUIT, _ => onSignal());
 
             // ADR 0027: SIGHUP triggers config reload (same path as IPC ReloadConfig)
+            // 票 06（T1）：回调线程不阻塞——Task.Run 编组 fire-and-forget
             if (onReload is not null)
             {
-                hooks._sigHup = PosixSignalRegistration.Create(PosixSignal.SIGHUP, _ => onReload());
+                hooks._sigHup = PosixSignalRegistration.Create(PosixSignal.SIGHUP, sigCtx => { _ = Task.Run(onReload); });
             }
         }
         catch

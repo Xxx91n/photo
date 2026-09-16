@@ -136,7 +136,24 @@ var app = builder.Build();
 var shutdownCoordinator = new ShutdownCoordinator(
     stopToken => app.StopAsync(stopToken),
     stopTimeout: TimeSpan.FromSeconds(4));
-posixHooks = PosixSignalHooks.Register(() => shutdownCoordinator.RequestStop(), onReload: () => app.Services.GetRequiredService<MetadataCleanerWorker>().ReloadConfigAsync().GetAwaiter().GetResult());
+// 票 06（T1 承接 / 票 05 A-005 同族）：POSIX 信号回调禁 sync-over-async——
+// onReload 改 async 委托，PosixSignalHooks 内部 Task.Run 编组后立即返回；
+// 异常就地记录，不推给 UnobservedTaskException 兜底。
+posixHooks = PosixSignalHooks.Register(
+    () => shutdownCoordinator.RequestStop(),
+    onReload: async () =>
+    {
+        try
+        {
+            await app.Services.GetRequiredService<MetadataCleanerWorker>()
+                .ReloadConfigAsync()
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "SIGHUP config reload failed");
+        }
+    });
 // ADR 0034: UnhandledException + UnobservedTaskException → Serilog (also in UI Program.cs)
 AppDomain.CurrentDomain.UnhandledException += (_, e) =>
 {
