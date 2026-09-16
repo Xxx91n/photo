@@ -1,6 +1,4 @@
 ﻿using System.IO.Pipes;
-using System.Security.AccessControl;
-using System.Security.Principal;
 using PhotoPrivacy.Core.Runtime;
 
 namespace PhotoPrivacy.Ui.Services;
@@ -35,7 +33,7 @@ public sealed class UiSingleInstance : IDisposable
                 serverName: ".",
                 pipeName: targetPipe,
                 direction: PipeDirection.Out,
-                options: PipeOptions.Asynchronous);
+                options: ClientPipeOptions);
 
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeoutCts.CancelAfter(TimeSpan.FromMilliseconds(500));
@@ -63,7 +61,7 @@ public sealed class UiSingleInstance : IDisposable
             {
                 try
                 {
-                    // 使用带访问控制的管道，限制只有当前用户可以连接。
+                    // 票 04 / ADR 0067：服务端改用 PipeOptions.CurrentUserOnly 落实「仅当前用户可连」。
                     using var server = CreatePipeServer(listenPipe);
 
                     await server.WaitForConnectionAsync(cancellationToken);
@@ -87,45 +85,29 @@ public sealed class UiSingleInstance : IDisposable
     }
 
     /// <summary>
-    /// 创建带访问控制的命名管道服务器。限制只有当前用户可以连接。
+    /// 创建命名管道服务器。票 04 / ADR 0067：Windows 上以 PipeOptions.CurrentUserOnly 落实
+    /// 「仅当前用户可连」（内核在 connect 时校验用户 SID），不再使用 NamedPipeServerStreamAcl.Create ——
+    /// 后者在单文件解压上下文抛 UnauthorizedAccessException 并泄漏管道实例（ADR 0035），
+    /// 且与 AGENTS.md §5 第 5 条「NamedPipe 不使用 ACL」相矛盾。
+    /// 非 Windows 上 .NET 命名管道为 FIFO 实现，不施加该标志以保持既有跨平台语义。
     /// </summary>
     private static NamedPipeServerStream CreatePipeServer(string pipeName)
     {
-        if (OperatingSystem.IsWindows())
-        {
-            try
-            {
-                var pipeSecurity = new PipeSecurity();
-                var currentUser = WindowsIdentity.GetCurrent().User;
-                if (currentUser is not null)
-                {
-                    pipeSecurity.AddAccessRule(new PipeAccessRule(
-                        currentUser,
-                        PipeAccessRights.ReadWrite,
-                        AccessControlType.Allow));
-                }
-
-                return NamedPipeServerStreamAcl.Create(
-                    pipeName: pipeName,
-                    direction: PipeDirection.In,
-                    maxNumberOfServerInstances: 1,
-                    transmissionMode: PipeTransmissionMode.Byte,
-                    options: PipeOptions.Asynchronous,
-                    inBufferSize: 0,
-                    outBufferSize: 0,
-                    pipeSecurity: pipeSecurity);
-            }
-            catch
-            {
-                // 回退：如果 ACL 操作失败（如容器环境），使用无 ACL 版本
-            }
-        }
-
         return new NamedPipeServerStream(
             pipeName: pipeName,
             direction: PipeDirection.In,
             maxNumberOfServerInstances: 1,
             transmissionMode: PipeTransmissionMode.Byte,
-            options: PipeOptions.Asynchronous);
+            options: ServerPipeOptions);
     }
+
+    /// <summary>服务端管道选项（Windows 上要求同用户对端）。</summary>
+    private static PipeOptions ServerPipeOptions => OperatingSystem.IsWindows()
+        ? PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly
+        : PipeOptions.Asynchronous;
+
+    /// <summary>客户端管道选项（Windows 上要求同用户对端）。</summary>
+    private static PipeOptions ClientPipeOptions => OperatingSystem.IsWindows()
+        ? PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly
+        : PipeOptions.Asynchronous;
 }
