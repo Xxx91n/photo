@@ -18,6 +18,7 @@ internal sealed class ProtocolLevelFakeExifToolProcess : IExifToolProcess
 {
     private readonly List<string> _args = [];
     private readonly List<string> _writes = [];
+    private int _activeStartCalls;
 
     public event Action<string>? StdoutLine;
 
@@ -44,16 +45,42 @@ internal sealed class ProtocolLevelFakeExifToolProcess : IExifToolProcess
     /// <summary>含 -ver 的版本探测块的回包延迟，单位毫秒。</summary>
     public int VersionResponseDelayMs { get; set; }
 
+    /// <summary>
+    /// 票 05（A-005）成本注入：命令块里出现「文件参数」（非选项 token，且非 -echo1 的回显目标）时的回包延迟，单位毫秒。
+    /// 模拟 ExifTool 真去解析一个输入文件的开销——用于复现「把 exiftool 自身当照片读 → 慢机每文件重启进程」。
+    /// 为 0 时退回既有 HealthResponseDelayMs/VersionResponseDelayMs 选择逻辑（既有用例零影响）。
+    /// </summary>
+    public int FileInputParseDelayMs { get; set; }
+
+    /// <summary>票 05（A-005）：StartAsync 耗时注入，单位毫秒——用于拉开并发启动窗口。</summary>
+    public int StartDelayMs { get; set; }
+
+    /// <summary>票 05（A-005）：StartAsync 并发进入峰值（>1 说明重启路径未持 _startLock）。</summary>
+    public int MaxConcurrentStartCalls { get; private set; }
+
     public string VersionText { get; set; } = "13.20";
 
-    public Task StartAsync(string exePath, string[] args, CancellationToken cancellationToken)
+    public async Task StartAsync(string exePath, string[] args, CancellationToken cancellationToken)
     {
-        StartCalls++;
-        ExePath = exePath;
-        _args.Clear();
-        _args.AddRange(args);
-        IsRunning = true;
-        return Task.CompletedTask;
+        var active = Interlocked.Increment(ref _activeStartCalls);
+        MaxConcurrentStartCalls = Math.Max(MaxConcurrentStartCalls, active);
+        try
+        {
+            StartCalls++;
+            ExePath = exePath;
+            _args.Clear();
+            _args.AddRange(args);
+            IsRunning = true;
+
+            if (StartDelayMs > 0)
+            {
+                await Task.Delay(StartDelayMs, cancellationToken);
+            }
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _activeStartCalls);
+        }
     }
 
     public Task StopAsync(CancellationToken cancellationToken)
@@ -79,7 +106,9 @@ internal sealed class ProtocolLevelFakeExifToolProcess : IExifToolProcess
 
         var isVersionBlock = lines.Any(l => string.Equals(l.Trim(), "-ver", StringComparison.Ordinal));
         var isJsonBlock = lines.Any(l => string.Equals(l.Trim(), "-json", StringComparison.Ordinal));
-        var delayMs = isVersionBlock ? VersionResponseDelayMs : (isJsonBlock ? 0 : HealthResponseDelayMs);
+        var delayMs = HasFileInput(lines) && FileInputParseDelayMs > 0
+            ? FileInputParseDelayMs
+            : (isVersionBlock ? VersionResponseDelayMs : (isJsonBlock ? 0 : HealthResponseDelayMs));
 
         void EmitBlock()
         {
@@ -149,6 +178,40 @@ internal sealed class ProtocolLevelFakeExifToolProcess : IExifToolProcess
         }
 
         return echoes;
+    }
+
+    /// <summary>
+    /// 票 05（A-005）：判定命令块里是否存在「文件参数」——既非选项（不以 - 开头）、
+    /// 也不是 -echo1 回显目标的 token。健康探针把 exiftool 自身路径喂进来时即命中此处。
+    /// </summary>
+    private static bool HasFileInput(IReadOnlyList<string> lines)
+    {
+        for (var i = 0; i < lines.Count; i++)
+        {
+            var line = lines[i].Trim();
+            if (line.Length == 0)
+            {
+                continue;
+            }
+
+            if (line.StartsWith("-echo1", StringComparison.Ordinal))
+            {
+                // -echo1 无内联后缀时，下一行是回显文本（不是文件参数）。
+                if (line["-echo1".Length..].Trim().Length == 0)
+                {
+                    i++;
+                }
+
+                continue;
+            }
+
+            if (!line.StartsWith("-", StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void EmitStdout(string line) => StdoutLine?.Invoke(line);

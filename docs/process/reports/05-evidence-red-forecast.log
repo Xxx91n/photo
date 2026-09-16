@@ -1,0 +1,109 @@
+票 05 失效即红预演证据（05-evidence-red-forecast.log）
+票号：05 resident-stability ｜ 生成日：2026-09-16 ｜ 范围：A-005（不变量④ 驻守可观测，次涉②）
+
+口径声明（CI-only 纪律）：
+  本预演不调用 dotnet build / dotnet test。方法：
+  - 既有守卫：按其源码逐字复现匹配逻辑，全仓扫描（基线应为 0 violations）。
+  - 新增守卫：基线（GREEN）→ 定向突变（内存施加，不落盘）→ 复算（应 RED）。
+  突变仅在 ctx 沙箱内存中施加，不写盘、不污染工作树；工作树自始至终仅含本票 13 个改动/新增文件。
+
+════════════════════════════════════════════════════════════
+A. 既有守卫零破坏复现（基线 = 0 violations / 全在）
+════════════════════════════════════════════════════════════
+A1 ProcessHygieneGuardTests         violations=0  GREEN
+   复现 3 条正则：\.WaitForExitAsync\s*\(\s*\) / \.WaitForExit\s*\(\s*\) / \.GetProcessesByName\s*\(
+   扫描面：src + tests 全部 *.cs（排除 bin/obj，跳过 // 起始行）
+   风险点核查：本票新增 await _startLock.WaitAsync(...) 与 Task.WhenAll(pending).WaitAsync(2s, None)
+   均不匹配上述三条正则（非 WaitForExit 族）→ 无新增 violation。
+
+A2 TestCodeVerbatimPathGuardTests   violations=0  GREEN
+   复现：drive-relative verbatim 字面量（@" + 盘符 + 冒号 + 非分隔符），扫描 tests 全部 *.cs（剥行注释）
+   本票新增 3 个测试文件无 @"X: 形态字面量；ExifToolBridgeTests.cs:17 的 @"C:\Program Files\..."
+   冒号后紧跟分隔符 \ → 不构成 drive-relative → 不触发。
+
+A3 HardcodedChineseScanTests        violations=0  GREEN
+   复现：src/PhotoPrivacy.Ui 全部 *.cs（排除 bin/obj、*.g.cs、LocalizationService.cs），
+   经 SourceLint.StripLineComment 剥除行注释后匹配 CJK。
+   关键判定：本票在 WorkerIpcClient.cs:40-41 新增的 2 行中文注释位于 // 行注释内，
+   被 StripLineComment 剥除 → 不在扫描余量内 → 不触发。
+
+A4 WorkerIpcClientSourceTests       present=3/3  GREEN
+   三处 ConfigureAwait(false) 逐字保留（ConnectAsync / WriteAsync / FlushAsync）。
+
+A5 WorkerProcessManagerTests        present=4/4  GREEN
+   public async Task<WorkerIpcResponse?> ProbeStatusSafeAsync +
+   catch (System.IO.IOException) / catch (System.Net.Sockets.SocketException) / catch (TimeoutException) 全在。
+   另 Assert.DoesNotContain("SendAsync(", wpmSource) 作用对象为 WorkerProcessManager.cs，非本票文件。
+
+A6/A7 非交集确认（basename 级全 tests 扫描）：
+   触及本票 13 个文件名的守卫仅 3 个：WorkerIpcClientSourceTests / WorkerProcessManagerTests / 本票新增守卫。
+   UdsEndpointOwnershipGuardTests 只读 UnixDomainSocketIpcTransport.cs；
+   IpcAuthClaimReconciliationTests 只读 AGENTS.md / UiSingleInstance.cs / install-systemd-service.sh / NamedPipeIpcTransport.cs；
+   二者与本票无交集。
+
+════════════════════════════════════════════════════════════
+B. 新增守卫失效即红预演（基线 GREEN → 突变 RED）
+════════════════════════════════════════════════════════════
+B1 WorkerIpcSyncOverAsyncGuardTests.Worker_Ipc_Surface_Should_Not_Contain_Sync_Over_Async
+   受测文件：WorkerIpcServerHostedService.cs / WorkerIpcServerLoop.cs / WorkerIpcRequestHandler.cs
+   令牌：GetAwaiter().GetResult() ｜ .Result ｜ .Wait()（均经 SourceLint.ReadStripped 剥注释）
+   基线 hits=0            → GREEN（断言 violations.Count==0 成立）
+   突变：向 WorkerIpcRequestHandler.cs 注入真实代码 _runtime.ReloadConfigAsync().GetAwaiter().GetResult()
+   突变 hits=1            → RED-OK（守卫捕获）
+   关键：三个受测文件中的命中字符串仅存于注释（RequestHandler:10 ///、:88 //；ServerLoop:17 ///），
+         被 StripLineComment 剥除 → 基线必然为 0。
+
+B2 WorkerIpcSyncOverAsyncGuardTests.Worker_Ipc_Loop_Should_Not_Await_Request_Handling_Inline
+   基线 [hasHandleClientAsync=true, noInlineAwait=true, hasReader=true] → GREEN
+   突变：var task = HandleClientAsync( → await HandleClientAsync(
+   突变 [true, false, true] → RED-OK（DoesNotContain("await HandleClientAsync") 被打破）
+
+B3 WorkerIpcSyncOverAsyncGuardTests.Ipc_Line_Reader_Should_Be_The_Single_Buffered_Implementation
+   基线 [loopNoByte1=true, clientNoByte1=true, clientUsesReader=true] → GREEN
+   突变：将 WorkerIpcClient.cs 的 IpcLineReader.ReadBoundedLineAsync 调用换回 new byte[1] 逐字节读
+   突变 [true, false, false] → RED-OK（两道断言同时被打破）
+
+B4 ExifToolBridgeTests.EnsureStartedAsync_HealthCheck_Should_Use_Fast_Path_Probe_With_Marker（合同翻转项）
+   断言：Assert.DoesNotContain(Config.ExifTool.Path, healthCommand, OrdinalIgnoreCase)
+   基线：运行时探针命令 = var cmd = $"-fast\n-echo1\n{marker}\n-execute\n"; → 不含 ExifTool.Path → GREEN
+   突变：恢复旧形态（把 _config.ExifTool.Path 作为待解析文件喂入）→ 命令含 ExifTool.Path → RED-OK
+
+B5 IpcLineReaderTests（8 Fact 语义重放）
+   基线：LF 终止词 → 8/8 通过 → GREEN
+   突变：终止词 LF(10) → CR(13) → 3/8 通过 → RED-OK（5 个 Fact 失败：read to LF / drop all CR /
+         maxBytes-1 + LF / 50-line across 4KB / no cross line boundary）
+
+════════════════════════════════════════════════════════════
+C. 行为测试失效即红预演（并发语义模型，事件循环级）
+════════════════════════════════════════════════════════════
+C1 WorkerIpcResidentStabilityTests.Loop_Should_Keep_Serving_New_Connections_While_Reload_Is_In_Progress
+   模型：连接序列 [ReloadConfig（挂住）, Ping]；健康判据 = Ping 在 reload 未完成时已被服务。
+   基线（accept 后不 await，独立 Task 驱动）：served=["Ping"], enteredReload=1 → GREEN
+   突变（accept 循环内联 await 处理体）：served=[], enteredReload=1 → RED-OK（Ping 被堵在 reload 后）
+
+C2 ExifToolBridgeTests.EnsureStartedAsync_Concurrent_Health_Failures_Should_Serialize_Restart
+   模型：3 个并发 RestartAsync，统计 MaxConcurrentStartCalls（对应假件 Interlocked 峰值计数）。
+   基线（RestartAsync 持 _startLock，SemaphoreSlim(1,1)）：maxConcurrent=1 → GREEN
+   突变（移除 _startLock）：maxConcurrent=3 → RED-OK（并发重启未被串行化）
+
+C3 ExifToolBridgeTests.EnsureStartedAsync_Should_Not_Restart_Per_File_When_Health_Probe_Is_File_Free
+   模型：探针含文件参数→900ms（> RunningHealthTimeout 500ms）；探针无文件参数→即时。
+   基线（无文件参数探针）：3 次 EnsureStartedAsync 后 restarts=0 → GREEN（stay_open 收益保留）
+   突变（探针喂入 exiftool 自身路径）：restarts=3 → RED-OK（逐文件重启）
+
+════════════════════════════════════════════════════════════
+D. 覆盖边界与不覆盖项（避免「守卫与实际不符」）
+════════════════════════════════════════════════════════════
+D1 src/PhotoPrivacy.Worker/Program.cs:139 —— POSIX onReload 回调内
+   ReloadConfigAsync().GetAwaiter().GetResult() 同形态 sync-over-async。
+   现状：present=true（实测）。A-005(c) 原文限定为「accept 循环内」，该处属本轮范围外；
+   本票不纳入守卫（避免守卫超出实际修复面），已在报告 §6 张力节登记呈报。
+D2 src/PhotoPrivacy.Core/ExifTool/ExifToolBridge.cs:202 ——
+   probeTcs.Task.IsCompleted ? probeTcs.Task.Result : null（先判 IsCompleted，不会阻塞）。
+   存量代码，非本票引入；无任何既有守卫扫描 ExifToolBridge.cs 的 .Result 令牌。
+D3 实机性能复测缺口：本票不宣称任何性能数字（详见报告 §4/§6）。
+
+════════════════════════════════════════════════════════════
+汇总：A 节 5 项既有守卫全 GREEN；B/C 节 8 项新增守卫基线全 GREEN、定向突变全 RED-OK；
+      D 节 3 项为显式不覆盖项，已呈报。既有守卫零破坏。
+════════════════════════════════════════════════════════════

@@ -219,8 +219,56 @@ public sealed class ExifToolBridgeTests
         var healthCommand = process.Writes.Last(x => x.Contains("HEALTH_", StringComparison.Ordinal));
         Assert.Contains("-fast", healthCommand, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("-execute", healthCommand, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains(Config.ExifTool.Path, healthCommand, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("-ver", healthCommand, StringComparison.OrdinalIgnoreCase);
+
+        // 票 05（A-005）合同变更：本断言原先锁定的是缺陷本身——健康探针把 exiftool 自身路径
+        // 当「待解析文件」喂入（原为 Assert.Contains(Config.ExifTool.Path, healthCommand, ...)）。
+        // 现翻转为回归守卫：轻量探针不得携带任何文件参数。
+        Assert.DoesNotContain(Config.ExifTool.Path, healthCommand, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task EnsureStartedAsync_Should_Not_Restart_Per_File_When_Health_Probe_Is_File_Free()
+    {
+        // 票 05（A-005）行为测试（抓住原 bug）：原健康探针把 exiftool 自身路径当「待解析文件」喂入，
+        // ExifTool 真去解析那个二进制 → 慢机上 >500ms 触发 health_timeout → 每处理一个文件就整进程重启，
+        // 摧毁 stay_open 常驻收益。本 fake 把「命令块含文件参数」折算成 900ms 回包延迟
+        // （> RunningHealthTimeout 500ms）：旧探针必然超时重启（StartCalls > 1），
+        // 新探针不含文件参数 → 恒健康 → 零重启。
+        var process = new ProtocolLevelFakeExifToolProcess
+        {
+            FileInputParseDelayMs = 900
+        };
+        var bridge = new ExifToolBridge(process, Config);
+
+        await bridge.EnsureStartedAsync(CancellationToken.None);
+        await bridge.EnsureStartedAsync(CancellationToken.None);
+        await bridge.EnsureStartedAsync(CancellationToken.None);
+
+        Assert.Equal(1, process.StartCalls);
+        Assert.Equal(0, process.StopCalls);
+    }
+
+    [Fact]
+    public async Task EnsureStartedAsync_Concurrent_Health_Failures_Should_Serialize_Restart()
+    {
+        // 票 05（A-005）行为测试（抓住原 bug）：重启路径原不持 _startLock，
+        // 多个调用方同时探到 unhealthy 时会并发 Stop/Start 同一进程（重启风暴 + _started 交错）。
+        // 故障注入为进程级静默 → 三次并发调用都会探到 unhealthy；
+        // 修复后重启被 _startLock 串行化 → StartAsync 并发进入峰值恒为 1。
+        var process = new ProtocolLevelFakeExifToolProcess
+        {
+            SilenceOutput = true,
+            StartDelayMs = 100
+        };
+        var bridge = new ExifToolBridge(process, Config, healthTimeout: TimeSpan.FromMilliseconds(100));
+
+        await bridge.EnsureStartedAsync(CancellationToken.None);
+
+        await Task.WhenAll(
+            Enumerable.Range(0, 3).Select(_ => Task.Run(() => bridge.EnsureStartedAsync(CancellationToken.None))));
+
+        Assert.Equal(1, process.MaxConcurrentStartCalls);
     }
 
     [Fact]
