@@ -9,6 +9,8 @@ namespace PhotoPrivacy.IntegrationTests.Ui;
 /// - App 解析 MainWindow 自容器（不再手写 new MainWindowViewModel）
 /// - MainWindow/MainWindowViewModel 构造注入（可选参数默认值保留无参兼容）
 /// - 检查点 B：LocalizationService.Instance 注册进容器，ViewModel 静态直引收敛为构造注入 _localization
+/// - 票 06（correctness-round A-008 / D-003.4）：点状升级为结构性断言——组合根外的服务层
+///   手写 new 改用封闭视图缝白名单核验（观测集合 == 登记集合），替代枚举黑名单的开放式漏报
 /// </summary>
 public sealed class CompositionRootSourceTests
 {
@@ -92,5 +94,145 @@ public sealed class CompositionRootSourceTests
         Assert.Contains("private readonly LocalizationService _localization;", stripped, StringComparison.Ordinal);
         Assert.Contains("public MainWindowViewModel(LocalizationService? localization = null", stripped, StringComparison.Ordinal);
         Assert.Contains("_localization.Get(", stripped, StringComparison.Ordinal);
+    }
+
+    // ---------- 票 06（A-008 / D-003.4）：结构性断言 —— 封闭视图缝白名单 ----------
+
+    /// <summary>
+    /// 组合根外允许手写 new 的服务层类型登记（视图缝 / 启动缝）：
+    /// Program.cs —— UiSingleInstance：单实例检查必须先于容器装配（AppComposition.Build 之前）。
+    /// App.axaml.cs —— 空集：容器内类型一律经解析。
+    /// MainWindow.axaml.cs —— 六处视图缝：ServiceModeController（需 MainWindowUiHost /
+    /// MainWindowViewModelView 两个绑 this 的适配器，直注会成 MS DI 死环——见
+    /// WindowPollingHostedServiceSourceTests 装配破环锁）、AuditTailService 与
+    /// ConfigFileWatcher（InitializeRuntime 内依运行时选项与 UI 回调构造）、TrayHost（窗口实例）。
+    /// 断言 = 观测集合 == 登记集合（双向钉死：新增未登记者红，缝消失未同步清单亦红）。
+    /// </summary>
+    private static readonly (string[] Segments, string[] DeclaredSeams)[] SeamContracts =
+    [
+        (["src", "PhotoPrivacy.Ui", "Program.cs"], ["UiSingleInstance"]),
+        (["src", "PhotoPrivacy.Ui", "App.axaml.cs"], []),
+        (["src", "PhotoPrivacy.Ui", "Views", "MainWindow.axaml.cs"],
+         ["ServiceModeController", "MainWindowUiHost", "MainWindowViewModelView",
+          "AuditTailService", "TrayHost", "ConfigFileWatcher"]),
+    ];
+
+    /// <summary>手写构造识别：new Type( 与 new Qualified.Type( 均命中（捕获末段类型名）。</summary>
+    private static readonly Regex NewConstructionPattern =
+        new(@"\bnew\s+(?:[A-Z_]\w*\.)*([A-Z]\w*)\s*\(", RegexOptions.Compiled);
+
+    /// <summary>服务层类型宇宙：Services/ 目录声明的全部 class/record/struct 名（手工清单的结构性替代）。</summary>
+    private static HashSet<string> ServiceLayerTypeUniverse()
+    {
+        var dir = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Services");
+        var types = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var file in Directory.GetFiles(dir, "*.cs"))
+        {
+            foreach (Match m in Regex.Matches(
+                         File.ReadAllText(file), @"(?:class|record|struct)\s+([A-Z]\w*)"))
+            {
+                types.Add(m.Groups[1].Value);
+            }
+        }
+
+        return types;
+    }
+
+    internal static List<string> ClassifyOutOfCompositionServiceNews(
+        string strippedSource,
+        IReadOnlySet<string> serviceTypeUniverse,
+        IReadOnlySet<string> declaredSeams,
+        string fileLabel)
+    {
+        var observed = NewConstructionPattern.Matches(strippedSource)
+            .Select(m => m.Groups[1].Value)
+            .Where(serviceTypeUniverse.Contains)
+            .ToHashSet(StringComparer.Ordinal);
+
+        var violations = new List<string>();
+        foreach (var undeclared in observed.Except(declaredSeams).OrderBy(x => x, StringComparer.Ordinal))
+        {
+            violations.Add(fileLabel + ": 未登记的服务层手写构造 new " + undeclared +
+                           "( —— 迁入 AppComposition 装配，或登记为视图缝（须过评审）");
+        }
+
+        foreach (var stale in declaredSeams.Except(observed).OrderBy(x => x, StringComparer.Ordinal))
+        {
+            violations.Add(fileLabel + ": 已登记视图缝 " + stale +
+                           " 在手写构造中不再出现——请同步缝清单（宣称-实现一致）");
+        }
+
+        return violations;
+    }
+
+    [Fact]
+    public void Out_Of_Composition_Service_News_Should_Match_Declared_View_Seams()
+    {
+        var universe = ServiceLayerTypeUniverse();
+        var violations = new List<string>();
+        foreach (var (segments, declaredSeams) in SeamContracts)
+        {
+            var stripped = SourceLint.ReadStripped(segments);
+            violations.AddRange(ClassifyOutOfCompositionServiceNews(
+                stripped,
+                universe,
+                declaredSeams.ToHashSet(StringComparer.Ordinal),
+                string.Join("/", segments)));
+        }
+
+        Assert.True(violations.Count == 0, string.Join(Environment.NewLine, violations));
+    }
+
+    [Fact]
+    public void View_Seam_Guard_Negative_Self_Proof()
+    {
+        // 失效即红自证：对绿态样本做定向突变，分类器必须报红；边界用例不得误伤。
+        var universe = ServiceLayerTypeUniverse();
+        var mainWindow = SourceLint.ReadStripped("src", "PhotoPrivacy.Ui", "Views", "MainWindow.axaml.cs");
+        var program = SourceLint.ReadStripped("src", "PhotoPrivacy.Ui", "Program.cs");
+        var mainWindowSeams = SeamContracts[2].DeclaredSeams.ToHashSet(StringComparer.Ordinal);
+        var programSeams = SeamContracts[0].DeclaredSeams.ToHashSet(StringComparer.Ordinal);
+
+        var failures = new List<string>();
+
+        var injected = mainWindow + Environment.NewLine + "var leaked = new WorkerProcessManager(null!);";
+        if (ClassifyOutOfCompositionServiceNews(injected, universe, mainWindowSeams, "MW").Count == 0)
+        {
+            failures.Add("MISSED: 注入未登记 new WorkerProcessManager( 未红");
+        }
+
+        var shrunk = mainWindowSeams.Where(s => s != "TrayHost").ToHashSet(StringComparer.Ordinal);
+        if (ClassifyOutOfCompositionServiceNews(mainWindow, universe, shrunk, "MW").Count == 0)
+        {
+            failures.Add("MISSED: 缝清单漏登 TrayHost（源仍在手写）未红");
+        }
+
+        var removed = mainWindow.Replace("new ConfigFileWatcher(", "ConfigFileWatcher(", StringComparison.Ordinal);
+        if (removed == mainWindow)
+        {
+            failures.Add("MUTATION DID NOT APPLY: new ConfigFileWatcher( 未找到");
+        }
+        else if (ClassifyOutOfCompositionServiceNews(removed, universe, mainWindowSeams, "MW").Count == 0)
+        {
+            failures.Add("MISSED: 缝消失（ConfigFileWatcher）未同步清单未红");
+        }
+
+        var programRemoved = program.Replace("new UiSingleInstance(", "UiSingleInstance(", StringComparison.Ordinal);
+        if (programRemoved == program)
+        {
+            failures.Add("MUTATION DID NOT APPLY: new UiSingleInstance( 未找到");
+        }
+        else if (ClassifyOutOfCompositionServiceNews(programRemoved, universe, programSeams, "Program").Count == 0)
+        {
+            failures.Add("MISSED: Program 启动缝消失未红");
+        }
+
+        var benign = mainWindow + Environment.NewLine + "var ok = new DirectoryInfo(\".\");";
+        if (ClassifyOutOfCompositionServiceNews(benign, universe, mainWindowSeams, "MW").Count != 0)
+        {
+            failures.Add("FALSE-POSITIVE: 非服务层 new DirectoryInfo 被误伤");
+        }
+
+        Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
     }
 }

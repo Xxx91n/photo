@@ -1,0 +1,44 @@
+# 票 06 失效即红预演（静态复算口径，CI-only 纪律下的等价替代）
+# 方法：将守卫分类器逐字镜像为 JS，对真实文件基线扫描→内存篡改→复扫→还原验证
+# 时间：2026-09-16T08:12:54.399Z
+
+== 守卫1: Out_Of_Composition_Service_News_Should_Match_Declared_View_Seams ==
+类型宇宙 n=25
+  src/PhotoPrivacy.Ui/Program.cs observed=[UiSingleInstance] violations=0
+  src/PhotoPrivacy.Ui/App.axaml.cs observed=[] violations=0
+  src/PhotoPrivacy.Ui/Views/MainWindow.axaml.cs observed=[ServiceModeController,MainWindowUiHost,MainWindowViewModelView,AuditTailService,TrayHost,ConfigFileWatcher] violations=0
+  BASELINE violations=0 => GREEN
+  MUT1 注入未登记 new WorkerProcessManager( => violations=1
+  MUT2 缝清单漏登 TrayHost => violations=1
+  MUT3 源删 ConfigFileWatcher 缝 => violations=1
+  MUT4 Program 删 UiSingleInstance 缝 => violations=1
+  MUT5 benign new DirectoryInfo( => violations=0
+  还原复扫 => 0 violations (GREEN)
+
+== 守卫2: Worker_Ipc_Surface_Should_Not_Contain_Sync_Over_Async（扩展后 5 文件）==
+  WorkerIpcServerHostedService.cs: 0
+  WorkerIpcServerLoop.cs: 0
+  WorkerIpcRequestHandler.cs: 0
+  Program.cs: 0
+  PosixSignalHooks.cs: 0
+  BASELINE=0 => GREEN
+  MUT1 Program.cs 注入 GetAwaiter().GetResult() => 1
+  MUT2 注入 .Result => 1
+  MUT3 注入 .Wait() => 1
+
+== 守卫3: Production_Csproj_Should_Not_Hold_Publish_Properties ==
+  src/PhotoPrivacy.Core/PhotoPrivacy.Core.csproj: 0
+  src/PhotoPrivacy.Ipc/PhotoPrivacy.Ipc.csproj: 0
+  src/PhotoPrivacy.Ui/PhotoPrivacy.Ui.csproj: 0
+  src/PhotoPrivacy.Worker/PhotoPrivacy.Worker.csproj: 0
+  BASELINE=0 => GREEN
+  MUT1 注入 <PublishSingleFile> => 1
+
+== 守卫4: Publish_Scripts_Should_Pass_SingleFile_Flags_For_Both_Projects ==
+  scripts/publish-app.ps1: calls=2 violations=0
+  scripts/publish.sh: calls=2 violations=0
+  BASELINE=0 => GREEN
+  MUT1 抹掉首处(UI) PublishSingleFile 标志 => violations=1
+  （分类器首轮修正：dotnet publish 只认行首调用，throw 字符串不计——该误报在预演中先行暴露并修复，恰证守卫非空转）
+
+# 结论：四处守卫/断言基线全绿、定向篡改全红、边界用例（非服务层 new）不误伤——失效即红成立

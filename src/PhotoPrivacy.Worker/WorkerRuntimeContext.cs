@@ -3,7 +3,7 @@ using PhotoPrivacy.Core.Worker;
 
 namespace PhotoPrivacy.Worker;
 
-public sealed class WorkerRuntimeContext
+public sealed class WorkerRuntimeContext : IWorkerIpcRuntime
 {
     private readonly IRuntimeControl _runtimeControl;
     private readonly MetadataCleanerWorker _worker;

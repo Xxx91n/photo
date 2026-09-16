@@ -64,32 +64,28 @@ public sealed record AppConfig(
            AutoExcludedDirectories: [],
            PollingIntervalSeconds: 0),
         Rules: new RuleOptions(
+            // 票 01 宣称收敛（D-005.1）：allowed_extensions 与 WipeStrategyResolver.ExtensionFamilyMap
+            // 映射面一一对应（集合差=0，由 FormatCoverageReconciliationTests 入 CI 钉死）。
+            // 映射面之外的格式（webp/gif/PSD/长尾 RAW 变体等）明确“不支持”：立即跳过并记
+            // wipe_skipped_unknown 审计事件，绝不静默处理。
             AllowedExtensions: [
             // JPEG family
-            ".jpg", ".jpeg", ".jpe", ".jps", ".jph", ".jpf", ".j2k", ".jp2", ".jng",
-            ".jxl", ".jpm", ".jph", ".jpx", ".jxr",
+            ".jpg", ".jpeg", ".jpe", ".jps", ".jph",
+            // TIFF / DNG
+            ".tif", ".tiff", ".dng",
             // RAW
-            ".cr2", ".cr3", ".crw", ".crm", ".arw", ".nef", ".nrw", ".orf", ".ori", ".pef",
-            ".raf", ".raw", ".rw2", ".rwl", ".sr2", ".srw", ".mef", ".mos", ".erf",
-            ".mrw", ".dcp", ".dng", ".fff", ".gpr", ".lrf", ".lrv", ".iiq",
-            // TIFF
-            ".tif", ".tiff",
-            // PNG / generic bitmap
-            ".png", ".apng", ".pbm", ".pgm", ".ppm",
+            ".cr2", ".cr3", ".arw", ".nef", ".orf", ".raf",
+            ".rw2", ".pef", ".srw", ".sr2",
             // HEIF / AVIF
             ".heic", ".heif", ".hif", ".avif",
-            // Adobe / DTP
-            ".psd", ".psdt", ".psb", ".ps", ".ps2", ".ps3", ".eps", ".eps2",
-            ".eps3", ".epsf", ".ai", ".ait", ".ind", ".indd", ".indt", ".insp",
+            // PNG
+            ".png", ".apng",
+            // Video (MOV/MP4)
+            ".mov", ".mp4", ".m4v", ".qt", ".3gp", ".3g2",
             // PDF
             ".pdf",
-            // Video
-            ".mp4", ".m4a", ".m4b", ".m4p", ".m4v", ".mov", ".qt", ".3g2",
-            ".3gp", ".3gp2", ".3gpp", ".f4a", ".f4b", ".f4p", ".f4v", ".mqv",
-            // Others
-            ".360", ".aax", ".arq", ".ciff", ".cs1", ".dr4", ".dvb", ".exif",
-            ".exv", ".flif", ".gif", ".glv", ".hdp", ".icc", ".icm", ".mie", ".mng",
-            ".mpo", ".nksc", ".thm", ".vrd", ".wdp", ".webp", ".x3f", ".xmp",
+            // EPS / PS / AI
+            ".eps", ".ps", ".ai",
         ],
             ExcludedPatterns: ["~$*", "*.tmp"],
             OutputMode: "same_as_source",

@@ -37,7 +37,9 @@ public sealed class WorkerIpcClient
             readCts.CancelAfter(ReadTimeoutMs);
             try
             {
-                var line = await ReadBoundedLineAsync(stream, MaxResponseBytes, readCts.Token);
+                // 票 05（A-005）：缓冲读（原先此处与服务端各复制了一份 new byte[1] 逐字节读循环）。
+                // 有界语义不变：达到 MaxResponseBytes 上限即返回 null（超长响应丢弃）。
+                var line = await IpcLineReader.ReadBoundedLineAsync(stream, MaxResponseBytes, readCts.Token);
                 if (string.IsNullOrWhiteSpace(line))
                 {
                     return null;
@@ -153,21 +155,5 @@ public sealed class WorkerIpcClient
     public Task<WorkerIpcResponse?> GetRecentLogsAsync(string endpointName, CancellationToken cancellationToken)
     {
         return SendAsync(endpointName, new WorkerIpcRequest(WorkerIpcMethods.GetRecentLogs), cancellationToken);
-    }
-
-    private static async Task<string?> ReadBoundedLineAsync(
-        Stream stream, int maxBytes, CancellationToken cancellationToken)
-    {
-        using var buffer = new MemoryStream();
-        var byteBuf = new byte[1];
-        while (buffer.Length < maxBytes)
-        {
-            var read = await stream.ReadAsync(byteBuf, cancellationToken);
-            if (read == 0) break;
-            if (byteBuf[0] == (byte)'\n') break;
-            if (byteBuf[0] != (byte)'\r') buffer.WriteByte(byteBuf[0]);
-        }
-        if (buffer.Length >= maxBytes) return null;
-        return System.Text.Encoding.UTF8.GetString(buffer.ToArray());
     }
 }

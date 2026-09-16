@@ -25,7 +25,7 @@ public sealed class ExifToolBridgeTests
     [Fact]
     public async Task WipeMetadataAsync_Should_Complete_When_TaskDone_Line_Arrives()
     {
-        var process = new FakeExifToolProcess();
+        var process = new ProtocolLevelFakeExifToolProcess();
         var bridge = new ExifToolBridge(process, Config);
         await bridge.StartAsync(CancellationToken.None);
 
@@ -38,9 +38,9 @@ public sealed class ExifToolBridgeTests
     [Fact]
     public async Task WipeMetadataAsync_Should_Timeout_And_Remove_Pending_Task_When_Marker_Missing()
     {
-        var process = new FakeExifToolProcess
+        var process = new ProtocolLevelFakeExifToolProcess
         {
-            AutoEmitTaskDone = false
+            SilenceOutput = true
         };
         var bridge = new ExifToolBridge(process, Config);
         await bridge.StartAsync(CancellationToken.None);
@@ -56,7 +56,7 @@ public sealed class ExifToolBridgeTests
     [Fact]
     public async Task EnsureStartedAsync_Should_Start_Process_When_Not_Started()
     {
-        var process = new FakeExifToolProcess();
+        var process = new ProtocolLevelFakeExifToolProcess();
         var bridge = new ExifToolBridge(process, Config);
 
         await bridge.EnsureStartedAsync(CancellationToken.None);
@@ -68,9 +68,9 @@ public sealed class ExifToolBridgeTests
     [Fact]
     public async Task EnsureStartedAsync_Should_Restart_Process_When_HealthCheck_Times_Out()
     {
-        var process = new FakeExifToolProcess
+        var process = new ProtocolLevelFakeExifToolProcess
         {
-            SuppressHealthReady = true
+            SilenceOutput = true
         };
         var bridge = new ExifToolBridge(process, Config);
 
@@ -84,7 +84,7 @@ public sealed class ExifToolBridgeTests
     [Fact]
     public async Task EnsureStartedAsync_Should_Not_Restart_When_Health_Response_Arrives_In_300ms()
     {
-        var process = new FakeExifToolProcess
+        var process = new ProtocolLevelFakeExifToolProcess
         {
             HealthResponseDelayMs = 300
         };
@@ -101,7 +101,7 @@ public sealed class ExifToolBridgeTests
     [Fact]
     public async Task EnsureStartedAsync_Should_Probe_ExifTool_Version_On_First_Start()
     {
-        var process = new FakeExifToolProcess();
+        var process = new ProtocolLevelFakeExifToolProcess();
         var bridge = new ExifToolBridge(process, Config);
 
         await bridge.EnsureStartedAsync(CancellationToken.None);
@@ -112,7 +112,7 @@ public sealed class ExifToolBridgeTests
     [Fact]
     public async Task EnsureStartedAsync_Should_Emit_ExifToolStarted_Lifecycle_Event_On_First_Start()
     {
-        var process = new FakeExifToolProcess();
+        var process = new ProtocolLevelFakeExifToolProcess();
         var lifecycleEvents = new List<ExifToolLifecycleEvent>();
         var bridge = new ExifToolBridge(
             process,
@@ -132,7 +132,7 @@ public sealed class ExifToolBridgeTests
     [Fact]
     public async Task EnsureStartedAsync_Should_Include_Start_CommandLine_In_ExifToolStarted_Data()
     {
-        var process = new FakeExifToolProcess();
+        var process = new ProtocolLevelFakeExifToolProcess();
         var lifecycleEvents = new List<ExifToolLifecycleEvent>();
         var bridge = new ExifToolBridge(
             process,
@@ -155,9 +155,9 @@ public sealed class ExifToolBridgeTests
     [Fact]
     public async Task EnsureStartedAsync_Should_Emit_ExifToolRestarted_Lifecycle_Event_When_HealthCheck_Times_Out()
     {
-        var process = new FakeExifToolProcess
+        var process = new ProtocolLevelFakeExifToolProcess
         {
-            SuppressHealthReady = true
+            SilenceOutput = true
         };
 
         var lifecycleEvents = new List<ExifToolLifecycleEvent>();
@@ -181,9 +181,9 @@ public sealed class ExifToolBridgeTests
     [Fact]
     public async Task EnsureStartedAsync_Should_Include_Timeout_Reason_In_ExifToolRestarted_Data()
     {
-        var process = new FakeExifToolProcess
+        var process = new ProtocolLevelFakeExifToolProcess
         {
-            SuppressHealthReady = true,
+            SilenceOutput = true,
             LastStderrLine = "stderr: timeout"
         };
 
@@ -210,7 +210,7 @@ public sealed class ExifToolBridgeTests
     [Fact]
     public async Task EnsureStartedAsync_HealthCheck_Should_Use_Fast_Path_Probe_With_Marker()
     {
-        var process = new FakeExifToolProcess();
+        var process = new ProtocolLevelFakeExifToolProcess();
         var bridge = new ExifToolBridge(process, Config);
 
         await bridge.EnsureStartedAsync(CancellationToken.None);
@@ -219,14 +219,62 @@ public sealed class ExifToolBridgeTests
         var healthCommand = process.Writes.Last(x => x.Contains("HEALTH_", StringComparison.Ordinal));
         Assert.Contains("-fast", healthCommand, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("-execute", healthCommand, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains(Config.ExifTool.Path, healthCommand, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("-ver", healthCommand, StringComparison.OrdinalIgnoreCase);
+
+        // 票 05（A-005）合同变更：本断言原先锁定的是缺陷本身——健康探针把 exiftool 自身路径
+        // 当「待解析文件」喂入（原为 Assert.Contains(Config.ExifTool.Path, healthCommand, ...)）。
+        // 现翻转为回归守卫：轻量探针不得携带任何文件参数。
+        Assert.DoesNotContain(Config.ExifTool.Path, healthCommand, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task EnsureStartedAsync_Should_Not_Restart_Per_File_When_Health_Probe_Is_File_Free()
+    {
+        // 票 05（A-005）行为测试（抓住原 bug）：原健康探针把 exiftool 自身路径当「待解析文件」喂入，
+        // ExifTool 真去解析那个二进制 → 慢机上 >500ms 触发 health_timeout → 每处理一个文件就整进程重启，
+        // 摧毁 stay_open 常驻收益。本 fake 把「命令块含文件参数」折算成 900ms 回包延迟
+        // （> RunningHealthTimeout 500ms）：旧探针必然超时重启（StartCalls > 1），
+        // 新探针不含文件参数 → 恒健康 → 零重启。
+        var process = new ProtocolLevelFakeExifToolProcess
+        {
+            FileInputParseDelayMs = 900
+        };
+        var bridge = new ExifToolBridge(process, Config);
+
+        await bridge.EnsureStartedAsync(CancellationToken.None);
+        await bridge.EnsureStartedAsync(CancellationToken.None);
+        await bridge.EnsureStartedAsync(CancellationToken.None);
+
+        Assert.Equal(1, process.StartCalls);
+        Assert.Equal(0, process.StopCalls);
+    }
+
+    [Fact]
+    public async Task EnsureStartedAsync_Concurrent_Health_Failures_Should_Serialize_Restart()
+    {
+        // 票 05（A-005）行为测试（抓住原 bug）：重启路径原不持 _startLock，
+        // 多个调用方同时探到 unhealthy 时会并发 Stop/Start 同一进程（重启风暴 + _started 交错）。
+        // 故障注入为进程级静默 → 三次并发调用都会探到 unhealthy；
+        // 修复后重启被 _startLock 串行化 → StartAsync 并发进入峰值恒为 1。
+        var process = new ProtocolLevelFakeExifToolProcess
+        {
+            SilenceOutput = true,
+            StartDelayMs = 100
+        };
+        var bridge = new ExifToolBridge(process, Config, healthTimeout: TimeSpan.FromMilliseconds(100));
+
+        await bridge.EnsureStartedAsync(CancellationToken.None);
+
+        await Task.WhenAll(
+            Enumerable.Range(0, 3).Select(_ => Task.Run(() => bridge.EnsureStartedAsync(CancellationToken.None))));
+
+        Assert.Equal(1, process.MaxConcurrentStartCalls);
     }
 
     [Fact]
     public async Task EnsureStartedAsync_Should_Log_Warning_When_WindowsLongPath_Known_Issue_Version_Detected()
     {
-        var process = new FakeExifToolProcess
+        var process = new ProtocolLevelFakeExifToolProcess
         {
             VersionText = "13.05"
         };
@@ -245,7 +293,7 @@ public sealed class ExifToolBridgeTests
     [Fact]
     public async Task EnsureStartedAsync_Should_Allow_Version_Probe_Delay_Above_2Seconds()
     {
-        var process = new FakeExifToolProcess
+        var process = new ProtocolLevelFakeExifToolProcess
         {
             VersionResponseDelayMs = 2200
         };
@@ -264,7 +312,7 @@ public sealed class ExifToolBridgeTests
     [Fact]
     public async Task EnsureStartedAsync_Should_Emit_VersionWarning_Lifecycle_Event_When_Known_Issue_Version_Detected()
     {
-        var process = new FakeExifToolProcess
+        var process = new ProtocolLevelFakeExifToolProcess
         {
             VersionText = "13.05"
         };
@@ -289,179 +337,47 @@ public sealed class ExifToolBridgeTests
                 && ev.Message.Contains("WindowsLongPath", StringComparison.OrdinalIgnoreCase));
     }
 
-    private sealed class FakeExifToolProcess : IExifToolProcess
+    [Fact]
+    public async Task WipeMetadataAsync_Should_Return_UnknownFormat_Without_Touching_ExifTool()
     {
-        public event Action<string>? StdoutLine;
+        // 票 01（A-001）：未知格式立即跳过——不进 ExifTool、不写协议块、不注册等待 marker。
+        var process = new ProtocolLevelFakeExifToolProcess();
+        var bridge = new ExifToolBridge(process, Config);
 
-        public string ExePath { get; private set; } = string.Empty;
-        public IReadOnlyList<string> Args => _args;
-        public List<string> Writes { get; } = [];
-        public bool IsRunning { get; private set; }
-        public string? LastStderrLine { get; set; }
+        var result = await bridge
+            .WipeMetadataAsync(Path.Combine(Path.GetTempPath(), "pp-bridge", "legacy.webp"), CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(5));
 
-        public int StartCalls { get; private set; }
-        public int StopCalls { get; private set; }
-        public bool SuppressHealthReady { get; set; }
-        public bool AutoEmitTaskDone { get; set; } = true;
-        public string VersionText { get; set; } = "13.20";
-        public int HealthResponseDelayMs { get; set; }
-        public int VersionResponseDelayMs { get; set; }
+        Assert.Equal(WipeResult.UnknownFormat, result);
+        Assert.Equal(0, process.StartCalls);
+        Assert.Empty(process.Writes);
+        Assert.Equal(0, bridge.PendingCount);
+    }
 
-        private readonly List<string> _args = [];
-
-        public Task StartAsync(string exePath, string[] args, CancellationToken cancellationToken)
+    [Fact]
+    public async Task WipeMetadataAsync_Should_Return_Cleaned_NoOp_Without_Waiting_When_No_Rule_Produces_Args()
+    {
+        // 票 01（A-001）：已知族但规则产出空参数（no_rules）时同样不得注册等待 marker。
+        var process = new ProtocolLevelFakeExifToolProcess();
+        var rules = new Dictionary<string, bool>
         {
-            StartCalls++;
-            ExePath = exePath;
-            _args.Clear();
-            _args.AddRange(args);
-            IsRunning = true;
-            return Task.CompletedTask;
-        }
+            [FormatRulesStore.Key("jpeg", "strip_all")] = false,
+            [FormatRulesStore.Key("jpeg", "preserve_icc")] = true,
+            [FormatRulesStore.Key("jpeg", "strip_exif")] = false,
+            [FormatRulesStore.Key("jpeg", "strip_xmp")] = false,
+            [FormatRulesStore.Key("jpeg", "strip_iptc")] = false,
+            [FormatRulesStore.Key("jpeg", "strip_time")] = false
+        };
 
-        public Task WriteStdinAsync(string text, CancellationToken cancellationToken)
-        {
-            Writes.Add(text);
+        var bridge = new ExifToolBridge(process, Config, logger: null, lifecycleSink: null, healthTimeout: null, wipeRules: rules);
 
-            var markerLines = ParseEchoMarkers(text);
+        var result = await bridge
+            .WipeMetadataAsync(Path.Combine(Path.GetTempPath(), "pp-bridge", "a.jpg"), CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(5));
 
-            foreach (var marker in markerLines)
-            {
-                if (marker.Contains("HEALTH_", StringComparison.Ordinal) && !SuppressHealthReady)
-                {
-                    EmitHealthReady(marker);
-                }
-
-                if (marker.Contains("TASK_DONE_", StringComparison.Ordinal) && AutoEmitTaskDone)
-                {
-                    EmitStdout(marker);
-                }
-
-                if (marker.Contains("PROBE_DONE_", StringComparison.Ordinal))
-                {
-                    // Real ExifTool echoes markers BEFORE file processing output.
-                    EmitStdout(marker);
-                    EmitStdout("[{\"SourceFile\":\"probe\",\"GPSLatitude\":\"0\"}]");
-                    EmitStdout("{ready}");
-                }
-
-                if (marker.Contains("VERSION_DONE_", StringComparison.Ordinal))
-                {
-                    EmitVersionReady(marker);
-                }
-            }
-
-            var hasVersionProbe = text.Contains("-ver", StringComparison.OrdinalIgnoreCase);
-            var hasVersionDoneMarker = markerLines.Any(x => x.Contains("VERSION_DONE_", StringComparison.Ordinal));
-            if (hasVersionProbe && !hasVersionDoneMarker)
-            {
-                // 发射版本探测 marker，让 handler 知道版本数据即将到来
-                var versionMarker = markerLines.LastOrDefault(m => m.Contains("VERSION_", StringComparison.Ordinal));
-                if (versionMarker is not null)
-                {
-                    EmitStdout(versionMarker);
-                }
-                EmitHealthVersion();
-            }
-
-            return Task.CompletedTask;
-        }
-
-        private static string[] ParseEchoMarkers(string text)
-        {
-            var lines = text
-                .Split('\n', StringSplitOptions.RemoveEmptyEntries)
-                .Select(l => l.Trim())
-                .ToArray();
-
-            var markers = new List<string>();
-            for (var i = 0; i < lines.Length; i++)
-            {
-                var line = lines[i];
-                if (!line.StartsWith("-echo1", StringComparison.Ordinal))
-                {
-                    continue;
-                }
-
-                var suffix = line["-echo1".Length..].Trim();
-                if (!string.IsNullOrWhiteSpace(suffix))
-                {
-                    markers.Add(suffix);
-                    continue;
-                }
-
-                if (i + 1 < lines.Length && !lines[i + 1].StartsWith("-", StringComparison.Ordinal))
-                {
-                    markers.Add(lines[i + 1]);
-                }
-            }
-
-            return markers.ToArray();
-        }
-
-        public Task StopAsync(CancellationToken cancellationToken)
-        {
-            StopCalls++;
-            IsRunning = false;
-            return Task.CompletedTask;
-        }
-
-        private void EmitHealthReady(string marker)
-        {
-            if (HealthResponseDelayMs <= 0)
-            {
-                EmitStdout(marker);
-                return;
-            }
-
-            _ = Task.Run(async () =>
-            {
-                await Task.Delay(HealthResponseDelayMs);
-                EmitStdout(marker);
-            });
-        }
-
-        private void EmitVersionReady(string marker)
-        {
-            if (VersionResponseDelayMs <= 0)
-            {
-                EmitStdout(VersionText);
-                EmitStdout(marker);
-                return;
-            }
-
-            _ = Task.Run(async () =>
-            {
-                await Task.Delay(VersionResponseDelayMs);
-                EmitStdout(VersionText);
-                EmitStdout(marker);
-            });
-        }
-
-        private void EmitHealthVersion()
-        {
-            if (SuppressHealthReady)
-            {
-                return;
-            }
-
-            if (VersionResponseDelayMs <= 0)
-            {
-                EmitStdout(VersionText);
-                return;
-            }
-
-            _ = Task.Run(async () =>
-            {
-                await Task.Delay(VersionResponseDelayMs);
-                EmitStdout(VersionText);
-            });
-        }
-
-        public void EmitStdout(string line)
-        {
-            StdoutLine?.Invoke(line);
-        }
+        Assert.Equal(WipeResult.Cleaned_NoOp, result);
+        Assert.Equal(0, bridge.PendingCount);
+        Assert.DoesNotContain(process.Writes, w => w.Contains("TASK_DONE_", StringComparison.Ordinal));
     }
 
     private sealed class ListLogger<T> : ILogger<T>

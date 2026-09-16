@@ -4,10 +4,6 @@
     <OutputType>WinExe</OutputType>
     <UseWpf>false</UseWpf>
     <UseWindowsForms>false</UseWindowsForms>
-    <SelfContained>true</SelfContained>
-    <PublishSingleFile>true</PublishSingleFile>
-    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-    <PublishTrimmed>false</PublishTrimmed>
     <DebugType>embedded</DebugType>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
