@@ -72,24 +72,65 @@ public sealed class RuleEngine
             ? Pipeline.BackupPathResolver.ResolveDefaultBackupDir(_config.Watch.HotFolder)
             : backup.Directory;
 
-        var fileName = Path.GetFileName(sourcePath);
-        var backupFileName = fileName + backup.Suffix;
-
-        return Path.Combine(backupDir, backupFileName);
+        // 票 03（A-006 / D-006）：镜像相对路径布局——备份根下按源文件相对监控根的
+        // 子路径镜像，结构性消除跨子目录同名文件的备份互相覆盖；无法归位监控子树时
+        // 回退 "_unsorted/文件名.短哈希" 兜底。防穿越/规范化/保留名由 Resolver 收口。
+        return Pipeline.BackupPathResolver.ResolveBackupSlot(
+            sourcePath, _config.Watch.HotFolder, backupDir, backup.Suffix);
     }
 
+    /// <summary>
+    /// 票 02（A-003）：真通配匹配——<c>*</c> 匹配任意长度（含空）序列，<c>?</c> 匹配恰好一个字符，
+    /// 其余字符按字面量匹配；整串锚定（非子串包含），大小写口径与收敛前两个字面量分支一致
+    /// （OrdinalIgnoreCase）。匹配对象是文件名（<see cref="Path.GetFileName(string)"/>），
+    /// 故模式里的路径分隔符永远匹配不到——该情形由 <c>AppConfigValidator.CollectWarnings</c>
+    /// 以告警形式暴露（不识别≠静默）。
+    /// 实现用两指针 + 星号回退法：O(n·m) 上界、无正则、无回溯爆炸面（模式来自用户配置）。
+    /// </summary>
     private static bool MatchesPattern(string fileName, string pattern)
     {
-        if (string.Equals(pattern, "~$*", StringComparison.Ordinal))
+        var nameIndex = 0;
+        var patternIndex = 0;
+        var starPatternIndex = -1;
+        var starNameIndex = 0;
+
+        while (nameIndex < fileName.Length)
         {
-            return fileName.StartsWith("~$", StringComparison.OrdinalIgnoreCase);
+            if (patternIndex < pattern.Length
+                && (pattern[patternIndex] == '?' || EqualsIgnoringCase(pattern[patternIndex], fileName[nameIndex])))
+            {
+                nameIndex++;
+                patternIndex++;
+                continue;
+            }
+
+            if (patternIndex < pattern.Length && pattern[patternIndex] == '*')
+            {
+                starPatternIndex = patternIndex;
+                starNameIndex = nameIndex;
+                patternIndex++;
+                continue;
+            }
+
+            if (starPatternIndex >= 0)
+            {
+                patternIndex = starPatternIndex + 1;
+                starNameIndex++;
+                nameIndex = starNameIndex;
+                continue;
+            }
+
+            return false;
         }
 
-        if (string.Equals(pattern, "*.tmp", StringComparison.Ordinal))
+        while (patternIndex < pattern.Length && pattern[patternIndex] == '*')
         {
-            return fileName.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase);
+            patternIndex++;
         }
 
-        return false;
+        return patternIndex == pattern.Length;
     }
+
+    private static bool EqualsIgnoringCase(char left, char right)
+        => char.ToUpperInvariant(left) == char.ToUpperInvariant(right);
 }
