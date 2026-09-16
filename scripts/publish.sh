@@ -82,6 +82,9 @@ dotnet publish "${REPO_ROOT}/src/PhotoPrivacy.Ui/PhotoPrivacy.Ui.csproj" \
   -f "$FRAMEWORK" \
   -r "$RUNTIME" \
   --self-contained "$SC" \
+  /p:PublishSingleFile=true \
+  /p:IncludeNativeLibrariesForSelfExtract=true \
+  /p:PublishTrimmed=false \
   /p:Version="$VERSION" \
   /p:UseAppHost=true \
   -o "$UI_PUB_DIR"
