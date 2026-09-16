@@ -41,7 +41,8 @@ public static class ExifToolCommandBuilder
 
     /// <summary>
     /// ADR 0053 M6a: Build wipe task block using per-format safe defaults via WipeStrategyResolver.
-    /// Unknown extensions are rejected (audit wipe_skipped_unknown).
+    /// 票 01：skip 情形（unknown_format / no_rules）不再产出不可完成的 SKIP_ 块，
+    /// 而是直接抛错——调用方必须先在写盘前跳过（ExifToolBridge 落 wipe_skipped_unknown 审计）。
     /// </summary>
     public static string BuildWipeTaskBlock(string targetPath, string taskId)
         => BuildWipeTaskBlock(targetPath, taskId, rules: null);
@@ -56,13 +57,13 @@ public static class ExifToolCommandBuilder
         var wipe = WipeStrategyResolver.Resolve(targetPath, rules);
         if (wipe.SkipReason is not null)
         {
-            // Unknown format — return a no-op probe block so the task completes cleanly
-            // with a warning echo. The caller should audit wipe_skipped_unknown.
-            var noOp = new StringBuilder();
-            noOp.Append("-echo1\n");
-            noOp.Append($"SKIP_{taskId}\n");
-            noOp.Append("-execute\n");
-            return noOp.ToString();
+            // 票 01（A-001）：绝不产出“回显 SKIP_ 却让调用方等待 TASK_DONE_”的块——那是永久挂死链
+            // （原实现：SKIP_ no-op 块永不匹配 TASK_DONE_ marker，TCS 挂到取消）。
+            // skip 判定必须由调用方（ExifToolBridge.WipeMetadataAsync）在写盘之前完成；
+            // 这里 fail-closed 直接抛错，让“会挂死的块”在构造层就不可存在。
+            throw new InvalidOperationException(
+                $"Wipe strategy for extension '{Path.GetExtension(targetPath)}' is '{wipe.SkipReason}'; " +
+                "resolve the strategy and skip before building a wipe task block.");
         }
 
         var sb = new StringBuilder();

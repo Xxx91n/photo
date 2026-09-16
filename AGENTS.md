@@ -156,11 +156,11 @@ dotnet vstest tests\PhotoPrivacy.IntegrationTests\bin\Debug\net10.0\PhotoPrivacy
 
 ### IPC 规则
 
-1. **命名管道需认证** — 验证连接方身份
+1. **IPC 认证依赖 OS 身份边界** — 认证 = 内核访问控制（Windows `PipeOptions.CurrentUserOnly`；Unix socket 文件模式 background 0600 / service 0660+组边界、目录 0750）+ 对端凭据校验（`SO_PEERCRED` / `getpeereid`，accepted socket 上比对 uid）+ 首实例防抢占（`PipeOptions.FirstPipeInstance`，**仅 ListenAsync 预建的首实例**，accept 后预建的后续实例不得加标志）；**同 OS 用户进程不在防御范围内**（同用户进程具备同等文件/管道权限，任何 IPC 方案均无法区分）（见 ADR 0067）
 2. **消息验证** — 反序列化前校验格式和大小
 3. **超时处理** — 避免无限等待
 4. **禁止 sync-over-async on UI 线程** — 禁止在 UI 线程调用 Worker IPC 使用 .GetAwaiter().GetResult() 或 .Result（见 ADR 0035）。WorkerIpcClient.SendAsync 已加 3s 读超时兜底
-5. **NamedPipe 不使用 ACL** — Background 模式同用户不需要 WorldSid ACL；NamedPipeServerStreamAcl.Create 在单文件解压上下文抛 UnauthorizedAccessException 并泄漏管道实例（见 ADR 0035）
+5. **NamedPipe 不使用 ACL** — 禁止 `NamedPipeServerStreamAcl.Create`：该 API 在单文件解压上下文抛 UnauthorizedAccessException 并泄漏管道实例（见 ADR 0035）；同用户边界改用 `PipeOptions.CurrentUserOnly`（见 ADR 0067）
 6. **TrayIcon.IsVisible 延迟设置** — 必须用 Dispatcher.UIThread.Post(Background) 延迟，避免 Avalonia 11.1.3 在 InitializeRuntime 中死锁 UI 线程
 7. **Service 模式必须配置文件日志** — 禁止用 `if (mode != RuntimeMode.Service)` 跳过 Serilog File sink；服务崩溃时 stdout 不可见会导致完全无诊断信息（见 ADR 0036）
 8. **Background 和 Service 必须使用独立 Mutex** — 禁止共享同一个 `Global\PhotoPrivacyWorker_Instance`；它们有独立的 IPC 端点，共存时不能互相阻塞（见 ADR 0036）
@@ -186,6 +186,7 @@ dotnet vstest tests\PhotoPrivacy.IntegrationTests\bin\Debug\net10.0\PhotoPrivacy
 | Background 和 Service 共享同一 Mutex | Background 持有 Mutex 时 Service 无法启动（见 ADR 0036） |
 | 发布脚本只复制 config.sample.json 不复制 config.json | 服务 binPath 引用 config.json 不存在，Worker 启动失败 |
 | install-service.ps1 使用 `"""` 三重引号拼接 binPath | PowerShell 5.1 ParserError，脚本无法执行 |
+| 依赖 pipe 名保密 / 客户端 PID 或进程路径做强校验 / abstract socket namespace | 均为可绕过或不可移植的伪边界（PID 可伪造、abstract socket 无权限语义）（见 ADR 0067） |
 | GitButler 历史改写/丢弃操作（move/undo/resolve cancel/squash/discard/uncommit/branch delete/pull）前不先快照 .scratch 流程产物 | .scratch 不受版本控制，栈手术曾整树蒸发（ADR 0058 事故 1）；双轨防护见 .scratch/architecture-recovery/WORKFLOW.md §4.4 |
 
 | 依赖手动"应用配置"按钮做配置持久化 | 用户忘记点击 → 重启后配置丢失（见 ADR 0037） |
@@ -226,6 +227,7 @@ dotnet vstest tests\PhotoPrivacy.IntegrationTests\bin\Debug\net10.0\PhotoPrivacy
 - [ ] ExifTool 调用使用 `stay_open` + 参数转义
 - [ ] 文件路径经过验证（无穿越、无注入）
 - [ ] IPC 消息经过验证和大小限制
+- [ ] IPC 认证分层在场：内核边界（Windows CurrentUserOnly / Unix 0600或0660+组）+ 对端凭据校验 + 首实例防抢占（见 ADR 0067）
 - [ ] 无硬编码密钥或路径
 - [ ] 资源正确释放（using/Dispose）
 - [ ] 异常处理不吞掉安全相关异常

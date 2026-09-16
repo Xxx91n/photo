@@ -54,6 +54,9 @@ dotnet publish (Join-Path $repoRoot "src" | Join-Path -ChildPath "PhotoPrivacy.U
   -f $resolvedFramework `
   -r $Runtime `
   --self-contained $selfContainedValue `
+  /p:PublishSingleFile=true `
+  /p:IncludeNativeLibrariesForSelfExtract=true `
+  /p:PublishTrimmed=false `
   /p:Version=$Version `
   /p:UseAppHost=true `
   -o $uiPublishDir
