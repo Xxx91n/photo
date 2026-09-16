@@ -31,7 +31,7 @@ public sealed class WorkerIpcServerHostedService : BackgroundService
 
         try
         {
-            _transport = IpcTransportFactory.CreateServer(endpoint);
+            _transport = IpcTransportFactory.CreateServer(endpoint, _runtime.Mode == RuntimeMode.Service);
             await _transport.ListenAsync(stoppingToken);
         }
         catch (Exception ex)

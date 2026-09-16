@@ -1,0 +1,71 @@
+# 04 冒烟实验留证 — 单文件 IncludeNativeLibrariesForSelfExtract true/false 各一次
+# 票 04（IPC 面：认证分层 + 承诺改写 + 部署配套）· correctness-round
+# 生成时间：2026-09-16 · 环境：Windows NT 10.0.26100.0 · dotnet 10.0.201
+# 工程：OS 临时目录独立最小控制台工程（不入仓库）· 发布参数：-r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=false
+# 探针组：A=主机制(CurrentUserOnly+FirstPipeInstance) B=ADR0035 ACL 对照组 C=实例泄漏探针(300>254) D=首实例/后续实例共存 E=基线
+# 裁决：两种提取取值下 CurrentUserOnly 均未复现 ADR 0035 坑 → Windows 主机制不降级
+# 范围限定（提交后复核补记）：探针 A3 仅验证同用户 roundtrip，未设跨用户对照；本裁决不覆盖 Windows
+# service 模式跨用户路径（见报告 §6 张力 2 / ADR 0067 已知限制 4、5）。
+SMOKE START 2026-09-16T11:46:14+08:00
+dotnet: 10.0.201
+
+================ VARIANT IncludeNativeLibrariesForSelfExtract=true ================
+  IpcSmoke -> C:\Users\Administrator\AppData\Local\Temp\pp-ipc-smoke\bin\Release\net10.0\win-x64\IpcSmoke.dll
+  IpcSmoke -> C:\Users\Administrator\AppData\Local\Temp\pp-ipc-smoke\out-true\
+PUBLISH_EXIT=0
+total 71828
+drwxr-xr-x 1 I 197121        0 Sep 16 11:46 .
+drwxr-xr-x 1 I 197121        0 Sep 16 11:46 ..
+-rwxr-xr-x 1 I 197121 73529348 Sep 16 11:46 IpcSmoke.exe
+-rw-r--r-- 1 I 197121    12412 Sep 16 11:46 IpcSmoke.pdb
+--- RUN ---
+========================================================================
+SINGLE_FILE_SMOKE
+  SMOKE_EXTRACT env   = true
+  Assembly.Location   = 
+  Environment.ProcessPath = C:\Users\ADMINI~1\AppData\Local\Temp\pp-ipc-smoke\out-true\IpcSmoke.exe
+  AppContext.BaseDirectory = C:\Users\ADMINI~1\AppData\Local\Temp\pp-ipc-smoke\out-true\
+  OS = Microsoft Windows NT 10.0.26100.0  User = I
+========================================================================
+[A1] OK   ctor(Asynchronous|CurrentUserOnly|FirstPipeInstance) 首实例创建成功（未抛异常）
+[A2] OK   重复 FirstPipeInstance 抛 UnauthorizedAccessException: Access to the path is denied.
+[A3] OK   同用户 roundtrip server<='PING' client<='PONG'
+[B1] OK   NamedPipeServerStreamAcl.Create 成功（ADR 0035 坑本次未复现）
+[C1] OK   CurrentUserOnly 实例 create/dispose 300 次零失败（无 254 泄漏）
+[D1] OK   首实例(FirstPipeInstance) + 后续实例(仅 CurrentUserOnly) 可共存
+[E1] OK   基线 ctor(仅 Asynchronous) 成功（当前生产形态）
+========================================================================
+SMOKE_DONE
+RUN_EXIT=0
+
+================ VARIANT IncludeNativeLibrariesForSelfExtract=false ================
+  IpcSmoke -> C:\Users\Administrator\AppData\Local\Temp\pp-ipc-smoke\bin\Release\net10.0\win-x64\IpcSmoke.dll
+  IpcSmoke -> C:\Users\Administrator\AppData\Local\Temp\pp-ipc-smoke\out-false\
+PUBLISH_EXIT=0
+total 71828
+drwxr-xr-x 1 I 197121        0 Sep 16 11:46 .
+drwxr-xr-x 1 I 197121        0 Sep 16 11:46 ..
+-rwxr-xr-x 1 I 197121 73529348 Sep 16 11:46 IpcSmoke.exe
+-rw-r--r-- 1 I 197121    12412 Sep 16 11:46 IpcSmoke.pdb
+--- RUN ---
+========================================================================
+SINGLE_FILE_SMOKE
+  SMOKE_EXTRACT env   = false
+  Assembly.Location   = 
+  Environment.ProcessPath = C:\Users\ADMINI~1\AppData\Local\Temp\pp-ipc-smoke\out-false\IpcSmoke.exe
+  AppContext.BaseDirectory = C:\Users\ADMINI~1\AppData\Local\Temp\pp-ipc-smoke\out-false\
+  OS = Microsoft Windows NT 10.0.26100.0  User = I
+========================================================================
+[A1] OK   ctor(Asynchronous|CurrentUserOnly|FirstPipeInstance) 首实例创建成功（未抛异常）
+[A2] OK   重复 FirstPipeInstance 抛 UnauthorizedAccessException: Access to the path is denied.
+[A3] OK   同用户 roundtrip server<='PING' client<='PONG'
+[B1] OK   NamedPipeServerStreamAcl.Create 成功（ADR 0035 坑本次未复现）
+[C1] OK   CurrentUserOnly 实例 create/dispose 300 次零失败（无 254 泄漏）
+[D1] OK   首实例(FirstPipeInstance) + 后续实例(仅 CurrentUserOnly) 可共存
+[E1] OK   基线 ctor(仅 Asynchronous) 成功（当前生产形态）
+========================================================================
+SMOKE_DONE
+RUN_EXIT=0
+
+ALL_DONE 2026-09-16T11:46:35+08:00
+

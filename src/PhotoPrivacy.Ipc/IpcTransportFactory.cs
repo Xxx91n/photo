@@ -7,15 +7,26 @@ namespace PhotoPrivacy.Ipc;
 public static class IpcTransportFactory
 {
     /// <summary>
-    /// Create a server-side transport for the given endpoint.
+    /// Create a transport for the given endpoint (background-mode access policy).
     /// On Windows, <paramref name="endpointName"/> is the pipe name.
     /// On Linux/macOS, <paramref name="endpointName"/> is the socket file path.
     /// </summary>
     public static IIpcTransport CreateServer(string endpointName)
     {
+        return CreateServer(endpointName, isServiceMode: false);
+    }
+
+    /// <summary>
+    /// Create a server-side transport with the access policy matching the runtime mode
+    /// (ADR 0067: background 0600 / service 0660+group on Unix).
+    /// </summary>
+    public static IIpcTransport CreateServer(string endpointName, bool isServiceMode)
+    {
         if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
         {
-            return new UnixDomainSocketIpcTransport(endpointName);
+            return new UnixDomainSocketIpcTransport(
+                endpointName,
+                isServiceMode ? UnixSocketAccessMode.ServiceShared : UnixSocketAccessMode.BackgroundOnly);
         }
         return new NamedPipeIpcTransport(endpointName);
     }
