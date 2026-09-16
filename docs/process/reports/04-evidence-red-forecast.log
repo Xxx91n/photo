@@ -1,0 +1,41 @@
+==============================================================
+04 新增/既有守卫失效即红预演（本机静态复演，零 dotnet）
+生成：2026-09-16 · CI-only 纪律下本机零 build 零 test，本预演为静态口径
+==============================================================
+
+### 1. 既有守卫 UdsEndpointOwnershipGuardTests.DisposeAsync_Should_Delete_Socket_Only_When_Owning_Endpoint
+  绿源判定：violations=0  => PASS（既有守卫零破坏）
+  突变 [ownership 标志短路为 true] => violations=2  RED（符合预期）
+  突变 [File.Delete 被非所有权条件守卫] => violations=1  RED（符合预期）
+  突变 [ownership 标志与活动 listener 解耦] => violations=1  RED（符合预期）
+  负向自证：3/3 突变被捕获
+
+### 2. 新增守卫 AgentsMd_Ipc_Auth_Claim_Should_Match_Implementation_Scope
+  绿源判定：violations=0  => PASS
+  突变 [认证口径被删] => violations=1  RED（符合预期）
+  突变 [主机制登记被删] => violations=1  RED（符合预期）
+  突变 [旧未兼现承诺回潮] => violations=1  RED（符合预期）
+  负向自证：3/3 突变被捕获
+
+### 3. 新增守卫 UiSingleInstance_Should_Not_Call_The_Acl_Pipe_Api
+  绿源判定：violations=0  => PASS
+  注：绿源为去注释后文本（文档注释引用 API 名以说明理由，不构成假阳性）
+  突变 [ACL 调用回潮] => violations=1  RED（符合预期）
+  突变 [同用户边界被删] => violations=1  RED（符合预期）
+  负向自证：2/2 突变被捕获
+
+### 4. 新增守卫 Systemd_Unit_Template_Should_Pin_RuntimeDirectoryMode_And_Group_Supply
+  绿源判定：violations=0  => PASS
+  突变 [目录模式被放宽] => violations=1  RED（符合预期）
+  突变 [组供给被移除] => violations=1  RED（符合预期）
+  负向自证：2/2 突变被捕获
+
+### 5. 新增守卫 NamedPipeTransport_Should_Apply_FirstPipeInstance_Only_To_The_First_Instance
+  绿源判定：violations=0  => PASS
+  突变 [首实例调用点被改为后续实例] => violations=2  RED（符合预期）
+  突变 [FirstPipeInstance 守卫被短路] => violations=1  RED（符合预期）
+  负向自证：2/2 突变被捕获
+
+==============================================================
+汇总：5 组分类器绿源全部 PASS；负向自证 12/12 突变均变红
+==============================================================

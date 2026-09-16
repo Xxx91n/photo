@@ -1,0 +1,9 @@
+旧构造: slotA=D:\hot\bak\IMG_0001.jpg.bak
+旧构造: slotB=D:\hot\bak\IMG_0001.jpg.bak
+旧构造 slotA==slotB → 同槽位（覆盖发生）
+新构造: slotA=D:\hot\bak\vacation\IMG_0001.jpg.bak
+新构造: slotB=D:\hot\bak\work\IMG_0001.jpg.bak
+新构造 slotA==slotB → 不同（消歧成立）
+
+结论：若回退 RuleEngine.ResolveBackupPath 至旧构造，HandleAsync_TwinNames + ResolveBackupSlot_CrossSubdirSameName 两断言必红（复演成立）
+回退推演：FileTaskPipeline 若还原 AtomicCopyAsync(overwrite:true)，场景2 identical_content_slot_kept 事件断言红（无跳过路径），场景3 slotBytesV1 保真断言红（File.Replace 覆盖）——复演成立

@@ -5,6 +5,7 @@ SERVICE_NAME="photoprivacy"
 INSTALL_DIR="/opt/photoprivacy"
 USER_NAME="photoprivacy"
 GROUP_NAME="photoprivacy"
+GUI_USER="${SUDO_USER:-}"
 HOT_FOLDER="/var/lib/photoprivacy/hot"
 AUDIT_FOLDER="/var/log/photoprivacy"
 QUARANTINE_FOLDER="/var/lib/photoprivacy/quarantine"
@@ -22,6 +23,8 @@ Options:
   --quarantine <path>      Quarantine folder for setup hints
   --user <name>            Service user (default: ${USER_NAME})
   --group <name>           Service group (default: ${GROUP_NAME})
+  --gui-user <name>        GUI user to add to the service group for IPC socket access
+                           (default: invoking sudo user, "${SUDO_USER:-}")
   -h, --help               Show this help
 EOF
 }
@@ -54,6 +57,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --group)
       GROUP_NAME="$2"
+      shift 2
+      ;;
+    --gui-user)
+      GUI_USER="$2"
       shift 2
       ;;
     -h|--help)
@@ -92,6 +99,19 @@ mkdir -p "$HOT_FOLDER" "$AUDIT_FOLDER" "$QUARANTINE_FOLDER"
 chown -R "$USER_NAME:$GROUP_NAME" "$INSTALL_DIR" "$HOT_FOLDER" "$AUDIT_FOLDER" "$QUARANTINE_FOLDER"
 chmod 2770 "$HOT_FOLDER" "$AUDIT_FOLDER" "$QUARANTINE_FOLDER"
 
+# ADR 0067: service 模式 IPC socket 为 0660 + 组边界，GUI 用户必须在服务组内才能连上。
+# 组边界不满足时 GUI 将无法访问 IPC（而非静默放行），故此处显式供给并报告。
+if [[ -n "$GUI_USER" ]]; then
+  if id -u "$GUI_USER" >/dev/null 2>&1; then
+    usermod -aG "$GROUP_NAME" "$GUI_USER"
+    echo "Added GUI user '${GUI_USER}' to group '${GROUP_NAME}' (IPC socket 0660 group boundary)."
+  else
+    echo "Warning: GUI user '${GUI_USER}' not found; skipped group supply." >&2
+  fi
+else
+  echo "Warning: no GUI user resolved (--gui-user / SUDO_USER empty); service-mode UI will not reach the IPC socket." >&2
+fi
+
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 
 # ADR 0021 (Q15b): Stop existing service before replacing the unit file.
@@ -116,6 +136,7 @@ Restart=always
 RestartSec=3
 NoNewPrivileges=true
 RuntimeDirectory=photoprivacy
+RuntimeDirectoryMode=0750
 ExecReload=/bin/kill -HUP $MAINPID
 
 [Install]
