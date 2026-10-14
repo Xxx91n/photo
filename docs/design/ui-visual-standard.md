@@ -2,7 +2,7 @@
 
 > **状态**：现役活文档（living document） ｜ **建立**：2026-09-12（ui-craft 轮票 01） ｜ **版本**：v2.0
 > **权威**：本文件是 PhotoPrivacy **页面级**视觉规范的唯一现役标准，永远代表当前标准。
-> **分工**：token / 变体级规范在 ADR 0048 / 0050 / 0051 / 0052 / 0054 / 0055 / 0056 / 0062；本文件与它们**互补不冲突**——ADR 记「为什么」，本文件记「是什么」。取舍记录见 ADR 0065 / ADR 0067。
+> **分工**：token / 变体级规范在 ADR 0048 / 0050 / 0051 / 0052 / 0054 / 0055 / 0056 / 0062；本文件与它们**互补不冲突**——ADR 记「为什么」，本文件记「是什么」。取舍记录见 ADR 0065 / ADR 0069。
 > **引用方式**：后续 UI 票在验收条件中直接引用节号（例：「须符合 ui-visual-standard.md §2」）。
 > **演化规则**：随票修订并版本化，每次修订在 §8 留一行。禁止把本文件内容整体搬进单篇 ADR（D-009）。
 
@@ -10,7 +10,7 @@
 
 ## 0. 审美基准（D-005 / ui-craft2 —— 全文唯一的「像不像」标尺）
 
-> **v2.0 变更**：主基准 = **MangoDisk 观感级全面对标**（ui-craft2 决策 D-005，取舍记录 ADR 0067）。上轮三锚（Wasabi / Apple / VS Code·Discord）**降级为气质参考**——保留其「克制 / 分组 / 密度」的心智约束，不再作为逐条对标的定值来源。
+> **v2.0 变更**：主基准 = **MangoDisk 观感级全面对标**（ui-craft2 决策 D-005，取舍记录 ADR 0069）。上轮三锚（Wasabi / Apple / VS Code·Discord）**降级为气质参考**——保留其「克制 / 分组 / 密度」的心智约束，不再作为逐条对标的定值来源。
 
 ### 0.1 主基准：MangoDisk 观感级对标（harry0703/MangoDisk）
 
@@ -266,7 +266,7 @@
 
 ## 7. 验收标尺（MangoDisk 基准 + 截图基线）
 
-- **V1 每票验收 = 同机位 before/after 人工对照 + MangoDisk 基准过目**。拍摄规程见 `docs/process/reports/32-ui-manual-smoke.md §5.2`，基线资产落 `docs/design/screenshots/`。
+- **V1 每票验收 = 同机位 before/after 人工对照 + MangoDisk 基准过目**。基线资产落 `docs/design/screenshots/`（历史人工探活清单 `docs/process/reports/32-ui-manual-smoke.md` §5.2 已随 2026-10-14 治理清理出仓，见 git 历史）。
 - **V2 机位**：窗口 920×600 非最大化、同坐标、同 DPI、侧栏 200、预设 catppuccin + 明暗档位写明、语言 zh-CN。
 - **V3 MangoDisk 对照清单**（逐条打勾，禁止「看起来不错」一类结论）：
   - **胶囊 nav**：idle 透明 / hover 半透明胶囊 / active 实心层次分明；无 4px 左缘槽位残留；过渡平滑无双路硬切。
@@ -435,7 +435,7 @@
 | v2.2 | 2026-09-14 | 票 03 / ui-craft2 | **nav 胶囊三态落地（D-002 / D-003 / D-008）**：4px 左缘 accent 槽位体系退役；§2.1 hover 落 `SemiColorNavItemHover`（Bg2@0.7 各主题 + 亮/暗回退）、active 落 `SemiColorPrimary` 实心 + `SemiColorNavActiveForeground` on-primary 深字 + SemiBold、active:pointerover 保持实心；§2.3 现状对账全项转落地态；§2.4 T-3 登记改已裁定（C 折中 + hover 前景中性）；`NavFeedbackSourceTests` 撞红三档处置（改造 2 / 保留 2 / 新增 1） |
 | v2.1 | 2026-09-14 | 票 02 / ui-craft2 | **tokens 刷新落地（D-004 / D-005）**：MainWindow 显式 `Win32Properties.WindowCornerPreference="Round"`；§5.1 Radius 实物列改 v2.0 阶梯（Sm4/Md6/Lg8/Xl12，Xs2 保留子档）+ Elevation 收两档制（1/2=subtle 7%、4=dialog 18% 原式）+ 新增 Layout 族 17 枚 `Layout*`；壳层侧栏深一档定值——Catppuccin/OneDarkPro/TokyoNight 本深于 Bg0，Dracula/NordDark 纠偏为深档惯例色，亮/暗回退档入 DesignTokens ThemeDictionaries；settings-card 角档改 RadiusLg、按钮/输入框改 RadiusMd（md=6）；§2.1/§3.2 半径引用订正 RadiusLg；§5.2 P5 落 SpaceXxs(2)；侧栏持久化默认宽 200 不动（Core 配置语义+§7 V2 机位同值） |
 | v2.3 | 2026-09-14 | 票 04 / ui-craft2 | ConfigPage 整页对齐落地（D-005/D-006）：§3.1 骨架升组标签外置+行集合卡模型；§3.2 实态刷新（settings-card.grouped / settings-row 16,8+MinHeight60 / group-label / page-title 四段新实态）；§3.3 新增 B4–B7（组标签出卡、页壳 58+readable1160、条件行分隔线联动、孤图标清除）；§3.4 卡片 padding 复核改判（卡 0 + 行承载，附录 D 原 p-6=24 取证误差订正）；§5.2 P1 上档 SpaceXl、P2 改判卡零内边距；§5.4 复算 24 处零离轨；登记张力 T-4（MangoDisk 行 40px 图标列未引入，待大脑裁定）与 T-5（字号阶梯：基准 6+1 档 vs 本项目 6-role——行标题 13/节标题 15 无对应 token，page-title 22 与 group-label 12 已先行补齐） |
-| v2.0 | 2026-09-14 | 票 01 / ui-craft2 | **主基准切换（D-005 / A-001 / ADR 0067）**：§0 改 MangoDisk 观感级对标主基准表 + 上轮三锚降级为气质参考；§2 重写为胶囊三态目标规范（4px 槽位体系随 D-002 退役，施工在票 03），新增 §2.4 MangoDisk `nav-item` 实测公式对照并**登记张力 T-3**（D-003 主色实心胶囊+反白 vs 基准实物 accent 胶囊+3px×24px 主色 pill+字重 600；hover 前景叙事偏差并入）；§4 E2 按 `md-empty-state` 重校；§5.1 增 MangoDisk 布局 token 基准列；§6 Toast 规划按 vue-sonner 实物配置重校（T2/T3/T6 改值 + 新增 T7 动效档）；§7 V3 验收清单改 MangoDisk 对照项；新增附录 D 观感取证表（gh api 只读取证，GPL-3.0 零拷贝）；附录 A.2 张力表补 T-3 行、T-1 改并入 T-3 口径 |
+| v2.0 | 2026-09-14 | 票 01 / ui-craft2 | **主基准切换（D-005 / A-001 / ADR 0069）**：§0 改 MangoDisk 观感级对标主基准表 + 上轮三锚降级为气质参考；§2 重写为胶囊三态目标规范（4px 槽位体系随 D-002 退役，施工在票 03），新增 §2.4 MangoDisk `nav-item` 实测公式对照并**登记张力 T-3**（D-003 主色实心胶囊+反白 vs 基准实物 accent 胶囊+3px×24px 主色 pill+字重 600；hover 前景叙事偏差并入）；§4 E2 按 `md-empty-state` 重校；§5.1 增 MangoDisk 布局 token 基准列；§6 Toast 规划按 vue-sonner 实物配置重校（T2/T3/T6 改值 + 新增 T7 动效档）；§7 V3 验收清单改 MangoDisk 对照项；新增附录 D 观感取证表（gh api 只读取证，GPL-3.0 零拷贝）；附录 A.2 张力表补 T-3 行、T-1 改并入 T-3 口径 |
 | v2.4 | 2026-09-15 | 票 05 / ui-craft2 | **LogsPage 整页对齐落地（D-005/D-006）**：页壳 58+page-title；工具条 36（LayoutToolbarHeight，级别过滤 ComboBox 左/清空右，裸条对齐 md-result-filter-toolbar 无底色无边框实态）；日志行 MinHeight=LayoutResultRowHeight(44)+事件徽章 RadiusXl 胶囊化（md radius-999 等效）；§4.2 日志页 E2 骨架落地（`empty-icon`/`empty-title`/`empty-desc` 三 class + 空因双文案 E5，`empty_desc`/`empty_filtered` ×10 语言）；图标盒源码复核订正为无底色定位盒；`MapEventStyle` emoji/Unicode 前缀清零（§6 T3/§7 V3）；新增 token `EmptyDescFontSize=12`；VM 联动通知修复（LogLevel 热重载回填 ComboBox 选中态缺口） |
 | v2.5 | 2026-09-15 | 票 06 / ui-craft2 | **RulesPage 整页对齐落地（D-005/D-006）**：页壳 58+page-title+副标题+右侧操作区（保存/重置 SharedSizeGroup 组+SaveStatus 迁入页头，atomcode 调研裁决一：页面级操作放页头右侧操作区、绝不进过滤工具条）；专家横幅卡沿用裸 settings-card（§3.1 明许非行集合卡）；36px 过滤工具条（LayoutToolbarHeight，搜索左置=数据作用域）；DataGrid `RowHeight=LayoutResultRowHeight`(44)；§4.2 规则页 E2 骨架落地（empty-icon/title/desc + 空因双文案 E5 随 `SearchFilterActive` 切换，`rules.empty_desc`/`rules.empty_filtered` ×10 语言新增、`rules.panel.title` 孤儿键清除）；VM +`SearchFilterActive` 收口通知 |
 | v2.6 | 2026-09-15 | 票 07 / ui-craft2 | **ServiceManagerPage 整页对齐落地（D-005/D-006）**：页壳 58+page-title（nav.service_manager）+内容 readable 1160 居中；状态卡/操作卡合并为单组单卡（atomcode 裁决三：状态自成服务卡首行不独立成卡），组标签 service.section.service 出卡上方 + settings-card.grouped 四行（状态行=service.status 标签+状态点/文案、安装 primary、启停刷 ghost SharedSizeGroup 沿用、卸载 danger）；§5.2 P1 组间距 SpaceLg→SpaceXl 收紧完成（过渡态注记消除）；硬编码 "ACTIONS" 段头清零（i18n 缺口修复）；孤儿键 service.section.status/actions 十语言+内嵌兜底同步清除、service.status 孤儿键激活为状态行标签；§1.2/§3.2/§3.3 B3/§4.2/附录 B 实态与行号跟随；登记张力 T-6（卸载缺确认对话框——调研裁决二建议 danger 操作配确认流，属行为变更超本票审美范围，交大脑裁定） |

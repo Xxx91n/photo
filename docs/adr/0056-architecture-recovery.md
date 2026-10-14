@@ -34,7 +34,7 @@ ADR 0053 M2 宣称的 `StartupCoordinator`（Worker 连接、版本轮询、服�
 
 ## 做事流程（首轮脑/子窗口多轨制验证）
 
-- 流程权威 `WORKFLOW.md` 固化于项目 `.scratch/architecture-recovery/`（gitignore）；偏离清单 8 项经用户批准后生效。
+- 流程权威 `WORKFLOW.md` 固化于项目 `.scratch/architecture-recovery/`（gitignore）；偏离清单 8 项经用户批准后生效。（2026-10-14 治理清理注：该 WORKFLOW 机制已随治理工件收敛退役，本条仅作历史记录。）
 - 本批验证的子窗口专有纪律（已回流 WORKFLOW §7）：跨票共享文件一次只许一票碰；发现混入他人改动立即上报不自纠 amend；栈序可以动、他人内容绝对不可动；全量测试门禁由大脑收口单槽串行；报告断言以 `git log` 实物哈希为准。
 - 工具教训：复杂结构写入用 Node 一次性脚本代替 shell 多段嵌套（本会话实测避免引号嵌套断连）。
 

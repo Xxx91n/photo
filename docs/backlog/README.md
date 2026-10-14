@@ -21,7 +21,7 @@
 2. ServiceManager.cs:126 sc.exe 同步 `WaitForExit()` 无超时（票01 登记的邻域观察）
 3. PublishApp 冒烟失败时捕获脚本输出，便于诊断空产出等并发污染
 4. 跨平台 UDS 传输测量（05 结论按调用频率推导成立；如需绝对数值再立票）
-5. 流程产物持久化：.scratch 曾被 GitButler 操作清空（ADR 0058 事故 1）——评估流程文件入 docs/ 或动栈前快照
+5. 流程产物持久化：.scratch 曾被 GitButler 操作清空（git 历史 ADR 0058 事故 1）——评估流程文件入 docs/ 或动栈前快照。（2026-10-14 治理清理注：快照机制与 docs/process 沉淀轨已整体退役，本条完成态为历史记录）
 
 执行约定：沿用 WORKFLOW §4.2（GitButler 独立分支、单槽串行测试门禁）；每票完成须带 source-lint 或行为测试锁定。
 

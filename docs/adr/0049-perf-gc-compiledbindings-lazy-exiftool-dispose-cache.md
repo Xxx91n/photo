@@ -1,6 +1,6 @@
 # ADR 0049: 性能优化——GC调优 + CompiledBindings + R2R + Lazy ExifTool + Dispose加固 + 缓存容量
 
-**状态**: 计划中（grill 已确认待实施）
+**状态**: implemented（2026-10-14 治理清理勘误：实物在场——runtimeconfig.template.json ×2、PublishReadyToRun/Directory.Build.props、Ui.csproj CompiledBindings、ExifToolBridge IDisposable、_bridgeStarted 延迟启动、RecentFingerprintCache 容量上限）
 **日期**: 2026-08-14
 
 ## 背景

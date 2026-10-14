@@ -72,7 +72,7 @@
 
 ### D6: 验收标尺 —— 三锚 + 截图基线，不建 CI 像素门禁
 
-- 每张 UI 票验收 = **同机位 before/after 人工对照** + 对照 D-005 三锚的**具体设计点**；拍摄规程落 docs/process/reports/32-ui-manual-smoke.md §5.2，基线资产落 docs/design/screenshots/。
+- 每张 UI 票验收 = **同机位 before/after 人工对照** + 对照 D-005 三锚的**具体设计点**；拍摄规程见 docs/design/ui-visual-standard.md §7，基线资产落 docs/design/screenshots/（历史人工探活清单 docs/process/reports/32-ui-manual-smoke.md 已随 2026-10-14 治理清理出仓，见 git 历史）。
 - **不上 CI 视觉回归像素门禁**（D-007 负向：审查负担 + 环境漂移；与 D-006「Headless 小步谨慎」同口径），Headless VRT 降 backlog。
 - **视觉一致性不交给纯文本断言单独背锅**：守卫规则写入 tests/TEST-CONVENTIONS.md（R1 新断言必写「防什么」+ 票号；R2 撞红三档分类）。
 

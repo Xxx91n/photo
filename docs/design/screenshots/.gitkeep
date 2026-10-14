@@ -2,7 +2,7 @@
 
 Visual Baseline 资产目录：4 页（配置 / 日志 / 规则 / 服务管理）× 关键态的同机位截图。
 
-- 拍摄规程（机位 / 窗口尺寸 / 主题档位 / 命名 / 目录结构）：docs/process/reports/32-ui-manual-smoke.md §5.2
+- 拍摄规程（机位 / 窗口尺寸 / 主题档位 / 命名 / 目录结构）：git 历史 docs/process/reports/32-ui-manual-smoke.md §5.2（2026-10-14 治理清理出仓）
 - 验收标尺（审美三锚 + before/after 对照流程）：docs/design/ui-visual-standard.md §7
 - 目录约定：<yyyymmdd>-before/ 与 <yyyymmdd>-after/ 成对出现；PNG 无损、整窗、不裁剪。
 

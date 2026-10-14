@@ -1,12 +1,12 @@
 # 测试约定（PhotoPrivacy · tests/）
 
 > 定位：本文件是 `tests/` 的**测试约定区**——写测试（尤其 source-lint 类文本断言）前必读，撞红时按本文件处置。
-> 立策：ui-craft 轮票 01（2026-09-12），依据 decision-ledger D-006「守卫哲学 = C（atomcode 调研版，撞红即治理）」与 A-005。
-> 关联：ADR 0065（取舍记录）、docs/design/ui-visual-standard.md（视觉规范）、.scratch/ui-craft/spec.md「Testing Decisions」节。
+> 立策：ui-craft 轮票 01（2026-09-12），依据 decision-ledger D-006「守卫哲学 = C（atomcode 调研版，撞红即治理）」与 A-005（账本已随 2026-10-14 治理清理出仓，见 git 历史）。
+> 关联：ADR 0065（取舍记录）、docs/design/ui-visual-standard.md（视觉规范）。
 
 ## 0. 适用范围
 
-- **source-lint 断言**：把源码 / AXAML / 文档当文本做 grep、正则、字面量存在性判断的编译时静态断言（本项目 `DesignSystemTests` / `UiLauncherSourceTests` / `MainWindowShellSourceTests` / `WorkflowSnapshotScriptGuardTests` 等属此类）。
+- **source-lint 断言**：把源码 / AXAML / 文档当文本做 grep、正则、字面量存在性判断的编译时静态断言（本项目 `DesignSystemTests` / `UiLauncherSourceTests` / `MainWindowShellSourceTests` / `PublishPropertiesCsprojGuardTests` 等属此类）。
 - 行为测试（单元 / 集成）不受 R1 约束，但撞红时同样适用 R2 的分类治理。
 
 ## R1. 新断言必须写「防什么」注释 —— 写不出就不许加

@@ -1,4 +1,4 @@
-# ADR 0067: 视觉对标主基准切换 —— 三锚降级为气质参考，MangoDisk 观感级全面对标
+# ADR 0069: 视觉对标主基准切换 —— 三锚降级为气质参考，MangoDisk 观感级全面对标
 
 **Date**: 2026-09-14
 **Status**: Accepted
@@ -19,7 +19,7 @@ ui-craft 轮按上轮 D-005「三锚」（Wasabi 气场 × Apple 系统设置骨
 
 `docs/design/ui-visual-standard.md` 升 v2.0，§0 改立 MangoDisk 主基准表（设计 tokens / 布局骨架 / 交互范式三族）；上轮三锚表保留为**气质参考**层——继续提供「克制 / 分组 / 密度」的心智约束与历史对照证据，但不再作为逐条定值来源。
 
-- **上轮 D-005 标记 revised**：原记录保留于 `.scratch/_archive/ui-craft-2026-09-13/decision-ledger.md`，本轮账本 D-005 明示 revised 关系——三锚并未被证伪（其工程结论如等宽、Transitions、表单骨架仍大量沿用），而是参照系优先级被用户裁决替换。
+- **上轮 D-005 标记 revised**：原记录已随 2026-10-14 治理清理出仓（见 git 历史 `.scratch/_archive/ui-craft-2026-09-13/decision-ledger.md`），本轮账本 D-005 明示 revised 关系——三锚并未被证伪（其工程结论如等宽、Transitions、表单骨架仍大量沿用），而是参照系优先级被用户裁决替换。
 - **已拍板决策的收编**：D-002（胶囊 hover）、D-003（主色实心胶囊）、D-004（圆角窗口）与 MangoDisk 语言一致，被本决策收编为其具体实例。
 
 ### D2: 复刻方式 =「看观感、自实现」，GPL-3.0 源码零拷贝
