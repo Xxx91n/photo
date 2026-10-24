@@ -179,8 +179,8 @@ public sealed class DesignSystemTests
     [Fact]
     public void Browse_Buttons_Use_MaterialIcons()
     {
-        // 票 24：页面拆分后 Add/Remove 按钮位于 Views/Pages/，扫描整个 Views 目录。
-        // 票 25：5 处 Browse 行收敛为 Ursa u:PathPicker（OpenFolder/OpenFile 图标由 Ursa 语义承接），
+        // 页面拆分后 Add/Remove 按钮位于 Views/Pages/，扫描整个 Views 目录。
+        // 5 处 Browse 行收敛为 Ursa u:PathPicker（OpenFolder/OpenFile 图标由 Ursa 语义承接），
         // Views 内不再有 inline FolderOpen Browse 按钮；Plus/Minus 图标按钮仍在。
         var viewsDir = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views");
         var source = string.Concat(Directory.GetFiles(viewsDir, "*.axaml", SearchOption.AllDirectories)
@@ -222,12 +222,12 @@ public sealed class DesignSystemTests
         Assert.True(File.Exists(path), "MainWindow.axaml should exist");
         var source = File.ReadAllText(path, Encoding.UTF8);
         // The self-drawn titlebar must theme through Semi Color tokens, not inline hex.
-        // 票 26：Text2 字面前景为许可的语义 token 消费（gate 只禁内联 hex/FontSize），保留原断言。
+        // Text2 字面前景为许可的语义 token 消费（gate 只禁内联 hex/FontSize），保留原断言。
         Assert.Contains("{DynamicResource SemiColorBackground0}", source, StringComparison.Ordinal);
         Assert.Contains("{DynamicResource SemiColorText2}", source, StringComparison.Ordinal);
     }
 
-    // 票 02（ui-craft2 / D-004）：防 Avalonia #9660 式回归 —— ExtendClientArea + 不透明背景窗口
+    // （ui-craft2 / D-004）：防 Avalonia #9660 式回归 —— ExtendClientArea + 不透明背景窗口
     // 若依赖 WindowCornerPreference 默认值 Default，Win11 上曾出过硬边（hard edges）回归，上游修复
     // 路径即显式 DwmSetWindowAttribute(Round)。本断言锁显式 Round 在位，防属性被删/回退缺省后
     // 圆角静默失效回潮为直角。静态断言即可——DwmGetWindowAttribute 读回的是 preference 而非实际
@@ -266,7 +266,7 @@ public sealed class DesignSystemTests
     [Fact]
     public void MiddleClick_Behavior_Attached_To_ScrollViewer()
     {
-        // 票 24：ScrollViewer 挂载点（Config/ServiceManager 页）位于 Views/Pages/，扫描整个 Views 目录。
+        // ScrollViewer 挂载点（Config/ServiceManager 页）位于 Views/Pages/，扫描整个 Views 目录。
         var viewsDir = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views");
         var source = string.Concat(Directory.GetFiles(viewsDir, "*.axaml", SearchOption.AllDirectories)
             .Select(f => File.ReadAllText(f, Encoding.UTF8)));
@@ -406,7 +406,7 @@ public sealed class DesignSystemTests
     [Fact]
     public void Spacing_Must_Reference_Space_Tokens()
     {
-        // 票 24：Spacing 消费散布在 shell + Pages，扫描整个 Views 目录。
+        // Spacing 消费散布在 shell + Pages，扫描整个 Views 目录。
         var viewsDir = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views");
         var source = string.Concat(Directory.GetFiles(viewsDir, "*.axaml", SearchOption.AllDirectories)
             .Select(f => File.ReadAllText(f, Encoding.UTF8)));
@@ -415,7 +415,7 @@ public sealed class DesignSystemTests
         Assert.True(tokenHits.Count >= 20, $"Expected >=20 Spacing token references, got {tokenHits.Count}");
     }
 
-    // ponytail: regression guard for architecture-recovery ticket 03 — IFolderWatcher was a
+    // ponytail: regression guard for architecture-recovery — IFolderWatcher was a
     // shallow abstraction (single implementation FswFolderWatcher, sole consumer MetadataCleanerWorker
     // news the concrete class directly; zero call sites went through the interface). The interface
     // was deleted; the two REAL test seams in the same file (IRecoveryScanner, IFileSystemWatcherFactory)
@@ -437,7 +437,7 @@ public sealed class DesignSystemTests
         Assert.Contains("IFileSystemWatcherFactory", interfacesFile, StringComparison.Ordinal);
     }
 
-    // === Ticket 01 — button size tokens (architecture recovery C2) guards ===
+    // === — button size tokens (architecture recovery C2) guards ===
     // Button height/padding must have a single authority (AppTheme.axaml Size Ladder:
     // content 32 / nav 40 / icon 32x32); views may not override sizing inline.
 
@@ -490,7 +490,7 @@ public sealed class DesignSystemTests
     [Fact]
     public void MainWindow_Buttons_Must_Not_Override_Size_Inline()
     {
-        // 票 24：按钮散布在 shell + Pages，扫描整个 Views 目录。
+        // 按钮散布在 shell + Pages，扫描整个 Views 目录。
         var viewsDir = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views");
         var source = string.Concat(Directory.GetFiles(viewsDir, "*.axaml", SearchOption.AllDirectories)
             .Select(f => File.ReadAllText(f, Encoding.UTF8)));
@@ -509,8 +509,8 @@ public sealed class DesignSystemTests
     [Fact]
     public void MainWindow_Icon_Buttons_Must_Use_Icon_Variant_Class()
     {
-        // 票 24：icon 按钮散布在各 Page 文件，扫描整个 Views 目录。
-        // 票 25：5 处 Browse icon 按钮随 PathPicker 收敛移出（Ursa 模板内部按钮不受本项目 Button.icon 纪律约束），
+        // icon 按钮散布在各 Page 文件，扫描整个 Views 目录。
+        // 5 处 Browse icon 按钮随 PathPicker 收敛移出（Ursa 模板内部按钮不受本项目 Button.icon 纪律约束），
         // 余下 Add/Remove 2 处仍须走 Button.icon 变体。
         var viewsDir = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views");
         var source = string.Concat(Directory.GetFiles(viewsDir, "*.axaml", SearchOption.AllDirectories)
@@ -522,7 +522,7 @@ public sealed class DesignSystemTests
     [Fact]
     public void Button_Elements_Must_Carry_A_Variant_Class()
     {
-        // 票 03（ui-craft / A-001）——防的 bug：新增 Button 忘记挂 Classes 变体类，吃 Semi 默认样式，
+        // （ui-craft / A-001）——防的 bug：新增 Button 忘记挂 Classes 变体类，吃 Semi 默认样式，
         // 尺寸与反馈脱离七变体体系（用户原话「按钮长度和大小都不统一」的字面来源）。
         // D-006 定性：本断言是变更探测器而非契约——只能证明现役按钮全部归队，不能证明视觉等宽。
         var viewsDir = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views");
@@ -540,7 +540,7 @@ public sealed class DesignSystemTests
     [Fact]
     public void Button_Groups_Must_Use_Equal_Width_Mechanism()
     {
-        // 票 03（ui-craft R1-1）——防的 bug：按钮组回退到 StackPanel 内容宽度，同组按钮长短不一（A-001）。
+        // （ui-craft R1-1）——防的 bug：按钮组回退到 StackPanel 内容宽度，同组按钮长短不一（A-001）。
         // 等宽走 Grid + SharedSizeGroup（按组内最长文案动态定宽），不取固定 MinWidth——
         // 本项目 10 语言，长文案（德/俄）会撑破定值导致等宽失效。
         var servicePath = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views", "Pages", "ServiceManagerPage.axaml");
@@ -574,10 +574,10 @@ public sealed class DesignSystemTests
         }
     }
 
-    // === 票 26 — token 消费纪律 gate：Views 源码层静态断言 ===
+    // === — token 消费纪律 gate：Views 源码层静态断言 ===
 
     [Fact]
-    public void Ticket26_Views_Must_Not_Contain_Inline_FontSize()
+    public void Views_Must_Not_Contain_Inline_FontSize()
     {
         // 检查点 A①: Views 内 FontSize= 清零 — 字号唯一权威是 AppTheme typography class
         //（caption=11/mono=12/body=14/title=16/headline=18/display=20，DesignTokens 档位）。
@@ -590,7 +590,7 @@ public sealed class DesignSystemTests
     }
 
     [Fact]
-    public void Ticket26_Views_Must_Not_Contain_Hardcoded_Hex_Colors()
+    public void Views_Must_Not_Contain_Hardcoded_Hex_Colors()
     {
         // 检查点 A①②: Views 内联 hex 清零 — 色板标识色收敛 DesignTokens Swatch* token，
         // 语义色一律走 SemiColor* DynamicResource。3/6/8 位 hex 全禁（#RRGGBB/#AARRGGBB/#RGB）。
@@ -604,7 +604,7 @@ public sealed class DesignSystemTests
     }
 
     [Fact]
-    public void Ticket26_Views_Classes_Must_Be_Defined_In_AppTheme()
+    public void Views_Classes_Must_Be_Defined_In_AppTheme()
     {
         // 检查点 A②: 无未定义 Classes — h2 类违例（report-22 B 节）不得回潮。
         // AppTheme.axaml 选择器内 .class 提取为白名单；Views 的 Classes="a b" 逐词校验。
@@ -631,10 +631,10 @@ public sealed class DesignSystemTests
     }
 
     [Fact]
-    public void Ticket26_Icon_Only_Buttons_Must_Carry_ToolTip()
+    public void Icon_Only_Buttons_Must_Carry_ToolTip()
     {
-        // 检查点 A③: 图标必须伴随文字或 ToolTip — caption-btn（3）与 icon 变体（Add/Remove，票 25 后仅存 2 个
-        // icon Button；5 处 Browse 的 ToolTip 由票 25 u:PathPicker 自带 ToolTip.Tip 承载）均无文字，
+        // 检查点 A③: 图标必须伴随文字或 ToolTip — caption-btn（3）与 icon 变体（Add/Remove， 后仅存 2 个
+        // icon Button；5 处 Browse 的 ToolTip 由 u:PathPicker 自带 ToolTip.Tip 承载）均无文字，
         // ToolTip.Tip 必须挂在本体（locale key 驱动）。
         var viewsDir = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views");
         var source = string.Concat(Directory.GetFiles(viewsDir, "*.axaml", SearchOption.AllDirectories)
@@ -652,7 +652,7 @@ public sealed class DesignSystemTests
     }
 
     [Fact]
-    public void Ticket26_Button_State_Matrix_Must_Be_Complete()
+    public void Button_State_Matrix_Must_Be_Complete()
     {
         // 检查点 B: 7 variant × pointerover/pressed/disabled 全覆盖 + :focus-visible 全局 ring。
         //（idle 为基线样式本体，不设伪类；pressed 语义 = 纯色/透明度反馈，无 scale。）
@@ -668,7 +668,7 @@ public sealed class DesignSystemTests
     }
 
     [Fact]
-    public void Ticket26_Empty_State_Copy_Must_Be_Wired()
+    public void Empty_State_Copy_Must_Be_Wired()
     {
         // 检查点 C: Logs/Rules 空态文案 — locale key 存在 + 页面消费 + VM 开关收口（无事件订阅）。
         var en = File.ReadAllText(Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Localization", "Locales", "en.json"), Encoding.UTF8);
@@ -693,7 +693,7 @@ public sealed class DesignSystemTests
     }
 
     [Fact]
-    public void Ticket26_Theme_Swap_Timing_Instrumented()
+    public void Theme_Swap_Timing_Instrumented()
     {
         // 检查点 C: 色板切换耗时观测插桩 — ThemeSwapMs 打点必须存在（运行时实测值落 logs/ui-*.log 报告）。
         var app = File.ReadAllText(Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "App.axaml.cs"), Encoding.UTF8);

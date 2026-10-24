@@ -4,7 +4,7 @@ using PhotoPrivacy.Ipc;
 namespace PhotoPrivacy.IntegrationTests.Ipc;
 
 /// <summary>
-/// 票 04 行为测试：IPC 认证分层。
+/// 行为测试：IPC 认证分层。
 /// 第 1 层 = 内核强制的 OS 身份边界（Windows CurrentUserOnly / Unix socket 文件模式）；
 /// 第 2 层 = accepted socket 上的对端凭据校验（Unix SO_PEERCRED / getpeereid）；
 /// 第 3 层 = 首实例防抢占 fail-fast（Windows FirstPipeInstance）。

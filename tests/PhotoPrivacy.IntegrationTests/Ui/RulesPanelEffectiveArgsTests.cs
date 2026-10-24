@@ -6,7 +6,7 @@ using PhotoPrivacy.Ui.ViewModels;
 namespace PhotoPrivacy.IntegrationTests.Ui;
 
 /// <summary>
-/// 票 19（规则引擎单一真相源）UI 侧闭环:
+/// （规则引擎单一真相源）UI 侧闭环:
 /// FormatRuleRow.EffectiveArgs 复制表删除后，面板预览 = WipeRuleEngine（单一真相源）实时生成；
 /// 勾选真实改变命令并触发 PropertyChanged；Save→Load→引擎 与面板预览一致（单一真相源端到端）。
 /// </summary>

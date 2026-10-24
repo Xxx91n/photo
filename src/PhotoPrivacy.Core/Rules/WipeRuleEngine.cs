@@ -4,7 +4,7 @@ using PhotoPrivacy.Core.ExifTool;
 namespace PhotoPrivacy.Core.Rules;
 
 /// <summary>
-/// 票 19（架构恢复第五轮）: 擦除命令单一真相源。
+/// （架构恢复第五轮）: 擦除命令单一真相源。
 /// 给定格式族 + 逐组规则开关（strip_all / preserve_icc / strip_exif / strip_xmp / strip_iptc / strip_time，
 /// 键名 schema 与 FormatRulesStore.Key 一致），生成 ExifTool 参数串。
 /// 取代 WipeStrategyResolver 的 per-family 硬编码命令 switch 与

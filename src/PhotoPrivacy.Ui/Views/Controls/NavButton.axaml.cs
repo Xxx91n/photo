@@ -4,7 +4,7 @@ using Material.Icons;
 
 namespace PhotoPrivacy.Ui.Views.Controls;
 
-// 票 25（架构恢复第六轮）：侧栏导航按钮 UserControl。
+// （架构恢复第六轮）：侧栏导航按钮 UserControl。
 // PageTag = 页面键（config/log/rules/service），Click 经 PART_Button 点击路由到 MainWindow.OnNavigateClick；
 // IsActive 为 active 态唯一驱动（MainWindow 同步自 VM CurrentPage），内部仅映射为 AppTheme Button.nav.active class。
 public partial class NavButton : UserControl

@@ -11,7 +11,7 @@
     <Setter Property="Foreground" Value="{DynamicResource SemiColorText0}" />
   </Style>
 
-  <!-- Button variant baseline + Size Ladder (ticket 01).
+  <!-- Button variant baseline + Size Ladder ().
        Single source of truth for button sizing: content buttons 32 high
        (Padding 12,6), nav/nav-action 40 (Padding 12,0), icon-only 32x32
        (Padding 0). Views must not override Height/Padding/MinWidth inline. -->
@@ -56,7 +56,7 @@
     <Setter Property="Height" Value="32" />
   </Style>
 
-  <!-- Icon-only button variant (ticket 01): fixed 32x32 square, no padding.
+  <!-- Icon-only button variant (): fixed 32x32 square, no padding.
        Content supplies its own icon size; views use Classes="icon" with no
        inline MinWidth/Padding. -->
   <Style Selector="Button.icon">
@@ -76,7 +76,7 @@
     <Setter Property="Background" Value="{DynamicResource SemiColorBackground1}" />
   </Style>
 
-  <!-- 票 03（ui-craft2 / D-002 / D-003 / D-008）：nav 胶囊三态 —— 定值依据 docs/design/ui-visual-standard.md §2.1。
+  <!-- （ui-craft2 / D-002 / D-003 / D-008）：nav 胶囊三态 —— 定值依据 docs/design/ui-visual-standard.md §2.1。
        上轮 4px 左缘 accent 槽位体系（BorderThickness 4,0,0,0 + Transparent 占位）随 D-002 退役；
        胶囊圆角 RadiusLg(8)。Transitions 须显式写全 Background/Foreground 两路 —— nav 段一旦声明
        Transitions 即整体覆盖全局 Button 段，漏写任一路即丢过渡（规范 §2.2 N2 防前景 0ms 硬切）。 -->
@@ -177,7 +177,7 @@
   </Style>
 
   <!-- ============================================================
-       票 26 — 按钮 5 态矩阵补全（idle/pointerover/pressed/disabled/focus-visible）。
+        按钮 5 态矩阵补全（idle/pointerover/pressed/disabled/focus-visible）。
        此前 nav/nav-action/caption-btn 缺 :disabled（禁用无视觉衰减），ghost/danger/icon 缺
        :pressed。设计裁决：纯色/透明度反馈，无 scale；无 darker token 时
        pressed 用「原色 + Opacity 下探」或 Background2 中性加深（与 caption-btn.danger:pressed
@@ -221,7 +221,7 @@
     <Setter Property="Opacity" Value="0.5" />
   </Style>
 
-  <!-- nav/nav-action/caption-btn :disabled — 票 26 点名补齐（Opacity + SemiColorText2 语义衰减） -->
+  <!-- nav/nav-action/caption-btn :disabled — 点名补齐（Opacity + SemiColorText2 语义衰减） -->
   <Style Selector="Button.nav:pressed">
     <Setter Property="Background" Value="{DynamicResource SemiColorBackground2}" />
   </Style>
@@ -245,7 +245,7 @@
     <Setter Property="Opacity" Value="0.5" />
   </Style>
 
-  <!-- 票 26: DataGrid 单元文字吃 12px token 档（MonoFontSize 数值），
+  <!-- DataGrid 单元文字吃 12px token 档（MonoFontSize 数值），
        RulesPage 内联 FontSize 移除后消费面收敛在 Styling。 -->
   <Style Selector="DataGrid.data-grid">
     <Setter Property="FontSize" Value="{DynamicResource MonoFontSize}" />
@@ -269,7 +269,7 @@
     <Setter Property="IsVisible" Value="False" />
   </Style>
 
-  <!-- Elevated card with shadow (票 02/ui-craft2 v2.0). Lift the card above the
+  <!-- Elevated card with shadow (v2.0). Lift the card above the
        window background using Semi's elevation token; corner = RadiusLg(8) = MangoDisk 卡片 lg 档（附录 D.2）。 -->
   <Style Selector="Border.settings-card">
     <Setter Property="Background" Value="{DynamicResource SemiColorBackground1}" />
@@ -280,7 +280,7 @@
 <Setter Property="Padding" Value="16" /><!-- ponytail: literal Thickness, not DynamicResource Double; Avalonia ThicknessTypeConverter runs at compile, DynamicResource skips it -> InvalidCastException -->
   </Style>
 
-  <!-- 票 04（ui-craft2 / D-005 / atomcode 调研 §2.1）：行集合卡变体 —— MangoDisk
+  <!-- （ui-craft2 / D-005 / atomcode 调研 §2.1）：行集合卡变体 —— MangoDisk
        md-settings-group 卡片零内边距（padding 下沉到行 7px/14px），分隔线 inset 与行水平
        padding 天然对齐。用法 Classes="settings-card grouped"：通用卡外观（底/描边/圆角/投影）
        + 零内边距；不带 grouped 的 settings-card 保 Padding 16（如 RulesPage 专家横幅卡）。 -->
@@ -288,7 +288,7 @@
     <Setter Property="Padding" Value="0" />
   </Style>
 
-  <!-- 票 04（ui-craft2 / 调研 §2.3）：行承载卡内 inset —— 水平 16（grouped 卡零内边距时
+  <!-- （ui-craft2 / 调研 §2.3）：行承载卡内 inset —— 水平 16（grouped 卡零内边距时
        文本自卡边起 16，分隔线 Margin 16 对齐同值）；垂直 8 → 行间内容间距 16（基准 7px
        垂直 padding 量化到 ramp 8）。MinHeight 60 = md-settings-row 实测（min-height:60px）；
        Padding 属 Thickness 保持字面量，MinHeight 属 Double 可走 DynamicResource。 -->
@@ -300,7 +300,7 @@
   <Style Selector="Border.row-divider">
     <Setter Property="BorderBrush" Value="{DynamicResource SemiColorBorder}" />
     <Setter Property="BorderThickness" Value="0,0,0,1" />
-    <!-- 票 04（ui-craft 规范 §3.3 B1）落地；票 04（ui-craft2）复核续用：inset 定值 = 行水平
+    <!-- （ui-craft 规范 §3.3 B1）落地；（ui-craft2）复核续用：inset 定值 = 行水平
          padding —— settings-row Padding 16,8 的水平分量 16（MangoDisk md-settings-group 分隔线
          ::before left/right=14px = 其行 padding 14，同规则）。通栏线使行与行视觉粘连；
          Apple 系统设置与 WinUI SettingsCard 的行分隔线均为 inset。
@@ -360,7 +360,7 @@
     <Setter Property="Foreground" Value="{DynamicResource SemiColorText2}" />
   </Style>
 
-  <!-- 票 04（ui-craft2 / 调研 §2.2）：组标签在卡片外上方 —— MangoDisk md-settings-group
+  <!-- （ui-craft2 / 调研 §2.2）：组标签在卡片外上方 —— MangoDisk md-settings-group
        标题 12px/600/muted（margin 1px 0 6px 2px；左 inset 2px 取 SpaceXxs 档），
        WinUI 节标题同为「正文级字号 + 600」。Avalonia TextBlock 无 letter-spacing，基准 0.04em 字距略。 -->
   <Style Selector="TextBlock.group-label">
@@ -370,7 +370,7 @@
     <Setter Property="Margin" Value="2,0,0,0" />
   </Style>
 
-  <!-- 票 04（ui-craft2 / 附录 D.5）：页头标题 h1 = 22 / font-normal / tracking-tight
+  <!-- （ui-craft2 / 附录 D.5）：页头标题 h1 = 22 / font-normal / tracking-tight
        （md-page-shell）；Avalonia 无 tracking 等价物，取 22/Normal/Text0。 -->
   <Style Selector="TextBlock.page-title">
     <Setter Property="FontSize" Value="{DynamicResource PageTitleFontSize}" />
@@ -378,7 +378,7 @@
     <Setter Property="Foreground" Value="{DynamicResource SemiColorText0}" />
   </Style>
 
-  <!-- 票 05（ui-craft2 / 规范 §4 E2 + gh api 源码复核 md-empty-state.vue）：空态骨架角色。
+  <!-- （ui-craft2 / 规范 §4 E2 + gh api 源码复核 md-empty-state.vue）：空态骨架角色。
        标题 = content-empty-title 20 card-fg；说明 = content-body 12 muted max-w 520 居中；
        图标容器 52×52 仅为定位盒（基准源码：盒无底色无边框，36 主色字形直接渲染）。 -->
   <Style Selector="TextBlock.empty-title">
@@ -404,23 +404,23 @@
   <Style Selector="TextBox.inline-input">
     <Setter Property="BorderBrush" Value="{DynamicResource SemiColorBorder}" />
     <Setter Property="CornerRadius" Value="{DynamicResource RadiusMd}" />
-    <!-- 票 24：Width=280 ×4/×5 收敛为共享 class 单一权威（Views 禁止内联宽度） -->
+    <!-- Width=280 ×4/×5 收敛为共享 class 单一权威（Views 禁止内联宽度） -->
     <Setter Property="Width" Value="280" />
   </Style>
 
-  <!-- 票 04（ui-craft 规范 §3.3 B2）：下拉类控件的控件列宽度收归共享 class。
+  <!-- （ui-craft 规范 §3.3 B2）：下拉类控件的控件列宽度收归共享 class。
        原 ConfigPage 三枚 ComboBox 各自行内 Width="160"（主题 / 语言 / 日志级别），
-       与票 24 已立的「Views 禁止内联宽度」口径冲突；现收敛为单一权威。
+       与既有的「Views 禁止内联宽度」口径冲突；现收敛为单一权威。
        取值 160 沿用既有实态（不改动视觉宽度），仅把权威位置从 Views 移到 Styling。 -->
   <Style Selector="ComboBox.inline-control">
     <Setter Property="Width" Value="160" />
   </Style>
 
-  <!-- 票 25：路径行收敛为 Ursa PathPicker 后 Width=280 单一权威随控件迁移（原 TextBox.inline-input 保留供排除目录等余量场景） -->
+  <!-- 路径行收敛为 Ursa PathPicker 后 Width=280 单一权威随控件迁移（原 TextBox.inline-input 保留供排除目录等余量场景） -->
   <Style Selector="u|PathPicker.inline-input">
     <Setter Property="BorderBrush" Value="{DynamicResource SemiColorBorder}" />
     <Setter Property="CornerRadius" Value="{DynamicResource RadiusMd}" />
-    <!-- 票 24：Width=280 ×4/×5 收敛为共享 class 单一权威（Views 禁止内联宽度） -->
+    <!-- Width=280 ×4/×5 收敛为共享 class 单一权威（Views 禁止内联宽度） -->
     <Setter Property="Width" Value="280" />
   </Style>
 
@@ -454,7 +454,7 @@
       </Transitions>
     </Setter>
   </Style>
-  <!-- 票 08（ui-craft2 / D-007 / 规范 §6 T3/T4/T7 升现役）：sonner 形态 toast 卡 ——
+  <!-- （ui-craft2 / D-007 / 规范 §6 T3/T4/T7 升现役）：sonner 形态 toast 卡 ——
        popover 同族容器（border 1px + RadiusLg 8 + Elevation4 dialog 级投影 + Padding 12,8）
        + rich-colors 语义淡色底四型（Semi*Light 系，图标用同族饱和色）+ 约 364px 定宽；
        400ms CubicEaseOut 可中断过渡（折叠态负底 margin 重叠露 14px 上缘 + 卡宽收窄

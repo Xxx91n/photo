@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 namespace PhotoPrivacy.IntegrationTests;
 
 /// <summary>
-/// Ticket 13 (B14) source-lint guard for the ticket-11 UnixDomainSocketIpcTransport
+/// (B14) source-lint guard for the UnixDomainSocketIpcTransport
 /// endpoint-ownership fix: the socket file may only be deleted by the endpoint owner
 /// (the server-side instance that called ListenAsync, detected via
 /// <c>ownsEndpoint = _listener is not null</c>). Client transports are per-call
@@ -11,7 +11,7 @@ namespace PhotoPrivacy.IntegrationTests;
 /// unlinks the live server endpoint after the first call and every later connect
 /// fails (AddressNotAvailable on Linux/macOS).
 /// The ClassifyDisposeAsync classifier is a pure function so the negative self-proof can feed
-/// injected violating samples (in-memory, no files touched), per the ticket-06/B07
+/// injected violating samples (in-memory, no files touched), per the /B07
 /// whitelist-guard pattern in UiLauncherSourceTests.
 /// </summary>
 public sealed class UdsEndpointOwnershipGuardTests
@@ -110,7 +110,7 @@ public sealed class UdsEndpointOwnershipGuardTests
     {
         var violations = ClassifyDisposeAsync(ReadTransportSourceStripped());
         Assert.True(violations.Count == 0,
-            "UDS endpoint-ownership shape regressed (ticket 11 fix / ticket 13 guard):" +
+            "UDS endpoint-ownership shape regressed (guard):" +
             $"{Environment.NewLine}{string.Join(Environment.NewLine, violations)}");
     }
 

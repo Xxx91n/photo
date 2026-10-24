@@ -1,7 +1,7 @@
 namespace PhotoPrivacy.IntegrationTests;
 
 /// <summary>
-/// 票 07 — 共享 SourceLint helper 自证：仓库根定位、源码读取、剥注释与枚举过滤语义锁定。
+/// 共享 SourceLint helper 自证：仓库根定位、源码读取、剥注释与枚举过滤语义锁定。
 /// </summary>
 public sealed class SourceLintTests
 {

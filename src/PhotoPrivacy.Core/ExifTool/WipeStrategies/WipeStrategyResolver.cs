@@ -13,7 +13,7 @@ public static class WipeStrategyResolver
     public static readonly IReadOnlyDictionary<string, WipeFormatFamily> ExtensionFamilyMap = new Dictionary<string, WipeFormatFamily>(StringComparer.OrdinalIgnoreCase)
     {
         // JPEG family
-        // 票 01：删除 jhc 死条目——它从不在 allowed_extensions 里，映射面上永远不可达
+        // 删除 jhc 死条目——它从不在 allowed_extensions 里，映射面上永远不可达
         // （FormatCoverageReconciliationTests 以 mapped ⊆ allowed 钉死“无死条目”）。
         ["jpg"] = WipeFormatFamily.Jpeg, ["jpeg"] = WipeFormatFamily.Jpeg,
         ["jpe"] = WipeFormatFamily.Jpeg, ["jps"] = WipeFormatFamily.Jpeg,
@@ -53,7 +53,7 @@ public static class WipeStrategyResolver
     public static WipeStrategyResult Resolve(string filePath)
         => WipeRuleEngine.Resolve(ResolveFamily(filePath), rules: null);
 
-    /// <summary>票 19: 规则驱动 resolve——family 由扩展名表判定，命令由 WipeRuleEngine 从规则字典生成。</summary>
+    /// <summary> 规则驱动 resolve——family 由扩展名表判定，命令由 WipeRuleEngine 从规则字典生成。</summary>
     public static WipeStrategyResult Resolve(string filePath, IReadOnlyDictionary<string, bool>? rules)
         => WipeRuleEngine.Resolve(ResolveFamily(filePath), rules);
 

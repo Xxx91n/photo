@@ -4,12 +4,12 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace PhotoPrivacy.Ui.Services;
 
 /// <summary>
-/// 票 27：ConfigFileWatcher — 监听 config.json 磁盘变更（手改/外部工具/备份回滚），
+/// ConfigFileWatcher — 监听 config.json 磁盘变更（手改/外部工具/备份回滚），
 /// 防抖 500ms 后回调 <see cref="onReload"/>，让 UI 把当前内存 VM 替换为磁盘最新值，
 /// 消除"权威配置到底有没有生效"的疑虑.
 ///
 /// 设计要点:
-/// - 只用 FSW 事件(Changed/Created/Renamed)，不轮询，与票 24 文件监听纪律一致.
+/// - 只用 FSW 事件(Changed/Created/Renamed)，不轮询，与 文件监听纪律一致.
 /// - 防抖窗口 500ms(与 ConfigEditor 自动应用同窗口)，防止编辑器多次写入触发风暴.
 /// - 提供 <see cref="SuppressNextReload"/> 接口：UI 自己 SaveConfig 后写入磁盘会触发 FSW，
 ///   此时调用方主动抑制下一次 reload，避免 UI → 磁盘 → UI 死循环覆盖用户未确认改动.
@@ -75,7 +75,7 @@ public sealed class ConfigFileWatcher : IDisposable
     }
 
     /// <summary>
-    /// 票 27 抑制 UI 自身保存后的 FSW 反弹：调用方在写盘前调用一次，
+    /// 抑制 UI 自身保存后的 FSW 反弹：调用方在写盘前调用一次，
     /// 下一次防抖窗口内的所有 reload 会被丢弃（合并抑制），避免 UI → 磁盘 → UI 死循环.
     /// </summary>
     public void SuppressNextReload()

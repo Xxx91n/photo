@@ -3,7 +3,7 @@ using PhotoPrivacy.Ui.Services;
 namespace PhotoPrivacy.Ui;
 
 /// <summary>
-/// UI 运行时选项不可变快照（票20 检查点 C）：公共面全部只读。
+/// UI 运行时选项不可变快照（检查点 C）：公共面全部只读。
 /// 构建期一次性写入的属性用 init；运行期需变更的状态（RuntimeKind/WorkerEndpointName/UseTrayIcon/
 /// HideMainWindowOnStartup/HideTrayIcon/ShowMainWindow/ConnectionState）为 private set，
 /// 外部一律经由类内具名变更方法收口，去除可变字段外写（issue 20）。
@@ -38,7 +38,7 @@ public sealed class BackgroundUiOptions
     public string ConfigPath { get; init; } = AppContext.BaseDirectory;
     public string AuditDirectory { get; init; } = AppContext.BaseDirectory;
 
-    /// <summary>运行期状态变更收口：RuntimeKind/WorkerEndpointName/UseTrayIcon 三元组一次更新（票20）。</summary>
+    /// <summary>运行期状态变更收口：RuntimeKind/WorkerEndpointName/UseTrayIcon 三元组一次更新。</summary>
     public void UpdateRuntimeState(string runtimeKind, string endpointName, bool useTrayIcon)
     {
         RuntimeKind = runtimeKind;
@@ -47,7 +47,7 @@ public sealed class BackgroundUiOptions
     }
 
     /// <summary>配置热重载收口：HideMainWindowOnStartup/HideTrayIcon 落值；托盘模式下 UseTrayIcon 联动
-    /// （票20，逐字镜像原 MainWindow.ApplyRuntimeConfigToUiState 的条件语义）。</summary>
+    /// （逐字镜像原 MainWindow.ApplyRuntimeConfigToUiState 的条件语义）。</summary>
     public void UpdateHideFlags(bool hideMainWindowOnStartup, bool hideTrayIcon)
     {
         HideMainWindowOnStartup = hideMainWindowOnStartup;

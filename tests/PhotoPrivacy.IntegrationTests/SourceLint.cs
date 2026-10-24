@@ -3,7 +3,7 @@ using System.Text;
 namespace PhotoPrivacy.IntegrationTests;
 
 /// <summary>
-/// B06 / 架构恢复票 07 — source-lint guard 共享 helper（唯一实现）。
+/// B06 / 架构恢复 — source-lint guard 共享 helper（唯一实现）。
 /// 仓库根定位、源码读取、行注释剥除与 Ui 源文件枚举的唯一出处；
 /// 各 source-lint guard（UiLauncherSourceTests / DesignSystemTests /
 /// WorkerProcessManagerTests / HardcodedChineseScanTests 等）统一改调本类，断言语义零变化。
@@ -38,7 +38,7 @@ public static class SourceLint
     }
 
     /// <summary>
-    /// 票 04（ui-craft2）返工轮：ConfigPage 组合件文件清单 —— 页壳 + 4 分组子件。
+    /// （ui-craft2）返工轮：ConfigPage 组合件文件清单 —— 页壳 + 4 分组子件。
     /// 拆分为 Pages<=220 守卫消红（页面文件规约）；凡钉「ConfigPage 页面内容」的断言
     /// 一律读组合件合并文本，断言语义与原单文件形态等价。
     /// </summary>

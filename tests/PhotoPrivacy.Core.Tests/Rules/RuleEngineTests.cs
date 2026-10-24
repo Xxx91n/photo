@@ -19,7 +19,7 @@ public sealed class RuleEngineTests
     [Fact]
     public void Decide_Should_Use_Fixed_Output_Directory_When_Configured()
     {
-        // 票 28 返修：Path.GetRelativePath/Combine 平台分隔符随 OS——用平台中立构造断言
+        // 返修：Path.GetRelativePath/Combine 平台分隔符随 OS——用平台中立构造断言
         var hot = Path.Combine(Path.GetTempPath(), "pp-re-hot");
         var clean = Path.Combine(Path.GetTempPath(), "pp-re-clean");
         var cfg = AppConfig.Default with
@@ -42,7 +42,7 @@ public sealed class RuleEngineTests
     [Fact]
     public void Decide_Should_Create_Bak_Path_When_Backup_Enabled()
     {
-        // 票 28 返修：备份目录 = <hotFolder>/bak（BackupPathResolver），断言平台中立构造
+        // 返修：备份目录 = <hotFolder>/bak（BackupPathResolver），断言平台中立构造
         var hot = Path.Combine(Path.GetTempPath(), "pp-re-hot");
         var cfg = AppConfig.Default with
         {
@@ -87,7 +87,7 @@ public sealed class RuleEngineTests
     }
 
     /// <summary>
-    /// 票 01 宣称收敛（D-005.1）：以下扩展名原先在 allowed_extensions 里但不在
+    /// 宣称收敛（D-005.1）：以下扩展名原先在 allowed_extensions 里但不在
     /// WipeStrategyResolver.ExtensionFamilyMap 映射面——即“宣称支持但没有擦除策略”。
     /// 收敛后默认不再处理（fail-closed）；即使被用户旧配置放进来，ExifToolBridge 也会立即跳过
     /// 并落 wipe_skipped_unknown 审计（见 UnsupportedFormatPipelineTests）。
@@ -151,7 +151,7 @@ public sealed class RuleEngineTests
     }
 
     // ---------------------------------------------------------------------------------------
-    // 票 02（A-003）：排除清单真通配（* / ?）行为测试。
+    // （A-003）：排除清单真通配（* / ?）行为测试。
     // 语义边界 = 纯文件名匹配（与收敛前一致）；大小写口径 = OrdinalIgnoreCase（与收敛前一致）；
     // 断言全部走 RuleEngine.Decide 的公共行为（Reason 字段），不读源码文本。
     // 注意：allowed_extensions 先于 excluded_patterns 判定，故探针文件名的扩展名必须在放行面内，

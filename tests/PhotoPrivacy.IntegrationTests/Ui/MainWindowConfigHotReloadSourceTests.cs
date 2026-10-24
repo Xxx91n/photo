@@ -1,10 +1,10 @@
 namespace PhotoPrivacy.IntegrationTests.Ui;
 
 /// <summary>
-/// 票 30（架构恢复第七轮）迁移：OnApplyConfigClick 为遗留死代码，已删除。
+/// （架构恢复第七轮）迁移：OnApplyConfigClick 为遗留死代码，已删除。
 /// 守卫改为锁定防抖即时应用链（语义不回潮）+ 防抖写盘后的 Worker reload。
 /// 断言读取口径（30-fix 返修）：.cs 源码断言统一走 SourceLint.ReadStripped（剥 // 行注释，
-/// CompositionRootSourceTests 先例）——「票 30：XXX 已删除」考古保留注释不参与断言，
+/// CompositionRootSourceTests 先例）——「：XXX 已删除」考古保留注释不参与断言，
 /// 代码回潮仍命中（拦截语义不放宽）。
 /// </summary>
 public sealed class MainWindowConfigHotReloadSourceTests

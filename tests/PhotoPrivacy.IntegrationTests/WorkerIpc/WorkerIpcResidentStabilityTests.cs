@@ -8,7 +8,7 @@ using PhotoPrivacy.Worker;
 namespace PhotoPrivacy.IntegrationTests.WorkerIpc;
 
 /// <summary>
-/// 票 05（A-005）行为测试：驻守稳定性。
+/// （A-005）行为测试：驻守稳定性。
 ///
 /// 覆盖 issue 05 Acceptance criteria 第 2 条「accept 循环无 sync-over-async
 /// （重启重载不阻塞后续 accept）」：
@@ -203,7 +203,7 @@ public sealed class WorkerIpcResidentStabilityTests
     }
 }
 
-/// <summary>票 05（A-005）：单连接剧本——预置请求字节，收集响应字节（一连接一消息，无需双工）。</summary>
+/// <summary>（A-005）：单连接剧本——预置请求字节，收集响应字节（一连接一消息，无需双工）。</summary>
 internal sealed class ScriptedIpcConnection : Stream
 {
     private readonly MemoryStream _inbound;
@@ -257,7 +257,7 @@ internal sealed class ScriptedIpcConnection : Stream
     }
 }
 
-/// <summary>票 05（A-005）：内存传输——接受预推入的连接，不绑定任何真实端点（跨平台、CI 可直接跑）。</summary>
+/// <summary>（A-005）：内存传输——接受预推入的连接，不绑定任何真实端点（跨平台、CI 可直接跑）。</summary>
 internal sealed class ScriptedIpcTransport : IIpcTransport
 {
     private readonly Channel<Stream> _connections = Channel.CreateUnbounded<Stream>();
@@ -281,7 +281,7 @@ internal sealed class ScriptedIpcTransport : IIpcTransport
     }
 }
 
-/// <summary>票 05（A-005）：可控假运行时——ReloadTask 用于造出「重载挂住数秒」的场景。</summary>
+/// <summary>（A-005）：可控假运行时——ReloadTask 用于造出「重载挂住数秒」的场景。</summary>
 internal sealed class FakeWorkerIpcRuntime : IWorkerIpcRuntime
 {
     public bool IsPaused { get; private set; }

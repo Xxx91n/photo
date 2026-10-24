@@ -18,7 +18,7 @@ public sealed class MainWindowSourceDiagnosticTests
     [Fact]
     public void MainWindow_Axaml_Should_Use_Tailscale_Style_Navigation_Shell()
     {
-        // 票 24：窗口尺寸/导航 shell 断言仍在 MainWindow.axaml；
+        // 窗口尺寸/导航 shell 断言仍在 MainWindow.axaml；
         // settings-card / ToggleSwitch 已随页面拆分迁入 Views/Pages/，改扫整个 Views 目录（语义不变）。
         var shellPath = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views", "MainWindow.axaml");
         var shell = File.ReadAllText(shellPath, Encoding.UTF8);

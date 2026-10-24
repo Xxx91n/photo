@@ -3,12 +3,12 @@ using System.Text.RegularExpressions;
 namespace PhotoPrivacy.IntegrationTests.Ui;
 
 /// <summary>
-/// Architecture recovery ticket 02 regression guard — src/PhotoPrivacy.Ui must never
+/// Architecture recovery regression guard — src/PhotoPrivacy.Ui must never
 /// launch directories/files via UseShellExecute (explorer.exe/xdg-open/open shell
 /// branching). External open behavior goes through Avalonia TopLevel.Launcher
 /// (LaunchDirectoryInfoAsync/LaunchFileInfoAsync). Source-lint pattern per
 /// HardcodedChineseScanTests / DesignSystemTests.
-/// Ticket 06 (B07) extends the literal-only guard into a whitelist: inside
+/// (B07) extends the literal-only guard into a whitelist: inside
 /// src/PhotoPrivacy.Ui the only allowed UseShellExecute assignments are
 /// <c>false</c> and the ServiceManager elevation variable form
 /// (<c>needElevation</c> with Verb "runas"); anything else is red.
@@ -63,7 +63,7 @@ public sealed class UiLauncherSourceTests
 
         Assert.True(violations.Count == 0,
             $"UseShellExecute assignments outside whitelist found in {violations.Count} locations — " +
-            "only 'false' and the ServiceManager needElevation form are allowed (ticket 06 / B07):" +
+            "only 'false' and the ServiceManager needElevation form are allowed (whitelist guard):" +
             $"{Environment.NewLine}{string.Join(Environment.NewLine, violations)}");
     }
 
@@ -136,7 +136,7 @@ public sealed class UiLauncherSourceTests
         }
 
         Assert.True(violations.Count == 0,
-            $"Shell-open commands (explorer/xdg-open/open) found in {violations.Count} locations — use TopLevel.Launcher instead (ticket 02):{Environment.NewLine}{string.Join(Environment.NewLine, violations)}");
+            $"Shell-open commands (explorer/xdg-open/open) found in {violations.Count} locations — use TopLevel.Launcher instead ():{Environment.NewLine}{string.Join(Environment.NewLine, violations)}");
     }
 
     [Fact]

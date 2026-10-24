@@ -1,7 +1,7 @@
 namespace PhotoPrivacy.IntegrationTests;
 
 /// <summary>
-/// 票 06（correctness-round 顺带发现收口）：
+/// （correctness-round 顺带发现收口）：
 /// 发布属性单一来源守卫——生产 csproj 不得直接持有 SelfContained / PublishSingleFile /
 /// IncludeNativeLibrariesForSelfExtract / PublishTrimmed；publish-app.ps1 与 publish.sh 的
 /// UI 与 Worker 两条 dotnet publish 调用都必须带齐三枚 /p: 标志（UI 侧原由 csproj 直接持有，

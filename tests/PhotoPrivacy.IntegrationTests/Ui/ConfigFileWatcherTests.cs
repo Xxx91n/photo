@@ -5,7 +5,7 @@ using PhotoPrivacy.Ui.Services;
 namespace PhotoPrivacy.IntegrationTests.Ui;
 
 /// <summary>
-/// 票 27 — ConfigFileWatcher 端到端测试：手改 config.json → 防抖窗口内合并 →
+/// ConfigFileWatcher 端到端测试：手改 config.json → 防抖窗口内合并 →
 /// onReload 回调触发.收敛 3 处双 DTO 漂移点后 round-trip 仍等价.
 /// </summary>
 public sealed class ConfigFileWatcherTests

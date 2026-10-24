@@ -3,10 +3,10 @@ using System.Text.RegularExpressions;
 namespace PhotoPrivacy.IntegrationTests;
 
 /// <summary>
-/// 票 02 source-lint 守卫（承接票 01 首脑复核登记项）：测试代码禁止 drive-relative 形态的
+/// source-lint 守卫（承接 首脑复核登记项）：测试代码禁止 drive-relative 形态的
 /// verbatim 路径字面量 —— 形态为 at-verbatim 前缀 + 盘符 + 冒号 + 非分隔符字符。
 ///
-/// 背景：票 01 提交把 RuleEngineTests 里的绝对路径字面量吞成了该形态（盘符后的分隔符丢失），
+/// 背景：提交把 RuleEngineTests 里的绝对路径字面量吞成了该形态（盘符后的分隔符丢失），
 /// 而断言语义不依赖该路径（Decide 按扩展名判定），缺陷因此静默存活到首脑复核才被发现。
 /// 该形态在任何平台都不是「绝对路径」的意图写法，出现即意味着反斜杠被吞或路径写错；
 /// 本守卫把它变成 CI 红灯。整改方式：写绝对路径用完整形态（盘符 + 分隔符 + 路径），

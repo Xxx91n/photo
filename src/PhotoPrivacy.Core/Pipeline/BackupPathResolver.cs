@@ -6,7 +6,7 @@ namespace PhotoPrivacy.Core.Pipeline;
 /// <summary>
 /// Single source of truth for backup path resolution.
 ///
-/// 票 03（A-006 / D-006）：备份布局由「扁平文件名 + 后缀」改为「镜像相对路径布局」——
+/// （A-006 / D-006）：备份布局由「扁平文件名 + 后缀」改为「镜像相对路径布局」——
 /// 备份根下按源文件相对其监控根的子路径镜像目录结构，结构性消除跨子目录同名文件的
 /// 备份互相覆盖（原 bug：<c>hot/vacation/IMG_0001.jpg</c> 与 <c>hot/work/IMG_0001.jpg</c>
 /// 都解析到同一个 <c>{backupDir}/IMG_0001.jpg.bak</c>，后写静默覆盖前写）。
@@ -69,7 +69,7 @@ public static class BackupPathResolver
         var normalizedRoot = string.IsNullOrWhiteSpace(hotFolder) ? string.Empty : NormalizeFullPath(hotFolder);
 
         // 能归位监控子树 → 镜像相对路径；否则回退「文件名 + 路径短哈希」。
-        // 边界判定复用 WatchPathFilter 的组件级实现（票 03 票面要求，防穿越单一来源）。
+        // 边界判定复用 WatchPathFilter 的组件级实现（票面要求，防穿越单一来源）。
         string relativeSlot;
         if (!string.IsNullOrEmpty(normalizedRoot) && Watcher.WatchPathFilter.TryGetSubPathRelative(normalizedRoot, normalizedSource, out var relative))
         {

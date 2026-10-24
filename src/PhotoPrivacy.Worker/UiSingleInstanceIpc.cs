@@ -8,7 +8,7 @@ public static class UiSingleInstanceIpc
     private const string Message = "SHOW_WINDOW";
 
     /// <summary>
-    /// 票 04：Windows 上以 PipeOptions.CurrentUserOnly 与 UI 侧服务端同享
+    /// Windows 上以 PipeOptions.CurrentUserOnly 与 UI 侧服务端同享
     /// 「仅当前用户可连」边界；非 Windows 保持既有无标志语义。
     /// </summary>
     private static PipeOptions ClientOptions => OperatingSystem.IsWindows()

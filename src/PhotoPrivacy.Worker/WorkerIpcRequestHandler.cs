@@ -4,7 +4,7 @@ using PhotoPrivacy.Ipc;
 namespace PhotoPrivacy.Worker;
 
 /// <summary>
-/// 票 05（A-005）：Worker IPC 请求处理（从 <c>WorkerIpcServerHostedService</c> 抽出，语义逐字保持）。
+/// （A-005）：Worker IPC 请求处理（从 <c>WorkerIpcServerHostedService</c> 抽出，语义逐字保持）。
 ///
 /// 本票唯一的行为改动：请求处理整体异步化。原 <c>HandleRequest</c> 是同步方法，
 /// ReloadConfig 分支用 <c>_runtime.ReloadConfigAsync().GetAwaiter().GetResult()</c> 阻塞调用线程；
@@ -85,7 +85,7 @@ public sealed class WorkerIpcRequestHandler
                             Id: request.Id, V: ProtocolVersion), false);
                     }
 
-                    // 票 05（A-005）：真 await。禁止回退为 GetAwaiter().GetResult()/Result/Wait()
+                    // （A-005）：真 await。禁止回退为 GetAwaiter().GetResult()/Result/Wait()
                     // —— 那会把 accept 循环重新堵死（守卫 WorkerIpcSyncOverAsyncGuardTests 锁死此约束）。
                     await _runtime.ReloadConfigAsync().ConfigureAwait(false);
                     return (new WorkerIpcResponse(true, Data: BuildStatus(), Id: request.Id, V: ProtocolVersion), false);

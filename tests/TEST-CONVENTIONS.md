@@ -1,7 +1,7 @@
 # 测试约定（PhotoPrivacy · tests/）
 
 > 定位：本文件是 `tests/` 的**测试约定区**——写测试（尤其 source-lint 类文本断言）前必读，撞红时按本文件处置。
-> 立策：ui-craft 轮票 01（2026-09-12），依据 decision-ledger D-006「守卫哲学 = C（atomcode 调研版，撞红即治理）」与 A-005（账本已随 2026-10-14 治理清理出仓，见 git 历史）。
+> 立策：ui-craft 轮（2026-09-12），依据 decision-ledger D-006「守卫哲学 = C（atomcode 调研版，撞红即治理）」与 A-005（账本已随 2026-10-14 治理清理出仓，见 git 历史）。
 > 关联：docs/design/ui-visual-standard.md（视觉规范）。
 
 ## 0. 适用范围
@@ -15,7 +15,7 @@
 
 > 任何**新增** source-lint 断言，必须在断言方法体紧邻位置（断言语句上一行，或 `Fact` 特性上方）写行内注释，完整交代两件事：
 > ① **它防的具体 bug / 回潮形态**（写清楚「哪一处代码曾经或可能退化成什么样」）；
-> ② **关联票号或 issue 号**（形如 `票 01 / ui-craft`、`issue #8163`）。
+> ② **关联 issue 号**（形如 `issue #8163`）。
 > 写不出 ① 的断言一律**拒收**（review 不通过、不合入）。
 
 **依据**：
@@ -28,7 +28,7 @@
 ```csharp
 // 防：MainWindow.axaml 侧栏内部 Border 曾写死 Width=200（report-32 D3 观察项），
 // 拖宽侧栏后内部面板视觉宽度不跟随 —— 锁死「内部定宽须由 ui-visual-standard.md §5 显式背书」。
-// 票 04 / ui-craft
+// ui-craft
 [Fact]
 public void Sidebar_Inner_Border_Width_Must_Not_Be_Hardcoded() { ... }
 ```
@@ -54,20 +54,20 @@ public void Theme_Swatch_Count_Must_Be_Five() { ... }   // 无注释：不知道
 
 **配套要求**：
 
-1. 三档分类的结论必须写进当票报告（声明→证据→结论对照表），并**逐票记录三档分类数**（D-006 度量要求）。
-2. 文本断言占比如期**随票自然收敛**，不设一次性清理目标、不立专修票（atomcode 已否决「全量三档分类专修票」：巨型无行为 diff、无触发信号）。
+1. 三档分类的结论必须写进当期报告（声明→证据→结论对照表），并**逐项记录三档分类数**（D-006 度量要求）。
+2. 文本断言占比如期**自然收敛**，不设一次性清理目标、不立专项（atomcode 已否决「全量三档分类专修」：巨型无行为 diff、无触发信号）。
 3. 所有防回潮机制必须有「**失效即红**」自检——防恒绿（tokenlint 式假绿事故教训）。
 4. 视觉一致性验收**永不交给纯文本断言单独背锅**：行为机制 + 人工 before/after 截图对照分工（见 ui-visual-standard.md §7）。
 
 ## 3. 继承口径（既有先例，不因本文件改变）
 
-- **剥注释口径**：source-lint 读取源码一律走 `SourceLint.ReadStripped` 剥注释后再断言（票 30 教训——不剥会把注释里的示例字面量误判为违规）。
+- **剥注释口径**：source-lint 读取源码一律走 `SourceLint.ReadStripped` 剥注释后再断言（教训——不剥会把注释里的示例字面量误判为违规）。
 - **单槽串行**：测试执行单槽串行（`test.runsettings` MaxCpuCount=1），多窗口不得并发跑 test（WORKFLOW §5 / §7.2）。
 - **CI-only**：本机禁跑构建 / 测试，验收交云端 CI（.github/workflows/ci.yml）；窗口侧只做静态自证。
 - **XAML Thickness 字面量**：Padding/Margin 仍用字面量字符串以触发 `ThicknessTypeConverter`，source-lint 不得断言「Thickness 必须走 DynamicResource」。
 
 ## 4. 变更记录
 
-| 日期 | 票 | 变更 |
+| 日期 | 轮次 | 变更 |
 |---|---|---|
-| 2026-09-12 | 票 01 / ui-craft | 立区；写入 R1（新断言必写防什么 + 票号）与 R2（撞红三档分类 + 语义化优先级 + characterization 定性 + 复审期） |
+| 2026-09-12 | ui-craft | 立区；写入 R1（新断言必写防什么 + issue 号）与 R2（撞红三档分类 + 语义化优先级 + characterization 定性 + 复审期） |

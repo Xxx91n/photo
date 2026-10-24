@@ -4,7 +4,7 @@ using System.Runtime.Versioning;
 namespace PhotoPrivacy.Ui.Services;
 
 /// <summary>
-/// 票20 检查点 B：ServiceManager 顶部契约类型抽出（issue 20）。
+/// 检查点 B：ServiceManager 顶部契约类型抽出（issue 20）。
 /// enum/record/接口与实现（ServiceStateProbe / ScCommandExecutor）分离，
 /// ServiceManager.cs 只保留 ServiceManager 本体；单测 fake 依据本文件实现/注入。
 /// </summary>
@@ -127,7 +127,7 @@ public sealed class ScCommandExecutor : IScCommandExecutor
             stderrTask = process.StandardError.ReadToEndAsync();
         }
 
-        // 票10：同步 WaitForExit 必须有界，超时即杀整树，避免 sc.exe 卡死永久阻塞服务管理操作。
+        // 同步 WaitForExit 必须有界，超时即杀整树，避免 sc.exe 卡死永久阻塞服务管理操作。
         if (!process.WaitForExit(CommandTimeoutMilliseconds))
         {
             try

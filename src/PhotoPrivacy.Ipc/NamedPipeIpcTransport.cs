@@ -4,7 +4,7 @@ namespace PhotoPrivacy.Ipc;
 
 /// <summary>
 /// Windows named-pipe IPC transport. Falls back to FIFO on Unix (not recommended — use UnixDomainSocketIpcTransport instead).
-/// 票 04：首实例防抢占（FirstPipeInstance）+ 同用户边界（CurrentUserOnly）。
+/// 首实例防抢占（FirstPipeInstance）+ 同用户边界（CurrentUserOnly）。
 /// </summary>
 public sealed class NamedPipeIpcTransport : IIpcTransport
 {

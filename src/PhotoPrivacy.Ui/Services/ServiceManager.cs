@@ -6,7 +6,7 @@ using PhotoPrivacy.Ui.Localization;
 namespace PhotoPrivacy.Ui.Services;
 
 /// <summary>
-/// 服务安装/启停编排（票20 检查点 B：enum/record/接口契约与默认执行器已抽至
+/// 服务安装/启停编排（检查点 B：enum/record/接口契约与默认执行器已抽至
 /// Services/ServiceManagerContracts.cs；本文件保留 ServiceManager 本体）。
 /// </summary>
 public sealed class ServiceManager

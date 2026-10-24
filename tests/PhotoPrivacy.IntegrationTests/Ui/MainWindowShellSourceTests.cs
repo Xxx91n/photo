@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 namespace PhotoPrivacy.IntegrationTests.Ui;
 
 /// <summary>
-/// 票 24（架构恢复第六轮）source-lint：
+/// （架构恢复第六轮）source-lint：
 /// - MainWindow.axaml 降为 shell（≤180 行）
 /// - Views/Pages/{Config,Logs,Rules,ServiceManager}Page.axaml 存在且各 ≤220 行
 /// - Page code-behind 无长活事件订阅（+= 只允许出现在注释外的无/或显式禁止）
@@ -88,7 +88,7 @@ public sealed class MainWindowShellSourceTests
     [Fact]
     public void ServiceAdapters_Must_Not_DirectWrite_View_Controls()
     {
-        // 票 24：Service→View 直写清零 — 按钮可用性/文案必须经 VM 中转（ServiceButtons / PauseResumeAvailable）。
+        // Service→View 直写清零 — 按钮可用性/文案必须经 VM 中转（ServiceButtons / PauseResumeAvailable）。
         var source = ReadAll(UiPath("Services", "MainWindowServiceAdapters.cs"));
         Assert.DoesNotContain("_window.PauseResumeButton.IsEnabled", source, StringComparison.Ordinal);
         Assert.DoesNotContain("_window.PauseResumeButton.Content", source, StringComparison.Ordinal);
@@ -120,7 +120,7 @@ public sealed class MainWindowShellSourceTests
         }
     }
 
-    // === 票 25（架构恢复第六轮）：高频组件抽取守卫 ===
+    // === （架构恢复第六轮）：高频组件抽取守卫 ===
 
     [Fact]
     public void Views_Must_Not_Contain_Inline_Browse_Path_Rows()
@@ -135,7 +135,7 @@ public sealed class MainWindowShellSourceTests
             Assert.DoesNotContain("Classes=\"icon\" ToolTip.Tip=\"{ex:Localize dialog.select", source, StringComparison.Ordinal);
         }
         // PathPicker 弹窗标题权威仍在 localization key（dialog.select_*）— 5 处经 u:PathPicker 声明
-        // 票 04 返工轮：PathPicker 随 4 分组迁入 Config*Group 子件 —— 按组合件合并文本计数，断言值不变。
+        // 返工轮：PathPicker 随 4 分组迁入 Config*Group 子件 —— 按组合件合并文本计数，断言值不变。
         var configComposition = SourceLint.ReadConfigPageComposition();
         var pickerCount = Regex.Matches(configComposition, "<u:PathPicker").Count;
         Assert.True(pickerCount == 5, $"expected 5 u:PathPicker rows in ConfigPage composition, got {pickerCount}");
@@ -156,7 +156,7 @@ public sealed class MainWindowShellSourceTests
     public void Theme_Swatches_Must_Be_DataDriven_From_Catalog()
     {
         // 检查点 B 验收：5 色板数据化 — 唯一权威 ThemeSwatchCatalog.Presets，inline RadioButton 色板块不得回潮。
-        // 票 04 返工轮：色板块迁入 ConfigBehaviorGroup 子件 —— 按组合件合并文本断言，语义不变。
+        // 返工轮：色板块迁入 ConfigBehaviorGroup 子件 —— 按组合件合并文本断言，语义不变。
         var configComposition = SourceLint.ReadConfigPageComposition();
         Assert.Contains("ThemeSwatchCatalog.Presets", configComposition, StringComparison.Ordinal);
         Assert.DoesNotContain("GroupName=\"ThemePreset\"", configComposition, StringComparison.Ordinal);
