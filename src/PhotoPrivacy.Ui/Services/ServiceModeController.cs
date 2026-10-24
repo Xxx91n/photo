@@ -16,7 +16,7 @@ public sealed class ServiceModeController
     private readonly WorkerIpcClient _workerIpc;
     private readonly IUiHost _host;
     private readonly IViewModelView _view;
-    // （ui-craft2 / D-007 / 规范 §6 T1）：服务操作结果反馈经应用级 toast 链；
+    // （ui-craft2 / 规范 §6 T1）：服务操作结果反馈经应用级 toast 链；
     // 可选参数保测试构造兼容（ServiceModeControllerTests 五参调用不破坏）。
     private readonly ToastService? _toast;
 

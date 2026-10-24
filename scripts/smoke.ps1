@@ -1,4 +1,4 @@
-# Ticket 09 (B09+B13, arc-recovery round 3): DLL-first smoke.
+# DLL-first smoke (arc-recovery round 3).
 # Launch the built Worker DLL directly instead of triggering a project rebuild,
 # capture worker stdout/stderr into temp files, and print both tails on exit so
 # failures (e.g. empty output) are diagnosable at the point of failure.
@@ -58,7 +58,7 @@ $errFile = Join-Path ([System.IO.Path]::GetTempPath()) ("photo-smoke-stderr-" + 
 
 try {
   # Redirect to files, never to unread pipes: worker output can exceed the 4KB pipe buffer
-  # and would deadlock the worker on stdout writes (ticket 01 root cause).
+  # and would deadlock the worker on stdout writes (root cause).
   $proc = Start-Process -FilePath "dotnet" -ArgumentList ('"' + $workerDll + '" ' + $workerArgString) -WorkingDirectory $repoRoot -NoNewWindow -PassThru -RedirectStandardOutput $outFile -RedirectStandardError $errFile
   $null = $proc.Handle # force handle acquisition: ExitCode is null otherwise
   $proc.WaitForExit()

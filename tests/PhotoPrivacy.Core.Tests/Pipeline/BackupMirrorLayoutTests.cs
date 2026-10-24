@@ -7,7 +7,7 @@ using PhotoPrivacy.Core.Rules;
 namespace PhotoPrivacy.Core.Tests.Pipeline;
 
 /// <summary>
-/// （A-006 / D-006 / 不变量②数据零意外丢失）：备份面镜像相对路径布局 + 冲突分流行为测试。
+/// （不变量②数据零意外丢失）：备份面镜像相对路径布局 + 冲突分流行为测试。
 ///
 /// 原 bug：RuleEngine 备份槽位只取文件名——<c>hot/vacation/IMG_0001.jpg</c> 与
 /// <c>hot/work/IMG_0001.jpg</c> 解析到同一 <c>{bak}/IMG_0001.jpg.bak</c>，

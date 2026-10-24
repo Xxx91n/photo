@@ -103,7 +103,7 @@ public sealed class ReleaseReadinessScriptValidationTests
         }
     }
 
-    // 参数读点（backlog B01）：publish 冒烟预算默认 900s，环境变量 PHOTOPRIVACY_PUBLISH_TIMEOUT_SECONDS 可覆盖。
+    // 参数读点：publish 冒烟预算默认 900s，环境变量 PHOTOPRIVACY_PUBLISH_TIMEOUT_SECONDS 可覆盖。
     // 根因：本机 Release 自包含发布实测 5–6 分钟，300s 硬编码在多窗口并行构建时必超时。
     internal const string PublishTimeoutEnvVar = "PHOTOPRIVACY_PUBLISH_TIMEOUT_SECONDS";
 

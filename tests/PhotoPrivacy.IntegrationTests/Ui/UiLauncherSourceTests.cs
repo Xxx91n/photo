@@ -8,7 +8,7 @@ namespace PhotoPrivacy.IntegrationTests.Ui;
 /// branching). External open behavior goes through Avalonia TopLevel.Launcher
 /// (LaunchDirectoryInfoAsync/LaunchFileInfoAsync). Source-lint pattern per
 /// HardcodedChineseScanTests / DesignSystemTests.
-/// (B07) extends the literal-only guard into a whitelist: inside
+/// Whitelist guard extends the literal-only guard: inside
 /// src/PhotoPrivacy.Ui the only allowed UseShellExecute assignments are
 /// <c>false</c> and the ServiceManager elevation variable form
 /// (<c>needElevation</c> with Verb "runas"); anything else is red.

@@ -3,7 +3,7 @@ using System.Text;
 namespace PhotoPrivacy.Ipc;
 
 /// <summary>
-/// （A-005）：有界行读取的唯一实现。
+/// 有界行读取的唯一实现。
 ///
 /// 原实现（Worker 服务端与 UI 客户端各复制一份）每读一个字节就 await 一次
 /// <c>Stream.ReadAsync</c>——GetRecentLogs 返回满 50 行审计时约六万次 await + 六万次 syscall。

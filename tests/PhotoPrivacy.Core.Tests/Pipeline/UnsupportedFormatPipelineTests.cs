@@ -8,7 +8,7 @@ using PhotoPrivacy.Core.Tests.ExifTool;
 namespace PhotoPrivacy.Core.Tests.Pipeline;
 
 /// <summary>
-/// （A-001 / 不变量①fail-closed ④驻守可观测）：挂死链行为测试——喂未映射格式走完管道。
+/// （不变量①fail-closed ④驻守可观测）：挂死链行为测试——喂未映射格式走完管道。
 ///
 /// 场景：升级前的旧配置（或用户自定义配置）把 .webp 这类“宣称支持但无擦除策略”的扩展名留在
 /// allowed_extensions 里——管道会把它喂到 ExifToolBridge。原实现在这里永久挂起：

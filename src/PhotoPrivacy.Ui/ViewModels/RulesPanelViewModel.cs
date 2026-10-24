@@ -74,7 +74,7 @@ public sealed class RulesPanelViewModel : INotifyPropertyChanged
     // 「真空 / 过滤无结果」双文案（atomcode 调研裁决二；同构 MainWindowViewModel.LogLevelFilterActive，）。
     public bool SearchFilterActive => !string.IsNullOrEmpty(_searchFilter);
 
-    // （ui-craft2 / D-007 / 规范 §6 T1）：规则保存/重置反馈经应用级 toast 链；
+    // （ui-craft2 / 规范 §6 T1）：规则保存/重置反馈经应用级 toast 链；
     // 可选注入保测试构造兼容（RulesPanelViewModelTests 单参调用）。
     private readonly ToastService? _toast;
 

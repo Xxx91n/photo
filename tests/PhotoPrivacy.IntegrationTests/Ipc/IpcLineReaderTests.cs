@@ -4,7 +4,7 @@ using PhotoPrivacy.Ipc;
 namespace PhotoPrivacy.IntegrationTests.Ipc;
 
 /// <summary>
-/// （A-005）行为测试：缓冲读（<see cref="IpcLineReader"/>）与旧逐字节读循环语义逐字等价。
+/// 行为测试：缓冲读（<see cref="IpcLineReader"/>）与旧逐字节读循环语义逐字等价。
 ///
 /// 旧实现被复制在 Worker 服务端（ReadBoundedLineAsync）与 UI 客户端（WorkerIpcClient.ReadBoundedLineAsync）
 /// 两处，每读一字节 await 一次；本票收敛为单一实现并改为分块读。

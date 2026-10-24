@@ -12,7 +12,7 @@ if ($Runtime -match '^(all|any)$') {
   throw "Runtime '$Runtime' is not valid. Use a concrete RID like win-x64 or linux-x64."
 }
 
-# Ticket 09 / B13: capture child script stdout/stderr into temp files and print both tails,
+# Capture child script stdout/stderr into temp files and print both tails,
 # so gate failures (e.g. empty output) carry their diagnostics without a manual rerun.
 function Get-ChildOutputTail([string]$Path, [int]$MaxChars = 4000) {
   if (-not (Test-Path $Path)) { return "" }
@@ -43,7 +43,7 @@ function Invoke-ScriptWithCapture([string]$Label, [string]$ScriptPath, [string]$
 }
 
 Write-Host "[1/3] dotnet test PhotoPrivacy.sln"
-# 票16: dotnet test 经临时包装脚本纳入 Invoke-ScriptWithCapture，失败打印双尾部后 throw（四步全链路捕获）。
+# dotnet test 经临时包装脚本纳入 Invoke-ScriptWithCapture，失败打印双尾部后 throw（四步全链路捕获）。
 $testScript = Join-Path ([System.IO.Path]::GetTempPath()) ("photo-ready-dotnet-test-" + [Guid]::NewGuid().ToString("N") + ".ps1")
 [System.IO.File]::WriteAllText($testScript, '& dotnet test "' + $repoRoot + '\PhotoPrivacy.sln"' + [Environment]::NewLine + 'exit $LASTEXITCODE', (New-Object System.Text.UTF8Encoding($false)))
 try {

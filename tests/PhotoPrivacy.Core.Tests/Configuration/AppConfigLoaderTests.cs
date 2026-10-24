@@ -197,7 +197,7 @@ public sealed class AppConfigLoaderTests
     }
 
     // ---------------------------------------------------------------------------------------
-    // （A-002）：空配置兜底 —— quarantine.directory / audit.log_directory 空串回落 DefaultPaths。
+    // 空配置兜底 —— quarantine.directory / audit.log_directory 空串回落 DefaultPaths。
     // 原 bug：空串直传 → Path.Combine("", 文件名) 退化成相对路径 → 隔离/审计文件落进进程 CWD
     //（config.sample.json 这两项就是空串，跟着 README 第一步走即命中）。
     // 断言口径：回落值必须是 DefaultPaths 的绝对路径 —— 原 bug 下是空串（非绝对路径）。

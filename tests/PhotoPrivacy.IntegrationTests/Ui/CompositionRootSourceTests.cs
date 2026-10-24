@@ -9,7 +9,7 @@ namespace PhotoPrivacy.IntegrationTests.Ui;
 /// - App 解析 MainWindow 自容器（不再手写 new MainWindowViewModel）
 /// - MainWindow/MainWindowViewModel 构造注入（可选参数默认值保留无参兼容）
 /// - 检查点 B：LocalizationService.Instance 注册进容器，ViewModel 静态直引收敛为构造注入 _localization
-/// - （correctness-round A-008 / D-003.4）：点状升级为结构性断言——组合根外的服务层
+/// - （correctness-round）：点状升级为结构性断言——组合根外的服务层
 ///   手写 new 改用封闭视图缝白名单核验（观测集合 == 登记集合），替代枚举黑名单的开放式漏报
 /// </summary>
 public sealed class CompositionRootSourceTests
@@ -96,7 +96,7 @@ public sealed class CompositionRootSourceTests
         Assert.Contains("_localization.Get(", stripped, StringComparison.Ordinal);
     }
 
-    // ---------- （A-008 / D-003.4）：结构性断言 —— 封闭视图缝白名单 ----------
+    // ---------- 结构性断言 —— 封闭视图缝白名单 ----------
 
     /// <summary>
     /// 组合根外允许手写 new 的服务层类型登记（视图缝 / 启动缝）：

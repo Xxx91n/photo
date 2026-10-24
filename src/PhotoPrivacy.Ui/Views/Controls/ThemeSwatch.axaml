@@ -5,7 +5,7 @@
         x:DataType="controls:ThemeSwatch">
   <!-- （架构恢复第六轮）：主题色板 — 色块 + 本地化 caption。
        保留双轴语义：GroupName=ThemePreset（同组互斥）+ Tag=ThemeId（持久化回填依据）。
-PART_Radio.IsChecked 由宿主 MultiBinding 接通 VM ThemeSwatchChecked —— SyncThemeSwatchSelection 手动回填删除。 -->
+       PART_Radio.IsChecked 由宿主 MultiBinding 接通 VM ThemeSwatchChecked —— SyncThemeSwatchSelection 手动回填删除。 -->
   <RadioButton x:Name="PART_Radio" Padding="8" CornerRadius="8"
                GroupName="{Binding GroupName, RelativeSource={RelativeSource AncestorType=controls:ThemeSwatch}}"
                Tag="{Binding ThemeId, RelativeSource={RelativeSource AncestorType=controls:ThemeSwatch}}"

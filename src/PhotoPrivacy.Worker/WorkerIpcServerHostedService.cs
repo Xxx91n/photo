@@ -5,7 +5,7 @@ using PhotoPrivacy.Ipc;
 namespace PhotoPrivacy.Worker;
 
 /// <summary>
-/// （A-005）：Worker IPC 宿主的薄接线层——绑定传输后交给 <see cref="WorkerIpcServerLoop"/> 跑连接循环，
+/// Worker IPC 宿主的薄接线层——绑定传输后交给 <see cref="WorkerIpcServerLoop"/> 跑连接循环，
 /// 请求语义由 <see cref="WorkerIpcRequestHandler"/> 承担。
 ///
 /// 抽出这两者是为了让本票两条验收项可以被行为测试直接驱动：

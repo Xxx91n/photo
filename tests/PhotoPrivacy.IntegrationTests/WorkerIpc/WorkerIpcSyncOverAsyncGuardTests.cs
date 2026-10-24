@@ -1,9 +1,9 @@
 namespace PhotoPrivacy.IntegrationTests.WorkerIpc;
 
 /// <summary>
-/// （A-005）回潮守卫。
+/// 回潮守卫。
 ///
-/// 职责分工（D-003）：行为测试（<see cref="WorkerIpcResidentStabilityTests"/>）防「程序做错事」，
+/// 职责分工：行为测试（<see cref="WorkerIpcResidentStabilityTests"/>）防「程序做错事」，
 /// 本守卫防「措辞/结构回潮」——防止 sync-over-async 与串行 accept 结构被重新引入。
 ///
 /// 范围 = Worker IPC 触面（宿主 / 连接循环 / 请求处理）+ 入口信号面。

@@ -84,7 +84,7 @@ public static class WatchPathFilter
     }
 
     /// <summary>
-    /// （A-006）：公开的组件级边界判定——备份镜像槽位归位（BackupPathResolver）与
+    /// 公开的组件级边界判定——备份镜像槽位归位（BackupPathResolver）与
     /// 监控排除（ShouldSkipPath）共用同一实现：GetRelativePath + ".." / 根路径检测，
     /// 禁止裸字符串 startswith（"/a/repo" vs "/a/repo-backup" 兄弟目录陷阱）。
     /// 入参须为已 NormalizePath 的绝对路径。

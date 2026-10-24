@@ -57,7 +57,7 @@ public static class ExifToolCommandBuilder
         var wipe = WipeStrategyResolver.Resolve(targetPath, rules);
         if (wipe.SkipReason is not null)
         {
-            // （A-001）：绝不产出“回显 SKIP_ 却让调用方等待 TASK_DONE_”的块——那是永久挂死链
+            // 绝不产出“回显 SKIP_ 却让调用方等待 TASK_DONE_”的块——那是永久挂死链
             // （原实现：SKIP_ no-op 块永不匹配 TASK_DONE_ marker，TCS 挂到取消）。
             // skip 判定必须由调用方（ExifToolBridge.WipeMetadataAsync）在写盘之前完成；
             // 这里 fail-closed 直接抛错，让“会挂死的块”在构造层就不可存在。

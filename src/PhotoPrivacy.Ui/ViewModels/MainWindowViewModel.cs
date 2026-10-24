@@ -48,7 +48,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         RulesPanel = new RulesPanelViewModel(rulesStore ?? new FormatRulesStore(Path.Combine(AppContext.BaseDirectory, "config")), toast);
     }
 
-    // （ui-craft2 / D-007）：应用级 toast 服务引用 —— ToastHost 经 {Binding Toast.Items} 消费，
+    // （ui-craft2）：应用级 toast 服务引用 —— ToastHost 经 {Binding Toast.Items} 消费，
     // 可选注入保无参/测试构造兼容。
     public ToastService? Toast { get; }
 

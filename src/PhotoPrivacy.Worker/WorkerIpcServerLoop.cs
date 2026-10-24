@@ -7,7 +7,7 @@ using PhotoPrivacy.Ipc;
 namespace PhotoPrivacy.Worker;
 
 /// <summary>
-/// （A-005）：Worker IPC 连接循环（从 <c>WorkerIpcServerHostedService</c> 抽出，使行为测试
+/// Worker IPC 连接循环（从 <c>WorkerIpcServerHostedService</c> 抽出，使行为测试
 /// 能用内存假传输直接驱动「长重载不阻塞后续 accept」这条验收项）。
 ///
 /// 相对原实现的两处改动：
@@ -43,7 +43,7 @@ public sealed class WorkerIpcServerLoop
             {
                 var client = await transport.AcceptClientAsync(stoppingToken);
 
-                // （A-005）：accept 后立即回到 accept——请求处理在独立任务中跑，
+                // accept 后立即回到 accept——请求处理在独立任务中跑，
                 // 因此一次数秒级的 ReloadConfig 不再阻塞后续连接（心跳探针仍被服务）。
                 var connectionId = Interlocked.Increment(ref _connectionSequence);
                 var task = HandleClientAsync(client, handleAsync, requestShutdown, stoppingToken);

@@ -1,6 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:ex="using:PhotoPrivacy.Ui.Localization" xmlns:vm="using:PhotoPrivacy.Ui.ViewModels" xmlns:audit="using:PhotoPrivacy.Ui" xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia" x:Class="PhotoPrivacy.Ui.Views.Pages.LogsPage" x:DataType="vm:MainWindowViewModel">
   <!-- 自 MainWindow.axaml 拆出的日志页（AuditTailService 日志流绑定保持不变）。
-       （ui-craft2 / D-005/D-006）：整页对齐 v2.0 —— 页壳（页头 MinHeight 58 + page-title）
+       （ui-craft2）：整页对齐 v2.0 —— 页壳（页头 MinHeight 58 + page-title）
        + 36px 工具条（LayoutToolbarHeight；级别过滤左 / 清空右，去原 NavBackground 条底与上下边线）
        + 日志流（行高 LayoutResultRowHeight 44、事件徽章 RadiusXl 胶囊化）
        + E2 空态骨架（empty-icon 52 定位盒 + 36 主色字形 + empty-title 20 + empty-desc 12

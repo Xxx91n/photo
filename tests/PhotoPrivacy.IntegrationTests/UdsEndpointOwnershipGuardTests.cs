@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 namespace PhotoPrivacy.IntegrationTests;
 
 /// <summary>
-/// (B14) source-lint guard for the UnixDomainSocketIpcTransport
+/// source-lint guard for the UnixDomainSocketIpcTransport
 /// endpoint-ownership fix: the socket file may only be deleted by the endpoint owner
 /// (the server-side instance that called ListenAsync, detected via
 /// <c>ownsEndpoint = _listener is not null</c>). Client transports are per-call
@@ -11,7 +11,7 @@ namespace PhotoPrivacy.IntegrationTests;
 /// unlinks the live server endpoint after the first call and every later connect
 /// fails (AddressNotAvailable on Linux/macOS).
 /// The ClassifyDisposeAsync classifier is a pure function so the negative self-proof can feed
-/// injected violating samples (in-memory, no files touched), per the /B07
+/// injected violating samples (in-memory, no files touched), per the whitelist guard
 /// whitelist-guard pattern in UiLauncherSourceTests.
 /// </summary>
 public sealed class UdsEndpointOwnershipGuardTests
@@ -162,6 +162,6 @@ public sealed class UdsEndpointOwnershipGuardTests
         // the fix contract — silently dropping it should trip this guard too.
         var source = SourceLint.Read("src", "PhotoPrivacy.Ipc", "UnixDomainSocketIpcTransport.cs");
         Assert.Contains("only by the endpoint owner", source, StringComparison.Ordinal);
-        Assert.Contains("B11 finding", source, StringComparison.Ordinal);
+        Assert.Contains("2nd connect fails with AddressNotAvailable", source, StringComparison.Ordinal);
     }
 }

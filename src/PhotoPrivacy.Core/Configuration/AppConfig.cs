@@ -64,7 +64,7 @@ public sealed record AppConfig(
            AutoExcludedDirectories: [],
            PollingIntervalSeconds: 0),
         Rules: new RuleOptions(
-            // 宣称收敛（D-005.1）：allowed_extensions 与 WipeStrategyResolver.ExtensionFamilyMap
+            // 宣称收敛：allowed_extensions 与 WipeStrategyResolver.ExtensionFamilyMap
             // 映射面一一对应（集合差=0，由 FormatCoverageReconciliationTests 入 CI 钉死）。
             // 映射面之外的格式（webp/gif/PSD/长尾 RAW 变体等）明确“不支持”：立即跳过并记
             // wipe_skipped_unknown 审计事件，绝不静默处理。

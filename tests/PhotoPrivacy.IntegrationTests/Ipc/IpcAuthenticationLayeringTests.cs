@@ -12,8 +12,7 @@ namespace PhotoPrivacy.IntegrationTests.Ipc;
 /// 不是读源码文本断言。
 ///
 /// CI 平台限制（如实登记）：.github/workflows/ci.yml 的 test job 为 ubuntu-latest，
-/// 故 Windows 专属断言（FirstPipeInstance fail-fast）在 CI 不执行；其证据为单文件
-/// 冒烟实验留证 .scratch/architecture-recovery/reports/04-smoke-evidence.log。
+/// 故 Windows 专属断言（FirstPipeInstance fail-fast）在 CI 不执行。
 /// Unix 侧断言（文件模式 + 对端凭据）在 ubuntu-latest 上真跑，是 CI 可测范围内
 /// 的主证据（issue 04 AC#2）。
 /// </summary>
