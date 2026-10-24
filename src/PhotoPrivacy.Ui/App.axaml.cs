@@ -17,7 +17,7 @@ public partial class App : Application
 {
     public static BackgroundUiOptions RuntimeOptions { get; set; } = BackgroundUiOptions.CreateFallback();
 
-    // 票 29（架构恢复第七轮）：容器由组合根 AppComposition 构建，经 Program.Start 的
+    // （架构恢复第七轮）：容器由组合根 AppComposition 构建，经 Program.Start 的
     // AppBuilder.Configure 工厂注入 —— App/MainWindow 不再手写 new 全局依赖。
     private readonly IServiceProvider _services;
 
@@ -36,7 +36,7 @@ public partial class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             UiDiagnosticLog.Write("App.OnFrameworkInitializationCompleted entered with desktop lifetime");
-            // 票 29：MainWindow 与 MainWindowViewModel 由组合根容器构造注入解析。
+            // MainWindow 与 MainWindowViewModel 由组合根容器构造注入解析。
             desktop.MainWindow = _services.GetRequiredService<MainWindow>();
 
             if (desktop.MainWindow is MainWindow window)
@@ -129,7 +129,7 @@ public partial class App : Application
 
     internal static void ApplyCommunityThemeResources(string themeName, bool applyDark)
     {
-        // 票 26: 5 色板运行时切换耗时观测 — spec 门限 <200ms（首次含 JIT 预热，取第 3 次起均值）。
+        // 5 色板运行时切换耗时观测 — spec 门限 <200ms（首次含 JIT 预热，取第 3 次起均值）。
         // 观测打点在 ResourceDictionary 换入完成后统一落 UiDiagnosticLog（logs/ui-*.log）。
         var swapStopwatch = System.Diagnostics.Stopwatch.StartNew();
         ApplyCommunityThemeResourcesCore(themeName, applyDark);

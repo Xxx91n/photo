@@ -45,7 +45,7 @@ public static class AppConfigJson
             {
                 Enabled = config.Backup.Enabled,
                 Directory = config.Backup.Directory,
-                // 票 27 B：写侧空字符串/空白会回填为 Default，避免下游读时需要二次兜底。
+                // 写侧空字符串/空白会回填为 Default，避免下游读时需要二次兜底。
                 Suffix = string.IsNullOrWhiteSpace(config.Backup.Suffix) ? AppConfig.Default.Backup.Suffix : config.Backup.Suffix,
                 MaxSizeMb = config.Backup.MaxSizeMb,
                 RetainDays = config.Backup.RetainDays
@@ -186,7 +186,7 @@ public static class AppConfigJson
         [JsonPropertyName("directory")]
         public string Directory { get; init; } = string.Empty;
 
-        // 票 27 B：写侧默认值对齐读侧 AppConfigLoader（.bak / system / zh-CN），
+        // 写侧默认值对齐读侧 AppConfigLoader（.bak / system / zh-CN），
         // 消除"写空串写入磁盘 → 读时兜底回填"的双 DTO 漂移。读侧默认来源 AppConfig.Default。
         [JsonPropertyName("suffix")]
         public string Suffix { get; init; } = AppConfig.Default.Backup.Suffix;
@@ -230,7 +230,7 @@ public static class AppConfigJson
         [JsonPropertyName("hide_tray_icon")]
         public bool HideTrayIcon { get; init; }
 
-        // 票 27 B：写侧默认值对齐读侧 AppConfigLoader（system / zh-CN / 200 / catppuccin），
+        // 写侧默认值对齐读侧 AppConfigLoader（system / zh-CN / 200 / catppuccin），
         // 消除"写入空串 → 读时兜底回填"的双 DTO 漂移。读侧默认来源 AppConfig.Default。
         [JsonPropertyName("theme_variant")]
         public string ThemeVariant { get; init; } = AppConfig.Default.Ui.ThemeVariant;

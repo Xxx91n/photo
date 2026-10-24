@@ -3,14 +3,14 @@ using System.Text.RegularExpressions;
 namespace PhotoPrivacy.IntegrationTests.Ui;
 
 /// <summary>
-/// 票 30（架构恢复第七轮）SettingsService 单一真相源 + code-behind 镜像收敛 source-lint：
+/// （架构恢复第七轮）SettingsService 单一真相源 + code-behind 镜像收敛 source-lint：
 /// - 三套 SelectionChanged 手动镜像清零（主题/语言/日志级别）
 /// - 三套 Sync*ComboSelection 手动回填清零
 /// - 色板 _pending+Loaded 重放 hack 清零（MultiBinding 替代）
 /// - VM 索引属性存在且承载联动（ThemeVariantIndex/CurrentLocaleIndex/LogLevelIndex）
 /// - ComboBox SelectedIndex TwoWay 绑定落位（spec 研究输入 Q1：设置单一真相源在 VM）
 /// 断言读取口径（30-fix 返修）：.cs 源码断言统一走 SourceLint.ReadStripped（剥 // 行注释，
-/// CompositionRootSourceTests 先例）——「票 30：XXX 已删除」考古保留注释不参与断言，
+/// CompositionRootSourceTests 先例）——「：XXX 已删除」考古保留注释不参与断言，
 /// 代码回潮仍命中（拦截语义不放宽）；axaml 断言与行数断言用原始全文。
 /// </summary>
 public sealed class SettingsVmSyncSourceTests
@@ -61,7 +61,7 @@ public sealed class SettingsVmSyncSourceTests
     [Fact]
     public void ConfigPage_ComboBoxes_Should_Bind_SelectedIndex_To_Vm()
     {
-        // 票 04 返工轮：三枚 ComboBox 与色板 MultiBinding 随分组迁入 Config*Group 子件 ——
+        // 返工轮：三枚 ComboBox 与色板 MultiBinding 随分组迁入 Config*Group 子件 ——
         // 按组合件合并文本断言（ConfigPage = 页壳 + 4 子件），断言语义与绑定契约不变。
         var source = SourceLint.ReadConfigPageComposition();
         Assert.Contains("SelectedIndex=\"{Binding ThemeVariantIndex, Mode=TwoWay}\"", source, StringComparison.Ordinal);
@@ -96,12 +96,12 @@ public sealed class SettingsVmSyncSourceTests
     }
 
     [Fact]
-    public void MainWindow_CodeBehind_Should_Shink_Vs_Ticket29_Baseline()
+    public void MainWindow_CodeBehind_Should_Shink_Vs_Baseline()
     {
-        // 检查点 B：code-behind 行数下降 —— 基线 1437 行（票 29 收口 blob a564f4e 实测），
+        // 检查点 B：code-behind 行数下降 —— 基线 1437 行（收口 blob a564f4e 实测），
         // 阈值放宽 5% 防 CI 平台行尾差异；实际降幅见 report-30（-279 行）。行数口径须用原始全文。
         var source = Read(UiPath("Views", "MainWindow.axaml.cs"));
         var lines = source.Replace("\r\n", "\n").Split('\n').Length;
-        Assert.True(lines <= 1365, $"MainWindow.axaml.cs must shrink vs ticket-29 baseline 1437 (≤1365), got {lines}");
+        Assert.True(lines <= 1365, $"MainWindow.axaml.cs must shrink vs baseline 1437 (≤1365), got {lines}");
     }
 }

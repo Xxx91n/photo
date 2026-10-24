@@ -1,6 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:ex="using:PhotoPrivacy.Ui.Localization" xmlns:vm="using:PhotoPrivacy.Ui.ViewModels" xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia" xmlns:behaviors="using:PhotoPrivacy.Ui.Behaviors" x:Class="PhotoPrivacy.Ui.Views.Pages.ServiceManagerPage" x:DataType="vm:MainWindowViewModel">
-  <!-- 票 24：自 MainWindow.axaml 拆出的服务管理页；按钮可用性经 VM ServiceButtons 绑定（直写清零）。
-       票 07（ui-craft2 / D-005/D-006）：整页对齐 v2.0 —— 页壳（页头 MinHeight 58=LayoutPageHeaderHeight
+  <!-- 自 MainWindow.axaml 拆出的服务管理页；按钮可用性经 VM ServiceButtons 绑定（直写清零）。
+       （ui-craft2 / D-005/D-006）：整页对齐 v2.0 —— 页壳（页头 MinHeight 58=LayoutPageHeaderHeight
        + page-title=nav.service_manager）+ 内容列 readable 1160 居中 + 组间 SpaceXl（规范 §5.2 P1 收紧，
        原过渡态 SpaceLg 随本票升档）；状态卡 + 操作卡合并为单组单卡（atomcode 调研裁决三：状态展示
        自成服务卡首行、不独立成卡——状态是只读信息、操作是其写路径，同一服务对象的读写两面）；
@@ -47,7 +47,7 @@
               <Border Classes="row-divider"/>
 
               <Border Classes="settings-row">
-                <!-- 票 03（ui-craft R1-1）：同组等宽 —— 启动/停止/刷新三枚改走 Grid + SharedSizeGroup，
+                <!-- （ui-craft R1-1）：同组等宽 —— 启动/停止/刷新三枚改走 Grid + SharedSizeGroup，
                      组内以最长文案定宽。不取固定 MinWidth：本项目 10 语言，长文案（德/俄）会撑破定值。
                      IsSharedSizeScope 挂共同祖先（WPF/Avalonia 官方用法）；间距取规范 §5.2 P4 的 SpaceSm。 -->
                 <DockPanel LastChildFill="False" Grid.IsSharedSizeScope="True">

@@ -1,11 +1,11 @@
 namespace PhotoPrivacy.IntegrationTests.Smoke;
 
 /// <summary>
-/// 票 16 — release-readiness.ps1 四步全链路捕获扩展回归锁定：
-/// [1/3] dotnet test 与 [4/4] force-kill 两步纳入 Invoke-ScriptWithCapture（复用票09 捕获机制），
+/// release-readiness.ps1 四步全链路捕获扩展回归锁定：
+/// [1/3] dotnet test 与 [4/4] force-kill 两步纳入 Invoke-ScriptWithCapture（复用 捕获机制），
 /// 四步（dotnet test / smoke / publish / force-kill）全部经捕获调用，失败自带 stdout/stderr 尾部；
 /// 不再存在直连流式调用形态（dotnet test 直连、powershell -File 直连 force-kill）。
-/// 独立于 SmokeScriptDiagnosticsTests.cs：票15 在途改同文件，本 guard 按 §4.3 放独立文件，避免共享文件冲突。
+/// 独立于 SmokeScriptDiagnosticsTests.cs：在途改同文件，本 guard 按 §4.3 放独立文件，避免共享文件冲突。
 /// </summary>
 public sealed class ReleaseReadinessFullCaptureGuardTests
 {

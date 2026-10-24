@@ -61,7 +61,7 @@ public sealed class UiSingleInstance : IDisposable
             {
                 try
                 {
-                    // 票 04：服务端改用 PipeOptions.CurrentUserOnly 落实「仅当前用户可连」。
+                    // 服务端改用 PipeOptions.CurrentUserOnly 落实「仅当前用户可连」。
                     using var server = CreatePipeServer(listenPipe);
 
                     await server.WaitForConnectionAsync(cancellationToken);
@@ -85,7 +85,7 @@ public sealed class UiSingleInstance : IDisposable
     }
 
     /// <summary>
-    /// 创建命名管道服务器。票 04：Windows 上以 PipeOptions.CurrentUserOnly 落实
+    /// 创建命名管道服务器。：Windows 上以 PipeOptions.CurrentUserOnly 落实
     /// 「仅当前用户可连」（内核在 connect 时校验用户 SID），不再使用 NamedPipeServerStreamAcl.Create ——
     /// 后者在单文件解压上下文抛 UnauthorizedAccessException 并泄漏管道实例，
     /// 且与 AGENTS.md §5 第 5 条「NamedPipe 不使用 ACL」相矛盾。

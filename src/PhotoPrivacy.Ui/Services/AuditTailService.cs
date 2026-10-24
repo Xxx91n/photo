@@ -647,7 +647,7 @@ public sealed class AuditTailService
 
     private static (string Display, string ColorHex) MapEventStyle(string eventType)
     {
-        // 票 05（ui-craft2 / 规范 §6 T3 + §7 V3 克制气场）：DisplayEvent 去
+        // （ui-craft2 / 规范 §6 T3 + §7 V3 克制气场）：DisplayEvent 去
         // emoji/Unicode 符号前缀 —— 状态语义由 ColorHex 语义色承载，不再叠符号字形。
         return eventType switch
         {

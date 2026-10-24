@@ -6,7 +6,7 @@ using Xunit;
 namespace PhotoPrivacy.IntegrationTests.Ui;
 
 /// <summary>
-/// 票 04 / ui-craft — 四页视觉对齐防回潮守卫。
+/// ui-craft — 四页视觉对齐防回潮守卫。
 /// 定值依据：docs/design/ui-visual-standard.md
 ///   §3.3 B1（分隔线自标签列起点 inset）/ B2（控件列宽度收归共享 class）/ B3（分组卡片之间须有间距）
 ///   §4.2（空态）、§5.2 P1（同级分组卡片之间 SpaceLg）/ P5（侧栏导航项 SpaceXs）/ P7（禁等距均匀）
@@ -18,12 +18,12 @@ namespace PhotoPrivacy.IntegrationTests.Ui;
 /// </summary>
 public class PagesVisualAlignmentSourceTests
 {
-    // 受审文件：四页 + MainWindow + 侧栏控件 + ConfigPage 分组子件（票 04 返工轮拆分）
+    // 受审文件：四页 + MainWindow + 侧栏控件 + ConfigPage 分组子件（返工轮拆分）
     private static readonly string[][] ViewFiles =
     {
         new[] { "src", "PhotoPrivacy.Ui", "Views", "MainWindow.axaml" },
         new[] { "src", "PhotoPrivacy.Ui", "Views", "Pages", "ConfigPage.axaml" },
-        // 票 04 返工轮：4 分组子件纳入受审面 —— ramp/Spacing/inline-Width 纪律对全部视图源生效。
+        // 返工轮：4 分组子件纳入受审面 —— ramp/Spacing/inline-Width 纪律对全部视图源生效。
         // （行数守卫 Pages<=220 不纳入：其为「页面文件」复杂度预算口径，子件是组合单元非页面文件。）
         new[] { "src", "PhotoPrivacy.Ui", "Views", "Pages", "ConfigPathGroup.axaml" },
         new[] { "src", "PhotoPrivacy.Ui", "Views", "Pages", "ConfigBehaviorGroup.axaml" },
@@ -55,7 +55,7 @@ public class PagesVisualAlignmentSourceTests
         // 防：A-008 回潮 —— 改编 / 新增页面时把 Spacing 写回字面量（如 Spacing="10"），
         // 间距再次脱离 Space ramp 单点权威，改 token 时页面不跟随（规范 §5.4）。
         // Spacing 是 Double，可安全走 DynamicResource；本条不适用于 Thickness（见下一条断言）。
-        // 票 04 / ui-craft
+        // ui-craft
         foreach (var segments in ViewFiles)
         {
             var source = ReadXaml(segments);
@@ -77,7 +77,7 @@ public class PagesVisualAlignmentSourceTests
         // 必须保持字面量 —— DynamicResource Double 赋 Thickness 会跳过 ThicknessTypeConverter
         // 导致布局测量期 InvalidCastException。故本断言只校验数值落在 ramp 上，
         // 不要求改成 DynamicResource（那会引入崩溃，不是收紧）。
-        // 票 04 / ui-craft
+        // ui-craft
         foreach (var segments in ViewFiles)
         {
             var source = ReadXaml(segments);
@@ -111,7 +111,7 @@ public class PagesVisualAlignmentSourceTests
         // （Clamp 170-400：MainWindow.axaml.cs 的 RestoreSidebarWidth / OnSidebarSplitterDragCompleted）
         // 直接冲突：拖宽后面板右侧留背景断层，拖窄则面板溢出被裁。
         // 修复形态 = 删除 Width，Border 在 Grid cell 内默认 Stretch 自动跟随列宽。
-        // 票 04 / ui-craft
+        // ui-craft
         var source = ReadXaml(new[] { "src", "PhotoPrivacy.Ui", "Views", "MainWindow.axaml" });
         Assert.False(
             source.Contains("Width=\"200\""),
@@ -123,11 +123,11 @@ public class PagesVisualAlignmentSourceTests
     {
         // 防：规范 §3.3 B1 回潮 —— 行分隔线退回通栏（只有 BorderThickness 0,0,0,1 而无 inset），
         // 行与行视觉粘连，失去 Apple 系统设置 / WinUI SettingsCard 的「分隔线自标签列起点对齐」。
-        // 定值（票 04 / ui-craft2 复核）：分隔线 inset = 行水平 padding —— settings-row
+        // 定值（/ ui-craft2 复核）：分隔线 inset = 行水平 padding —— settings-row
         // Padding 16,8 的水平分量 16（MangoDisk md-settings-group ::before left/right=14px =
         // 其行 padding 14 同规则）。行集合卡（settings-card.grouped Padding 0）文本自卡边起 16；
         // 通用卡（Padding 16）文本起 32 —— 两种模式分隔线均与文本左缘对齐。
-        // 票 04 / ui-craft
+        // ui-craft
         var source = ReadXaml(new[] { "src", "PhotoPrivacy.Ui", "Styling", "AppTheme.axaml" });
         var start = source.IndexOf("<Style Selector=\"Border.row-divider\">", StringComparison.Ordinal);
         Assert.True(start >= 0, "Border.row-divider 样式段缺失");
@@ -144,8 +144,8 @@ public class PagesVisualAlignmentSourceTests
     {
         // 防：规范 §3.3 B3 / §5.2 P1 回潮 —— 分组容器回到 Spacing="0" 或漏写 Spacing，
         // 分组直接相邻形成「均匀网格」，是 AI 感第一根因（规范 §5.2 P7）。
-        // 票 04 / ui-craft2 复核上档：MangoDisk 基准组间约 24（附录 D.5），ConfigPage 取
-        // SpaceXl(24)；ServiceManagerPage 票 07 / ui-craft2 已跟进，统一收紧为 SpaceXl。
+        // ui-craft2 复核上档：MangoDisk 基准组间约 24（附录 D.5），ConfigPage 取
+        // SpaceXl(24)；ServiceManagerPage / ui-craft2 已跟进，统一收紧为 SpaceXl。
         // per-page map 逐页钉死当前裁定值，防止施工顺序造成静默回退。
         var expected = new Dictionary<string, string>
         {
@@ -155,19 +155,19 @@ public class PagesVisualAlignmentSourceTests
         foreach (var kv in expected)
         {
             var source = ReadXaml(new[] { "src", "PhotoPrivacy.Ui", "Views", "Pages", kv.Key });
-            // '"' 字符字面量代替 \" 转义 —— 杜绝写盘链路再次吞掉反斜杠（票 04 返工轮实测教训）；
+            // '"' 字符字面量代替 \" 转义 —— 杜绝写盘链路再次吞掉反斜杠（返工轮实测教训）；
             // 变量名 needle 避开外层 expected（Dictionary 映射）重名。
             var needle = "Spacing=" + '"' + "{DynamicResource " + kv.Value + "}" + '"';
             Assert.True(
                 source.Contains(needle),
-                kv.Key + " 的分组容器须设 Spacing={DynamicResource " + kv.Value + "}（规范 §5.2 P1 / §3.3 B3，票 04/ui-craft2 复核）");
+                kv.Key + " 的分组容器须设 Spacing={DynamicResource " + kv.Value + "}（规范 §5.2 P1 / §3.3 B3，ui-craft2 复核）");
         }
     }
 
     [Fact]
     public void ConfigPage_Group_Label_Must_Sit_Above_Card_Not_Inside()
     {
-        // 防：票 04 / ui-craft2 组标签骨架回潮 —— 分组标题退回 settings-card 内部
+        // 防：/ ui-craft2 组标签骨架回潮 —— 分组标题退回 settings-card 内部
         // （卡内标题吃掉卡片顶部节奏且与行 padding 规则耦合）。MangoDisk md-settings-group
         // 与 WinUI SettingsCard 节的组标题均在卡片外上方（muted 小标签）。
         // 返工轮：4 分组迁移为 Config*Group 子件 —— 断言升级为逐文件：每组恰 1 个 group-label
@@ -196,7 +196,7 @@ public class PagesVisualAlignmentSourceTests
     [Fact]
     public void ConfigPage_PageShell_Must_Consume_V20_Layout_Tokens()
     {
-        // 防：票 04 / ui-craft2 页壳回潮 —— 页头高度 / 页标题 / 可读宽度档回退为散值或旧 class。
+        // 防：/ ui-craft2 页壳回潮 —— 页头高度 / 页标题 / 可读宽度档回退为散值或旧 class。
         // 页头 MinHeight=LayoutPageHeaderHeight(58)、标题 .page-title(22/Normal)、
         // 内容 MaxWidth=LayoutContentWidthReadable(1160) 居中 —— 均为 v2.0 附录 D.2/D.5 基准落位，
         // 三个消费点同时在场才构成 md-page-shell 骨架。
@@ -209,7 +209,7 @@ public class PagesVisualAlignmentSourceTests
     [Fact]
     public void LogsPage_PageShell_Toolbar_And_Rows_Must_Consume_V20_Layout_Tokens()
     {
-        // 防：票 05 / ui-craft2 页壳+工具条+行高回潮 —— 页头高度/页标题/工具条高度/日志行高
+        // 防：/ ui-craft2 页壳+工具条+行高回潮 —— 页头高度/页标题/工具条高度/日志行高
         // 回退为散值或旧 class。页头 MinHeight=LayoutPageHeaderHeight(58)+page-title、
         // 工具条 MinHeight=LayoutToolbarHeight(36)、日志行 MinHeight=LayoutResultRowHeight(44)
         // —— 均为 v2.0 附录 D.2/D.5 基准落位，四者同场才构成 md-page-shell+workspace 骨架。
@@ -243,10 +243,10 @@ public class PagesVisualAlignmentSourceTests
     [Fact]
     public void RulesPage_PageShell_Toolbar_And_Rows_Must_Consume_V20_Layout_Tokens()
     {
-        // 防：票 06 / ui-craft2 页壳+工具条+矩阵行高回潮 —— 页头高度/页标题/工具条高度/
+        // 防：/ ui-craft2 页壳+工具条+矩阵行高回潮 —— 页头高度/页标题/工具条高度/
         // 规则矩阵行高回退为散值或旧 class。页头 MinHeight=LayoutPageHeaderHeight(58)+page-title、
         // 过滤工具条 MinHeight=LayoutToolbarHeight(36)、矩阵行 RowHeight=LayoutResultRowHeight(44)
-        // —— 均为 v2.0 附录 D.2/D.5 基准落位（atomcode 票 06 调研裁决一：页面级操作放页头
+        // 均为 v2.0 附录 D.2/D.5 基准落位（atomcode 调研裁决一：页面级操作放页头
         // 右侧操作区，过滤工具条只承载数据作用域操作）。
         var source = ReadXaml(new[] { "src", "PhotoPrivacy.Ui", "Views", "Pages", "RulesPage.axaml" });
         Assert.True(
@@ -263,7 +263,7 @@ public class PagesVisualAlignmentSourceTests
         // 防：规范 §4 E2+E5 回潮 —— 空态退回单行 caption 或缺图标盒/标题/说明三级骨架，
         // 或丢失成因二分文案。E2 落位 = empty-icon + empty-title(20) + empty-desc(12 muted)；
         // E5 落位 = 真空 rules.empty_desc 与过滤无结果 rules.empty_filtered 双文案随
-        // RulesPanel.SearchFilterActive 切换（atomcode 票 06 调研裁决二：空态按成因键控，
+        // RulesPanel.SearchFilterActive 切换（atomcode 调研裁决二：空态按成因键控，
         // 过滤无结果须提示可清筛）；HasNoVisibleRules 收口开关不动。
         var source = ReadXaml(new[] { "src", "PhotoPrivacy.Ui", "Views", "Pages", "RulesPage.axaml" });
         Assert.True(
@@ -279,7 +279,7 @@ public class PagesVisualAlignmentSourceTests
     [Fact]
     public void ServiceManagerPage_PageShell_And_ServiceCard_Must_Consume_V20_Layout_Tokens()
     {
-        // 防：票 07 / ui-craft2 页壳 + 分组卡骨架回潮 —— 页头高度 / 页标题 / 可读宽度档回退为
+        // 防：/ ui-craft2 页壳 + 分组卡骨架回潮 —— 页头高度 / 页标题 / 可读宽度档回退为
         // 散值或旧 class，或组标签退回卡内 section-header。页头 MinHeight=LayoutPageHeaderHeight(58)
         // + page-title、内容 MaxWidth=LayoutContentWidthReadable(1160) 居中、组标签 .group-label
         // 在卡外上方、行集合卡 settings-card.grouped —— 均为 v2.0 附录 D.2/D.5 + §3.1 基准落位。
@@ -312,9 +312,9 @@ public class PagesVisualAlignmentSourceTests
     public void Views_Must_Not_Inline_ComboBox_Width()
     {
         // 防：规范 §3.3 B2 回潮 —— 下拉控件重新行内写 Width（历史形态 Width="160" ×3），
-        // 与票 24 已立的「Views 禁止内联宽度」冲突，控件列宽度再次散落各页无法统一调整。
+        // 与既有的「Views 禁止内联宽度」冲突，控件列宽度再次散落各页无法统一调整。
         // 收敛形态：Width 单一权威迁入 Styling 的 ComboBox.inline-control 共享 class。
-        // 票 04 / ui-craft
+        // ui-craft
         foreach (var segments in ViewFiles)
         {
             var source = ReadXaml(segments);

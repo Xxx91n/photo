@@ -12,7 +12,7 @@ namespace PhotoPrivacy.Ui.ViewModels;
 /// <summary>
 /// Rules Panel ViewModel with Expert mode gate.
 /// BleachBit 5.1 pattern: ToggleSwitch + confirmation dialog, dangerous columns disabled in non-expert.
-/// 票18: LoadRules backfills every group toggle from the store; SaveCustomRules persists all six toggles.
+/// LoadRules backfills every group toggle from the store; SaveCustomRules persists all six toggles.
 /// </summary>
 public sealed class RulesPanelViewModel : INotifyPropertyChanged
 {
@@ -62,7 +62,7 @@ public sealed class RulesPanelViewModel : INotifyPropertyChanged
     public ObservableCollection<FormatRuleRow> Rules { get; } = new();
     private readonly List<FormatRuleRow> _allRules = new();
 
-    // 票 26: 规则空态占位开关 — ApplyFilter 收口处联动刷新（无事件订阅，防泄漏）。
+    // 规则空态占位开关 — ApplyFilter 收口处联动刷新（无事件订阅，防泄漏）。
     private bool _hasNoVisibleRules;
     public bool HasNoVisibleRules
     {
@@ -70,11 +70,11 @@ public sealed class RulesPanelViewModel : INotifyPropertyChanged
         private set => SetField(ref _hasNoVisibleRules, value);
     }
 
-    // 票 06（ui-craft2 / 规范 §4 E5）：空态成因标志 —— 搜索过滤激活态；空态层按成因二分
-    // 「真空 / 过滤无结果」双文案（atomcode 调研裁决二；同构 MainWindowViewModel.LogLevelFilterActive，票 05）。
+    // （ui-craft2 / 规范 §4 E5）：空态成因标志 —— 搜索过滤激活态；空态层按成因二分
+    // 「真空 / 过滤无结果」双文案（atomcode 调研裁决二；同构 MainWindowViewModel.LogLevelFilterActive，）。
     public bool SearchFilterActive => !string.IsNullOrEmpty(_searchFilter);
 
-    // 票 08（ui-craft2 / D-007 / 规范 §6 T1）：规则保存/重置反馈经应用级 toast 链；
+    // （ui-craft2 / D-007 / 规范 §6 T1）：规则保存/重置反馈经应用级 toast 链；
     // 可选注入保测试构造兼容（RulesPanelViewModelTests 单参调用）。
     private readonly ToastService? _toast;
 
@@ -101,7 +101,7 @@ public sealed class RulesPanelViewModel : INotifyPropertyChanged
         _allRules.Add(new FormatRuleRow("Video", WipeFormatFamily.Video, "mov mp4 m4v", stripAll: true, stripTime: true)
         {
             IsDangerous = true,
-            // 票18: IsEnabled 不落盘；此前误读 RAW 族键 raw_strip_exif_xmp_iptc（键名错配），现按默认启用
+            // IsEnabled 不落盘；此前误读 RAW 族键 raw_strip_exif_xmp_iptc（键名错配），现按默认启用
             IsEnabled = true,
         });
         _allRules.Add(new FormatRuleRow("PDF", WipeFormatFamily.Pdf, "pdf", stripAll: true)
@@ -120,7 +120,7 @@ public sealed class RulesPanelViewModel : INotifyPropertyChanged
         ApplyFilter();
     }
 
-    /// <summary>票18: defaults 正确回填——每行逐组开关从存储值覆盖，缺键时保留行编码默认值。</summary>
+    /// <summary> defaults 正确回填——每行逐组开关从存储值覆盖，缺键时保留行编码默认值。</summary>
     private void BackfillFromStore(Dictionary<string, bool> stored)
     {
         foreach (var row in _allRules)
@@ -155,7 +155,7 @@ public sealed class RulesPanelViewModel : INotifyPropertyChanged
         var rules = new Dictionary<string, bool>();
         foreach (var row in _allRules)
         {
-            // 票18: 全部逐组开关持久化（此前仅 strip_all）；FamilyKey 取自枚举，杜绝 "eps/ps" 斜杠键
+            // 全部逐组开关持久化（此前仅 strip_all）；FamilyKey 取自枚举，杜绝 "eps/ps" 斜杠键
             rules[FormatRulesStore.Key(row.FamilyKey, "strip_all")] = row.StripAll;
             rules[FormatRulesStore.Key(row.FamilyKey, "preserve_icc")] = row.PreserveIcc;
             rules[FormatRulesStore.Key(row.FamilyKey, "strip_exif")] = row.StripExif;
@@ -203,7 +203,7 @@ public sealed class FormatRuleRow : INotifyPropertyChanged
     public string FamilyName { get; }
     public WipeFormatFamily Family { get; }
 
-    /// <summary>票18: rules.json 键前缀（枚举名小写），与 FormatRulesStore.Key 共用一套 schema。</summary>
+    /// <summary> rules.json 键前缀（枚举名小写），与 FormatRulesStore.Key 共用一套 schema。</summary>
     public string FamilyKey => Family.ToString().ToLowerInvariant();
 
     public string Extensions { get; }
@@ -282,7 +282,7 @@ public sealed class FormatRuleRow : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// 票 19: family→命令复制表已删除。参数预览由 WipeRuleEngine（单一真相源）从本行勾选实时生成，
+    /// family→命令复制表已删除。参数预览由 WipeRuleEngine（单一真相源）从本行勾选实时生成，
     /// 与 Worker 端擦除命令同源；勾选任一开关即真实改变命令（含 DataGrid 预览列与实际执行一致）。
     /// </summary>
     public string EffectiveArgs => WipeRuleEngine.BuildEffectiveArgs(

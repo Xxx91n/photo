@@ -50,7 +50,7 @@ public static class UiProgram
         var config = LoadConfigOrDefault(configPath);
         UiDiagnosticLog.Write($"Config resolved. path={configPath}, hide_main_window_on_startup={config.Ui.HideMainWindowOnStartup}, hide_tray_icon={config.Ui.HideTrayIcon}");
 
-        // 票 29（架构恢复第七轮）：组合根装配 —— 核心服务在 DI 容器注册为单例，运行时选项构建收口
+        // （架构恢复第七轮）：组合根装配 —— 核心服务在 DI 容器注册为单例，运行时选项构建收口
         // AppComposition（spec 研究输入 Q1/Q2：组合根 + VM 构造注入）；Program 不再手写 new 服务链。
         var services = AppComposition.Build(config, configPath, ResolveWorkerExecutablePath());
         App.RuntimeOptions = services.GetRequiredService<BackgroundUiOptions>();
@@ -156,7 +156,7 @@ public static class UiProgram
 
     public static AppBuilder BuildAvaloniaApp(IServiceProvider services)
     {
-        // 票 29：App 经工厂重载拿到容器（AppBuilder.Configure(Func<TApp>)），OnFrameworkInitializationCompleted 内解析 MainWindow。
+        // App 经工厂重载拿到容器（AppBuilder.Configure(Func<TApp>)），OnFrameworkInitializationCompleted 内解析 MainWindow。
         var builder = AppBuilder.Configure(() => new App(services))
             .UsePlatformDetect()
             .WithInterFont()

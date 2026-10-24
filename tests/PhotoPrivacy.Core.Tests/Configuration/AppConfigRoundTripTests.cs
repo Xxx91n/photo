@@ -4,7 +4,7 @@ using PhotoPrivacy.Core.Configuration;
 namespace PhotoPrivacy.Core.Tests.Configuration;
 
 /// <summary>
-/// 票 17 — 配置 round-trip 对称性锁定：AppConfig.Default → AppConfigJson.ToIndentedJson
+/// 配置 round-trip 对称性锁定：AppConfig.Default → AppConfigJson.ToIndentedJson
 /// → AppConfigLoader.Load 必须逐字段还原（含此前为死字段的 ui.sidebar_width 与
 /// backup.retain_days），并断言 config.sample.json 关键取值与 AppConfig.Default 一致，
 /// 防止未来新增字段再悄悄变成死字段。
@@ -128,7 +128,7 @@ public sealed class AppConfigRoundTripTests
     }
 
     /// <summary>
-    /// 票 27 B 检查点 — 收敛 3 处双 DTO 漂移点:Backup.Suffix / Ui.ThemeVariant / Ui.Locale
+    /// B 检查点 — 收敛 3 处双 DTO 漂移点:Backup.Suffix / Ui.ThemeVariant / Ui.Locale
     /// 写侧默认值必须等于读侧 AppConfigLoader 默认值,确保磁盘 JSON 永远带语义值(不出现空串).
     /// </summary>
     [Theory]
@@ -146,7 +146,7 @@ public sealed class AppConfigRoundTripTests
     }
 
     /// <summary>
-    /// 票 27 B — 读侧空白兜底:手工编辑漏填关键字段后,AppConfigLoader 必须回填到 AppConfig.Default
+    /// 读侧空白兜底:手工编辑漏填关键字段后,AppConfigLoader 必须回填到 AppConfig.Default
     /// 语义值,而不是传空串到下游路径拼接或主题切换逻辑里.
     /// </summary>
     [Theory]

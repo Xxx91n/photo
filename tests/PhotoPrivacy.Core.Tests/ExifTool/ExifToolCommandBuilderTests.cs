@@ -34,7 +34,7 @@ public sealed class ExifToolCommandBuilderTests
     [Fact]
     public void BuildWipeTaskBlock_Should_Contain_TaskDone_And_Execute()
     {
-        // 票 28 返修：BuildWipeTaskBlock 校验绝对路径，Windows 风格字面量在 Linux 非法——用平台绝对路径
+        // 返修：BuildWipeTaskBlock 校验绝对路径，Windows 风格字面量在 Linux 非法——用平台绝对路径
         var target = Path.Combine(Path.GetTempPath(), "pp-cb", "a.jpg");
         var block = ExifToolCommandBuilder.BuildWipeTaskBlock(target, "123");
 
@@ -47,7 +47,7 @@ public sealed class ExifToolCommandBuilderTests
     [Fact]
     public void BuildWipeTaskBlock_Should_Throw_For_Unmapped_Format()
     {
-        // 票 01（A-001）：skip 情形不得产出不可完成的块（旧行为：回显 SKIP_ 而调用方等 TASK_DONE_ → 挂死）。
+        // （A-001）：skip 情形不得产出不可完成的块（旧行为：回显 SKIP_ 而调用方等 TASK_DONE_ → 挂死）。
         var target = Path.Combine(Path.GetTempPath(), "pp-cb", "a.webp");
 
         var ex = Assert.Throws<InvalidOperationException>(

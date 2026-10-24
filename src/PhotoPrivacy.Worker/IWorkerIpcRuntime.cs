@@ -3,7 +3,7 @@ using PhotoPrivacy.Core.Runtime;
 namespace PhotoPrivacy.Worker;
 
 /// <summary>
-/// 票 05（A-005）：IPC 请求处理所需的最小 Worker 运行时面。
+/// （A-005）：IPC 请求处理所需的最小 Worker 运行时面。
 ///
 /// 抽出接口的唯一目的是让请求处理逻辑（<see cref="WorkerIpcRequestHandler"/>）可在行为测试中
 /// 用可控假件驱动——尤其要能造出「ReloadConfigAsync 挂住数秒」的场景，验证 accept 循环

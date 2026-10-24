@@ -56,21 +56,21 @@ public static class AppConfigLoader
             Backup: new BackupOptions(
                 Enabled: dto.Backup.Enabled,
                 Directory: dto.Backup.Directory,
-                // 票 27 B：写侧已统一兜底为空时写 Default；读侧再做空白兜底是双层保险，
+                // 写侧已统一兜底为空时写 Default；读侧再做空白兜底是双层保险，
                 // 防止旧磁盘文件或手工编辑时漏值导致空串污染下游路径拼接。
                 Suffix: string.IsNullOrWhiteSpace(dto.Backup.Suffix) ? AppConfig.Default.Backup.Suffix : dto.Backup.Suffix,
                 MaxSizeMb: dto.Backup.MaxSizeMb,
                 RetainDays: dto.Backup.RetainDays),
             Quarantine: new QuarantineOptions(
                 Enabled: dto.Quarantine.Enabled,
-                // 票 02（A-002）：空串/空白回落 DefaultPaths —— 对齐 Backup.Suffix 先例。
+                // （A-002）：空串/空白回落 DefaultPaths —— 对齐 Backup.Suffix 先例。
                 // 空串直传会让 Path.Combine("", 文件名) 退化成相对路径，隔离文件落进进程 CWD
                 // （config.sample.json 的 quarantine.directory 就是空串，跟着 README 第一步走即命中）。
                 Directory: string.IsNullOrWhiteSpace(dto.Quarantine.Directory)
                     ? DefaultPaths.DefaultQuarantineDirectory
                     : dto.Quarantine.Directory),
             Audit: new AuditOptions(
-                // 票 02（A-002）：同上——审计日志目录空串回落 DefaultPaths，绝不落 CWD。
+                // （A-002）：同上——审计日志目录空串回落 DefaultPaths，绝不落 CWD。
                 LogDirectory: string.IsNullOrWhiteSpace(dto.Audit.LogDirectory)
                     ? DefaultPaths.DefaultAuditLogDirectory
                     : dto.Audit.LogDirectory,
@@ -80,7 +80,7 @@ public static class AppConfigLoader
             Ui: new UiOptions(
                 HideMainWindowOnStartup: dto.Ui.HideMainWindowOnStartup,
                 HideTrayIcon: dto.Ui.HideTrayIcon,
-                // 票 27 B：ThemeVariant/Locale/ThemeId 兜底默认从 AppConfig.Default 取，消双 DTO 漂移。
+                // ThemeVariant/Locale/ThemeId 兜底默认从 AppConfig.Default 取，消双 DTO 漂移。
                 ThemeVariant: string.IsNullOrWhiteSpace(dto.Ui.ThemeVariant) ? AppConfig.Default.Ui.ThemeVariant : dto.Ui.ThemeVariant,
                 Locale: string.IsNullOrWhiteSpace(dto.Ui.Locale) ? AppConfig.Default.Ui.Locale : dto.Ui.Locale,
                 SidebarWidth: dto.Ui.SidebarWidth,
@@ -232,7 +232,7 @@ public static class AppConfigLoader
         [JsonPropertyName("directory")]
         public string Directory { get; init; } = AppConfig.Default.Backup.Directory;
 
-        // 票 27 B：写侧已统一兜底为空时写 Default；Dto 默认值也同步到 AppConfig.Default，
+        // 写侧已统一兜底为空时写 Default；Dto 默认值也同步到 AppConfig.Default，
         // 让 JsonSerializer 不会产出意外的空串。运行时 AppConfig 构造还会再 blanket 一次。
         [JsonPropertyName("suffix")]
         public string Suffix { get; init; } = AppConfig.Default.Backup.Suffix;
@@ -276,7 +276,7 @@ public static class AppConfigLoader
         [JsonPropertyName("hide_tray_icon")]
         public bool HideTrayIcon { get; init; } = AppConfig.Default.Ui.HideTrayIcon;
 
-        // 票 27 B：写侧 Default 已统一；DTO 默认值也同步到 AppConfig.Default，消双 DTO 漂移。
+        // 写侧 Default 已统一；DTO 默认值也同步到 AppConfig.Default，消双 DTO 漂移。
         [JsonPropertyName("theme_variant")]
         public string ThemeVariant { get; init; } = AppConfig.Default.Ui.ThemeVariant;
 

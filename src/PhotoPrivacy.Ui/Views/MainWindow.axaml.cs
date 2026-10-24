@@ -22,16 +22,16 @@ public partial class MainWindow : Window
     internal BackgroundUiOptions? _options;
     private readonly WorkerIpcClient _workerIpc;
     internal readonly ServiceModeController _serviceModeController;
-    // 票 31：版本/服务状态轮询已下沉 WindowPollingHostedService（_versionSnapshot/_versionPollCts/
+    // 版本/服务状态轮询已下沉 WindowPollingHostedService（_versionSnapshot/_versionPollCts/
     // _versionPollTask/_serviceModePollCts/_serviceModePollTask 五字段随之删除）。
     private readonly WindowPollingHostedService _pollingHostedService;
-    // 票 08（ui-craft2 / D-007 / 规范 §6）：应用级 toast 服务（DI 单例）——配置保存/规则/服务操作
+    // （ui-craft2 / D-007 / 规范 §6）：应用级 toast 服务（DI 单例）——配置保存/规则/服务操作
     // 反馈链统一出口；SaveStatus 行内文本保留为持久态，toast 承载瞬时反馈。
     private readonly ToastService _toastService;
     private string _exifToolHint = string.Empty;
     private CancellationTokenSource? _saveStatusResetCts;
     private CancellationTokenSource? _configApplyDebounceCts;
-    // 票 27：ConfigFileWatcher — 监听磁盘 config.json 变更后回调 ApplyRuntimeConfigToUiState
+    // ConfigFileWatcher — 监听磁盘 config.json 变更后回调 ApplyRuntimeConfigToUiState
     private ConfigFileWatcher? _configFileWatcher;
     private static readonly HashSet<string> _configProperties = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -61,7 +61,7 @@ public partial class MainWindow : Window
         "exiftool.exe"
     ];
 
-    // 票 29（架构恢复第七轮）：构造注入 —— 服务依赖经组合根容器（AppComposition）装配，
+    // （架构恢复第七轮）：构造注入 —— 服务依赖经组合根容器（AppComposition）装配，
     // MainWindow 不再手写 new WorkerIpcClient/ServiceManager/ServiceModeController 依赖链；
     // 窗口仅保留对自身视图缝（UiHost/ViewModelView 适配器）的落位。
     public MainWindow(
@@ -83,7 +83,7 @@ public partial class MainWindow : Window
             new MainWindowUiHost(this),
             new MainWindowViewModelView(this),
             toastService);
-        // 票 31：服务模式轮询委托挂载（破 DI 环，见 WindowPollingHostedService 类注释）。
+        // 服务模式轮询委托挂载（破 DI 环，见 WindowPollingHostedService 类注释）。
         _pollingHostedService.AttachServiceModePoll(_serviceModeController.PollServiceModeTransitionAsync);
         DataContext = viewModel;
     }
@@ -126,7 +126,7 @@ public partial class MainWindow : Window
         if (viewModel is not null)
         {
             viewModel.CurrentMode = ServiceModeController.MapModeLabel(options.RuntimeKind);
-            // 票 31：版本快照与轮询由 WindowPollingHostedService.Activate 构建（窗口就绪后），
+            // 版本快照与轮询由 WindowPollingHostedService.Activate 构建（窗口就绪后），
             // 初始 detecting 占位语义保持 —— 1s 内轮询经 Dispatcher 检出真实版本。
             viewModel.ExifToolVersion = LocalizationService.Instance.Get("status.detecting");
             viewModel.ShowDetailedEvents = false;
@@ -194,7 +194,7 @@ public partial class MainWindow : Window
             }
 
             var isServiceMode = string.Equals(options.RuntimeKind, "service", StringComparison.OrdinalIgnoreCase);
-            // 票 24：Service→View 直写清零 — 可用性/文案改经 VM 中转，由 XAML 绑定消费。
+            // Service→View 直写清零 — 可用性/文案改经 VM 中转，由 XAML 绑定消费。
             viewModel.PauseResumeAvailable = !isServiceMode;
 
             _serviceModeController.Attach(options);
@@ -207,7 +207,7 @@ public partial class MainWindow : Window
         }
 
         PauseResumeButton.Click += OnPauseResumeClick;
-        // 票 24：页面控件经 Pages code-behind 内部访问器接线，事件订阅仍统一收口在 MainWindow。
+        // 页面控件经 Pages code-behind 内部访问器接线，事件订阅仍统一收口在 MainWindow。
         LogPage.ClearLogsButtonControl.Click += OnClearLogsClick;
         OpenConfigDirButton.Click += OnOpenConfigDirClick;
         ServiceManagerTab.RefreshServiceStatusButtonControl.Click += OnRefreshServiceStatusClick;
@@ -220,12 +220,12 @@ public partial class MainWindow : Window
         ServiceManagerTab.UninstallServiceButtonControl.Click += OnUninstallServiceClick;
         ServiceManagerTab.StartServiceButtonControl.Click += OnStartServiceClick;
         ServiceManagerTab.StopServiceButtonControl.Click += OnStopServiceClick;
-        // 票 30：主题/语言/日志级别三套 SelectionChanged 手动镜像删除 —— ComboBox 选中态经
+        // 主题/语言/日志级别三套 SelectionChanged 手动镜像删除 —— ComboBox 选中态经
         // SelectedIndex TwoWay 绑定 VM（ThemeVariantIndex/CurrentLocaleIndex/LogLevelIndex），
         // 联动副作用在 VM setter；色板 Click 转发保留（ThemeId 回写）。
         ConfigPage.AddExcludedDirectoryButtonControl.Click += OnAddExcludedDirectoryClick;
         ConfigPage.RemoveExcludedDirectoryButtonControl.Click += OnRemoveExcludedDirectoryClick;
-        // 票 25：ThemeSwatch Click 路由统一收口（PART_Radio 的 Button.Click 自 ItemTemplate 内冒泡至 ItemsControl；程序化回填 IsChecked 不触发 = 原 Click 语义零回归）
+        // ThemeSwatch Click 路由统一收口（PART_Radio 的 Button.Click 自 ItemTemplate 内冒泡至 ItemsControl；程序化回填 IsChecked 不触发 = 原 Click 语义零回归）
         ConfigPage.ThemeSwatchListControl.AddHandler(Button.ClickEvent, OnThemePresetSwatchClick);
         RulesPage.SaveRulesButtonControl.Click += OnSaveRulesClick;
         RulesPage.ResetRulesButtonControl.Click += OnResetRulesClick;
@@ -292,10 +292,10 @@ public partial class MainWindow : Window
             UiDiagnosticLog.Write("MainWindow startup policy keeps window visible");
         }
 
-        // 票 31：版本轮询与服务状态轮询统一由宿主服务拉起（1s/3s 周期、取消/等待语义不变）。
+        // 版本轮询与服务状态轮询统一由宿主服务拉起（1s/3s 周期、取消/等待语义不变）。
         _pollingHostedService.Activate();
 
-        // 票 27：启动 ConfigFileWatcher 监听磁盘变更（手改/外部工具/备份回滚）.
+        // 启动 ConfigFileWatcher 监听磁盘变更（手改/外部工具/备份回滚）.
         // 与 OnSelfWrite 抑制回调配对，避免 UI 自身写盘触发的 FSW 反弹 reload 覆盖未确认改动.
         _configFileWatcher = new ConfigFileWatcher(
             configPath: options.ConfigPath,
@@ -362,7 +362,7 @@ public partial class MainWindow : Window
         _configApplyDebounceCts?.Dispose();
         _configApplyDebounceCts = null;
 
-        // 票 27：释放 ConfigFileWatcher 并解绑 OnSelfWrite 抑制回调（避免静态事件悬挂）
+        // 释放 ConfigFileWatcher 并解绑 OnSelfWrite 抑制回调（避免静态事件悬挂）
         if (_configFileWatcher is not null)
         {
             _configFileWatcher.Dispose();
@@ -376,7 +376,7 @@ public partial class MainWindow : Window
             await _auditTail.StopAsync();
         }
 
-        // 票 31：两轮询的取消/等待收口宿主服务 StopAsync（顺序：版本→服务模式，语义不变）。
+        // 两轮询的取消/等待收口宿主服务 StopAsync（顺序：版本→服务模式，语义不变）。
         await _pollingHostedService.StopAsync(CancellationToken.None);
 
         _trayHost?.Dispose();
@@ -527,7 +527,7 @@ public partial class MainWindow : Window
 
     private void OnNavigateClick(object? sender, RoutedEventArgs e)
     {
-        // 票 25：sender 为 NavButton 内部 PART_Button，页面键自 NavButton.PageTag 读取。
+        // sender 为 NavButton 内部 PART_Button，页面键自 NavButton.PageTag 读取。
         if (sender is not Button button) return;
         var pageTag = (button.Parent as NavButton)?.PageTag;
         if (string.IsNullOrEmpty(pageTag))
@@ -568,7 +568,7 @@ public partial class MainWindow : Window
         SetNavButtonActive(RulesNavButton, string.Equals(normalized, "rules", StringComparison.Ordinal));
     }
 
-    // 票 25：active 态唯一驱动 = NavButton.IsActive（内部映射 AppTheme Button.nav.active）。
+    // active 态唯一驱动 = NavButton.IsActive（内部映射 AppTheme Button.nav.active）。
     private static void SetNavButtonActive(NavButton button, bool isActive) => button.IsActive = isActive;
 
     private void OnSaveRulesClick(object? sender, RoutedEventArgs e)
@@ -587,13 +587,13 @@ public partial class MainWindow : Window
         }
     }
 
-    // 票 30：OnThemeVariantSelectionChanged/OnLogLevelSelectionChanged/OnLocaleSelectionChanged 已删除 ——
+    // OnThemeVariantSelectionChanged/OnLogLevelSelectionChanged/OnLocaleSelectionChanged 已删除 ——
     // 三套 SelectionChanged 手动镜像收敛为 ComboBox SelectedIndex TwoWay 绑定 VM 索引属性，
     // 主题应用/SwitchLocale/LogEnabled 联动在 VM setter 承载（行为不变）。
 
 
     // Theme preset swatch click — dual-axis: ThemeId (preset) independent of ThemeVariant (light/dark)
-    // 票 30：只剩事件转发 —— ThemeId 写回 VM（资源应用经 PropertyChanged 响应，防抖经 _configProperties 既有链路）。
+    // 只剩事件转发 —— ThemeId 写回 VM（资源应用经 PropertyChanged 响应，防抖经 _configProperties 既有链路）。
     private void OnThemePresetSwatchClick(object? sender, RoutedEventArgs e)
     {
         try
@@ -611,21 +611,21 @@ public partial class MainWindow : Window
         }
     }
 
-    // 票 30：OnLogLevelSelectionChanged 已删除 —— 联动（LogEnabled/ShowDetailedEvents）迁入 MainWindowViewModel.LogLevelIndex setter。
+    // OnLogLevelSelectionChanged 已删除 —— 联动（LogEnabled/ShowDetailedEvents）迁入 MainWindowViewModel.LogLevelIndex setter。
 
 
-    // 票 30：OnLocaleSelectionChanged 已删除 —— SwitchLocale 联动迁入 MainWindowViewModel.CurrentLocale setter。
+    // OnLocaleSelectionChanged 已删除 —— SwitchLocale 联动迁入 MainWindowViewModel.CurrentLocale setter。
 
-    // 票 30：SyncLocaleComboSelection/SyncThemeVariantComboSelection/SyncLogLevelComboSelection 已删除 ——
+    // SyncLocaleComboSelection/SyncThemeVariantComboSelection/SyncLogLevelComboSelection 已删除 ——
     // ComboBox 选中态回填由 SelectedIndex TwoWay 绑定自动完成（get 侧归一化语义与原回填一致）。
 
 
     // Restore swatch checked state from config
-    // 票 30：SyncThemeSwatchSelection/_pending/OnThemeSwatchListLoaded/TryApplyThemeSwatchSelection 已删除 ——
+    // SyncThemeSwatchSelection/_pending/OnThemeSwatchListLoaded/TryApplyThemeSwatchSelection 已删除 ——
     // 色板选中态回填由 ConfigPage MultiBinding（VM.ThemeId ↔ 色板 ThemeId 比较）驱动，
     // 绑定系统天然处理容器延迟生成，无需 Loaded 重放 hack。
 
-    // 票 30：ReadComboItemString 已删除 —— 全仓无调用者的死代码。
+    // ReadComboItemString 已删除 —— 全仓无调用者的死代码。
 
     private static readonly Dictionary<string, string> ThemeVariantTagToLocaleKey = new()
     {
@@ -650,7 +650,7 @@ public partial class MainWindow : Window
         var logsPage = LogPage;
         RefreshComboBoxItems(configPage.ThemeVariantComboBoxControl, ThemeVariantTagToLocaleKey, svc);
         RefreshComboBoxItems(configPage.LogLevelComboBoxControl, LogLevelTagToLocaleKey, svc);
-        // 票 05（ui-craft2）：LogsPage 工具条级别下拉同一套 Tag→key 映射 + SelectionBoxItem 缓存刷新。
+        // （ui-craft2）：LogsPage 工具条级别下拉同一套 Tag→key 映射 + SelectionBoxItem 缓存刷新。
         RefreshComboBoxItems(logsPage.LogLevelComboBoxControl, LogLevelTagToLocaleKey, svc);
         // Force Avalonia ComboBox SelectionBoxItem to re-render: setting Content
         // on ComboBoxItem does NOT propagate to the closed dropdown display
@@ -711,15 +711,15 @@ public partial class MainWindow : Window
         return ServiceModeController.BuildRuntimeStatusText(_options.RuntimeKind, _options.GetServiceRuntimeState(), isPaused);
     }
 
-    // 票 30：SyncThemeVariantComboSelection 已删除（SelectedIndex 绑定自动回填）。
+    // SyncThemeVariantComboSelection 已删除（SelectedIndex 绑定自动回填）。
 
 
-    // 票 30：SyncThemeSwatchSelection/_pending/OnThemeSwatchListLoaded/TryApplyThemeSwatchSelection 已删除
+    // SyncThemeSwatchSelection/_pending/OnThemeSwatchListLoaded/TryApplyThemeSwatchSelection 已删除
     //（色板选中态由 MultiBinding 驱动）。
 
-    // 票 30：SyncLogLevelComboSelection 已删除（SelectedIndex 绑定自动回填）。
+    // SyncLogLevelComboSelection 已删除（SelectedIndex 绑定自动回填）。
 
-    // 票 30：ReadThemeVariantSelection 已删除 —— 全仓无调用者的死代码。
+    // ReadThemeVariantSelection 已删除 —— 全仓无调用者的死代码。
 
     private static string NormalizeThemeVariant(string? value)
     {
@@ -786,7 +786,7 @@ public partial class MainWindow : Window
 
     private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        // 票 30：主题双轴（预设 ThemeId / 明暗 ThemeVariant）任一变化 → 社区主题资源重应用
+        // 主题双轴（预设 ThemeId / 明暗 ThemeVariant）任一变化 → 社区主题资源重应用
         //（原 OnThemeVariantSelectionChanged / OnThemePresetSwatchClick 的视图侧应用迁至此处；
         // RequestedThemeVariant 仍由 VM ThemeVariant setter 承担）。幂等：启动/热重载的
         // 显式应用调用保留，重复应用结果一致。
@@ -907,7 +907,7 @@ public partial class MainWindow : Window
     }
 
 
-    // 票 30：OnApplyConfigClick 已删除 —— 「应用配置」按钮移除后即为无引用死代码
+    // OnApplyConfigClick 已删除 —— 「应用配置」按钮移除后即为无引用死代码
     //（全仓 grep 仅守卫测试断言其存在）；守卫 MainWindowConfigHotReloadSourceTests 同步迁移为
     // 锁定防抖即时应用链（ScheduleDebouncedConfigApply → ApplyConfigImmediatelyAsync）。
 
@@ -942,7 +942,7 @@ public partial class MainWindow : Window
         }, token);
     }
 
-    // 票 30：ApplyConfigForCurrentModeAsync 已删除 —— 全仓无调用者的死代码（防抖链路
+    // ApplyConfigForCurrentModeAsync 已删除 —— 全仓无调用者的死代码（防抖链路
     // ApplyConfigImmediatelyAsync 才是唯一 Worker ReloadConfig 入口）。
 
     private void ApplyRuntimeConfigToUiState()
@@ -955,7 +955,7 @@ public partial class MainWindow : Window
         try
         {
             var cfg = LoadConfigOrDefault(_options.ConfigPath) ?? AppConfig.Default;
-            // 票20 检查点 C：HideMainWindowOnStartup/HideTrayIcon/UseTrayIcon 写入收口至具名方法
+            // 检查点 C：HideMainWindowOnStartup/HideTrayIcon/UseTrayIcon 写入收口至具名方法
             // （UpdateHideFlags 内含原「tray 模式下 UseTrayIcon = !HideTrayIcon」联动，语义逐字等价）。
             _options.UpdateHideFlags(cfg.Ui.HideMainWindowOnStartup, cfg.Ui.HideTrayIcon);
             var normalizedThemeVariant = NormalizeThemeVariant(cfg.Ui.ThemeVariant);
@@ -970,7 +970,7 @@ public partial class MainWindow : Window
                 vm.HideTrayIcon = cfg.Ui.HideTrayIcon;
                 vm.ThemeVariant = normalizedThemeVariant;
                 vm.ThemeId = string.IsNullOrWhiteSpace(cfg.Ui.ThemeId) ? "catppuccin" : cfg.Ui.ThemeId;
-                // 票 30：Sync*ComboSelection/SyncThemeSwatchSelection 回填调用删除 —— 选中态由绑定自动跟随 VM。
+                // Sync*ComboSelection/SyncThemeSwatchSelection 回填调用删除 —— 选中态由绑定自动跟随 VM。
                 App.ApplyCommunityThemeResources(vm.ThemeId, applyDark: string.Equals(NormalizeThemeVariant(vm.ThemeVariant), "dark", StringComparison.OrdinalIgnoreCase));
                 vm.BackupDirectory = cfg.Backup.Directory;
                 vm.AuditLogDirectory = cfg.Audit.LogDirectory;
@@ -1000,9 +1000,9 @@ public partial class MainWindow : Window
         }
     }
 
-    // 票 31：PollVersionAsync / ApplyExifToolVersionFromIpcAsync 已迁移
+    // PollVersionAsync / ApplyExifToolVersionFromIpcAsync 已迁移
     // WindowPollingHostedService（循环体/取消/投递语义逐字保持）；
-    // NormalizeExifToolStatus 唯一权威仍在 ServiceModeController（票 30 结论保持）。
+    // NormalizeExifToolStatus 唯一权威仍在 ServiceModeController（结论保持）。
 }
 
 public partial class MainWindow

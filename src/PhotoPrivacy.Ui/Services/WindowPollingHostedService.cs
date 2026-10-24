@@ -6,7 +6,7 @@ using PhotoPrivacy.Ui.ViewModels;
 namespace PhotoPrivacy.Ui.Services;
 
 /// <summary>
-/// 票 31（架构恢复第七轮）：版本轮询与服务状态轮询宿主服务 — 与心跳
+/// （架构恢复第七轮）：版本轮询与服务状态轮询宿主服务 — 与心跳
 ///（ConnectionStateService）同一心智模型的 IHostedService 承载。两个轮询循环原为
 /// MainWindow.InitializeRuntime 内的 Task.Run 拉起 + OnClosed 手工取消/等待；现由
 /// StartAsync/StopAsync 收口，MainWindow 只剩 Activate/Start/StopAsync 三行接线。
@@ -91,7 +91,7 @@ public sealed class WindowPollingHostedService : IHostedService
         }
     }
 
-    // 原 MainWindow.PollVersionAsync 迁入（票 31）：1s 周期 + TryReadChangedAsync 变化检测 +
+    // 原 MainWindow.PollVersionAsync 迁入：1s 周期 + TryReadChangedAsync 变化检测 +
     // Dispatcher.UIThread.Post 投递，循环体逐字保持（仅 DataContext as 换为构造注入的 _viewModel）。
     private async Task PollVersionAsync(CancellationToken token)
     {

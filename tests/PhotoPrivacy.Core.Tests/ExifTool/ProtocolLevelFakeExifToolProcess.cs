@@ -3,7 +3,7 @@ using PhotoPrivacy.Core.ExifTool;
 namespace PhotoPrivacy.Core.Tests.ExifTool;
 
 /// <summary>
-/// 票 01（A-001 第 5 条）：协议级 ExifTool fake——按 stay_open 协议语义执行命令块。
+/// （A-001 第 5 条）：协议级 ExifTool fake——按 stay_open 协议语义执行命令块。
 ///
 /// 旧 fake 是同义反复：它从 SUT 写出的命令文本里搜出“SUT 正在等待的 marker”再回显，
 /// 于是“桥等什么”与“fake 发什么”永远一致，A-001 的挂死链永远测不出来。本 fake 的三条差异：
@@ -46,16 +46,16 @@ internal sealed class ProtocolLevelFakeExifToolProcess : IExifToolProcess
     public int VersionResponseDelayMs { get; set; }
 
     /// <summary>
-    /// 票 05（A-005）成本注入：命令块里出现「文件参数」（非选项 token，且非 -echo1 的回显目标）时的回包延迟，单位毫秒。
+    /// （A-005）成本注入：命令块里出现「文件参数」（非选项 token，且非 -echo1 的回显目标）时的回包延迟，单位毫秒。
     /// 模拟 ExifTool 真去解析一个输入文件的开销——用于复现「把 exiftool 自身当照片读 → 慢机每文件重启进程」。
     /// 为 0 时退回既有 HealthResponseDelayMs/VersionResponseDelayMs 选择逻辑（既有用例零影响）。
     /// </summary>
     public int FileInputParseDelayMs { get; set; }
 
-    /// <summary>票 05（A-005）：StartAsync 耗时注入，单位毫秒——用于拉开并发启动窗口。</summary>
+    /// <summary>（A-005）：StartAsync 耗时注入，单位毫秒——用于拉开并发启动窗口。</summary>
     public int StartDelayMs { get; set; }
 
-    /// <summary>票 05（A-005）：StartAsync 并发进入峰值（>1 说明重启路径未持 _startLock）。</summary>
+    /// <summary>（A-005）：StartAsync 并发进入峰值（>1 说明重启路径未持 _startLock）。</summary>
     public int MaxConcurrentStartCalls { get; private set; }
 
     public string VersionText { get; set; } = "13.20";
@@ -181,7 +181,7 @@ internal sealed class ProtocolLevelFakeExifToolProcess : IExifToolProcess
     }
 
     /// <summary>
-    /// 票 05（A-005）：判定命令块里是否存在「文件参数」——既非选项（不以 - 开头）、
+    /// （A-005）：判定命令块里是否存在「文件参数」——既非选项（不以 - 开头）、
     /// 也不是 -echo1 回显目标的 token。健康探针把 exiftool 自身路径喂进来时即命中此处。
     /// </summary>
     private static bool HasFileInput(IReadOnlyList<string> lines)

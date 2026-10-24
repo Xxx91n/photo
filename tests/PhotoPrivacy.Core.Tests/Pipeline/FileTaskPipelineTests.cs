@@ -11,7 +11,7 @@ public sealed class FileTaskPipelineTests
     [Fact]
     public async Task HandleAsync_Should_Move_To_Quarantine_After_Max_Retries()
     {
-        // 票 28 返修：隔离子、拼接断言平台中立（原 D:\ 字面量在 Linux 与 Path.Combine 结果不匹配）
+        // 返修：隔离子、拼接断言平台中立（原 D:\ 字面量在 Linux 与 Path.Combine 结果不匹配）
         var hot = Path.Combine(Path.GetTempPath(), "pp-ft-hot");
         var quarantine = Path.Combine(hot, "_quarantine");
         var cfg = AppConfig.Default with
@@ -52,7 +52,7 @@ public sealed class FileTaskPipelineTests
     [Fact]
     public async Task HandleAsync_Should_Copy_To_Fixed_Output_Before_Wiping()
     {
-        // 票 28 返修：fixed_directory 拼接 = Combine(outputDirectory, relative)——平台中立构造
+        // 返修：fixed_directory 拼接 = Combine(outputDirectory, relative)——平台中立构造
         var hot = Path.Combine(Path.GetTempPath(), "pp-ft-hot");
         var clean = Path.Combine(Path.GetTempPath(), "pp-ft-clean");
         var cfg = AppConfig.Default with
@@ -109,7 +109,7 @@ public sealed class FileTaskPipelineTests
     [Fact]
     public async Task HandleAsync_Should_Move_Output_File_To_Quarantine_When_Retry_Exhausted_And_Output_Is_Fixed()
     {
-        // 票 28 返修：隔离 quarantine 拼接 = Combine(directory, fileName)——平台中立构造
+        // 返修：隔离 quarantine 拼接 = Combine(directory, fileName)——平台中立构造
         var hot = Path.Combine(Path.GetTempPath(), "pp-ft-hot");
         var clean = Path.Combine(Path.GetTempPath(), "pp-ft-clean");
         var quarantine = Path.Combine(Path.GetTempPath(), "pp-ft-quar");

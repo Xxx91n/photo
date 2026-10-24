@@ -161,7 +161,7 @@ public sealed class FileTaskPipeline
                             return;
 
                         case WipeResult.UnknownFormat:
-                            // 票 01（A-001 / A-009）：未知格式的可见跳过事件——全链路可消费。
+                            // （A-001 / A-009）：未知格式的可见跳过事件——全链路可消费。
                             await _audit.WriteAsync(
                                 new AuditEvent(
                                     "wipe_skipped_unknown",
@@ -314,7 +314,7 @@ public sealed class FileTaskPipeline
     }
 
     /// <summary>
-    /// 票 03（A-006 / D-006）备份冲突分流——绝不静默覆盖：
+    /// （A-006 / D-006）备份冲突分流——绝不静默覆盖：
     /// 1. 源或槽位为符号链接/ReparsePoint → 拒绝并写可见告警（fail-closed，Borg create 语义）；
     /// 2. 槽位不存在 → 直接原子写入；
     /// 3. 槽位存在且内容相同 → 跳过（幂等，承接"同文件重处理保留最新"的合法语义）；

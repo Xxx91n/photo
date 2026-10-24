@@ -16,7 +16,7 @@ public enum UnixSocketAccessMode
 /// <summary>
 /// Unix Domain Socket IPC transport for Linux/macOS.
 /// Uses System.Net.Sockets with AddressFamily.Unix + UnixDomainSocketEndPoint.
-/// 票 04：认证分层 —— 第 1 层文件模式收紧（内核强制）+ 第 2 层对端凭据校验（纵深）。
+/// 认证分层 —— 第 1 层文件模式收紧（内核强制）+ 第 2 层对端凭据校验（纵深）。
 /// </summary>
 public sealed class UnixDomainSocketIpcTransport : IIpcTransport
 {
@@ -72,7 +72,7 @@ public sealed class UnixDomainSocketIpcTransport : IIpcTransport
         _listener.Bind(new UnixDomainSocketEndPoint(_socketPath));
         _listener.Listen(254);
 
-        // 票 04：.NET 10 无「bind 后自动 0600」加固（.NET 11 才引入），
+        // .NET 10 无「bind 后自动 0600」加固（.NET 11 才引入），
         // 文件模式必须由传输层显式负责 —— background 0600 / service 0660+组边界。
         var mode = _accessMode == UnixSocketAccessMode.ServiceShared
             ? UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.GroupWrite
@@ -122,7 +122,7 @@ public sealed class UnixDomainSocketIpcTransport : IIpcTransport
         ObjectDisposedException.ThrowIf(_listener is null, this);
         var client = await _listener.AcceptAsync(cancellationToken);
 
-        // 票 04：内核只识别不拦截，拒绝必须由本层执行并立即 close。
+        // 内核只识别不拦截，拒绝必须由本层执行并立即 close。
         // 凭据不可读或不在白名单内 → fail-closed 拒绝（不变量①）。
         var peerUid = _peerPolicy.ReadPeerUid(client);
         if (peerUid is null || !_allowedPeerUids.Contains(peerUid.Value))

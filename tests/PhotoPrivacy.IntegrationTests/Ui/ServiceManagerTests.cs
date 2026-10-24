@@ -7,7 +7,7 @@ namespace PhotoPrivacy.IntegrationTests.Ui;
 public sealed class ServiceManagerTests
 {
     /// <summary>
-    /// 票 28 返修：下列测试锁 Windows sc.exe 服务管理流程（UAC/exit code/命令拼装）。
+    /// 返修：下列测试锁 Windows sc.exe 服务管理流程（UAC/exit code/命令拼装）。
     /// SUT 在非 Windows 按设计返回 Skipped（service.msg.use_systemd，systemd/launchd 探针另有测试），
     /// 这些流程断言仅对 Windows 有意义——测试体内 `if (SkipOnNonWindows()) { return; }` 提前结束。
     /// </summary>

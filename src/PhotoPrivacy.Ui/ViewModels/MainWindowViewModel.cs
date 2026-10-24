@@ -36,7 +36,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     }
     private readonly LocalizationService _localization;
 
-    // 票 29（架构恢复第七轮）：构造注入 —— LocalizationService 经组合根容器注入
+    // （架构恢复第七轮）：构造注入 —— LocalizationService 经组合根容器注入
     //（检查点 B：静态单例收敛第一例，容器与 Instance 为同一实例）。
     // 可选参数默认回落 Instance，保留既有无参调用/测试兼容（行为不变）。
     public MainWindowViewModel(LocalizationService? localization = null, FormatRulesStore? rulesStore = null, ToastService? toast = null)
@@ -48,7 +48,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         RulesPanel = new RulesPanelViewModel(rulesStore ?? new FormatRulesStore(Path.Combine(AppContext.BaseDirectory, "config")), toast);
     }
 
-    // 票 08（ui-craft2 / D-007）：应用级 toast 服务引用 —— ToastHost 经 {Binding Toast.Items} 消费，
+    // （ui-craft2 / D-007）：应用级 toast 服务引用 —— ToastHost 经 {Binding Toast.Items} 消费，
     // 可选注入保无参/测试构造兼容。
     public ToastService? Toast { get; }
 
@@ -130,7 +130,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         set => SetField(ref _showServiceManagerTab, value);
     }
 
-    // 票 24：服务管理页按钮可用性单一真相源 — adapter 直写按钮清零，页面经绑定消费。
+    // 服务管理页按钮可用性单一真相源 — adapter 直写按钮清零，页面经绑定消费。
     private ServiceButtonState _serviceButtons = ServiceButtonStates.AllDisabled;
     public ServiceButtonState ServiceButtons
     {
@@ -218,7 +218,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         }
     }
 
-    // 票 30（架构恢复第七轮）：三套手动镜像收敛 —— ComboBox 选中态经 SelectedIndex TwoWay 绑定
+    // （架构恢复第七轮）：三套手动镜像收敛 —— ComboBox 选中态经 SelectedIndex TwoWay 绑定
     // 由 VM 索引属性驱动（spec 研究输入 Q1：设置单一真相源在 VM）。get 侧归一化与原
     // Sync*ComboSelection 回填语义一致（OrdinalIgnoreCase 匹配，未知值回落默认项）；
     // set 侧仅承载用户交互路径的联动副作用（启动/热重载直接赋 string 属性，不触发）。
@@ -261,7 +261,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         {
             if (SetField(ref _currentLocale, value) && value is not null)
             {
-                // 票 30：SwitchLocale 联动迁入 setter（原 OnLocaleSelectionChanged 手动镜像）；
+                // SwitchLocale 联动迁入 setter（原 OnLocaleSelectionChanged 手动镜像）；
                 // 持久化链路「启动时读取 → Initialize(locale)」由此贯通，
                 // config ui.locale 与系统语言不一致时 UI 文案随 config（SwitchLocale 自带防重入幂等）。
                 _localization.SwitchLocale(value);
@@ -269,7 +269,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         }
     }
 
-    // 票 30：语言下拉选中态绑定 —— 顺序与 ConfigPage.axaml 的 10 个 ComboBoxItem 一致；
+    // 语言下拉选中态绑定 —— 顺序与 ConfigPage.axaml 的 10 个 ComboBoxItem 一致；
     // 未知 locale 回落 0（zh-CN），与原 SyncLocaleComboSelection 的 SelectedIndex=0 兜底一致。
     public static readonly string[] LocaleOrder = ["zh-CN", "en", "ja", "ko", "de", "fr", "es", "pt", "ru", "ar"];
 
@@ -308,7 +308,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         {
             if (SetField(ref _logLevel, value))
             {
-                // 票 05（ui-craft2）：联动通知派生属性 —— 原缺口：热重载直赋 LogLevel 时
+                // （ui-craft2）：联动通知派生属性 —— 原缺口：热重载直赋 LogLevel 时
                 // LogLevelIndex 绑定（ComboBox SelectedIndex）与过滤态不回填刷新。
                 OnPropertyChanged(nameof(LogLevelIndex));
                 OnPropertyChanged(nameof(LogLevelFilterActive));
@@ -316,11 +316,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         }
     }
 
-    // 票 05（ui-craft2 / 规范 §4 E5）：级别过滤生效标记 —— 空态区分「真空」与「过滤无结果」
+    // （ui-craft2 / 规范 §4 E5）：级别过滤生效标记 —— 空态区分「真空」与「过滤无结果」
     // （all=0 即不过滤；info/debug/warn/error 均在 AuditTailService.ShouldInclude 解析期裁剪事件）。
     public bool LogLevelFilterActive => LogLevelIndex != 0;
 
-    // 票 30：日志级别下拉选中态绑定 —— 顺序与 ConfigPage.axaml 的 5 个 ComboBoxItem 一致；
+    // 日志级别下拉选中态绑定 —— 顺序与 ConfigPage.axaml 的 5 个 ComboBoxItem 一致；
     // 未知级别回落 1（info），与原 SyncLogLevelComboSelection 的 SelectedIndex=1 兜底一致。
     // set 侧联动 LogEnabled/ShowDetailedEvents（原 OnLogLevelSelectionChanged 行为迁入；
     // 启动/热重载直接赋 LogLevel string，不触发联动 —— 行为不变）。
@@ -410,7 +410,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
     public string PauseResumeLabel => IsRuntimePaused ? _localization.Get("btn.resume") : _localization.Get("btn.pause");
 
-    // 票 24：暂停/恢复按钮可用性 + 派生文案（服务模式禁用并显示不可用文案）— 单一真相源在 VM。
+    // 暂停/恢复按钮可用性 + 派生文案（服务模式禁用并显示不可用文案）— 单一真相源在 VM。
     private bool _pauseResumeAvailable = true;
     public bool PauseResumeAvailable
     {
@@ -457,7 +457,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
     public ObservableCollection<AuditLogEntry> LogEntries { get; } = [];
 
-    // 票 26: 空审计流占位开关 — 在 Append/Clear 收口处联动刷新（无事件订阅，防泄漏）。
+    // 空审计流占位开关 — 在 Append/Clear 收口处联动刷新（无事件订阅，防泄漏）。
     private bool _hasNoLogs = true;
     public bool HasNoLogs
     {

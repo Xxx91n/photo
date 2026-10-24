@@ -54,7 +54,7 @@ public sealed class ServiceModeControllerTests
         var ops = new FakeOps();
         var host = new FakeHost();
         var view = new FakeView();
-        // 票20 检查点 C：BackgroundUiOptions 公共面只读——构建期值经对象初始化器（init）写入，
+        // 检查点 C：BackgroundUiOptions 公共面只读——构建期值经对象初始化器（init）写入，
         // 运行期状态（RuntimeKind/WorkerEndpointName/UseTrayIcon）经具名方法 UpdateRuntimeState 收口。
         var options = new BackgroundUiOptions
         {
@@ -74,7 +74,7 @@ public sealed class ServiceModeControllerTests
     [Fact]
     public async Task InstallAsync_Should_Run_Install_Off_Ui_Thread_And_Report_Result()
     {
-        // 票 28 返修：断言 Windows 按钮（InstallEnabled）终态——UpdateServiceButtons 在非 Windows 按设计 AllDisabled 早退
+        // 返修：断言 Windows 按钮（InstallEnabled）终态——UpdateServiceButtons 在非 Windows 按设计 AllDisabled 早退
         if (!OperatingSystem.IsWindows())
         {
             return;
@@ -92,7 +92,7 @@ public sealed class ServiceModeControllerTests
     [Fact]
     public async Task InstallAsync_With_Failed_Result_Should_Not_Trigger_Service_Switch()
     {
-        // 票 28 返修：断言状态文本最终稳定态——Windows 上 UpdateServiceButtons 会重写为 GetStatusText()，
+        // 返修：断言状态文本最终稳定态——Windows 上 UpdateServiceButtons 会重写为 GetStatusText()，
         // 非 Windows 早退不重写（保留 fail 格式文案），此终态语义仅 Windows 有意义
         if (!OperatingSystem.IsWindows())
         {

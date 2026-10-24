@@ -1,10 +1,10 @@
 namespace PhotoPrivacy.IntegrationTests.Ui;
 
 /// <summary>
-/// 票 31（架构恢复第七轮）轮询宿主服务 source-lint：
+/// （架构恢复第七轮）轮询宿主服务 source-lint：
 /// - 版本轮询 + 服务状态轮询脱离 MainWindow code-behind，下沉 WindowPollingHostedService（IHostedService）
 /// - 循环体/周期/取消/Dispatcher 投递语义逐字保持（1s 版本轮询、3s 服务模式轮询）
-/// - 检查点 B：MainWindow code-behind 行数持续下降（基线 1158 = 票 30 收口 blob，阈值放宽 5%）
+/// - 检查点 B：MainWindow code-behind 行数持续下降（基线 1158 = 收口 blob，阈值放宽 5%）
 /// - 装配破环：宿主服务只依赖 VM 单例，服务模式轮询经 AttachServiceModePoll 委托由窗口构造挂载
 /// </summary>
 public sealed class WindowPollingHostedServiceSourceTests
@@ -16,7 +16,7 @@ public sealed class WindowPollingHostedServiceSourceTests
     [Fact]
     public void MainWindow_Should_Not_Own_Polling_Loops()
     {
-        // 轮询循环/字段/拉起形态不得回潮（考古 // 注释豁免，与票 30-fix 教训一致：剥注释后断言）
+        // 轮询循环/字段/拉起形态不得回潮（考古 // 注释豁免，与-fix 教训一致：剥注释后断言）
         var stripped = SourceLint.ReadStripped("src", "PhotoPrivacy.Ui", "Views", "MainWindow.axaml.cs");
         foreach (var banned in new[]
                  {
@@ -96,12 +96,12 @@ public sealed class WindowPollingHostedServiceSourceTests
     }
 
     [Fact]
-    public void MainWindow_CodeBehind_Should_Shrink_Vs_Ticket30_Baseline()
+    public void MainWindow_CodeBehind_Should_Shrink_Vs_Baseline()
     {
-        // 检查点 B：基线 1158 行（票 30 收口 blob 实测），阈值放宽 5% 防 CI 平台行尾差异；
-        // 实际降幅见 report-31。行数口径须用原始全文（含注释空行，与票 30 同口径）。
+        // 检查点 B：基线 1158 行（收口 blob 实测），阈值放宽 5% 防 CI 平台行尾差异；
+        // 实际降幅见 report-31。行数口径须用原始全文（含注释空行，与 同口径）。
         var source = Read(UiPath("Views", "MainWindow.axaml.cs"));
         var lines = source.Replace("\r\n", "\n").Split('\n').Length;
-        Assert.True(lines <= 1100, $"MainWindow.axaml.cs must shrink vs ticket-30 baseline 1158 (≤1100), got {lines}");
+        Assert.True(lines <= 1100, $"MainWindow.axaml.cs must shrink vs baseline 1158 (≤1100), got {lines}");
     }
 }

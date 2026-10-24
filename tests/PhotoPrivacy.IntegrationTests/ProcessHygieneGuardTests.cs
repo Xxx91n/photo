@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 namespace PhotoPrivacy.IntegrationTests;
 
 /// <summary>
-/// 票01 source-lint 守卫（B02 L1）：全仓 src+tests 禁止无超时形态的进程等待与按进程名全系统匹配杀。
+/// source-lint 守卫（B02 L1）：全仓 src+tests 禁止无超时形态的进程等待与按进程名全系统匹配杀。
 /// 整改范式：WaitForExitAsync 必须传入来自超时 CTS 的 token（见 DryRunOutputFlowTests.WaitForExitWithTimeoutAsync）；
 /// 清理自身启动的进程一律 Kill(entireProcessTree: true)，禁止按进程名全系统匹配。
 /// </summary>

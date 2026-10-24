@@ -16,7 +16,7 @@ public sealed class ShutdownCoordinatorTests
 
         coordinator.RequestStop();
 
-        // 票 28 返修三轮：SUT 的 stopHost 经 Task.Run 调度，与 WaitForFirstRequestAsync 返回无先后
+        // 返修三轮：SUT 的 stopHost 经 Task.Run 调度，与 WaitForFirstRequestAsync 返回无先后
         // 保证（CI 两次实锤 calls==0 调度竞态）——轮询至回调确已执行再验证 exactly-once。
         var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
         while (Volatile.Read(ref calls) == 0 && DateTime.UtcNow < deadline)

@@ -3,11 +3,11 @@ using System.Diagnostics;
 namespace PhotoPrivacy.IntegrationTests.Smoke;
 
 /// <summary>
-/// 票 09（B09+B13）— smoke.ps1 DLL-first 与失败诊断回归锁定：
+/// （B09+B13）— smoke.ps1 DLL-first 与失败诊断回归锁定：
 /// 1) smoke.ps1 无 dotnet run 残留且直启 PhotoPrivacyWorker.dll（source guard）；
 /// 2) release-readiness.ps1 对 smoke/publish 子脚本做输出捕获并打印尾部（source guard）；
 /// 3) 冒烟失败路径诊断含子进程 stdout/stderr 尾部（行为测试，坏 exiftool 路径触发校验失败）。
-/// 4) 票15 — tests/ 直启宿主（InstanceConflictAuditTests/DryRunOutputFlowTests）无 dotnet run
+/// 4) — tests/ 直启宿主（InstanceConflictAuditTests/DryRunOutputFlowTests）无 dotnet run
 ///    兜底（含拆参形态），DLL-first 直启 + DLL 缺失显式报错（source guard 扩域）。
 /// </summary>
 [Trait("Category", "Smoke")]
@@ -28,7 +28,7 @@ public sealed class SmokeScriptDiagnosticsTests
     [Fact]
     public void CliTestHosts_Should_Be_DllFirst_Without_DotnetRunFallback()
     {
-        // 票 15 — guard 从 scripts/ 扩域到 tests/ 直启宿主：
+        // guard 从 scripts/ 扩域到 tests/ 直启宿主：
         // 1) 全 tests/ 源码树无拆参形态 dotnet run 兜底（排除 bin/obj）；
         // 2) 两个直启宿主保留 DLL-first 直启与 DLL 缺失构建指引，不再有 dotnet run。
         var testsRoot = Path.Combine(SourceLint.RepoRoot, "tests");

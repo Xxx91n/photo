@@ -5,7 +5,7 @@ namespace PhotoPrivacy.Core.Configuration;
 /// <summary>
 /// Custom wipe rules persistent store.
 /// Config path: config/rules.json
-/// 票18: canonical schema — one "{family}_{group}" bool key per metadata group
+/// canonical schema — one "{family}_{group}" bool key per metadata group
 /// (strip_all / preserve_icc / strip_exif / strip_xmp / strip_iptc / strip_time)
 /// for every panel family, so Save→Load round-trips all group toggles, not just strip_all.
 /// </summary>

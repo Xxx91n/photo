@@ -13,7 +13,7 @@ public sealed class AuditTailServiceFormattingTests
         var parsed = AuditTailService.ParseAuditLine(line, "info");
 
         Assert.NotNull(parsed);
-        // 票 05（ui-craft2）：DisplayEvent 去 emoji/Unicode 符号前缀 —— 断言意图=事件映射正确性不变。
+        // （ui-craft2）：DisplayEvent 去 emoji/Unicode 符号前缀 —— 断言意图=事件映射正确性不变。
         Assert.Equal("清理完成", parsed!.DisplayEvent);
         Assert.Equal("D:/hot/***/a.jpg", parsed.SourcePathMasked);
         Assert.Equal("ok", parsed.Message);
@@ -37,14 +37,14 @@ public sealed class AuditTailServiceFormattingTests
         var parsed = AuditTailService.ParseAuditLine(line, "all");
 
         Assert.NotNull(parsed);
-        // 票 05（ui-craft2）：DisplayEvent 去 emoji/Unicode 符号前缀 —— 断言意图=级别过滤放行不变。
+        // （ui-craft2）：DisplayEvent 去 emoji/Unicode 符号前缀 —— 断言意图=级别过滤放行不变。
         Assert.Equal("检测到文件", parsed!.DisplayEvent);
     }
 
     [Fact]
     public void BuildAuditPath_Should_Use_LogDirectory_Directly()
     {
-        // 票 28 返修：BuildAuditPath = Path.Combine(logDirectory, 文件名)——平台中立构造断言
+        // 返修：BuildAuditPath = Path.Combine(logDirectory, 文件名)——平台中立构造断言
         var day = new DateTime(2026, 4, 19);
         var logDirectory = Path.Combine(Path.GetTempPath(), "pp-audit", "_audit");
 

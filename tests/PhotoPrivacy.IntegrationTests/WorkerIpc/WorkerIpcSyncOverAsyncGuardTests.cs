@@ -1,13 +1,13 @@
 namespace PhotoPrivacy.IntegrationTests.WorkerIpc;
 
 /// <summary>
-/// 票 05（A-005）回潮守卫。
+/// （A-005）回潮守卫。
 ///
 /// 职责分工（D-003）：行为测试（<see cref="WorkerIpcResidentStabilityTests"/>）防「程序做错事」，
 /// 本守卫防「措辞/结构回潮」——防止 sync-over-async 与串行 accept 结构被重新引入。
 ///
 /// 范围 = Worker IPC 触面（宿主 / 连接循环 / 请求处理）+ 入口信号面。
-/// 票 06 承接票 05 报告张力 T1：Program.cs 的 SIGHUP onReload 回调同形态
+/// 承接 报告张力 T1：Program.cs 的 SIGHUP onReload 回调同形态
 /// sync-over-async 已修复（PosixSignalHooks 改 Func<Task> + Task.Run 编组），
 /// Program.cs 与 PosixSignalHooks.cs 自此纳入守卫面。
 /// </summary>

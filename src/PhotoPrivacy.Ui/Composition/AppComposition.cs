@@ -10,7 +10,7 @@ using PhotoPrivacy.Ui.Views;
 namespace PhotoPrivacy.Ui.Composition;
 
 /// <summary>
-/// 票 29（架构恢复第七轮）：组合根 —— 全局服务装配唯一出处（spec 研究输入 Q1/Q2：
+/// （架构恢复第七轮）：组合根 —— 全局服务装配唯一出处（spec 研究输入 Q1/Q2：
 /// 工业范式 = 组合根持有单例服务 + VM 构造注入，StabilityMatrix / Files.App / MarkSmith 模板）。
 /// Program.Start（应用启动处）是 Build 的唯一调用点；MainWindow 停止手写 new 依赖。
 /// 静态单例逐票收敛（spec Out of Scope）：本票先收敛 LocalizationService 入口（检查点 B）。
@@ -27,7 +27,7 @@ public static class AppComposition
 
         var services = new ServiceCollection();
 
-        // 票20 不可变快照 + 委托闭包语义整体迁移自 Program.BuildRuntimeOptions（读取 App.RuntimeOptions 当前值）。
+        // 不可变快照 + 委托闭包语义整体迁移自 Program.BuildRuntimeOptions（读取 App.RuntimeOptions 当前值）。
         services.AddSingleton(BuildRuntimeOptions(config, configPath, workerPath, workerIpc, workerManager, serviceManager));
 
         // ConnectionState 由 Program.Start 置为 Connecting 后经 SetConnectionState 挂载。
@@ -45,12 +45,12 @@ public static class AppComposition
 
         // FormatRulesStore 注册使容器可完整解析 MainWindowViewModel 构造（与 VM 可选参数默认值同一 config 目录）。
         services.AddSingleton<FormatRulesStore>(_ => new FormatRulesStore(Path.Combine(AppContext.BaseDirectory, "config")));
-        // 票 08（ui-craft2 / D-007）：应用级 toast 服务单例 —— MainWindow / ServiceModeController /
+        // （ui-craft2 / D-007）：应用级 toast 服务单例 —— MainWindow / ServiceModeController /
         // MainWindowViewModel→RulesPanelViewModel 三路消费同一实例。
         services.AddSingleton<ToastService>();
         services.AddSingleton<MainWindowViewModel>();
 
-        // 票 31：轮询宿主服务 —— 只依赖 VM 单例（服务模式轮询经 AttachServiceModePoll 委托
+        // 轮询宿主服务 —— 只依赖 VM 单例（服务模式轮询经 AttachServiceModePoll 委托
         // 由 MainWindow 构造挂载，破 MainWindow→ServiceModeController→视图适配器 DI 环）；
         // 版本源惰性读取 App.RuntimeOptions 当前值，与原 InitializeRuntime 建快照时序一致。
         services.AddSingleton(sp => new WindowPollingHostedService(
@@ -70,7 +70,7 @@ public static class AppComposition
         WorkerProcessManager workerManager,
         ServiceManager serviceManager)
     {
-        // 票20 检查点 C：一次性构建不可变快照；委托在调用时读取 App.RuntimeOptions 的当前值
+        // 检查点 C：一次性构建不可变快照；委托在调用时读取 App.RuntimeOptions 的当前值
         //（与原实现闭包读取同一共享实例语义一致）。
         var options = new BackgroundUiOptions
         {

@@ -7,7 +7,7 @@ using PhotoPrivacy.Core.Rules;
 namespace PhotoPrivacy.Core.Tests.Pipeline;
 
 /// <summary>
-/// 票 03（A-006 / D-006 / 不变量②数据零意外丢失）：备份面镜像相对路径布局 + 冲突分流行为测试。
+/// （A-006 / D-006 / 不变量②数据零意外丢失）：备份面镜像相对路径布局 + 冲突分流行为测试。
 ///
 /// 原 bug：RuleEngine 备份槽位只取文件名——<c>hot/vacation/IMG_0001.jpg</c> 与
 /// <c>hot/work/IMG_0001.jpg</c> 解析到同一 <c>{bak}/IMG_0001.jpg.bak</c>，
@@ -188,7 +188,7 @@ public sealed class BackupMirrorLayoutTests : IDisposable
         Assert.Equal(Path.Combine("D:", "bak", "work", "IMG.jpg.20260916-021530-1.bak"), second);
     }
 
-    // ── retention 兜底：镜像子树递归可见 + 空目录清理（票 03 新增语义锁定）──
+    // ── retention 兜底：镜像子树递归可见 + 空目录清理（新增语义锁定）──
 
     [Fact]
     public void EnforceMaxSize_Should_See_Mirror_Subtree_Backups_And_Cleanup_Empty_Dirs()

@@ -1,6 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:ex="using:PhotoPrivacy.Ui.Localization" xmlns:vm="using:PhotoPrivacy.Ui.ViewModels" xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia" x:Class="PhotoPrivacy.Ui.Views.Pages.RulesPage" x:DataType="vm:MainWindowViewModel">
-  <!-- 票 24：自 MainWindow.axaml 拆出的规则页。Save/Reset 接线统一至 MainWindow。
-       票 06（ui-craft2 / D-005/D-006）：整页对齐 v2.0 —— 页壳（页头 MinHeight 58 + page-title
+  <!-- 自 MainWindow.axaml 拆出的规则页。Save/Reset 接线统一至 MainWindow。
+       （ui-craft2 / D-005/D-006）：整页对齐 v2.0 —— 页壳（页头 MinHeight 58 + page-title
        + 副标题 + 右侧操作区 [SaveStatus + 保存/重置 SharedSizeGroup 等宽组]；atomcode 调研
        裁决一：页面级操作放页头右侧操作区，绝不进过滤工具条）+ 专家横幅卡（裸 settings-card，
        规范 §3.1 明许的非行集合卡）+ 36px 过滤工具条（LayoutToolbarHeight，仅承载数据作用域
@@ -16,8 +16,8 @@
         </StackPanel>
         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="{DynamicResource SpaceSm}" VerticalAlignment="Center" Grid.IsSharedSizeScope="True">
           <TextBlock x:Name="RulesSaveStatus" Text="{Binding RulesPanel.SaveStatus}" Classes="caption" VerticalAlignment="Center"/>
-          <!-- 票 03（ui-craft R1-1）：保存 / 重置同组等宽 —— Grid + SharedSizeGroup，组内最长文案定宽；
-               票 06：机制沿用，落点迁入页头右侧操作区（md-page-shell 操作区 gap 8 = SpaceSm）。 -->
+          <!-- （ui-craft R1-1）：保存 / 重置同组等宽 —— Grid + SharedSizeGroup，组内最长文案定宽；
+机制沿用，落点迁入页头右侧操作区（md-page-shell 操作区 gap 8 = SpaceSm）。 -->
           <Grid ColumnSpacing="{DynamicResource SpaceSm}" VerticalAlignment="Center">
             <Grid.ColumnDefinitions>
               <ColumnDefinition Width="Auto" SharedSizeGroup="RuleActions"/>
@@ -78,8 +78,8 @@
             <DataGridTextColumn Header="{ex:Localize rules.col.effective_args}" Binding="{Binding EffectiveArgs}" Width="*" IsReadOnly="True"/>
           </DataGrid.Columns>
         </DataGrid>
-        <!-- 票 26: 规则空态占位 — HasNoVisibleRules 由 VM 在 ApplyFilter 收口处联动刷新。
-             票 06（ui-craft2 / 规范 §4 E2+E5）：升 md-empty-state 骨架 —— 52 定位盒（无底色
+        <!-- 规则空态占位 — HasNoVisibleRules 由 VM 在 ApplyFilter 收口处联动刷新。
+             （ui-craft2 / 规范 §4 E2+E5）：升 md-empty-state 骨架 —— 52 定位盒（无底色
              无边框）+ 36 主色字形 + 标题 20 + 说明 12 居中偏上（下侧留白 48 补偿视觉中心）；
              成因二分随 SearchFilterActive 切换（atomcode 调研裁决二：空态按成因键控，
              过滤无结果须提示可清筛）。空态覆盖整个表格区含列头（Carbon 指引）。 -->

@@ -136,7 +136,7 @@ var app = builder.Build();
 var shutdownCoordinator = new ShutdownCoordinator(
     stopToken => app.StopAsync(stopToken),
     stopTimeout: TimeSpan.FromSeconds(4));
-// 票 06（T1 承接 / 票 05 A-005 同族）：POSIX 信号回调禁 sync-over-async——
+// （T1 承接 / A-005 同族）：POSIX 信号回调禁 sync-over-async——
 // onReload 改 async 委托，PosixSignalHooks 内部 Task.Run 编组后立即返回；
 // 异常就地记录，不推给 UnobservedTaskException 兜底。
 posixHooks = PosixSignalHooks.Register(

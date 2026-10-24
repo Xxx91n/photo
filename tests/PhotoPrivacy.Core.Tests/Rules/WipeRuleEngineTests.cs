@@ -5,12 +5,12 @@ using PhotoPrivacy.Core.Rules;
 namespace PhotoPrivacy.Core.Tests.Rules;
 
 /// <summary>
-/// 票 19 检查点 B: 纯函数测试——给定规则集合 → 生成命令与勾选一致。
-/// 同时锁定: 票 18 默认规则下，8 个格式族与安全默认命令表逐字一致（零行为漂移）。
+/// 检查点 B: 纯函数测试——给定规则集合 → 生成命令与勾选一致。
+/// 同时锁定: 默认规则下，8 个格式族与安全默认命令表逐字一致（零行为漂移）。
 /// </summary>
 public sealed class WipeRuleEngineTests
 {
-    /// <summary>测试侧独立拼键（不信任 FormatRulesStore.Key），镜像票 18 canonical schema。</summary>
+    /// <summary>测试侧独立拼键（不信任 FormatRulesStore.Key），镜像 canonical schema。</summary>
     private static string K(string family, string group) => family + "_" + group;
 
     private static Dictionary<string, bool> PanelDefaults()
@@ -67,7 +67,7 @@ public sealed class WipeRuleEngineTests
     [Fact]
     public void StoreDefaults_Through_Engine_Produce_Legacy_Panel_Commands()
     {
-        // 跨层缝合: FormatRulesStore.LoadDefaults()（票 18 schema）→ 引擎 → 面板族命令。
+        // 跨层缝合: FormatRulesStore.LoadDefaults()（schema）→ 引擎 → 面板族命令。
         using var dir = new TempDirHolder();
         var store = new FormatRulesStore(dir.Path);
         var defaults = store.LoadDefaults();
@@ -280,7 +280,7 @@ public sealed class WipeRuleEngineTests
         var rules = PanelDefaults();
         rules[K("jpeg", "preserve_icc")] = false;
 
-        // 票 28 返修：BuildWipeTaskBlock 校验绝对路径——平台中立构造（原字面量 D:\hot\a.jpg 在 Linux 非法）
+        // 返修：BuildWipeTaskBlock 校验绝对路径——平台中立构造（原字面量 D:\hot\a.jpg 在 Linux 非法）
         var target = Path.Combine(Path.GetTempPath(), "pp-wipe", "a.jpg");
         var block = ExifToolCommandBuilder.BuildWipeTaskBlock(target, "t1", rules);
 

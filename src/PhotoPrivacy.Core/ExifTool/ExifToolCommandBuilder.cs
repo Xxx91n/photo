@@ -41,14 +41,14 @@ public static class ExifToolCommandBuilder
 
     /// <summary>
     /// Build wipe task block using per-format safe defaults via WipeStrategyResolver.
-    /// 票 01：skip 情形（unknown_format / no_rules）不再产出不可完成的 SKIP_ 块，
+    /// skip 情形（unknown_format / no_rules）不再产出不可完成的 SKIP_ 块，
     /// 而是直接抛错——调用方必须先在写盘前跳过（ExifToolBridge 落 wipe_skipped_unknown 审计）。
     /// </summary>
     public static string BuildWipeTaskBlock(string targetPath, string taskId)
         => BuildWipeTaskBlock(targetPath, taskId, rules: null);
 
     /// <summary>
-    /// 票 19: 规则驱动擦除命令块——参数面由 WipeRuleEngine 从规则字典生成（单一真相源）。
+    /// 规则驱动擦除命令块——参数面由 WipeRuleEngine 从规则字典生成（单一真相源）。
     /// </summary>
     public static string BuildWipeTaskBlock(string targetPath, string taskId, IReadOnlyDictionary<string, bool>? rules)
     {
@@ -57,7 +57,7 @@ public static class ExifToolCommandBuilder
         var wipe = WipeStrategyResolver.Resolve(targetPath, rules);
         if (wipe.SkipReason is not null)
         {
-            // 票 01（A-001）：绝不产出“回显 SKIP_ 却让调用方等待 TASK_DONE_”的块——那是永久挂死链
+            // （A-001）：绝不产出“回显 SKIP_ 却让调用方等待 TASK_DONE_”的块——那是永久挂死链
             // （原实现：SKIP_ no-op 块永不匹配 TASK_DONE_ marker，TCS 挂到取消）。
             // skip 判定必须由调用方（ExifToolBridge.WipeMetadataAsync）在写盘之前完成；
             // 这里 fail-closed 直接抛错，让“会挂死的块”在构造层就不可存在。

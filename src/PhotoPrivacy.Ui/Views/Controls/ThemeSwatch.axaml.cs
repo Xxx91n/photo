@@ -20,7 +20,7 @@ public static class ThemeSwatchCatalog
     };
 }
 
-// 票 25（架构恢复第六轮）：单个主题色板 — RadioButton 语义完整保留（Click 路由 + Tag/GroupName）。
+// （架构恢复第六轮）：单个主题色板 — RadioButton 语义完整保留（Click 路由 + Tag/GroupName）。
 // Label 由 LabelKey 经 LocalizationService 解析，CultureChanged 时自刷新（等价 ex:Localize 的数据化键版本）。
 public partial class ThemeSwatch : UserControl
 {
@@ -42,9 +42,9 @@ public partial class ThemeSwatch : UserControl
     public static readonly StyledProperty<string> GroupNameProperty =
         AvaloniaProperty.Register<ThemeSwatch, string>(nameof(GroupName), "ThemePreset");
 
-    // 票 30：选中态绑定面 —— PART_Radio.IsChecked 单向跟随宿主 IsChecked；
+    // 选中态绑定面 —— PART_Radio.IsChecked 单向跟随宿主 IsChecked；
     // 宿主 IsChecked 由 ConfigPage 的 MultiBinding（VM.ThemeId ↔ 色板 ThemeId 比较）驱动，
-    // 用户点击回写仍走既有 Click 事件转发（票 25 语义保留）。
+    // 用户点击回写仍走既有 Click 事件转发（语义保留）。
     public static readonly StyledProperty<bool> IsCheckedProperty =
         AvaloniaProperty.Register<ThemeSwatch, bool>(nameof(IsChecked));
 
@@ -87,7 +87,7 @@ public partial class ThemeSwatch : UserControl
     public static readonly StyledProperty<string?> LabelTextProperty =
         AvaloniaProperty.Register<ThemeSwatch, string?>(nameof(Label));
 
-    // 票 30：ThemePresetRadioControl 内部访问器已删除 —— 唯一调用方 TryApplyThemeSwatchSelection 已删，
+    // ThemePresetRadioControl 内部访问器已删除 —— 唯一调用方 TryApplyThemeSwatchSelection 已删，
     // PART_Radio.IsChecked 改由 IsChecked StyledProperty 绑定驱动。
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
