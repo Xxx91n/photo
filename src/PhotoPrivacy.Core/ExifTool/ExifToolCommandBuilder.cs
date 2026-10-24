@@ -40,7 +40,7 @@ public static class ExifToolCommandBuilder
     }
 
     /// <summary>
-    /// ADR 0053 M6a: Build wipe task block using per-format safe defaults via WipeStrategyResolver.
+    /// Build wipe task block using per-format safe defaults via WipeStrategyResolver.
     /// 票 01：skip 情形（unknown_format / no_rules）不再产出不可完成的 SKIP_ 块，
     /// 而是直接抛错——调用方必须先在写盘前跳过（ExifToolBridge 落 wipe_skipped_unknown 审计）。
     /// </summary>

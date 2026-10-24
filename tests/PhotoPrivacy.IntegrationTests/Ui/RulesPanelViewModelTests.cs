@@ -5,7 +5,7 @@ using PhotoPrivacy.Ui.ViewModels;
 namespace PhotoPrivacy.IntegrationTests.Ui;
 
 /// <summary>
-/// ADR 0053 M6b-g: RulesPanelViewModel Expert gate + FormatRulesStore round-trip test 闭环.
+/// RulesPanelViewModel Expert gate + FormatRulesStore round-trip test 闭环.
 /// 票18: 全逐组开关（strip_all/preserve_icc/strip_exif/strip_xmp/strip_iptc/strip_time）
 /// 的 Save→Load 往返忠实 + 键名错配修复 + defaults 回填锁定。
 /// </summary>

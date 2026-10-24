@@ -2,7 +2,7 @@
 
 > 定位：本文件是 `tests/` 的**测试约定区**——写测试（尤其 source-lint 类文本断言）前必读，撞红时按本文件处置。
 > 立策：ui-craft 轮票 01（2026-09-12），依据 decision-ledger D-006「守卫哲学 = C（atomcode 调研版，撞红即治理）」与 A-005（账本已随 2026-10-14 治理清理出仓，见 git 历史）。
-> 关联：ADR 0065（取舍记录）、docs/design/ui-visual-standard.md（视觉规范）。
+> 关联：docs/design/ui-visual-standard.md（视觉规范）。
 
 ## 0. 适用范围
 
@@ -49,7 +49,7 @@ public void Theme_Swatch_Count_Must_Be_Five() { ... }   // 无注释：不知道
 | 档 | 判定条件 | 处置动作 |
 |---|---|---|
 | **杀** | 断言与**措辞 / 格式 / 排版**耦合（钉字符串措辞、钉行数、钉注释文字），且与任何行为不变量无关 | 删除该断言；若确有不变量要守，另立语义机制替代，不保留原断言形态 |
-| **改造** | 背后确有行为不变量，但当前表达**方式脆弱**（文本 grep 易被无关重构击穿） | 语义化替换。工具链优先级：**PublicApiAnalyzers(RS0016) / ApiCompat / ArchUnitNET 优先**（零运行时开销）；**Avalonia.Headless 仅在确需行为断言时使用**，且小步引入并**先实测 CI 时延**（与 CONTEXT.md「Source-lint Test」词条旧 Avoid「不引 Headless」存在张力，须实测背书后才可整词修订，不得先斩后奏） |
+| **改造** | 背后确有行为不变量，但当前表达**方式脆弱**（文本 grep 易被无关重构击穿） | 语义化替换。工具链优先级：**PublicApiAnalyzers(RS0016) / ApiCompat / ArchUnitNET 优先**（零运行时开销）；**Avalonia.Headless 仅在确需行为断言时使用**，且小步引入并**先实测 CI 时延**（Headless 引入须有实测背书，不得先斩后奏） |
 | **保留** | 确需护命、且无等价语义机制可替代 | 保留断言 + 按 R1 补「防什么」注释 + 在注释中做 **characterization 定性**（明示「这是变更探测器，不是契约」）+ **设复审期**（写明复审触发条件或日期） |
 
 **配套要求**：
@@ -64,7 +64,7 @@ public void Theme_Swatch_Count_Must_Be_Five() { ... }   // 无注释：不知道
 - **剥注释口径**：source-lint 读取源码一律走 `SourceLint.ReadStripped` 剥注释后再断言（票 30 教训——不剥会把注释里的示例字面量误判为违规）。
 - **单槽串行**：测试执行单槽串行（`test.runsettings` MaxCpuCount=1），多窗口不得并发跑 test（WORKFLOW §5 / §7.2）。
 - **CI-only**：本机禁跑构建 / 测试，验收交云端 CI（.github/workflows/ci.yml）；窗口侧只做静态自证。
-- **XAML Thickness 字面量**：Padding/Margin 仍用字面量字符串以触发 `ThicknessTypeConverter`，source-lint 不得断言「Thickness 必须走 DynamicResource」（ADR 已约束，见 CONTEXT.md「Padding Literal Quantization」）。
+- **XAML Thickness 字面量**：Padding/Margin 仍用字面量字符串以触发 `ThicknessTypeConverter`，source-lint 不得断言「Thickness 必须走 DynamicResource」。
 
 ## 4. 变更记录
 

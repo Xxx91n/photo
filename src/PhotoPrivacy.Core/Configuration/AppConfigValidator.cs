@@ -40,7 +40,7 @@ public static class AppConfigValidator
             return;
         }
 
-        // ADR 0045: Hot folder must be configured for non-dry-run mode, otherwise
+        // Hot folder must be configured for non-dry-run mode, otherwise
         // the worker cannot scan/enqueue files and silently does nothing.
         if (string.IsNullOrWhiteSpace(config.Watch.HotFolder))
         {

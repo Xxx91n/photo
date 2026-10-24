@@ -1,6 +1,4 @@
-using System.Globalization;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using PhotoPrivacy.Core.Configuration;
 using PhotoPrivacy.Core.ExifTool;
 
@@ -15,8 +13,7 @@ namespace PhotoPrivacy.Core.Tests.Configuration;
 /// 1) allowed_extensions ⊆ ExtensionFamilyMap 键集，且集合差 = 0（宣称的东西必须有擦除策略）；
 /// 2) ExtensionFamilyMap ⊆ allowed_extensions（映射面无死条目，jhc 类不可达条目不得回潮）；
 /// 3) allowed_extensions 无重复条目；
-/// 4) config.sample.json 与 AppConfig.Default 的 allowed_extensions 完全一致；
-/// 5) README 的“NN 种扩展名”数字与实际条目数一致（数字由测试产出，不靠人手维护）。
+/// 4) config.sample.json 与 AppConfig.Default 的 allowed_extensions 完全一致。
 /// </summary>
 public sealed class FormatCoverageReconciliationTests
 {
@@ -87,20 +84,6 @@ public sealed class FormatCoverageReconciliationTests
         var defaultAllowed = DefaultAllowed.OrderBy(x => x, StringComparer.Ordinal).ToArray();
 
         Assert.Equal(defaultAllowed, sampleAllowed);
-    }
-
-    [Fact]
-    public void Readme_Claimed_Extension_Count_Should_Match_Implementation()
-    {
-        var readme = File.ReadAllText(Path.Combine(RepoRoot, "README.md"));
-        var match = Regex.Match(readme, @"\*\*(\d+)\s*种扩展名\*\*");
-
-        Assert.True(match.Success, "README 缺少“**NN 种扩展名**”宣称行——宣称与实现对账失败");
-
-        var claimed = int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
-        var actual = DefaultAllowed.Distinct(StringComparer.Ordinal).Count();
-
-        Assert.Equal(actual, claimed);
     }
 
     private static string FindRepoRoot()

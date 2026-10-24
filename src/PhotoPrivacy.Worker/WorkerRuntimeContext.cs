@@ -33,7 +33,7 @@ public sealed class WorkerRuntimeContext : IWorkerIpcRuntime
     public string WatchDirectory => _watchDirectoryAccessor();
 
     /// <summary>
-    /// ADR 0046: audit log directory for GetRecentLogs IPC channel.
+    /// Audit log directory for GetRecentLogs IPC channel.
     /// </summary>
     public string? AuditLogDirectory => _auditLogDirectoryAccessor();
 
@@ -44,7 +44,7 @@ public sealed class WorkerRuntimeContext : IWorkerIpcRuntime
     public Task ReloadConfigAsync() => _worker.ReloadConfigAsync();
 
     /// <summary>
-    /// ADR 0033: Validate config without applying. Returns (valid, errorMessage).
+    /// Validate config without applying. Returns (valid, errorMessage).
     /// </summary>
     public (bool valid, string? error) TryValidateConfig()
     {

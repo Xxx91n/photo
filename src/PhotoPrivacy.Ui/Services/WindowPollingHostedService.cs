@@ -6,7 +6,7 @@ using PhotoPrivacy.Ui.ViewModels;
 namespace PhotoPrivacy.Ui.Services;
 
 /// <summary>
-/// 票 31（架构恢复第七轮）：版本轮询与服务状态轮询宿主服务 — 与 ADR 0025 心跳
+/// 票 31（架构恢复第七轮）：版本轮询与服务状态轮询宿主服务 — 与心跳
 ///（ConnectionStateService）同一心智模型的 IHostedService 承载。两个轮询循环原为
 /// MainWindow.InitializeRuntime 内的 Task.Run 拉起 + OnClosed 手工取消/等待；现由
 /// StartAsync/StopAsync 收口，MainWindow 只剩 Activate/Start/StopAsync 三行接线。

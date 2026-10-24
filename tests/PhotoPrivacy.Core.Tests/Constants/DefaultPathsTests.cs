@@ -23,7 +23,7 @@ public sealed class DefaultPathsTests
         }
     }
 
-    // ADR 0055 A4: DefaultHotFolder must be app-local (BaseDirectory/hot), not user's system pictures
+    // DefaultHotFolder must be app-local (BaseDirectory/hot), not user's system pictures
     [Fact]
     public void DefaultHotFolder_Should_Be_App_Local_Hot_Directory()
     {
@@ -31,7 +31,7 @@ public sealed class DefaultPathsTests
         Assert.Equal(expected, DefaultPaths.DefaultHotFolder);
     }
 
-    // ADR 0055 A4: DefaultBackupDirectory subdir must be "bak" (aligned with BackupPathResolver.DefaultBackupDirName)
+    // DefaultBackupDirectory subdir must be "bak" (aligned with BackupPathResolver.DefaultBackupDirName)
     [Fact]
     public void DefaultBackupDirectory_Should_Use_Bak_Subdir_Aligned_With_BackupPathResolver()
     {

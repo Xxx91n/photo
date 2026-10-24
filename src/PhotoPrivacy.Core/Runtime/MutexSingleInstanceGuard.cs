@@ -3,7 +3,7 @@ using System.Threading;
 namespace PhotoPrivacy.Core.Runtime;
 
 /// <summary>
-/// ADR 0026 (Q7): Single-instance guard using a named system Mutex.
+/// Single-instance guard using a named system Mutex.
 /// .NET CoreCLR provides cross-process named Mutex on Windows, Linux, and macOS.
 /// Recovers from an abandoned mutex (previous owner crashed without releasing).
 /// </summary>

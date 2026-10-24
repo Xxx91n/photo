@@ -112,7 +112,7 @@ fi
 
 [[ -f "${UI_PUB_DIR}/${UI_EXE}" ]] || { echo "UI executable not found: ${UI_PUB_DIR}/${UI_EXE}" >&2; exit 1; }
 [[ -f "${WORKER_PUB_DIR}/${WORKER_EXE}" ]] || { echo "Worker executable not found: ${WORKER_PUB_DIR}/${WORKER_EXE}" >&2; exit 1; }
-# ADR 0024: Copy install scripts to release/<rid>/scripts/
+# Copy install scripts to release/<rid>/scripts/
 SCRIPTS_DIR="${TARGET_DIR}/scripts"
 mkdir -p "$SCRIPTS_DIR"
 case "$RUNTIME" in

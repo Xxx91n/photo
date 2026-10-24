@@ -30,9 +30,9 @@ public sealed class WorkerIpcRequestHandler
 
     /// <summary>
     /// Handle IPC request. Returns (response, shouldShutdown).
-    /// ADR 0031: Shutdown is only allowed in CLI mode. Service/Background rejects it.
-    /// ADR 0033: ReloadConfig validates new config before applying; failure preserves old config.
-    /// ADR 0030: Response includes protocol version V field.
+    /// Shutdown is only allowed in CLI mode. Service/Background rejects it.
+    /// ReloadConfig validates new config before applying; failure preserves old config.
+    /// Response includes protocol version V field.
     /// </summary>
     public async Task<(WorkerIpcResponse response, bool shouldShutdown)> HandleAsync(
         WorkerIpcRequest? request,
@@ -63,7 +63,7 @@ public sealed class WorkerIpcRequestHandler
                 return (new WorkerIpcResponse(true, Data: BuildStatus(), Id: request.Id, V: ProtocolVersion), false);
 
             case WorkerIpcMethods.Shutdown:
-                // ADR 0031: Mode-Scoped Shutdown — only CLI mode can trigger shutdown via IPC
+                // Mode-Scoped Shutdown — only CLI mode can trigger shutdown via IPC
                 if (_runtime.Mode != RuntimeMode.Cli)
                 {
                     return (new WorkerIpcResponse(false,
@@ -75,7 +75,7 @@ public sealed class WorkerIpcRequestHandler
             case WorkerIpcMethods.ReloadConfig:
                 try
                 {
-                    // ADR 0033: Validate config before applying
+                    // Validate config before applying
                     var (valid, error) = _runtime.TryValidateConfig();
                     if (!valid)
                     {
@@ -119,7 +119,7 @@ public sealed class WorkerIpcRequestHandler
     }
 
     /// <summary>
-    /// ADR 0046: Read the tail N lines of today audit JSONL file.
+    /// Read the tail N lines of today audit JSONL file.
     /// Returns empty array if the log directory or file is missing.
     /// </summary>
     private string[] ReadRecentAuditLogs(int maxLines)

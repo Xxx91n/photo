@@ -127,7 +127,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
                 stoppingToken);
         }
 
-        // ADR 0045: skip enumeration if hot folder is empty — prevents ArgumentException
+        // Skip enumeration if hot folder is empty — prevents ArgumentException
         if (!string.IsNullOrWhiteSpace(config.Watch.HotFolder) && Directory.Exists(config.Watch.HotFolder))
         {
             foreach (var file in Directory.EnumerateFiles(config.Watch.HotFolder, "*", SearchOption.AllDirectories))
@@ -313,7 +313,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
 
         try
         {
-            // ADR 0047 M6: bound fingerprint cache. Periodic cleanup of stale entries
+            // Bound fingerprint cache. Periodic cleanup of stale entries
             // plus eviction when capacity exceeded. Prevents unbounded growth on hot folders.
             _recentFingerprintCache?.CleanupExpired(TimeSpan.FromMinutes(10));
         }
@@ -445,7 +445,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
     }
 
     /// <summary>
-    /// ADR 0033: Validate current config without applying. Returns (valid, errorMessage).
+    /// Validate current config without applying. Returns (valid, errorMessage).
     /// </summary>
     public (bool valid, string? error) TryValidateConfig()
     {
@@ -548,7 +548,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
 
         // ponytail: M4 lazy - do NOT eager StartAsync here; WipeMetadataAsync calls
         // EnsureStartedAsync internally, so ExifTool only spawns when first file arrives.
-        // This was originally `await _bridge.StartAsync(token);` which violated ADR 0047 M4.
+        // This was originally `await _bridge.StartAsync(token);`, which blocked startup; startup now avoids that.
 
         _watcher = new FswFolderWatcher(
             config,

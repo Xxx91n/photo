@@ -163,12 +163,12 @@ public sealed class WorkerIpcResidentStabilityTests
         Assert.True(resume.Ok);
         Assert.Equal(1, runtime.ResumeCalls);
 
-        // ADR 0031：非 CLI 模式拒绝 Shutdown。
+        // 非 CLI 模式拒绝 Shutdown。
         var (shutdown, shutdownFlag) = await handler.HandleAsync(new WorkerIpcRequest(WorkerIpcMethods.Shutdown), CancellationToken.None);
         Assert.False(shutdown.Ok);
         Assert.False(shutdownFlag);
 
-        // ADR 0033：校验失败时返回可读错误且不应用配置。
+        // 校验失败时返回可读错误且不应用配置。
         runtime.ValidationResult = (false, "bad config");
         var (invalid, _) = await handler.HandleAsync(new WorkerIpcRequest(WorkerIpcMethods.ReloadConfig), CancellationToken.None);
         Assert.False(invalid.Ok);

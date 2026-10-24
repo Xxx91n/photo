@@ -25,7 +25,7 @@ internal sealed class MainWindowUiHost : IUiHost
 
     public void SetPauseResumeAvailability(bool enabled)
     {
-        // 票 24（ADR 0061）：Service→View 直写清零 — 可用性/文案改经 VM 中转（PauseResumeContent 派生文案由 XAML 绑定消费）。
+        // 票 24：Service→View 直写清零 — 可用性/文案改经 VM 中转（PauseResumeContent 派生文案由 XAML 绑定消费）。
         if (_window.DataContext is MainWindowViewModel vm)
         {
             vm.PauseResumeAvailable = enabled;
@@ -73,7 +73,7 @@ internal sealed class MainWindowViewModelView : IViewModelView
 
     public void SetServiceButtons(ServiceButtonState state)
     {
-        // 票 24（ADR 0061）：Service→View 直写清零 — 按钮可用性改经 VM ServiceButtons 中转，ServiceManagerPage 绑定消费。
+        // 票 24：Service→View 直写清零 — 按钮可用性改经 VM ServiceButtons 中转，ServiceManagerPage 绑定消费。
         if (Vm is { } vm)
         {
             vm.ServiceButtons = state;

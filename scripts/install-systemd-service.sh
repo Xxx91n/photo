@@ -99,7 +99,7 @@ mkdir -p "$HOT_FOLDER" "$AUDIT_FOLDER" "$QUARANTINE_FOLDER"
 chown -R "$USER_NAME:$GROUP_NAME" "$INSTALL_DIR" "$HOT_FOLDER" "$AUDIT_FOLDER" "$QUARANTINE_FOLDER"
 chmod 2770 "$HOT_FOLDER" "$AUDIT_FOLDER" "$QUARANTINE_FOLDER"
 
-# ADR 0067: service 模式 IPC socket 为 0660 + 组边界，GUI 用户必须在服务组内才能连上。
+# service 模式 IPC socket 为 0660 + 组边界，GUI 用户必须在服务组内才能连上。
 # 组边界不满足时 GUI 将无法访问 IPC（而非静默放行），故此处显式供给并报告。
 if [[ -n "$GUI_USER" ]]; then
   if id -u "$GUI_USER" >/dev/null 2>&1; then
@@ -114,7 +114,7 @@ fi
 
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 
-# ADR 0021 (Q15b): Stop existing service before replacing the unit file.
+# Stop existing service before replacing the unit file.
 # systemctl enable --now does not restart an already-running unit after daemon-reload,
 # so we stop first to guarantee the new unit actually starts fresh.
 if systemctl is-active --quiet "${SERVICE_NAME}" 2>/dev/null; then

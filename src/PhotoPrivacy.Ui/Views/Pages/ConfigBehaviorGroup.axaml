@@ -85,7 +85,7 @@
             </ComboBox>
           </DockPanel>
         </Border>
-        <!-- ADR 0052 A3: Theme preset swatch grid — 5 community themes（票 24：Click 接线统一至 MainWindow）；
+        <!-- Theme preset swatch grid — 5 community themes（票 24：Click 接线统一至 MainWindow）；
              与上一行同属主题组，行间不分隔线。 -->
         <Border Classes="settings-row">
           <StackPanel Spacing="{DynamicResource SpaceSm}" VerticalAlignment="Center">

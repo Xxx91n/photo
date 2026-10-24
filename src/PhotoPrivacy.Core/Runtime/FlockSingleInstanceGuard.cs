@@ -3,7 +3,7 @@ using System.IO;
 namespace PhotoPrivacy.Core.Runtime;
 
 /// <summary>
-/// ADR 0026 (Q7): POSIX single-instance guard using an exclusively-opened lockfile.
+/// POSIX single-instance guard using an exclusively-opened lockfile.
 /// Uses FileStream with FileShare.None which maps to exclusive open on POSIX
 /// (effectively flock-style). POSIX-native (no dependency on named Mutex availability).
 /// </summary>

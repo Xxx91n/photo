@@ -46,7 +46,7 @@ public partial class App : Application
                 var config = LoadConfigOrDefault(RuntimeOptions.ConfigPath);
                 if (config is not null)
                 {
-                    // Dual-axis separation (ADR 0052 A3, commit cab8d55):
+                    // Dual-axis separation (commit cab8d55):
                     //   theme_variant (axis: system/light/dark) -> RequestedThemeVariant
                     //   theme_id (axis: catppuccin/dracula/nord/tokyonight/onedarkpro) -> ResourceDictionary swap
                     // Legacy compatibility: old configs that stored a preset ID inside theme_variant
@@ -129,7 +129,7 @@ public partial class App : Application
 
     internal static void ApplyCommunityThemeResources(string themeName, bool applyDark)
     {
-        // 票 26（ADR 0062）: 5 色板运行时切换耗时观测 — spec 门限 <200ms（首次含 JIT 预热，取第 3 次起均值）。
+        // 票 26: 5 色板运行时切换耗时观测 — spec 门限 <200ms（首次含 JIT 预热，取第 3 次起均值）。
         // 观测打点在 ResourceDictionary 换入完成后统一落 UiDiagnosticLog（logs/ui-*.log）。
         var swapStopwatch = System.Diagnostics.Stopwatch.StartNew();
         ApplyCommunityThemeResourcesCore(themeName, applyDark);

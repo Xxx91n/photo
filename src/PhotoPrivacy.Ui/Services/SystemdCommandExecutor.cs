@@ -4,7 +4,7 @@ using System.Diagnostics;
 namespace PhotoPrivacy.Ui.Services;
 
 /// <summary>
-/// ADR 0021: Linux systemd service command executor.
+/// Linux systemd service command executor.
 /// Uses pkexec to elevate and call install-systemd-service.sh.
 /// Falls back to error message if pkexec not available.
 /// </summary>

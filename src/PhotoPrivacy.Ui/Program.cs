@@ -19,7 +19,7 @@ public static class UiProgram
         Start(args);
     }
 
-    // ADR 0053 M1: Two-phase async startup via Start(AppMain) Manual lifetime.
+    // Two-phase async startup via Start(AppMain) Manual lifetime.
     // Phase 1 (sync): log init, single-instance guard, config load, initial RuntimeOptions with Connecting state.
     // Phase 2 (async): Avalonia starts, MainWindow shows immediately, Worker connects fire-and-forget in AppMain.
     public static int Start(string[] args)
@@ -55,7 +55,7 @@ public static class UiProgram
         var services = AppComposition.Build(config, configPath, ResolveWorkerExecutablePath());
         App.RuntimeOptions = services.GetRequiredService<BackgroundUiOptions>();
 
-        // ADR 0053 M1: Set initial RuntimeOptions with placeholder endpoint (Connecting state).
+        // Set initial RuntimeOptions with placeholder endpoint (Connecting state).
         // App.OnFrameworkInitializationCompleted will create MainWindow with Connecting UI,
         // then AppMain fires ConnectWorkerAsync in background to replace the placeholder.
         var showPipeCts = new CancellationTokenSource();
@@ -70,7 +70,7 @@ public static class UiProgram
             cancellationToken: showPipeCts.Token);
         UiDiagnosticLog.Write("Show-window IPC server started");
 
-        // ADR 0053 M1: Fire-and-forget Worker connect BEFORE entering Avalonia lifetime.
+        // Fire-and-forget Worker connect BEFORE entering Avalonia lifetime.
         // StartWithClassicDesktopLifetime runs the message loop (doesn't block UI thread—
         // it IS the message loop). Worker connects in background, posts result to UI thread
         // when ready via Dispatcher.UIThread.Post.

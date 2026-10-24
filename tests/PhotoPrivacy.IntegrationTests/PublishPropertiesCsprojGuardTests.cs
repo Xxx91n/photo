@@ -1,11 +1,11 @@
 namespace PhotoPrivacy.IntegrationTests;
 
 /// <summary>
-/// 票 06（correctness-round 顺带发现收口 / ADR 0035、ADR 0012 修订口径）：
+/// 票 06（correctness-round 顺带发现收口）：
 /// 发布属性单一来源守卫——生产 csproj 不得直接持有 SelfContained / PublishSingleFile /
 /// IncludeNativeLibrariesForSelfExtract / PublishTrimmed；publish-app.ps1 与 publish.sh 的
 /// UI 与 Worker 两条 dotnet publish 调用都必须带齐三枚 /p: 标志（UI 侧原由 csproj 直接持有，
-/// 本票上提至脚本后，ADR 0035「csproj 不持有发布属性」口径在 UI 侧亦成立）。
+/// 本票上提至脚本后，「csproj 不持有发布属性」口径在 UI 侧亦成立）。
 /// </summary>
 public sealed class PublishPropertiesCsprojGuardTests
 {
@@ -32,7 +32,7 @@ public sealed class PublishPropertiesCsprojGuardTests
             if (csprojContent.Contains("<" + prop + ">", StringComparison.Ordinal))
             {
                 violations.Add(label + ": csproj 直接持有发布属性 <" + prop +
-                               ">（ADR 0035：发布属性只在发布脚本 /p: 传递）");
+                               ">（发布属性只在发布脚本 /p: 传递）");
             }
         }
 

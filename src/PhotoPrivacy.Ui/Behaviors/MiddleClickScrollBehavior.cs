@@ -11,7 +11,7 @@ namespace PhotoPrivacy.Ui.Behaviors;
 // Ported from Files.App MIT-licensed ScrollViewerMiddleClickExtensions.cs
 // (https://github.com/files-community/Files/blob/main/src/Files.App/Extensions/ScrollViewerMiddleClickExtensions.cs).
 // Provides middle-click-to-pan auto-scroll behavior for ScrollViewer controls.
-// ADR 0050 A3: Avalonia has no built-in middle-click autoscroll — this behavior is the canonical
+// Avalonia has no built-in middle-click autoscroll — this behavior is the canonical
 // implementation. Attach via `behaviors:MiddleClickScrollBehavior.IsEnabled="True"` on any ScrollViewer.
 //
 // API notes (verified against Avalonia 12.1 source):
@@ -70,12 +70,12 @@ public sealed class MiddleClickScrollBehavior : AvaloniaObject
     private const double DeadZone = 12.0;
     private const double SpeedFactor = 0.12;
     private const double MaxSpeedPerTick = 32.0;
-    // ADR 0052 A2: Exponential smoothing — v += (targetV - v) * (1 - exp(-k*dt))
+    // Exponential smoothing — v += (targetV - v) * (1 - exp(-k*dt))
     private const double SmoothingRate = 15.0;     // k ≈ 15 s⁻¹ (half-life ~46ms)
     private const double MaxDeltaTimeMs = 100.0;   // dt clamp (窗口暂停/大延迟保护)
     private const double StopThreshold = 1.0;       // |v| < 1 → 停机
     private const double DeadZoneHysteresisFactor = 0.5; // 进入死区后阈值缩半防边界抖动
-    // ADR 0055 A2: Watchdog steps when RAF stall exceeds this threshold (ms).
+    // Watchdog steps when RAF stall exceeds this threshold (ms).
     // 32ms ≈ 2 frames at 60Hz — RAF healthy means <16ms between frames.
     private const double WatchdogStallMs = 32.0;
 
@@ -99,14 +99,14 @@ public sealed class MiddleClickScrollBehavior : AvaloniaObject
         public ScrollViewer? ScrollViewer;
         public TopLevel? TopLevel;
         public bool RafRequested;
-        // ADR 0052 A2: exponential smoothing velocity state
+        // Exponential smoothing velocity state
         public double VelocityY;
         public double VelocityX;
         public bool InDeadZoneY;
         public bool InDeadZoneX;
-        // ADR 0055 A2: wall-clock Stopwatch for time-based dt (correct at any sample rate)
+        // Wall-clock Stopwatch for time-based dt (correct at any sample rate)
         public Stopwatch? Clock;
-        // ADR 0055 A2: Render-priority watchdog timer — steps when RAF stalls >32ms
+        // Render-priority watchdog timer — steps when RAF stalls >32ms
         public DispatcherTimer? Watchdog;
         public long LastStepMs;
     }
@@ -142,11 +142,11 @@ public sealed class MiddleClickScrollBehavior : AvaloniaObject
             IgnoreActivationMiddleRelease = true,
             HoldDetected = false
         };
-        // ADR 0055 A2: Wall-clock Stopwatch for time-based dt
+        // Wall-clock Stopwatch for time-based dt
         _state.Clock = Stopwatch.StartNew();
         _state.LastStepMs = 0;
 
-        // ADR 0051 A3: Use TopLevel.RequestAnimationFrame (vsync-aligned) instead of DispatcherTimer.
+        // Use TopLevel.RequestAnimationFrame (vsync-aligned) instead of DispatcherTimer.
         // Fallback to DispatcherTimer if TopLevel is null (ScrollViewer not attached to tree yet).
         var topLevel = TopLevel.GetTopLevel(sv);
         if (topLevel is not null)
@@ -154,7 +154,7 @@ public sealed class MiddleClickScrollBehavior : AvaloniaObject
             _state.TopLevel = topLevel;
             _state.RafRequested = true;
             topLevel.RequestAnimationFrame(ScrollFrame);
-            // ADR 0055 A2: Render-priority watchdog — steps when RAF stalls >32ms (maximize layout storm)
+            // Render-priority watchdog — steps when RAF stalls >32ms (maximize layout storm)
             _state.Watchdog = new DispatcherTimer(TimeSpan.FromMilliseconds(16), DispatcherPriority.Render, Watchdog_Tick);
             _state.Watchdog.Start();
         }
@@ -260,9 +260,9 @@ public sealed class MiddleClickScrollBehavior : AvaloniaObject
 
 
 
-    // ADR 0055 A2: RAF callback — thin wrapper. Reads wall-clock dt from Stopwatch,
+    // RAF callback — thin wrapper. Reads wall-clock dt from Stopwatch,
     // then delegates to StepScroll. RAF is one-shot so we re-request here.
-    // ADR 0051 A3: vsync-aligned, frame-rate independent.
+    // vsync-aligned, frame-rate independent.
     private static void ScrollFrame(TimeSpan frameTime)
     {
         if (_state?.IsActive != true || _state.ScrollViewer is null)
@@ -280,7 +280,7 @@ public sealed class MiddleClickScrollBehavior : AvaloniaObject
         }
     }
 
-    // ADR 0055 A2: Watchdog tick — Render priority. Steps only when RAF stalled
+    // Watchdog tick — Render priority. Steps only when RAF stalled
     // (>32ms since last step). When RAF is healthy, watchdog fires but LastStepMs
     // is recent so it no-ops (near-zero overhead). When RAF stalls (maximize
     // layout storm), watchdog keeps animation alive.
@@ -294,7 +294,7 @@ public sealed class MiddleClickScrollBehavior : AvaloniaObject
         }
     }
 
-    // ADR 0055 A2: Core scroll step — wall-clock dt, exponential smoothing.
+    // Core scroll step — wall-clock dt, exponential smoothing.
     // Called by both RAF (primary) and watchdog (fallback). Idempotent: safe to
     // call from either driver; dt is always wall-clock so curve is correct at
     // any sample rate.
@@ -368,7 +368,7 @@ public sealed class MiddleClickScrollBehavior : AvaloniaObject
         {
             t.Stop();
         }
-        // ADR 0055 A2: stop watchdog timer + null cleanup (prevent leak)
+        // Stop watchdog timer + null cleanup (prevent leak)
         if (_state.Watchdog is { } wd)
         {
             wd.Stop();
@@ -401,7 +401,7 @@ public sealed class MiddleClickScrollBehavior : AvaloniaObject
         return Math.Clamp(adjustedDelta * SpeedFactor, -MaxSpeedPerTick, MaxSpeedPerTick);
     }
 
-    // ADR 0052 A2: Dead zone hysteresis — once inside dead zone, threshold halves to prevent boundary jitter
+    // Dead zone hysteresis — once inside dead zone, threshold halves to prevent boundary jitter
     private static double CalculateVelocityWithHysteresis(double delta, ref bool inDeadZone)
     {
         var effectiveDeadZone = inDeadZone ? DeadZone * DeadZoneHysteresisFactor : DeadZone;

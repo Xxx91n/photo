@@ -2,7 +2,7 @@
 #Requires -PSEdition Desktop,Core
 <#
 .SYNOPSIS
-  Install/uninstall PhotoPrivacy Windows service (ADR 0024).
+  Install/uninstall PhotoPrivacy Windows service.
 #>
 param(
   [string]$Action = "install",

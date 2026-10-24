@@ -4,7 +4,7 @@ using Serilog.Events;
 namespace PhotoPrivacy.Core.Audit;
 
 /// <summary>
-/// ADR 0023: Serilog Enricher that masks path-related scalar properties (FilePath, SourcePath, HotFolder, etc).
+/// Serilog Enricher that masks path-related scalar properties (FilePath, SourcePath, HotFolder, etc).
 /// Registered via LoggerConfiguration.Enrich.With<PathMaskingEnricher>().
 /// Handles named scalar string properties that DestructuringPolicy cannot reach.
 /// </summary>

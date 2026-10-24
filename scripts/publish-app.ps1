@@ -80,7 +80,7 @@ dotnet publish (Join-Path $repoRoot "src" | Join-Path -ChildPath "PhotoPrivacy.W
 if ($LASTEXITCODE -ne 0) {
   throw "dotnet publish (worker) failed"
 }
-# ADR 0024: Copy install scripts to release/<rid>/scripts/
+# Copy install scripts to release/<rid>/scripts/
 $scriptsDir = Join-Path $targetDir "scripts"
 New-Item -ItemType Directory -Force -Path $scriptsDir | Out-Null
 if ($isLinuxRuntime) {
@@ -108,7 +108,7 @@ if (-not (Test-Path $workerAppHostPath)) {
 Copy-Item $uiAppHostPath (Join-Path $targetDir $appExeName) -Force
 Copy-Item $workerAppHostPath (Join-Path $targetDir $workerExeName) -Force
 
-# ADR 0039 §6: Set Unix executable bit for cross-platform binaries built on Windows
+# Set Unix executable bit for cross-platform binaries built on Windows
 if ($isLinuxRuntime -or $isOsxRuntime) {
   chmod +x (Join-Path $targetDir $appExeName)
   chmod +x (Join-Path $targetDir $workerExeName)

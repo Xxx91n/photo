@@ -30,7 +30,7 @@ public static class AppComposition
         // 票20 不可变快照 + 委托闭包语义整体迁移自 Program.BuildRuntimeOptions（读取 App.RuntimeOptions 当前值）。
         services.AddSingleton(BuildRuntimeOptions(config, configPath, workerPath, workerIpc, workerManager, serviceManager));
 
-        // ADR 0053 M1：ConnectionState 由 Program.Start 置为 Connecting 后经 SetConnectionState 挂载。
+        // ConnectionState 由 Program.Start 置为 Connecting 后经 SetConnectionState 挂载。
         services.AddSingleton(sp => new ConnectionStateService(
             sp.GetRequiredService<WorkerIpcClient>(), WorkerIpcEndpointNames.BackgroundPipe));
 

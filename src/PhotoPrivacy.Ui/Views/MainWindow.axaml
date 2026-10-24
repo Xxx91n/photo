@@ -21,10 +21,10 @@
         Win32Properties.WindowCornerPreference="Round">
   <!-- 票 02（ui-craft2 / D-004 / 裁决 §4-1）：显式 WindowCornerPreference=Round——禁依赖 Default
        （Avalonia #9660 ExtendClientArea 硬边回归先例，上游修复即显式 DwmSetWindowAttribute）；
-       Win10 <Build 22000 官方 ignored=no-op 安全降级；不动项=不透明背景/系统阴影/ADR0050 自绘标题栏/
+       Win10 <Build 22000 官方 ignored=no-op 安全降级；不动项=不透明背景/系统阴影/自绘标题栏/
        GridSplitter 渲染路径零改动。全屏 DoNotRound 加固按裁决 §4-2 省略（全仓无 FullScreen 路径）。 -->
   <Grid RowDefinitions="40,*">
-    <!-- ADR 0050 A4 — self-drawn titlebar (WindowDecorations=None + ExtendClientAreaToDecorationsHint) -->
+    <!-- self-drawn titlebar (WindowDecorations=None + ExtendClientAreaToDecorationsHint) -->
     <Border Grid.Row="0" Grid.ColumnSpan="2" Classes="titlebar-host" Background="{DynamicResource SemiColorBackground0}"
             WindowDecorationProperties.ElementRole="TitleBar">
       <Grid ColumnDefinitions="*,Auto">
@@ -47,7 +47,7 @@
             Background="{DynamicResource SemiColorNavBackground}"
             BorderBrush="{DynamicResource SemiColorBorder}"
             BorderThickness="0,0,1,0"
-            BoxShadow="{DynamicResource Elevation1}"><!-- ADR 0051 A1: sidebar depth — Elevation1 ladder token -->
+            BoxShadow="{DynamicResource Elevation1}"><!-- sidebar depth — Elevation1 ladder token -->
       <DockPanel>
         <Border DockPanel.Dock="Top" Height="56" Padding="16,0">
           <StackPanel VerticalAlignment="Center" Spacing="{DynamicResource SpaceXxs}">
@@ -99,7 +99,7 @@
       </DockPanel>
     </Border>
 
-    <!-- ADR 0052 A5: GridSplitter — resizable sidebar (170-400) -->
+    <!-- GridSplitter — resizable sidebar (170-400) -->
     <GridSplitter x:Name="SidebarSplitter" Grid.Column="1" Background="Transparent" ResizeDirection="Columns" Width="4" ResizeBehavior="PreviousAndNext" DragCompleted="OnSidebarSplitterDragCompleted">
       <GridSplitter.Styles>
         <Style Selector="GridSplitter:pointerover">

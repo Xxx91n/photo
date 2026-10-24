@@ -19,7 +19,7 @@ public interface IWorkerIpcRuntime
 
     string WatchDirectory { get; }
 
-    /// <summary>ADR 0046: audit log directory for GetRecentLogs IPC channel.</summary>
+    /// <summary>Audit log directory for GetRecentLogs IPC channel.</summary>
     string? AuditLogDirectory { get; }
 
     RuntimeMode Mode { get; }
@@ -30,6 +30,6 @@ public interface IWorkerIpcRuntime
 
     Task ReloadConfigAsync();
 
-    /// <summary>ADR 0033: Validate config without applying. Returns (valid, errorMessage).</summary>
+    /// <summary>Validate config without applying. Returns (valid, errorMessage).</summary>
     (bool valid, string? error) TryValidateConfig();
 }

@@ -2,15 +2,15 @@
 
 > **状态**：现役活文档（living document） ｜ **建立**：2026-09-12（ui-craft 轮票 01） ｜ **版本**：v2.0
 > **权威**：本文件是 PhotoPrivacy **页面级**视觉规范的唯一现役标准，永远代表当前标准。
-> **分工**：token / 变体级规范在 ADR 0048 / 0050 / 0051 / 0052 / 0054 / 0055 / 0056 / 0062；本文件与它们**互补不冲突**——ADR 记「为什么」，本文件记「是什么」。取舍记录见 ADR 0065 / ADR 0069。
+> **分工**：token / 变体级规范的取舍理由已折进源码注释；本文件记「是什么」。
 > **引用方式**：后续 UI 票在验收条件中直接引用节号（例：「须符合 ui-visual-standard.md §2」）。
-> **演化规则**：随票修订并版本化，每次修订在 §8 留一行。禁止把本文件内容整体搬进单篇 ADR（D-009）。
+> **演化规则**：随票修订并版本化，每次修订在 §8 留一行。禁止把本文件内容整体搬进单篇决策记录。
 
 ---
 
 ## 0. 审美基准（D-005 / ui-craft2 —— 全文唯一的「像不像」标尺）
 
-> **v2.0 变更**：主基准 = **MangoDisk 观感级全面对标**（ui-craft2 决策 D-005，取舍记录 ADR 0069）。上轮三锚（Wasabi / Apple / VS Code·Discord）**降级为气质参考**——保留其「克制 / 分组 / 密度」的心智约束，不再作为逐条对标的定值来源。
+> **v2.0 变更**：主基准 = **MangoDisk 观感级全面对标**（ui-craft2 决策 D-005）。上轮三锚（Wasabi / Apple / VS Code·Discord）**降级为气质参考**——保留其「克制 / 分组 / 密度」的心智约束，不再作为逐条对标的定值来源。
 
 ### 0.1 主基准：MangoDisk 观感级对标（harry0703/MangoDisk）
 
@@ -40,8 +40,8 @@
 
 - **R1-1 同组等宽**（项目决策 A-001 / spec ID3，用户拍板）：同一容器内、语义同级的 ≥2 枚按钮必须等宽。实现二选一：(a) 以组内**最长文案**计算 `MinWidth`（写在共享 style class 或容器上，**不逐枚内联**）；(b) `Grid` 等分列（`ColumnDefinitions` 等宽 / `*`）+ 按钮 `HorizontalAlignment=Stretch`。
 - **R1-2 单枚 hug**：独占一行 / 一区的按钮（如服务页「安装」「卸载」各占独立行）保持内容自适应 + 变体固定 `Padding`，**不强行拉宽到整行**。
-- **R1-3 尺寸权威不变**：`Height` / `Padding` / `FontSize` 的唯一权威仍是 AppTheme 的 Button Size Ladder（内容区 32 / `12,6`；nav 与 nav-action 40 / `12,0`；icon 32×32 / `0`）。组内等宽**只调 `MinWidth` 或 Grid 列宽**，禁止行内覆盖 Height / Padding / MinWidth（ADR 0056 票 01 + 五个 source-lint guard）。
-- **R1-4 变体清单**：7 变体 `primary / ghost / danger / icon / nav / nav-action / caption-btn` × 5 态（idle / pointerover / pressed / disabled / focus-visible）见 ADR 0062 D3。新增按钮必须先归队到既有变体，无对应变体才新增。
+- **R1-3 尺寸权威不变**：`Height` / `Padding` / `FontSize` 的唯一权威仍是 AppTheme 的 Button Size Ladder（内容区 32 / `12,6`；nav 与 nav-action 40 / `12,0`；icon 32×32 / `0`）。组内等宽**只调 `MinWidth` 或 Grid 列宽**，禁止行内覆盖 Height / Padding / MinWidth（五个 source-lint guard 锁定）。
+- **R1-4 变体清单**：7 变体 `primary / ghost / danger / icon / nav / nav-action / caption-btn` × 5 态（idle / pointerover / pressed / disabled / focus-visible）见按钮变体矩阵。新增按钮必须先归队到既有变体，无对应变体才新增。
 
 ### 1.2 现状对账（2026-09-12 窗口侧静态核验）
 
@@ -58,7 +58,7 @@
 
 - **MangoDisk**：按钮全局被 `!important` 锁定 `translate/scale = 0/1`，过渡白名单 = `color, background-color, border-color, box-shadow, opacity`（附录 D.6）——「按钮无位移无缩放」是其刚性不变量，与本项目 N1 同构；页头操作区按钮取 `border-border/70` + 无阴影无 transform；确认流 footer = cancel(outline) + confirm(语义变体)。
 - **WinUI / Windows 11（atomcode 实测）**：**对话框按钮行等宽**——`ContentDialog` 的 CommandSpace 为五列网格（Primary `*` / 8px spacer / Close `*`），按钮 `HorizontalAlignment=Stretch`，`ContentDialogButtonSpacing=8`；官方 PR #3926 确认「对话框变宽→按钮变宽」是设计意图。但**页内工具按钮行** WinUI 用 `ButtonPadding 11,5,11,6` + 最小高 32，即**内容自适应**。
-- **Apple HIG（atomcode 实测）**：原文是「用**样式**（accent 填充 vs 无填充）而非尺寸区分首选动作」；「当你用**同尺寸**按钮提供两个以上选项时，你在发出这是一组连贯选择的信号」——Apple 的成组信号靠**同尺寸 / 同样式**，不靠等宽拉伸。命中区 ≥44×44pt（本项目 32 高已由 ADR 0056 票 01 书面裁定取 Win11 标准，此处不取 44）。
+- **Apple HIG（atomcode 实测）**：原文是「用**样式**（accent 填充 vs 无填充）而非尺寸区分首选动作」；「当你用**同尺寸**按钮提供两个以上选项时，你在发出这是一组连贯选择的信号」——Apple 的成组信号靠**同尺寸 / 同样式**，不靠等宽拉伸。命中区 ≥44×44pt（本项目 32 高已书面裁定取 Win11 标准，此处不取 44）。
 - **Material 3（atomcode 实测）**：对话框按钮**尾缘对齐**、最多两个操作、**按钮间距 8dp**；文案过长时**改为上下堆叠**而非拉伸等宽——M3 与 WinUI 在对话框语境存在**方向性分歧**。
 
 ### 1.4 反例（禁止）
@@ -82,11 +82,11 @@
 | pressed | 同族加深（基准值：`sidebar-accent` 约 72%） | 继承 | 同 hover |
 | active | **D-003 拍板：主色实心胶囊**（`SemiColorPrimary` 或等效主色），圆角 8 | **on-primary 深字** `SemiColorNavActiveForeground`（D-008 语义修正：「反白」按 M3 on-primary 取对比安全色而非默认白——五主题 pastel 主色上白字 2.0–2.5 全灭，各主题 Bg0 深字 5.90–7.79 全过 AA，nord/dracula 观察项就此解决）+ `FontWeight=SemiBold`（取基准字重 600 信号） | 同 hover |
 | disabled | 继承 | `SemiColorText2` + `Opacity 0.5` | — |
-| focus-visible | 继承 | 继承 | 全局 2px 焦点环（基准：nav 用 inset box-shadow 2px `primary` 约 32% 透明，与 ADR 0051 A1 描边兼容） |
+| focus-visible | 继承 | 继承 | 全局 2px 焦点环（基准：nav 用 inset box-shadow 2px `primary` 约 32% 透明，与既有焦点环规范兼容） |
 
 ### 2.2 三条硬性约束
 
-- **N1 纯色 / 透明度叙事**：无 `scale`、无位移、无弹性缓动（ADR 0054 定稿 + ADR 0051 A2 延续；禁 `BackEaseInOut` / `ElasticEaseInOut`）。MangoDisk 佐证：按钮 transform 被全局 `!important` 清零（附录 D.6）。
+- **N1 纯色 / 透明度叙事**：无 `scale`、无位移、无弹性缓动（禁 `BackEaseInOut` / `ElasticEaseInOut`）。MangoDisk 佐证：按钮 transform 被全局 `!important` 清零（附录 D.6）。
 - **N2 过渡走 BrushTransition 白名单**：Background / Foreground 两路必备（上轮已补 Foreground 150ms SineEaseOut，保留复用）。基准：MangoDisk nav-item 过渡 = `background-color / color / box-shadow 0.16s ease`；禁 `Transition` 泛类全属性过渡（等价 `transition: all`，白名单纪律要防的）。
 - **N3 三态层次分明、active 与 hover 视觉联动**：hover 半透明胶囊 → active 实心胶囊的「由浅入实」叙事；禁止同为浅色导致「看不出选中」（D-003）。
 
@@ -151,7 +151,7 @@
 | `TextBlock.section-header` / `.row-label` / `.row-desc` | 三级文本角色（section-header 卡内用法票 07/ui-craft2 清零——已无页内消费方，class 定义保留待用） | `AppTheme.axaml:349-362` |
 | `TextBlock.group-label` / `.page-title` | 组标签（GroupLabelFontSize 12 / SemiBold / Text2 muted，卡外上方）与页头标题（PageTitleFontSize 22 / Normal / Text0）——票 04/ui-craft2 新增 | `AppTheme.axaml:365-377` |
 | `ComboBox.inline-control` | `Width=160` 共享 class | `AppTheme.axaml:391-394` |
-| 控件列宽度（路径类） | `u|PathPicker.inline-input Width=280` 共享 class 收敛（ADR 0061 票 24 / 票 25） | `AppTheme.axaml:396-401` |
+| 控件列宽度（路径类） | `u|PathPicker.inline-input Width=280` 共享 class 收敛（票 24 / 票 25） | `AppTheme.axaml:396-401` |
 
 ### 3.3 表单行偏差（票 04 已落地）
 
@@ -172,7 +172,7 @@
 
 ### 3.5 反例（禁止）
 
-- 通栏分隔线 + 等距 Padding 组成的「均匀网格」（AI 感第一根因，ADR 0051 A1）。
+- 通栏分隔线 + 等距 Padding 组成的「均匀网格」（AI 感第一根因）。
 - 行内写 `Margin` / `Padding` 字面量绕过 `settings-row`（A-008 清理对象）。
 - 把表单做成 IDE 式双列高密度。
 
@@ -185,7 +185,7 @@
 - **E1 必有占位**：每个可空列表 / 表格必须有空态占位——非空着、非只显示表头。
 - **E2 骨架（v2.0 按 MangoDisk `md-empty-state` 重校）**：容器纵向居中偏上（下侧留白 > 上侧，基准 padding-bottom = clamp(52px, 9vh, 88px) 的视觉中心补偿）+ **图标盒 52×52 / 字形 36 主色**（compact 变体 44 / 28、muted 色）+ 标题 `content-empty-title`(20) 卡片前景 + 一句说明 `content-body`(12) muted、max-w 520 居中 + 可选操作位；**不加插画、不加渐变、不加装饰**（克制气场延续）。
 - **E3 本地化**：文案必须走 locale key，10 语言 key 集合与 en.json 对齐（`All_Locales_Have_Identical_Flat_Key_Sets_As_English` 保持绿）。
-- **E4 开关联动**：由 ViewModel 在**收口处**联动刷新（Append / Clear / Filter 等），不得用事件订阅长活（ADR 0061 页面 code-behind 零订阅规约）。
+- **E4 开关联动**：由 ViewModel 在**收口处**联动刷新（Append / Clear / Filter 等），不得用事件订阅长活（页面 code-behind 零订阅规约）。
 - **E5 区分空因**：「真空」与「过滤无结果」用不同文案；过滤无结果须提示可清除筛选。
 
 ### 4.2 现状
@@ -228,7 +228,7 @@
 | P4 | 同组内元素（如一组按钮） | `SpaceSm`(8) | 服务页按钮组；基准页头操作区 gap 8 同值 |
 | P5 | 侧栏导航项之间 | `SpaceXxs`(2)，连续无 gap（票 02 按基准组内项距 2 落） | `MainWindow.axaml` 两组导航 StackPanel；基准组间 10-12 由上下 Dock 分区布局承担，非相邻组距不适用 |
 | P6 | 标题栏按钮组 | `SpaceXxs`(2) | `MainWindow.axaml:27` |
-| P7 | **禁止等距均匀** | — | 不同层级必须用不同档位；等距均匀是 AI 感第一根因（ADR 0051 A1） |
+| P7 | **禁止等距均匀** | — | 不同层级必须用不同档位；等距均匀是 AI 感第一根因 |
 
 ### 5.3 基准对照
 
@@ -255,7 +255,7 @@
 |---|---|---|
 | T1 | 触发点 | 配置防抖自动保存成功 / 失败（`SaveStatus` 行内文本保留为持久态、toast 叠加瞬时反馈）、规则保存 / 重置、服务安装 / 卸载 / 启停结果（Success/Failed/ElevationCancelled/Skipped 分型）；清理异常类反馈归 error 型统一出口（UI 侧无独立清理入口，Worker 管线异常经审计日志呈现）；不做处处弹 |
 | T2 | 位置与时长 | **应用级右下堆叠**（MainWindow 根 Grid 末位跨两行右下锚定，跨页面恒定），默认 **4s** `DispatcherTimer` 自动消失（sonner 的文档隐藏暂停属浏览器语义，桌面端 N/A 不实现，登记取舍），手动关闭钮归队 `Button.icon` 变体 |
-| T3 | 视觉 | **popover 同族容器**：`SemiColorBorder` 1px + `RadiusLg`(8) + `Elevation4`（dialog 级投影）+ Padding 12,8；定宽 **364px**；**禁用 emoji / Unicode 符号**（沿用 ADR 0050 A2 纪律）；Material.Icons 16px 四型（CheckCircleOutline / InformationOutline / AlertOutline / CloseCircleOutline + Close 14 关闭） |
+| T3 | 视觉 | **popover 同族容器**：`SemiColorBorder` 1px + `RadiusLg`(8) + `Elevation4`（dialog 级投影）+ Padding 12,8；定宽 **364px**；**禁用 emoji / Unicode 符号**（沿用状态符号纪律）；Material.Icons 16px 四型（CheckCircleOutline / InformationOutline / AlertOutline / CloseCircleOutline + Close 14 关闭） |
 | T4 | 语义色 | rich-colors 四型：`SemiColor{Success,Information,Warning,Danger}Light` 语义浅底 + 同族饱和色 `.toast-icon`（success / info / warning / error class）；`toast.*` 10 键 ×10 语言 + BuiltIn 双兜底 |
 | T5 | 无障碍 | `AutomationProperties.Name` 播报标题（LiveSetting 平台支持度以 Windows UIA 为准，Linux/macOS 未验证——信息缺口登记报告 §信息缺口）；容器 / 卡片 `Focusable=False` 不抢焦点、非模态，关闭钮单独可聚焦保键盘可达 |
 | T6 | 去重与排队 | 同 key 连续触发合并刷新（移除旧条 + 重置计时 + 置最新位）；折叠态**同屏上限 4 条**（`MaxVisible=4`，超出层 Opacity=0 不可命中）；hover 展开（`SetExpanded`）露出全部 + 暂停全部计时（Stopwatch 剩余恢复）；展开态卡间距基准 gap=10 按 §5.2 P4 同组档量化落 `SpaceSm`(8)（离轨映射登记） |
@@ -292,7 +292,7 @@
 | # | 结论 | 关键证据 | 规范落点 |
 |---|---|---|---|
 | C1 | **四大参考产品的 nav hover 一律是中性灰叠加，accent 只属于 active/selected**；hover 无「预示指示条」，指示条是 active 专属 | VS Code Activity Bar hover 无背景、图标 #868686→#D7D7D7；WinUI hover=`SubtleFillColorSecondaryBrush`、指示条 `SelectionIndicator` 初始 `Width=0 Opacity=0`；Discord hover=`rgba(78,80,88,0.3)`、品牌色只用于未读/提及 | §2.4 / §2.5（**张力 T-1** 史录；v2.0 胶囊语言下该张力形态见 T-3） |
-| C2 | **hover 过渡在桌面体系里以「切换」为主**：VS Code 无过渡（activity bar 唯一 transition 是拖拽指示条，`duration 0ms`），WinUI NavigationViewItem 用 `DiscreteObjectKeyFrame KeyTime=0` 离散切换；唯一可复用数值是 WinUI Button 的 **83ms BrushTransition** | `activityaction.css`、`NavigationView_rs1_themeresources.xaml`、`Button_themeresources.xaml` | §2.2 N2（本项目 150ms 为既有 ADR 定值，不因本条改） |
+| C2 | **hover 过渡在桌面体系里以「切换」为主**：VS Code 无过渡（activity bar 唯一 transition 是拖拽指示条，`duration 0ms`），WinUI NavigationViewItem 用 `DiscreteObjectKeyFrame KeyTime=0` 离散切换；唯一可复用数值是 WinUI Button 的 **83ms BrushTransition** | `activityaction.css`、`NavigationView_rs1_themeresources.xaml`、`Button_themeresources.xaml` | §2.2 N2（本项目 150ms 为既有定值，不因本条改） |
 | C3 | **按钮组：对话框语境等宽，页内工具按钮行内容自适应**；Apple 的成组信号靠「同尺寸/同样式」而非等宽拉伸；M3 文案过长时改堆叠 | WinUI `ContentDialog` 五列 stretch 网格 + `ButtonSpacing=8` + PR #3926；VS Code `width: fit-content`；Apple HIG Buttons 原文；M3 Dialogs Specs | §1.1 R1-1（**张力 T-2**） |
 | C4 | **表单行骨架有完整开源模板可对齐**：WinUI SettingsCard 为四列网格 `Auto(图标) / *(标题+描述) / Auto(控件) / Auto(ActionIcon)`，断点 800px 控件换行到标题下方、600px 连图标折叠，卡片间 `Spacing=4`，背景过渡同为 83ms，模板内置 `SettingsCardContentMinWidth` | `SettingsCard.xaml`（CommunityToolkit/Windows）+ 官方文档 | §3.1 / §3.3 B2 |
 | C5 | **macOS 侧：分隔线需 inset（两侧各 ≥20pt）、描述文字 11pt（Small）、标签列与控件列之间 8pt**；System Settings 分组卡片**无官方数值规格**（仅有社区逆向值与 HIG 侧栏 small/medium/large 三档定性规格） | zenn《macOS Settings Window Guidelines》（社区）；Apple HIG Sidebars（官方，行高三档 + 侧栏图标默认 accent） | §3.3 B1 / §5 |
@@ -337,7 +337,7 @@
 
 | 变体 | 实例数 | 落点 | 五态 | 备注 |
 |---|---|---|---|---|
-| `primary` | 1 | ServiceManagerPage:43 安装 | ADR 0062 D3 全矩阵 | 单枚 hug（R1-2） |
+| `primary` | 1 | ServiceManagerPage:43 安装 | 按钮变体矩阵 | 单枚 hug（R1-2） |
 | `ghost` | 6 | LogsPage:15；RulesPage:35-36；ServiceManagerPage:64-66 | 同上 | 后两组已按 R1-1 等宽 |
 | `danger` | 1 | ServiceManagerPage:79 卸载 | 同上 | 单枚 hug（R1-2） |
 | `icon` | 2 | ConfigPage:205-206 | 同上 | `Button.icon` 32×32，天然等宽 |
@@ -345,7 +345,7 @@
 | `nav-action` | 2 | MainWindow:85 / :90 | 同上 | 自 2026-04-27 首版即归队；票面「裸按钮」为单行 grep 假阳性 |
 | `caption-btn` | 3（含 1 枚 `danger`） | MainWindow:28 / :31 / :34 | 同上 | 标题栏组，`Padding 16,6` 由既有断言锁定 |
 
-- **合计 16 枚：零裸按钮、零行内尺寸覆盖**（ADR 0056 票 01 的清零成果保持）。
+- **合计 16 枚：零裸按钮、零行内尺寸覆盖**（按钮尺寸清零成果保持）。
 - **等宽落点仅两处**：`ServiceManagerPage`（`ServiceActions` 组，3 枚）与 `RulesPage`（`RuleActions` 组，2 枚）。机制 = `Grid` + `ColumnDefinition SharedSizeGroup`（组内最长文案动态定宽）+ `ColumnSpacing="{DynamicResource SpaceSm}"`（§5.2 P4）。
 - **不取固定 `MinWidth` 的理由**：本项目 10 语言，组内最长文案随语言变化，定值在长文案语言（德 / 俄）下失效；`SharedSizeGroup` 按运行时测量结果定宽，任何语言下都成立。
 
@@ -357,7 +357,7 @@
 |---|---|
 | 现象 | 侧栏内部 Border 固定 `Width="200"`，`GridSplitter` 拖动改变列宽但面板视觉宽度不跟随（report-32 D3 观察项） |
 | 实态 | `MainWindow.axaml` 列宽由 `ColumnDefinitions="200,4,*"` + `MainWindow.axaml.cs` 的 `RestoreSidebarWidth` / `OnSidebarSplitterDragCompleted` 控制在 **170–400**；内部面板硬钉 200，两者冲突 |
-| 判定 | **缺陷，非设计意图** —— 列宽既已开放可调（ADR 0052 A5 显式交付「可拖拽侧栏」），内部定宽与之直接冲突，且无任何注释 / ADR 声明该定宽为设计 |
+| 判定 | **缺陷，非设计意图** —— 列宽既已开放可调（「可拖拽侧栏」已交付），内部定宽与之直接冲突，且无任何注释声明该定宽为设计 |
 | 后果 | 列宽 > 200 → 面板右侧留空、露出 `SemiColorBackground0`（侧栏视觉宽度与内容区断裂）；列宽 < 200 → 面板溢出被裁 |
 | 处置 | 删除 `Width="200"`；Border 位于 Grid cell 内默认 `HorizontalAlignment=Stretch`，移除后自动跟随 Column[0] 实际宽度（改动 1 行，零副作用） |
 | 与 §0 的关系 | §0 Wasabi 锚记「窄侧栏（默认 200，拖宽 170–400）」——「拖宽」语义要求面板跟随列宽，本处置与之**一致**，不触发 §0 修订 |
@@ -435,7 +435,7 @@
 | v2.2 | 2026-09-14 | 票 03 / ui-craft2 | **nav 胶囊三态落地（D-002 / D-003 / D-008）**：4px 左缘 accent 槽位体系退役；§2.1 hover 落 `SemiColorNavItemHover`（Bg2@0.7 各主题 + 亮/暗回退）、active 落 `SemiColorPrimary` 实心 + `SemiColorNavActiveForeground` on-primary 深字 + SemiBold、active:pointerover 保持实心；§2.3 现状对账全项转落地态；§2.4 T-3 登记改已裁定（C 折中 + hover 前景中性）；`NavFeedbackSourceTests` 撞红三档处置（改造 2 / 保留 2 / 新增 1） |
 | v2.1 | 2026-09-14 | 票 02 / ui-craft2 | **tokens 刷新落地（D-004 / D-005）**：MainWindow 显式 `Win32Properties.WindowCornerPreference="Round"`；§5.1 Radius 实物列改 v2.0 阶梯（Sm4/Md6/Lg8/Xl12，Xs2 保留子档）+ Elevation 收两档制（1/2=subtle 7%、4=dialog 18% 原式）+ 新增 Layout 族 17 枚 `Layout*`；壳层侧栏深一档定值——Catppuccin/OneDarkPro/TokyoNight 本深于 Bg0，Dracula/NordDark 纠偏为深档惯例色，亮/暗回退档入 DesignTokens ThemeDictionaries；settings-card 角档改 RadiusLg、按钮/输入框改 RadiusMd（md=6）；§2.1/§3.2 半径引用订正 RadiusLg；§5.2 P5 落 SpaceXxs(2)；侧栏持久化默认宽 200 不动（Core 配置语义+§7 V2 机位同值） |
 | v2.3 | 2026-09-14 | 票 04 / ui-craft2 | ConfigPage 整页对齐落地（D-005/D-006）：§3.1 骨架升组标签外置+行集合卡模型；§3.2 实态刷新（settings-card.grouped / settings-row 16,8+MinHeight60 / group-label / page-title 四段新实态）；§3.3 新增 B4–B7（组标签出卡、页壳 58+readable1160、条件行分隔线联动、孤图标清除）；§3.4 卡片 padding 复核改判（卡 0 + 行承载，附录 D 原 p-6=24 取证误差订正）；§5.2 P1 上档 SpaceXl、P2 改判卡零内边距；§5.4 复算 24 处零离轨；登记张力 T-4（MangoDisk 行 40px 图标列未引入，待大脑裁定）与 T-5（字号阶梯：基准 6+1 档 vs 本项目 6-role——行标题 13/节标题 15 无对应 token，page-title 22 与 group-label 12 已先行补齐） |
-| v2.0 | 2026-09-14 | 票 01 / ui-craft2 | **主基准切换（D-005 / A-001 / ADR 0069）**：§0 改 MangoDisk 观感级对标主基准表 + 上轮三锚降级为气质参考；§2 重写为胶囊三态目标规范（4px 槽位体系随 D-002 退役，施工在票 03），新增 §2.4 MangoDisk `nav-item` 实测公式对照并**登记张力 T-3**（D-003 主色实心胶囊+反白 vs 基准实物 accent 胶囊+3px×24px 主色 pill+字重 600；hover 前景叙事偏差并入）；§4 E2 按 `md-empty-state` 重校；§5.1 增 MangoDisk 布局 token 基准列；§6 Toast 规划按 vue-sonner 实物配置重校（T2/T3/T6 改值 + 新增 T7 动效档）；§7 V3 验收清单改 MangoDisk 对照项；新增附录 D 观感取证表（gh api 只读取证，GPL-3.0 零拷贝）；附录 A.2 张力表补 T-3 行、T-1 改并入 T-3 口径 |
+| v2.0 | 2026-09-14 | 票 01 / ui-craft2 | **主基准切换（D-005 / A-001）**：§0 改 MangoDisk 观感级对标主基准表 + 上轮三锚降级为气质参考；§2 重写为胶囊三态目标规范（4px 槽位体系随 D-002 退役，施工在票 03），新增 §2.4 MangoDisk `nav-item` 实测公式对照并**登记张力 T-3**（D-003 主色实心胶囊+反白 vs 基准实物 accent 胶囊+3px×24px 主色 pill+字重 600；hover 前景叙事偏差并入）；§4 E2 按 `md-empty-state` 重校；§5.1 增 MangoDisk 布局 token 基准列；§6 Toast 规划按 vue-sonner 实物配置重校（T2/T3/T6 改值 + 新增 T7 动效档）；§7 V3 验收清单改 MangoDisk 对照项；新增附录 D 观感取证表（gh api 只读取证，GPL-3.0 零拷贝）；附录 A.2 张力表补 T-3 行、T-1 改并入 T-3 口径 |
 | v2.4 | 2026-09-15 | 票 05 / ui-craft2 | **LogsPage 整页对齐落地（D-005/D-006）**：页壳 58+page-title；工具条 36（LayoutToolbarHeight，级别过滤 ComboBox 左/清空右，裸条对齐 md-result-filter-toolbar 无底色无边框实态）；日志行 MinHeight=LayoutResultRowHeight(44)+事件徽章 RadiusXl 胶囊化（md radius-999 等效）；§4.2 日志页 E2 骨架落地（`empty-icon`/`empty-title`/`empty-desc` 三 class + 空因双文案 E5，`empty_desc`/`empty_filtered` ×10 语言）；图标盒源码复核订正为无底色定位盒；`MapEventStyle` emoji/Unicode 前缀清零（§6 T3/§7 V3）；新增 token `EmptyDescFontSize=12`；VM 联动通知修复（LogLevel 热重载回填 ComboBox 选中态缺口） |
 | v2.5 | 2026-09-15 | 票 06 / ui-craft2 | **RulesPage 整页对齐落地（D-005/D-006）**：页壳 58+page-title+副标题+右侧操作区（保存/重置 SharedSizeGroup 组+SaveStatus 迁入页头，atomcode 调研裁决一：页面级操作放页头右侧操作区、绝不进过滤工具条）；专家横幅卡沿用裸 settings-card（§3.1 明许非行集合卡）；36px 过滤工具条（LayoutToolbarHeight，搜索左置=数据作用域）；DataGrid `RowHeight=LayoutResultRowHeight`(44)；§4.2 规则页 E2 骨架落地（empty-icon/title/desc + 空因双文案 E5 随 `SearchFilterActive` 切换，`rules.empty_desc`/`rules.empty_filtered` ×10 语言新增、`rules.panel.title` 孤儿键清除）；VM +`SearchFilterActive` 收口通知 |
 | v2.6 | 2026-09-15 | 票 07 / ui-craft2 | **ServiceManagerPage 整页对齐落地（D-005/D-006）**：页壳 58+page-title（nav.service_manager）+内容 readable 1160 居中；状态卡/操作卡合并为单组单卡（atomcode 裁决三：状态自成服务卡首行不独立成卡），组标签 service.section.service 出卡上方 + settings-card.grouped 四行（状态行=service.status 标签+状态点/文案、安装 primary、启停刷 ghost SharedSizeGroup 沿用、卸载 danger）；§5.2 P1 组间距 SpaceLg→SpaceXl 收紧完成（过渡态注记消除）；硬编码 "ACTIONS" 段头清零（i18n 缺口修复）；孤儿键 service.section.status/actions 十语言+内嵌兜底同步清除、service.status 孤儿键激活为状态行标签；§1.2/§3.2/§3.3 B3/§4.2/附录 B 实态与行号跟随；登记张力 T-6（卸载缺确认对话框——调研裁决二建议 danger 操作配确认流，属行为变更超本票审美范围，交大脑裁定） |

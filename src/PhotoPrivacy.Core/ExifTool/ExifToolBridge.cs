@@ -127,7 +127,7 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
 
     public async Task<WipeResult> WipeMetadataAsync(string targetPath, CancellationToken cancellationToken)
     {
-        // 票 01（A-001）/ ADR 0053 M6f：未知扩展名一律立即跳过——不进 ExifTool、不写协议块、不注册等待 marker。
+        // 票 01（A-001）：未知扩展名一律立即跳过——不进 ExifTool、不写协议块、不注册等待 marker。
         // 必须早于 EnsureStartedAsync：不支持的格式不值得拉起进程，也不允许出现
         // “等一个永不出现的 TASK_DONE_ marker”的挂死路径。
         if (WipeStrategyResolver.ResolveFamily(targetPath) is WipeFormatFamily.Unknown)

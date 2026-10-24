@@ -4,7 +4,7 @@ using Serilog.Events;
 namespace PhotoPrivacy.Core.Audit;
 
 /// <summary>
-/// ADR 0023: Serilog IDestructuringPolicy that masks path-related properties during
+/// Serilog IDestructuringPolicy that masks path-related properties during
 /// structured destructuring of objects. Registered via LoggerConfiguration.Destructure.With().
 /// Handles {@obj} destructured objects; PathMaskingEnricher handles named scalar properties.
 /// Together both enrollment paths cover all log-event paths uniformly.

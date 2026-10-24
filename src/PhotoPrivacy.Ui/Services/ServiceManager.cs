@@ -401,7 +401,7 @@ public sealed class ServiceManager
     }
 
     /// <summary>
-    /// ADR 0020+0021: Create platform-appropriate default state probe.
+    /// Create platform-appropriate default state probe.
     /// </summary>
     private static IServiceStateProbe CreateDefaultStateProbe()
     {
@@ -411,7 +411,7 @@ public sealed class ServiceManager
     }
 
     /// <summary>
-    /// ADR 0020+0021: Create platform-appropriate default command executor.
+    /// Create platform-appropriate default command executor.
     /// Cross-platform: Windows uses sc.exe; Linux uses pkexec+systemd script; macOS uses osascript+launchd.
     /// </summary>
     private static IScCommandExecutor CreateDefaultExecutor()
@@ -422,7 +422,7 @@ public sealed class ServiceManager
     }
 
     /// <summary>
-    /// ADR 0032: Post-action probe retry with exponential backoff.
+    /// Post-action probe retry with exponential backoff.
     /// </summary>
     public async Task<ServiceRuntimeState> WaitForStateAsync(
         ServiceRuntimeState desired, CancellationToken cancellationToken = default)

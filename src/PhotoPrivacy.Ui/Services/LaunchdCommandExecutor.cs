@@ -4,7 +4,7 @@ using System.Diagnostics;
 namespace PhotoPrivacy.Ui.Services;
 
 /// <summary>
-/// ADR 0021: macOS launchd service command executor.
+/// macOS launchd service command executor.
 /// Uses osascript 'do shell script with administrator privileges' to elevate.
 /// </summary>
 public sealed class LaunchdCommandExecutor : IScCommandExecutor

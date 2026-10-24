@@ -8,7 +8,7 @@ using PhotoPrivacy.Ui.Localization;
 namespace PhotoPrivacy.IntegrationTests.Ui;
 
 /// <summary>
-/// ADR 0047 test closure — verify all 10 locale JSON files have identical key sets
+/// Test closure — verify all 10 locale JSON files have identical key sets
 /// after recursive flatten, so no language is missing keys at runtime.
 /// Reads both embedded resources and on-disk files in ExeLocaleDirectory.
 /// Plus runtime-switch tests that prove SwitchLocale actually mutates _currentStrings
@@ -274,7 +274,7 @@ public sealed class LocalizationServiceTests
 
 
     /// <summary>
-    /// ADR 0035 regression guard (ea9ecc9 root cause): the CultureChanged
+    /// Regression guard (ea9ecc9 root cause): the CultureChanged
     /// handler in MainWindow.axaml.cs must NOT contain sync-over-async
     /// (.GetAwaiter().GetResult()) on the UI thread — this caused window
     /// freeze when the Worker IPC pipe was stale/broken during language
@@ -517,7 +517,7 @@ public sealed class LocalizationServiceTests
         return reader.ReadToEnd();
     }
 
-    // ADR 0050 A2 — Unicode status symbols (✓ ✗ ⚠) were inline-mixed with localized
+    // Unicode status symbols (✓ ✗ ⚠) were inline-mixed with localized
     // text, making every locale look like AI-slop English with emoji cruft. All 10
     // locale JSON files must now be free of those glyphs; status is conveyed by
     // Material.Icons / type tokens instead. Regression guard.

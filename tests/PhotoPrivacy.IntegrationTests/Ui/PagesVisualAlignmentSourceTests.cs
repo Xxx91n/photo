@@ -24,7 +24,7 @@ public class PagesVisualAlignmentSourceTests
         new[] { "src", "PhotoPrivacy.Ui", "Views", "MainWindow.axaml" },
         new[] { "src", "PhotoPrivacy.Ui", "Views", "Pages", "ConfigPage.axaml" },
         // 票 04 返工轮：4 分组子件纳入受审面 —— ramp/Spacing/inline-Width 纪律对全部视图源生效。
-        // （行数守卫 Pages<=220 不纳入：其为 ADR 0061「页面文件」复杂度预算口径，子件是组合单元非页面文件。）
+        // （行数守卫 Pages<=220 不纳入：其为「页面文件」复杂度预算口径，子件是组合单元非页面文件。）
         new[] { "src", "PhotoPrivacy.Ui", "Views", "Pages", "ConfigPathGroup.axaml" },
         new[] { "src", "PhotoPrivacy.Ui", "Views", "Pages", "ConfigBehaviorGroup.axaml" },
         new[] { "src", "PhotoPrivacy.Ui", "Views", "Pages", "ConfigLogsGroup.axaml" },
@@ -143,7 +143,7 @@ public class PagesVisualAlignmentSourceTests
     public void Settings_Groups_Must_Be_Separated_By_Per_Page_Spacing()
     {
         // 防：规范 §3.3 B3 / §5.2 P1 回潮 —— 分组容器回到 Spacing="0" 或漏写 Spacing，
-        // 分组直接相邻形成「均匀网格」，是 AI 感第一根因（ADR 0051 A1 / 规范 §5.2 P7）。
+        // 分组直接相邻形成「均匀网格」，是 AI 感第一根因（规范 §5.2 P7）。
         // 票 04 / ui-craft2 复核上档：MangoDisk 基准组间约 24（附录 D.5），ConfigPage 取
         // SpaceXl(24)；ServiceManagerPage 票 07 / ui-craft2 已跟进，统一收紧为 SpaceXl。
         // per-page map 逐页钉死当前裁定值，防止施工顺序造成静默回退。
@@ -312,7 +312,7 @@ public class PagesVisualAlignmentSourceTests
     public void Views_Must_Not_Inline_ComboBox_Width()
     {
         // 防：规范 §3.3 B2 回潮 —— 下拉控件重新行内写 Width（历史形态 Width="160" ×3），
-        // 与票 24（ADR 0061）已立的「Views 禁止内联宽度」冲突，控件列宽度再次散落各页无法统一调整。
+        // 与票 24 已立的「Views 禁止内联宽度」冲突，控件列宽度再次散落各页无法统一调整。
         // 收敛形态：Width 单一权威迁入 Styling 的 ComboBox.inline-control 共享 class。
         // 票 04 / ui-craft
         foreach (var segments in ViewFiles)

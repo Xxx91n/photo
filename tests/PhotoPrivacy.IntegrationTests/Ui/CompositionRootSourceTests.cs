@@ -50,7 +50,7 @@ public sealed class CompositionRootSourceTests
         var source = SourceLint.Read("src", "PhotoPrivacy.Ui", "Program.cs");
         Assert.Contains("AppComposition.Build(", source, StringComparison.Ordinal);
         Assert.Contains("GetRequiredService<BackgroundUiOptions>", source, StringComparison.Ordinal);
-        // ADR 0053 M1 两阶段启动语义不被本票改变（AppStartupPolicyTests 延续）
+        // 两阶段启动语义不被本票改变（AppStartupPolicyTests 延续）
         Assert.Contains("StartWithClassicDesktopLifetime", source, StringComparison.Ordinal);
         // 运行时选项构建收口组合根（Program 不再持有装配逻辑）
         Assert.DoesNotContain("BuildRuntimeOptions(", source, StringComparison.Ordinal);

@@ -3,7 +3,7 @@ using System.Text.Json;
 namespace PhotoPrivacy.Core.Configuration;
 
 /// <summary>
-/// ADR 0053 M6d: Custom wipe rules persistent store.
+/// Custom wipe rules persistent store.
 /// Config path: config/rules.json
 /// 票18: canonical schema — one "{family}_{group}" bool key per metadata group
 /// (strip_all / preserve_icc / strip_exif / strip_xmp / strip_iptc / strip_time)
@@ -13,7 +13,7 @@ public sealed class FormatRulesStore
 {
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
 
-    /// <summary>Per-family coded defaults, mirroring the rules panel row defaults (ADR 0053 M6).</summary>
+    /// <summary>Per-family coded defaults, mirroring the rules panel row defaults.</summary>
     private static readonly (string FamilyKey, bool StripAll, bool PreserveIcc, bool StripExif, bool StripXmp, bool StripIptc, bool StripTime)[] FamilyDefaults =
     {
         ("jpeg", true, true, false, false, false, false),

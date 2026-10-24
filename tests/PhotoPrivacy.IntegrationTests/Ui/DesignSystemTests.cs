@@ -103,10 +103,10 @@ public sealed class DesignSystemTests
         Assert.DoesNotContain("x:Key=\"AccentRedBrush\"", source, StringComparison.Ordinal);
     }
 
-    // ADR 0050 source-lint regression guards — UI polish surface depth + typography +
+    // Source-lint regression guards — UI polish surface depth + typography +
     // button unification + Material.Icons caption buttons. These prevent silent drift
     // back to inline FontSize / scattered Padding / emoji buttons that caused the "AI
-    // slop" visual regression. Each Fact checks one concrete invariant from the ADR.
+    // slop" visual regression. Each Fact checks one concrete visual invariant.
 
     [Fact]
     public void Typography_6_Classes_Must_Exist()
@@ -144,7 +144,7 @@ public sealed class DesignSystemTests
         var source = File.ReadAllText(path, Encoding.UTF8);
         Assert.Contains("Border.settings-card", source, StringComparison.Ordinal);
         Assert.Contains("BoxShadow", source, StringComparison.Ordinal);
-        // ADR 0051 A1: settings-card must consume DesignTokens elevation ladder (Elevation2), not raw SemiShadowElevated.
+        // Settings-card must consume DesignTokens elevation ladder (Elevation2), not raw SemiShadowElevated.
         Assert.Contains("Elevation2", source, StringComparison.Ordinal);
     }
 
@@ -179,7 +179,7 @@ public sealed class DesignSystemTests
     [Fact]
     public void Browse_Buttons_Use_MaterialIcons()
     {
-        // 票 24（ADR 0061）：页面拆分后 Add/Remove 按钮位于 Views/Pages/，扫描整个 Views 目录。
+        // 票 24：页面拆分后 Add/Remove 按钮位于 Views/Pages/，扫描整个 Views 目录。
         // 票 25：5 处 Browse 行收敛为 Ursa u:PathPicker（OpenFolder/OpenFile 图标由 Ursa 语义承接），
         // Views 内不再有 inline FolderOpen Browse 按钮；Plus/Minus 图标按钮仍在。
         var viewsDir = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views");
@@ -200,7 +200,7 @@ public sealed class DesignSystemTests
         Assert.Contains("ExtendClientAreaToDecorationsHint=\"True\"", source, StringComparison.Ordinal);
         Assert.Contains("WindowDecorations=\"None\"", source, StringComparison.Ordinal);
         Assert.Contains("WindowDecorationProperties.ElementRole=\"TitleBar\"", source, StringComparison.Ordinal);
-        // ADR 0050 A4/plan-0050 4.3 — each caption button carries its semantic ElementRole.
+        // Each caption button carries its semantic ElementRole.
         Assert.Contains("ElementRole=\"MinimizeButton\"", source, StringComparison.Ordinal);
         Assert.Contains("ElementRole=\"MaximizeButton\"", source, StringComparison.Ordinal);
         Assert.Contains("ElementRole=\"CloseButton\"", source, StringComparison.Ordinal);
@@ -208,8 +208,8 @@ public sealed class DesignSystemTests
         Assert.Contains("Kind=\"WindowMaximize\"", source, StringComparison.Ordinal);
         Assert.Contains("Kind=\"WindowClose\"", source, StringComparison.Ordinal);
         // Self-drawn caption buttons (client area, NOT WindowDrawnDecorations template parts)
-        // still need click handlers to drive WindowState/Close — the old ADR line claiming
-        // "no handler needed" was wrong; see ADR 0050 A4 followup note.
+        // still need click handlers to drive WindowState/Close — the old claim
+        // "no handler needed" was wrong; handlers are required.
         Assert.Contains("OnMinimizeClick", source, StringComparison.Ordinal);
         Assert.Contains("OnMaximizeClick", source, StringComparison.Ordinal);
         Assert.Contains("OnCloseClick", source, StringComparison.Ordinal);
@@ -250,7 +250,7 @@ public sealed class DesignSystemTests
         Assert.Contains("Window:maximized", source, StringComparison.Ordinal);
         Assert.Contains("Window:fullscreen", source, StringComparison.Ordinal);
         Assert.Contains("Border.titlebar-host", source, StringComparison.Ordinal);
-        // fullscreen hides caption buttons; maximized drops titlebar padding — match ADR A4 prose.
+        // fullscreen hides caption buttons; maximized drops titlebar padding — match the visual spec.
         Assert.Contains("Button.caption-btn", source, StringComparison.Ordinal);
     }
 
@@ -266,7 +266,7 @@ public sealed class DesignSystemTests
     [Fact]
     public void MiddleClick_Behavior_Attached_To_ScrollViewer()
     {
-        // 票 24（ADR 0061）：ScrollViewer 挂载点（Config/ServiceManager 页）位于 Views/Pages/，扫描整个 Views 目录。
+        // 票 24：ScrollViewer 挂载点（Config/ServiceManager 页）位于 Views/Pages/，扫描整个 Views 目录。
         var viewsDir = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views");
         var source = string.Concat(Directory.GetFiles(viewsDir, "*.axaml", SearchOption.AllDirectories)
             .Select(f => File.ReadAllText(f, Encoding.UTF8)));
@@ -275,7 +275,7 @@ public sealed class DesignSystemTests
         Assert.True(hits.Count >= 2, $"Expected >=2 MiddleClickScrollBehavior attachments, got {hits.Count}");
     }
 
-    // === ADR 0051 test guards ===
+    // === design-token test guards ===
 
     [Fact]
     public void Elevation_Token_Ladder_Must_Be_Defined()
@@ -291,7 +291,7 @@ public sealed class DesignSystemTests
     [Fact]
     public void Elevation_Token_Ladder_Must_Be_Referenced_At_Least_3_Places()
     {
-        // ADR 0051 A1 spec: sidebar/settings-card/popover must reference elevation token at least 3 places.
+        // Spec: sidebar/settings-card/popover must reference elevation token at least 3 places.
         var mainWindowPath = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views", "MainWindow.axaml");
         var appThemePath = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Styling", "AppTheme.axaml");
         var mainWindow = File.ReadAllText(mainWindowPath, Encoding.UTF8);
@@ -346,7 +346,7 @@ public sealed class DesignSystemTests
     {
         var path = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Styling", "AppTheme.axaml");
         var source = File.ReadAllText(path, Encoding.UTF8);
-        // ADR 0051 A4: Win11 standard 32px height = Padding Value="16,6"
+        // Win11 standard 32px height = Padding Value="16,6"
         Assert.Contains("Value=\"16,6\"", source);
         // Old 14,8 padding must be gone from caption-btn style
         Assert.DoesNotContain("Padding=\"14,8\"", source);
@@ -384,7 +384,7 @@ public sealed class DesignSystemTests
     [Fact]
     public void MiddleClick_Behavior_Must_Have_Watchdog_And_WallClock()
     {
-        // ADR 0055 A2 regression guard: RAF primary + Render-priority watchdog + wall-clock Stopwatch dt.
+        // Regression guard: RAF primary + Render-priority watchdog + wall-clock Stopwatch dt.
         // Watchdog steps when RAF stalls >32ms (maximize layout storm); wall-clock dt keeps
         // exponential curve correct at any sample rate. Without either, maximize-window scroll breaks.
         var path = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Behaviors", "MiddleClickScrollBehavior.cs");
@@ -406,7 +406,7 @@ public sealed class DesignSystemTests
     [Fact]
     public void Spacing_Must_Reference_Space_Tokens()
     {
-        // 票 24（ADR 0061）：Spacing 消费散布在 shell + Pages，扫描整个 Views 目录。
+        // 票 24：Spacing 消费散布在 shell + Pages，扫描整个 Views 目录。
         var viewsDir = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views");
         var source = string.Concat(Directory.GetFiles(viewsDir, "*.axaml", SearchOption.AllDirectories)
             .Select(f => File.ReadAllText(f, Encoding.UTF8)));
@@ -490,7 +490,7 @@ public sealed class DesignSystemTests
     [Fact]
     public void MainWindow_Buttons_Must_Not_Override_Size_Inline()
     {
-        // 票 24（ADR 0061）：按钮散布在 shell + Pages，扫描整个 Views 目录。
+        // 票 24：按钮散布在 shell + Pages，扫描整个 Views 目录。
         var viewsDir = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views");
         var source = string.Concat(Directory.GetFiles(viewsDir, "*.axaml", SearchOption.AllDirectories)
             .Select(f => File.ReadAllText(f, Encoding.UTF8)));
@@ -509,7 +509,7 @@ public sealed class DesignSystemTests
     [Fact]
     public void MainWindow_Icon_Buttons_Must_Use_Icon_Variant_Class()
     {
-        // 票 24（ADR 0061）：icon 按钮散布在各 Page 文件，扫描整个 Views 目录。
+        // 票 24：icon 按钮散布在各 Page 文件，扫描整个 Views 目录。
         // 票 25：5 处 Browse icon 按钮随 PathPicker 收敛移出（Ursa 模板内部按钮不受本项目 Button.icon 纪律约束），
         // 余下 Add/Remove 2 处仍须走 Button.icon 变体。
         var viewsDir = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views");
@@ -574,7 +574,7 @@ public sealed class DesignSystemTests
         }
     }
 
-    // === 票 26（ADR 0062）— token 消费纪律 gate：Views 源码层静态断言 ===
+    // === 票 26 — token 消费纪律 gate：Views 源码层静态断言 ===
 
     [Fact]
     public void Ticket26_Views_Must_Not_Contain_Inline_FontSize()
@@ -655,7 +655,7 @@ public sealed class DesignSystemTests
     public void Ticket26_Button_State_Matrix_Must_Be_Complete()
     {
         // 检查点 B: 7 variant × pointerover/pressed/disabled 全覆盖 + :focus-visible 全局 ring。
-        //（idle 为基线样式本体，不设伪类；pressed 语义 = 纯色/透明度反馈，无 scale，ADR 0054/0062。）
+        //（idle 为基线样式本体，不设伪类；pressed 语义 = 纯色/透明度反馈，无 scale。）
         var appTheme = File.ReadAllText(Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Styling", "AppTheme.axaml"), Encoding.UTF8);
         foreach (var variant in new[] { "primary", "ghost", "danger", "icon", "nav", "nav-action", "caption-btn" })
         {

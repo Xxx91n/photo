@@ -7,9 +7,9 @@ namespace PhotoPrivacy.Core.Rules;
 /// 票 19（架构恢复第五轮）: 擦除命令单一真相源。
 /// 给定格式族 + 逐组规则开关（strip_all / preserve_icc / strip_exif / strip_xmp / strip_iptc / strip_time，
 /// 键名 schema 与 FormatRulesStore.Key 一致），生成 ExifTool 参数串。
-/// 取代 ADR 0053 M6a 的 WipeStrategyResolver per-family 硬编码命令 switch 与
+/// 取代 WipeStrategyResolver 的 per-family 硬编码命令 switch 与
 /// FormatRuleRow.EffectiveArgs 复制表：规则面板勾选自此真实改变 ExifTool 命令。
-/// 规则字典缺键/缺族时回退 ADR 0053 安全默认（ExifTool FAQ #32 + Writer Limitations）。
+/// 规则字典缺键/缺族时回退安全默认（ExifTool FAQ #32 + Writer Limitations）。
 /// </summary>
 public static class WipeRuleEngine
 {
@@ -35,7 +35,7 @@ public static class WipeRuleEngine
         => family is WipeFormatFamily.Pdf or WipeFormatFamily.Eps;
 
     /// <summary>
-    /// ADR 0053 M6a 安全默认（逐组开关取值）。规则字典缺键/缺族时回退本表；
+    /// 安全默认（逐组开关取值）。规则字典缺键/缺族时回退本表；
     /// 面板族（jpeg/raw/video/pdf/eps）的取值与 FormatRulesStore.LoadDefaults 一致。
     /// </summary>
     private static (bool StripAll, bool PreserveIcc, bool StripExif, bool StripXmp, bool StripIptc, bool StripTime) FamilyFallback(WipeFormatFamily family) => family switch
@@ -141,7 +141,7 @@ public static class WipeRuleEngine
                     }
                     break;
                 case WipeFormatFamily.Raw:
-                    // ADR 0053 安全不变量：RAW 永不 -all=（MakerNotes 删后毁渲染），全擦意图展开为全部安全组。
+                    // 安全不变量：RAW 永不 -all=（MakerNotes 删后毁渲染），全擦意图展开为全部安全组。
                     parts.Add("-exif:all=");
                     parts.Add("-xmp:all=");
                     parts.Add("-iptc:all=");
@@ -184,7 +184,7 @@ public static class WipeRuleEngine
         }
         if (!preserveIcc && family is not WipeFormatFamily.Video)
         {
-            // preserve_icc=false 即 ICC 可删；Video 族无 ICC 剥离语义（ADR 0053 M6a）。
+            // preserve_icc=false 即 ICC 可删；Video 族无 ICC 剥离语义。
             parts.Add("-icc_profile:all=");
         }
         if (stripTime)

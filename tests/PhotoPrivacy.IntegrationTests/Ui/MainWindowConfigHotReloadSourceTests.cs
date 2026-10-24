@@ -1,8 +1,8 @@
 namespace PhotoPrivacy.IntegrationTests.Ui;
 
 /// <summary>
-/// 票 30（架构恢复第七轮）迁移：OnApplyConfigClick 为 ADR 0037 遗留死代码，已删除。
-/// 守卫改为锁定防抖即时应用链（ADR 0037 语义不回潮）+ 防抖写盘后的 Worker reload。
+/// 票 30（架构恢复第七轮）迁移：OnApplyConfigClick 为遗留死代码，已删除。
+/// 守卫改为锁定防抖即时应用链（语义不回潮）+ 防抖写盘后的 Worker reload。
 /// 断言读取口径（30-fix 返修）：.cs 源码断言统一走 SourceLint.ReadStripped（剥 // 行注释，
 /// CompositionRootSourceTests 先例）——「票 30：XXX 已删除」考古保留注释不参与断言，
 /// 代码回潮仍命中（拦截语义不放宽）。
@@ -14,7 +14,7 @@ public sealed class MainWindowConfigHotReloadSourceTests
     {
         var source = SourceLint.ReadStripped("src", "PhotoPrivacy.Ui", "Views", "MainWindow.axaml.cs");
 
-        // ADR 0037 防抖即时应用链唯一入口（手动按钮已死，不存在 OnApplyConfigClick）
+        // 防抖即时应用链唯一入口（手动按钮已死，不存在 OnApplyConfigClick）
         Assert.Contains("ScheduleDebouncedConfigApply", source, StringComparison.Ordinal);
         Assert.Contains("ApplyConfigImmediatelyAsync", source, StringComparison.Ordinal);
         Assert.Contains("ConfigEditor.UpdateConfig(", source, StringComparison.Ordinal);

@@ -130,7 +130,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         set => SetField(ref _showServiceManagerTab, value);
     }
 
-    // 票 24（ADR 0061）：服务管理页按钮可用性单一真相源 — adapter 直写按钮清零，页面经绑定消费。
+    // 票 24：服务管理页按钮可用性单一真相源 — adapter 直写按钮清零，页面经绑定消费。
     private ServiceButtonState _serviceButtons = ServiceButtonStates.AllDisabled;
     public ServiceButtonState ServiceButtons
     {
@@ -238,7 +238,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         };
     }
 
-    // ADR 0052 A3: Theme preset ID (independent of variant axis) — atomcode research: dual-axis design
+    // Theme preset ID (independent of variant axis) — atomcode research: dual-axis design
     private string _themeId = "catppuccin";
     public string ThemeId
     {
@@ -246,7 +246,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         set => SetField(ref _themeId, value);
     }
 
-    // ADR 0052 A5: Sidebar width for persistence
+    // Sidebar width for persistence
     private double _sidebarWidth = 200.0;
     public double SidebarWidth
     {
@@ -262,7 +262,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
             if (SetField(ref _currentLocale, value) && value is not null)
             {
                 // 票 30：SwitchLocale 联动迁入 setter（原 OnLocaleSelectionChanged 手动镜像）；
-                // ADR 0044 决策 8 / ADR 0047 A6 持久化链路「启动时读取 → Initialize(locale)」由此贯通，
+                // 持久化链路「启动时读取 → Initialize(locale)」由此贯通，
                 // config ui.locale 与系统语言不一致时 UI 文案随 config（SwitchLocale 自带防重入幂等）。
                 _localization.SwitchLocale(value);
             }
@@ -366,7 +366,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         return "system";
     }
 
-    // ADR 0052 A6: Path hint properties for Watermark display
+    // Path hint properties for Watermark display
     public string HotFolderPathHint => PhotoPrivacy.Core.Constants.DefaultPaths.DefaultHotFolder;
     public string BackupDirectoryHint => PhotoPrivacy.Core.Constants.DefaultPaths.DefaultBackupDirectory;
     public string QuarantineDirectoryHint => PhotoPrivacy.Core.Constants.DefaultPaths.DefaultQuarantineDirectory;
@@ -410,7 +410,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
     public string PauseResumeLabel => IsRuntimePaused ? _localization.Get("btn.resume") : _localization.Get("btn.pause");
 
-    // 票 24（ADR 0061）：暂停/恢复按钮可用性 + 派生文案（服务模式禁用并显示不可用文案）— 单一真相源在 VM。
+    // 票 24：暂停/恢复按钮可用性 + 派生文案（服务模式禁用并显示不可用文案）— 单一真相源在 VM。
     private bool _pauseResumeAvailable = true;
     public bool PauseResumeAvailable
     {
@@ -457,7 +457,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
     public ObservableCollection<AuditLogEntry> LogEntries { get; } = [];
 
-    // 票 26（ADR 0062）: 空审计流占位开关 — 在 Append/Clear 收口处联动刷新（无事件订阅，防泄漏）。
+    // 票 26: 空审计流占位开关 — 在 Append/Clear 收口处联动刷新（无事件订阅，防泄漏）。
     private bool _hasNoLogs = true;
     public bool HasNoLogs
     {

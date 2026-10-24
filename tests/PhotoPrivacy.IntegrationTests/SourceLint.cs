@@ -39,7 +39,7 @@ public static class SourceLint
 
     /// <summary>
     /// 票 04（ui-craft2）返工轮：ConfigPage 组合件文件清单 —— 页壳 + 4 分组子件。
-    /// 拆分为 Pages<=220 守卫消红（ADR 0061 页面文件规约）；凡钉「ConfigPage 页面内容」的断言
+    /// 拆分为 Pages<=220 守卫消红（页面文件规约）；凡钉「ConfigPage 页面内容」的断言
     /// 一律读组合件合并文本，断言语义与原单文件形态等价。
     /// </summary>
     public static readonly string[] ConfigPageCompositionFiles =

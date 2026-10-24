@@ -9,7 +9,7 @@ namespace PhotoPrivacy.Ui.Services;
 /// 消除"权威配置到底有没有生效"的疑虑.
 ///
 /// 设计要点:
-/// - 只用 FSW 事件(Changed/Created/Renamed)，不轮询，与 ADR 0037 + 票 24 文件监听纪律一致.
+/// - 只用 FSW 事件(Changed/Created/Renamed)，不轮询，与票 24 文件监听纪律一致.
 /// - 防抖窗口 500ms(与 ConfigEditor 自动应用同窗口)，防止编辑器多次写入触发风暴.
 /// - 提供 <see cref="SuppressNextReload"/> 接口：UI 自己 SaveConfig 后写入磁盘会触发 FSW，
 ///   此时调用方主动抑制下一次 reload，避免 UI → 磁盘 → UI 死循环覆盖用户未确认改动.

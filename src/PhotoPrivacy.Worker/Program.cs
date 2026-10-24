@@ -27,7 +27,7 @@ if (!hasModeOption && Environment.UserInteractive)
     requestedMode = RuntimeMode.Background;
 }
 
-// ADR 0026 (Q7): Single-instance guard via ISingleInstanceGuard (Mutex on Windows, POSIX lockfile on Linux/macOS).
+// Single-instance guard via ISingleInstanceGuard (Mutex on Windows, POSIX lockfile on Linux/macOS).
 // The previous direct-Mutex path is replaced by a guard abstraction without changing observable behavior.
 var mutexName = requestedMode switch
     {
@@ -154,7 +154,7 @@ posixHooks = PosixSignalHooks.Register(
             Log.Error(ex, "SIGHUP config reload failed");
         }
     });
-// ADR 0034: UnhandledException + UnobservedTaskException → Serilog (also in UI Program.cs)
+// UnhandledException + UnobservedTaskException → Serilog (also in UI Program.cs)
 AppDomain.CurrentDomain.UnhandledException += (_, e) =>
 {
     try { Log.Fatal((Exception)e.ExceptionObject, "AppDomain.UnhandledException"); } catch { }

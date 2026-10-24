@@ -101,7 +101,7 @@ public partial class MainWindow : Window
         LocalizationService.Instance.Initialize(); // auto-detect from system culture
         LocalizationService.Instance.CultureChanged += (_, locale) =>
         {
-           // ponytail: ADR 0035 — NEVER sync-over-async on UI thread.
+           // ponytail: NEVER sync-over-async on UI thread.
            // The previous blocking call pattern inside
            // Dispatcher.UIThread.Post caused window freeze when Worker pipe
            // was stale/broken. Status text is refreshed by the background
@@ -130,7 +130,7 @@ public partial class MainWindow : Window
             // 初始 detecting 占位语义保持 —— 1s 内轮询经 Dispatcher 检出真实版本。
             viewModel.ExifToolVersion = LocalizationService.Instance.Get("status.detecting");
             viewModel.ShowDetailedEvents = false;
-            // ADR 0053 M1: Show "Worker connecting…" if ConnectionState is Connecting (Worker not yet connected).
+            // Show "Worker connecting…" if ConnectionState is Connecting (Worker not yet connected).
             viewModel.RuntimeStatus = options.ConnectionState is { State: ConnectionState.Connecting }
                 ? LocalizationService.Instance.Get("status.connecting")
                 : ServiceModeController.BuildRuntimeStatusText(options.RuntimeKind, options.GetServiceRuntimeState(), false);
@@ -194,7 +194,7 @@ public partial class MainWindow : Window
             }
 
             var isServiceMode = string.Equals(options.RuntimeKind, "service", StringComparison.OrdinalIgnoreCase);
-            // 票 24（ADR 0061）：Service→View 直写清零 — 可用性/文案改经 VM 中转，由 XAML 绑定消费。
+            // 票 24：Service→View 直写清零 — 可用性/文案改经 VM 中转，由 XAML 绑定消费。
             viewModel.PauseResumeAvailable = !isServiceMode;
 
             _serviceModeController.Attach(options);
@@ -207,7 +207,7 @@ public partial class MainWindow : Window
         }
 
         PauseResumeButton.Click += OnPauseResumeClick;
-        // 票 24（ADR 0061）：页面控件经 Pages code-behind 内部访问器接线，事件订阅仍统一收口在 MainWindow。
+        // 票 24：页面控件经 Pages code-behind 内部访问器接线，事件订阅仍统一收口在 MainWindow。
         LogPage.ClearLogsButtonControl.Click += OnClearLogsClick;
         OpenConfigDirButton.Click += OnOpenConfigDirClick;
         ServiceManagerTab.RefreshServiceStatusButtonControl.Click += OnRefreshServiceStatusClick;
@@ -230,7 +230,7 @@ public partial class MainWindow : Window
         RulesPage.SaveRulesButtonControl.Click += OnSaveRulesClick;
         RulesPage.ResetRulesButtonControl.Click += OnResetRulesClick;
 
-        // ADR 0037: instant-apply via debounced PropertyChanged — no manual "应用配置" button.
+        // Instant-apply via debounced PropertyChanged — no manual "应用配置" button.
         viewModel.PropertyChanged += OnViewModelPropertyChanged;
 
            var auditDir = effectiveConfig?.Audit.LogDirectory
@@ -254,7 +254,7 @@ public partial class MainWindow : Window
             onExifToolExePathDetected: exePath => _ = _pollingHostedService.ApplyExifToolVersionFromIpcAsync(_options!.GetExifToolVersionAsync),
             backfillFetcher: token =>
             {
-                // 票号05: backfill 协调已收口在 AuditTailService 内部（ADR 0046 语义保持：
+                // 票号05: backfill 协调已收口在 AuditTailService 内部（语义保持：
                 // 失败静默重试不杀 UI）。这里只是薄适配器：惰性读 endpoint + 自兜底 IO 异常。
                 var endpoint = _options?.WorkerEndpointName;
                 if (string.IsNullOrWhiteSpace(endpoint))
@@ -383,7 +383,7 @@ public partial class MainWindow : Window
         base.OnClosed(e);
     }
 
-    // ADR 0050 A4 — self-drawn titlebar caption button handlers.
+    // Self-drawn titlebar caption button handlers.
     // WindowDrawnDecorations is bypassed by WindowDecorations="None" + ExtendClientAreaToDecorationsHint;
     // we own the caption buttons and drive Window state directly (verified via Avalonia 12.1 docs + source).
     private void OnMinimizeClick(object? sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
@@ -393,7 +393,7 @@ public partial class MainWindow : Window
 
     private void OnCloseClick(object? sender, RoutedEventArgs e) => Close();
 
-    // ADR 0053 M2: async void to eliminate sync-over-async on UI thread.
+    // Async void to eliminate sync-over-async on UI thread.
     private async void OnPauseResumeClick(object? sender, RoutedEventArgs e)
     {
         if (_options is null)
@@ -430,7 +430,7 @@ public partial class MainWindow : Window
         if (DataContext is MainWindowViewModel vm)
         {
             vm.ClearLogs();
-            // 票号05: ADR 0037 — drain pending + 水位移尾，但保留原始行去重记忆，
+            // 票号05: drain pending + 水位移尾，但保留原始行去重记忆，
             // 防止清空后 backfill/尾读把已清空的历史行重新送回 UI。
             _auditTail?.NotifyLogsCleared();
         }
@@ -453,7 +453,7 @@ public partial class MainWindow : Window
         }
         catch
         {
-            return null; // ADR 0035: unreachable worker must degrade silently
+            return null; // Unreachable worker must degrade silently
         }
     }
 
@@ -592,7 +592,7 @@ public partial class MainWindow : Window
     // 主题应用/SwitchLocale/LogEnabled 联动在 VM setter 承载（行为不变）。
 
 
-    // ADR 0052 A3: Theme preset swatch click — dual-axis: ThemeId (preset) independent of ThemeVariant (light/dark)
+    // Theme preset swatch click — dual-axis: ThemeId (preset) independent of ThemeVariant (light/dark)
     // 票 30：只剩事件转发 —— ThemeId 写回 VM（资源应用经 PropertyChanged 响应，防抖经 _configProperties 既有链路）。
     private void OnThemePresetSwatchClick(object? sender, RoutedEventArgs e)
     {
@@ -620,7 +620,7 @@ public partial class MainWindow : Window
     // ComboBox 选中态回填由 SelectedIndex TwoWay 绑定自动完成（get 侧归一化语义与原回填一致）。
 
 
-    // ADR 0052 A3: Restore swatch checked state from config
+    // Restore swatch checked state from config
     // 票 30：SyncThemeSwatchSelection/_pending/OnThemeSwatchListLoaded/TryApplyThemeSwatchSelection 已删除 ——
     // 色板选中态回填由 ConfigPage MultiBinding（VM.ThemeId ↔ 色板 ThemeId 比较）驱动，
     // 绑定系统天然处理容器延迟生成，无需 Loaded 重放 hack。
@@ -804,7 +804,7 @@ public partial class MainWindow : Window
     }
 
 
-    // ADR 0052 A5: Restore sidebar width from config
+    // Restore sidebar width from config
     private void RestoreSidebarWidth(double width)
     {
         try
@@ -821,7 +821,7 @@ public partial class MainWindow : Window
         }
     }
 
-    // ADR 0052 A5: Wire GridSplitter drag completion for persistence
+    // Wire GridSplitter drag completion for persistence
     private void OnSidebarSplitterDragCompleted(object? sender, VectorEventArgs e)
     {
         try
@@ -907,7 +907,7 @@ public partial class MainWindow : Window
     }
 
 
-    // 票 30：OnApplyConfigClick 已删除 —— ADR 0037「应用配置」按钮移除后即为无引用死代码
+    // 票 30：OnApplyConfigClick 已删除 —— 「应用配置」按钮移除后即为无引用死代码
     //（全仓 grep 仅守卫测试断言其存在）；守卫 MainWindowConfigHotReloadSourceTests 同步迁移为
     // 锁定防抖即时应用链（ScheduleDebouncedConfigApply → ApplyConfigImmediatelyAsync）。
 
