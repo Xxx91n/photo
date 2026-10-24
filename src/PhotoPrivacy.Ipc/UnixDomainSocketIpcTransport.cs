@@ -3,7 +3,7 @@ using System.Net;
 
 namespace PhotoPrivacy.Ipc;
 
-/// <summary>Unix socket 文件模式策略（ADR 0067 to-spec 定值）。</summary>
+/// <summary>Unix socket 文件模式策略。</summary>
 public enum UnixSocketAccessMode
 {
     /// <summary>Background 模式：Worker 与 GUI 同用户 —— socket 0600，仅属主可连。</summary>
@@ -16,7 +16,7 @@ public enum UnixSocketAccessMode
 /// <summary>
 /// Unix Domain Socket IPC transport for Linux/macOS.
 /// Uses System.Net.Sockets with AddressFamily.Unix + UnixDomainSocketEndPoint.
-/// 票 04 / ADR 0067：认证分层 —— 第 1 层文件模式收紧（内核强制）+ 第 2 层对端凭据校验（纵深）。
+/// 票 04：认证分层 —— 第 1 层文件模式收紧（内核强制）+ 第 2 层对端凭据校验（纵深）。
 /// </summary>
 public sealed class UnixDomainSocketIpcTransport : IIpcTransport
 {
@@ -44,7 +44,7 @@ public sealed class UnixDomainSocketIpcTransport : IIpcTransport
 
     public string EndpointName => _socketPath;
 
-    /// <summary>本实例的 socket 访问策略（ADR 0067 to-spec）。</summary>
+    /// <summary>本实例的 socket 访问策略。</summary>
     public UnixSocketAccessMode AccessMode => _accessMode;
 
     /// <summary>本实例 ListenAsync 实际施加的 socket 文件模式（未 Listen 或非 Unix 为 null）。</summary>
@@ -55,7 +55,7 @@ public sealed class UnixDomainSocketIpcTransport : IIpcTransport
 
     public Task ListenAsync(CancellationToken cancellationToken)
     {
-        // ADR 0026: Stale socket cleanup — delete stale .sock file before bind
+        // Stale socket cleanup — delete stale .sock file before bind
         if (File.Exists(_socketPath))
         {
             try { File.Delete(_socketPath); } catch { /* ignore */ }
@@ -72,7 +72,7 @@ public sealed class UnixDomainSocketIpcTransport : IIpcTransport
         _listener.Bind(new UnixDomainSocketEndPoint(_socketPath));
         _listener.Listen(254);
 
-        // 票 04 / ADR 0067：.NET 10 无「bind 后自动 0600」加固（.NET 11 才引入），
+        // 票 04：.NET 10 无「bind 后自动 0600」加固（.NET 11 才引入），
         // 文件模式必须由传输层显式负责 —— background 0600 / service 0660+组边界。
         var mode = _accessMode == UnixSocketAccessMode.ServiceShared
             ? UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.GroupWrite
@@ -122,7 +122,7 @@ public sealed class UnixDomainSocketIpcTransport : IIpcTransport
         ObjectDisposedException.ThrowIf(_listener is null, this);
         var client = await _listener.AcceptAsync(cancellationToken);
 
-        // 票 04 / ADR 0067：内核只识别不拦截，拒绝必须由本层执行并立即 close。
+        // 票 04：内核只识别不拦截，拒绝必须由本层执行并立即 close。
         // 凭据不可读或不在白名单内 → fail-closed 拒绝（不变量①）。
         var peerUid = _peerPolicy.ReadPeerUid(client);
         if (peerUid is null || !_allowedPeerUids.Contains(peerUid.Value))

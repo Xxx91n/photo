@@ -119,7 +119,7 @@ public class NavFeedbackSourceTests
     [Fact]
     public void Nav_Feedback_Must_Not_Use_Scale_Or_Elastic_Easing()
     {
-        // 防：规范 §2.2 N1 硬性约束（ADR 0051 A2 + ADR 0054 定稿延续）——
+        // 防：规范 §2.2 N1 硬性约束——
         // 引入 scale / 位移 / 弹性缓动即“花哨感”回潮，且 scale 属 WCAG 2.2 SC 2.3.3 前庭障碍触发源。
         // 回潮形态：给 nav 加 TransformOperationsTransition 或 BackEaseInOut / ElasticEaseInOut。
         // 票 02 / ui-craft 立；票 03 / ui-craft2 复核保留。

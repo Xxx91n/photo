@@ -5,7 +5,7 @@ using PhotoPrivacy.Ui.Localization;
 
 namespace PhotoPrivacy.Ui.Views.Controls;
 
-// ADR 0052 A3 数据化色板目录 — 5 个社区主题预设，与 Themes/{Catppuccin,Dracula,Nord,OneDarkPro,TokyoNight}.axaml 一一对应。
+// 数据化色板目录 — 5 个社区主题预设，与 Themes/{Catppuccin,Dracula,Nord,OneDarkPro,TokyoNight}.axaml 一一对应。
 public sealed record ThemeSwatchPreset(string ThemeId, string ColorHex, string LabelKey);
 
 public static class ThemeSwatchCatalog

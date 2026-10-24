@@ -5,7 +5,7 @@ public static class DefaultPaths
     public static string ExifToolPath => ResolveExifToolPath();
 
     /// <summary>
-    /// App-local default hot folder: <BaseDirectory>/hot (ADR 0055 A4), three-platform compatible.
+    /// App-local default hot folder: <BaseDirectory>/hot, three-platform compatible.
     /// AppConfigValidator rejects an empty hot_folder (non-dry-run), so users get a clear "not configured" error.
     /// </summary>
     public static string DefaultHotFolder => ResolveDefaultHotFolder();
@@ -22,15 +22,15 @@ public static class DefaultPaths
 
     /// <summary>
     /// Default backup directory: <hotFolder>/bak — aligned with BackupPathResolver.DefaultBackupDirName.
-    /// ADR 0055 A4: Previously .pp_backup which mismatched actual backup dir "bak" (UI Watermark misled users).
-    /// ADR 0052 A6: Backup before metadata cleaning.
+    /// Previously .pp_backup mismatched the actual backup dir "bak" (the UI watermark misled users).
+    /// Backup before metadata cleaning.
     /// </summary>
     public static string DefaultBackupDirectory => string.IsNullOrEmpty(DefaultHotFolder) ? string.Empty : System.IO.Path.Combine(DefaultHotFolder, "bak");
 
-    // ADR 0055 A4: App-local hot folder (BaseDirectory/hot) — three-platform compatible,
+    // App-local hot folder (BaseDirectory/hot) — three-platform compatible,
     // does NOT select user's system pictures (prevents accidental damage to user photos).
     // AppConfig.Default.Watch.HotFolder references DefaultPaths.DefaultHotFolder (BaseDirectory/hot);
-    // Backup.Directory stays string.Empty (ADR 0045 dynamic fallback to <hotFolder>/bak).
+    // Backup.Directory stays string.Empty (dynamic fallback to <hotFolder>/bak).
     private static string ResolveDefaultHotFolder()
     {
         return System.IO.Path.Combine(AppContext.BaseDirectory, "hot");

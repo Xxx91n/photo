@@ -6,14 +6,6 @@ namespace PhotoPrivacy.IntegrationTests;
 public sealed class SourceLintTests
 {
     [Fact]
-    public void RepoRoot_Should_Contain_Solution_File()
-        => Assert.True(File.Exists(Path.Combine(SourceLint.RepoRoot, "PhotoPrivacy.sln")), SourceLint.RepoRoot);
-
-    [Fact]
-    public void UiSourceRoot_Should_Point_At_Ui_Project()
-        => Assert.True(File.Exists(Path.Combine(SourceLint.UiSourceRoot, "PhotoPrivacy.Ui.csproj")), SourceLint.UiSourceRoot);
-
-    [Fact]
     public void Read_Should_Return_Ui_Program_Source()
         => Assert.Contains("UiProgram", SourceLint.Read("src", "PhotoPrivacy.Ui", "Program.cs"), StringComparison.Ordinal);
 

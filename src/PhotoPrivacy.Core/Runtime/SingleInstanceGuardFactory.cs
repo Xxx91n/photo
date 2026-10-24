@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 namespace PhotoPrivacy.Core.Runtime;
 
 /// <summary>
-/// ADR 0026 (Q7): Factory that creates the platform-appropriate ISingleInstanceGuard.
+/// Factory that creates the platform-appropriate ISingleInstanceGuard.
 /// Windows → MutexSingleInstanceGuard. POSIX (Linux/macOS) → FlockSingleInstanceGuard.
 /// Callers pass a logical name (e.g. mutex name or per-user lock path base).
 /// </summary>

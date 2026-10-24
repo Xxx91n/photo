@@ -10,7 +10,7 @@ using PhotoPrivacy.Ui.Services;
 namespace PhotoPrivacy.Ui.ViewModels;
 
 /// <summary>
-/// ADR 0053 M6b-M6f: Rules Panel ViewModel with Expert mode gate.
+/// Rules Panel ViewModel with Expert mode gate.
 /// BleachBit 5.1 pattern: ToggleSwitch + confirmation dialog, dangerous columns disabled in non-expert.
 /// 票18: LoadRules backfills every group toggle from the store; SaveCustomRules persists all six toggles.
 /// </summary>
@@ -62,7 +62,7 @@ public sealed class RulesPanelViewModel : INotifyPropertyChanged
     public ObservableCollection<FormatRuleRow> Rules { get; } = new();
     private readonly List<FormatRuleRow> _allRules = new();
 
-    // 票 26（ADR 0062）: 规则空态占位开关 — ApplyFilter 收口处联动刷新（无事件订阅，防泄漏）。
+    // 票 26: 规则空态占位开关 — ApplyFilter 收口处联动刷新（无事件订阅，防泄漏）。
     private bool _hasNoVisibleRules;
     public bool HasNoVisibleRules
     {

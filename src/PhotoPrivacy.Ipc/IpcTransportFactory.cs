@@ -18,7 +18,7 @@ public static class IpcTransportFactory
 
     /// <summary>
     /// Create a server-side transport with the access policy matching the runtime mode
-    /// (ADR 0067: background 0600 / service 0660+group on Unix).
+    /// Unix socket policy: background 0600, service 0660 + group.
     /// </summary>
     public static IIpcTransport CreateServer(string endpointName, bool isServiceMode)
     {

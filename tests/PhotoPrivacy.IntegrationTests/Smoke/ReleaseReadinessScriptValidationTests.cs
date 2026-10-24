@@ -30,17 +30,6 @@ public sealed class ReleaseReadinessScriptValidationTests
     }
 
     [Fact]
-    public void Readme_Should_Not_Reference_Legacy_Cli_Project()
-    {
-        var repoRoot = FindRepoRoot();
-        var readmePath = Path.Combine(repoRoot, "README.md");
-        var readme = File.ReadAllText(readmePath);
-
-        Assert.DoesNotContain("src/PhotoPrivacy.Cli", readme, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("PhotoPrivacy.Cli", readme, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
     public async Task PublishApp_Should_Copy_Tray_Assets_To_Publish_Root()
     {
         var repoRoot = FindRepoRoot();

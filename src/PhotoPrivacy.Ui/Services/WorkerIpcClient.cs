@@ -15,7 +15,7 @@ public sealed class WorkerIpcClient
     private const int ReadTimeoutMs = 3000;
 
     /// <summary>
-    /// Send an IPC request to the worker. Uses cross-platform transport (ADR 0019).
+    /// Send an IPC request to the worker. Uses cross-platform transport.
     /// <paramref name="endpointName"/> is the pipe name (Windows) or socket path (Linux/macOS).
     /// </summary>
     public async Task<WorkerIpcResponse?> SendAsync(string endpointName, WorkerIpcRequest request, CancellationToken cancellationToken)
@@ -102,7 +102,7 @@ public sealed class WorkerIpcClient
     /// Worker exits — the next SendAsync(GetStatus) hits IOException("Pipe is broken") /
     /// SocketException / TimeoutException. ConnectOrLaunchAsync must treat these as "Worker not
     /// actually alive" (return null -> downgrade/continue) — NOT let the exception escape and
-    /// kill the whole UI process. See ADR 0035 (IPC probe degrade-not-crash) and the release UI
+    /// kill the whole UI process. The probe must degrade rather than crash; see the release UI
     /// log 02:04:43 Fatal.
     /// </summary>
     public async Task<WorkerIpcResponse?> ProbeStatusSafeAsync(string endpointName, CancellationToken cancellationToken)
@@ -149,7 +149,7 @@ public sealed class WorkerIpcClient
     }
 
     /// <summary>
-    /// ADR 0046: Pull recent audit log lines from the worker via IPC.
+    /// Pull recent audit log lines from the worker via IPC.
     /// Used by UI to backfill missed log entries on reconnect.
     /// </summary>
     public Task<WorkerIpcResponse?> GetRecentLogsAsync(string endpointName, CancellationToken cancellationToken)

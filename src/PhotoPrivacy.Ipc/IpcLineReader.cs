@@ -12,7 +12,7 @@ namespace PhotoPrivacy.Ipc;
 /// 语义与旧实现逐字对齐（行为测试 IpcLineReaderTests 锁定）：
 /// 遇到 LF 结束一行；行内全部 CR 被丢弃；内容长度达到 <paramref name="maxBytes"/> 上限时返回 null
 /// （超长消息拒绝，调用方据此丢弃连接）；EOF 结束（允许空串）。协议未变：仍是一连接一消息、
-/// 换行/EOF 定界，无帧化、无传输复用（ADR 0057 裁决面未动）。
+/// 换行/EOF 定界，无帧化、无传输复用（每次调用新建连接）。
 /// </summary>
 public static class IpcLineReader
 {

@@ -2,7 +2,7 @@
 namespace PhotoPrivacy.Ui.Services;
 
 /// <summary>
-/// ADR 0020: Linux systemd service state probe.
+/// Linux systemd service state probe.
 /// Uses systemctl is-active/is-enabled to map to ServiceRuntimeState.
 /// </summary>
 public sealed class SystemdStateProbe : IServiceStateProbe

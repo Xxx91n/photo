@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 namespace PhotoPrivacy.IntegrationTests.Ui;
 
 /// <summary>
-/// 票 24（架构恢复第六轮 / ADR 0061）source-lint：
+/// 票 24（架构恢复第六轮）source-lint：
 /// - MainWindow.axaml 降为 shell（≤180 行）
 /// - Views/Pages/{Config,Logs,Rules,ServiceManager}Page.axaml 存在且各 ≤220 行
 /// - Page code-behind 无长活事件订阅（+= 只允许出现在注释外的无/或显式禁止）
@@ -37,7 +37,7 @@ public sealed class MainWindowShellSourceTests
     public void Pages_Should_Exist_And_Not_Exceed_220_Lines(string page)
     {
         var path = UiPath("Views", "Pages", page + ".axaml");
-        Assert.True(File.Exists(path), $"Views/Pages/{page}.axaml must exist (ADR 0061 page files)");
+        Assert.True(File.Exists(path), $"Views/Pages/{page}.axaml must exist (page files)");
         var lines = LineCount(ReadAll(path));
         Assert.True(lines <= 220, $"Views/Pages/{page}.axaml must stay ≤220 lines, got {lines}");
     }
@@ -52,7 +52,7 @@ public sealed class MainWindowShellSourceTests
         var path = UiPath("Views", "Pages", page + ".axaml.cs");
         Assert.True(File.Exists(path), $"Views/Pages/{page}.axaml.cs must exist");
         var source = ReadAll(path);
-        // Pages/ 目录规约（ADR 0061）：code-behind 只允许控件访问器；事件订阅（+=）一律收口 MainWindow/服务层/VM，
+        // Pages/ 目录规约：code-behind 只允许控件访问器；事件订阅（+=）一律收口 MainWindow/服务层/VM，
         // 防止页面生命周期短于订阅目标导致长活订阅泄漏。
         var violations = Regex.Matches(source, @"(?m)^\s*[^/]*\+=");
         Assert.True(violations.Count == 0,

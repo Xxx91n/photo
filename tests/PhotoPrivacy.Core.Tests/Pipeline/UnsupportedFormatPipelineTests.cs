@@ -17,7 +17,7 @@ namespace PhotoPrivacy.Core.Tests.Pipeline;
 /// 本测试用真实 ExifToolBridge + 协议级 fake（不是回放式 fake）走完整管道，断言：
 /// 1) 有限时间内完成（不挂死）；
 /// 2) 产出可见的 wipe_skipped_unknown 审计事件；
-/// 3) 不进 ExifTool（进程零启动、零写盘）——ADR 0053 M6f “不进 ExifTool”的逐字兼现。
+/// 3) 不进 ExifTool（进程零启动、零写盘）——“不进 ExifTool”的逐字兼现。
 /// </summary>
 public sealed class UnsupportedFormatPipelineTests : IDisposable
 {

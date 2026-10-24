@@ -4,7 +4,7 @@ using PhotoPrivacy.Core.Rules;
 namespace PhotoPrivacy.Core.ExifTool;
 
 /// <summary>
-/// ADR 0053 M6a: Per-format wipe strategy resolver.
+/// Per-format wipe strategy resolver.
 /// Replaces ExifToolCommandBuilder.BuildWipeTaskBlock's universal '-all=' with per-format safe defaults.
 /// Source: ExifTool FAQ #32 + Writer Limitations doc.
 /// </summary>

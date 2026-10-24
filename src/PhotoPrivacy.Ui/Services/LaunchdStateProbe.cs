@@ -2,7 +2,7 @@
 namespace PhotoPrivacy.Ui.Services;
 
 /// <summary>
-/// ADR 0020: macOS launchd service state probe.
+/// macOS launchd service state probe.
 /// Uses launchctl list to parse PID and exit code.
 /// </summary>
 public sealed class LaunchdStateProbe : IServiceStateProbe

@@ -4,7 +4,7 @@ namespace PhotoPrivacy.IntegrationTests.Ui;
 
 public sealed class ExifToolVersionSnapshotTests
 {
-    // ADR 0053 M2: ExifToolVersionSnapshot now uses async delegate (Func<CancellationToken, Task<string>>)
+    // ExifToolVersionSnapshot now uses async delegate (Func<CancellationToken, Task<string>>)
     // ReadInitial removed (never called in production); TryReadChanged replaced by TryReadChangedAsync.
 
     [Fact]

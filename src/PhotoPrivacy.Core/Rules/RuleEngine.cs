@@ -61,7 +61,7 @@ public sealed class RuleEngine
             return null;
         }
 
-        // ADR 0045: if hot folder is empty, cannot resolve a meaningful backup dir
+        // If hot folder is empty, cannot resolve a meaningful backup dir
         if (string.IsNullOrWhiteSpace(_config.Watch.HotFolder))
         {
             return null;

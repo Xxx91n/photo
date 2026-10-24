@@ -5,7 +5,7 @@ namespace PhotoPrivacy.IntegrationTests.Ui;
 
 /// <summary>
 /// 票号05 — 日志双通道收口回归：FSW tail（AuditTailService）+ IPC backfill 合并去重。
-/// ADR 0046 语义保持：backfill 失败静默重试、不杀 UI；ADR 0037：清空后旧日志不得重现。
+/// 语义保持：backfill 失败静默重试、不杀 UI；清空后旧日志不得重现。
 /// </summary>
 public sealed class AuditTailServiceBackfillTests
 {
@@ -166,7 +166,7 @@ public sealed class AuditTailServiceBackfillTests
         }
     }
 
-    // ---- ADR 0037：清空后旧日志不得重现，去重记忆保留 ----
+    // ---- 清空后旧日志不得重现，去重记忆保留 ----
 
     [Fact]
     public async Task NotifyLogsCleared_Should_Drain_Pending_And_Keep_Dedup_Memory()

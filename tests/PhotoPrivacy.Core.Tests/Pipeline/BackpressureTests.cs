@@ -5,7 +5,7 @@ using System.Threading.Channels;
 namespace PhotoPrivacy.Core.Tests.Pipeline;
 
 /// <summary>
-/// ADR 0053 M3 test 闭环: BoundedChannel backpressure + FullMode=Wait behavior.
+/// BoundedChannel backpressure + FullMode=Wait behavior test 闭环.
 /// Verifies: channel full → WriteAsync suspends (not OOM); consumer drains → producer resumes.
 /// </summary>
 public sealed class BackpressureTests

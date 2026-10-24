@@ -74,7 +74,7 @@ public sealed class AuditTailService
        var auditDir = Path.GetDirectoryName(_currentAuditFilePath)!;
        Directory.CreateDirectory(auditDir);
 
-        // ADR 0037: establish the start-of-session watermark BEFORE any watcher/loop/backfill
+        // Establish the start-of-session watermark BEFORE any watcher/loop/backfill
         // starts, so only content that existed before Start() is skipped; everything appended
         // afterwards is guaranteed to be picked up by the tail or the backfill dedup memory.
         SkipToCurrentEnd();
@@ -93,7 +93,7 @@ public sealed class AuditTailService
         _loopTask = Task.Run(() => LoopAsync(_cts.Token), _cts.Token);
         if (_backfillFetcher is not null)
         {
-            // ADR 0046: backfill 收口在服务内部 — 失败静默重试，绝不杀 UI。
+            // backfill 收口在服务内部 — 失败静默重试，绝不杀 UI。
             _backfillTask = Task.Run(() => BackfillLoopAsync(_cts.Token), _cts.Token);
         }
         _flushTimer.Start();
@@ -159,7 +159,7 @@ public sealed class AuditTailService
     }
 
     /// <summary>
-    /// ADR 0037: user cleared the log view. Drain in-flight batches, reset the tail position to
+    /// User cleared the log view. Drain in-flight batches, reset the tail position to
     /// file end, but KEEP the delivered-lines dedup memory so cleared history cannot reappear
     /// via a later backfill or a tail re-read of the same raw lines.
     /// </summary>
@@ -418,7 +418,7 @@ public sealed class AuditTailService
 
     private async Task BackfillLoopAsync(CancellationToken token)
     {
-        // ADR 0046: fetch once when the worker becomes reachable; failures stay silent.
+        // Fetch once when the worker becomes reachable; failures stay silent.
         // `_backfillSucceeded` is set atomically under _gate together with the backfill
         // delivery claim so the tail can never re-deliver lines the backfill already
         // showed; the loop reads it through BackfillSucceeded (also under _gate, B04).
@@ -435,7 +435,7 @@ public sealed class AuditTailService
             }
             catch
             {
-                // ADR 0035: worker unreachable (IOException/SocketException) — silent retry.
+                // Worker unreachable (IOException/SocketException) — silent retry.
             }
 
             if (lines is not null)
@@ -463,7 +463,7 @@ public sealed class AuditTailService
     private void EnqueueBackfillLines(string[] lines)
     {
         var merged = MergeBackfillLines(lines);
-        // ADR 0035: resolve the UI log level OUTSIDE _gate — the getter may marshal to the
+        // Resolve the UI log level OUTSIDE _gate — the getter may marshal to the
         // UI thread, and the UI thread can block on _gate (SkipToCurrentEnd/TryReadNewLines).
         var logLevel = _getLogLevel();
         lock (_gate)
@@ -647,7 +647,7 @@ public sealed class AuditTailService
 
     private static (string Display, string ColorHex) MapEventStyle(string eventType)
     {
-        // 票 05（ui-craft2 / 规范 §6 T3 + §7 V3 克制气场 / ADR 0050 A2）：DisplayEvent 去
+        // 票 05（ui-craft2 / 规范 §6 T3 + §7 V3 克制气场）：DisplayEvent 去
         // emoji/Unicode 符号前缀 —— 状态语义由 ColorHex 语义色承载，不再叠符号字形。
         return eventType switch
         {

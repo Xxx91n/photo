@@ -71,7 +71,7 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
         _process.Start();
         _jobObject.Assign(_process);
 
-        // ADR 0027: Subscribe to Exited event for zombie reap on Unix
+        // Subscribe to Exited event for zombie reap on Unix
         // Process.EnableRaisingEvents is already true above; this ensures we reap the child.
         _process.Exited += (_, _) =>
         {

@@ -1,5 +1,5 @@
 # .gitattributes — dotnet/runtime style cross-platform template
-# ADR 0039 §6: binary markers + explicit text eol rules for all platform targets
+# Binary markers + explicit text eol rules for all platform targets
 
 # General text normalization (LF by default, CRLF only for Windows-native scripts)
 * text=auto eol=lf

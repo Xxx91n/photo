@@ -3,8 +3,8 @@ using PhotoPrivacy.Core.ExifTool;
 namespace PhotoPrivacy.Core.Tests.ExifTool;
 
 /// <summary>
-/// ADR 0053 M6a-g: WipeStrategyResolver per-format safe defaults test 闭环.
-/// Source: ExifTool FAQ #32 + Writer Limitations doc + ADR 0053 M6a table.
+/// WipeStrategyResolver per-format safe defaults test 闭环.
+/// Source: ExifTool FAQ #32 + Writer Limitations doc + per-format safe-default table.
 /// </summary>
 public sealed class WipeStrategyResolverTests
 {

@@ -11,7 +11,7 @@ namespace PhotoPrivacy.Worker;
 /// 抽出这两者是为了让本票两条验收项可以被行为测试直接驱动：
 /// ① 「accept 循环无 sync-over-async、重启重载不阻塞后续 accept」（WorkerIpcServerLoopTests）；
 /// ② 「ReloadConfig 真 await 而不是 sync-over-async」（WorkerIpcRequestHandlerTests）。
-/// 协议、响应体、ADR 0030/0031/0033/0046 语义均未变。
+/// 协议、响应体、版本字段、停机范围、重载校验与日志拉取语义均未变。
 /// </summary>
 public sealed class WorkerIpcServerHostedService : BackgroundService
 {

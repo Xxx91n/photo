@@ -15,7 +15,7 @@ public sealed class AppStartupPolicyTests
     }
 
     /// <summary>
-    /// ADR 0053 M1 regression guard: Program.cs Start method must NOT contain
+    /// Startup regression guard: Program.cs Start method must NOT contain
     /// sync-over-async (.GetAwaiter().GetResult() / .Result / .Wait()) in the
     /// startup path — the blocking ConnectOrLaunchAsync call was replaced with
     /// Start(AppMain) two-phase async startup.
@@ -26,7 +26,7 @@ public sealed class AppStartupPolicyTests
         var sourcePath = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Program.cs");
         var source = File.ReadAllText(sourcePath, Encoding.UTF8);
 
-        // ADR 0053 M1: Worker connects fire-and-forget via Task.Run, then StartWithClassicDesktopLifetime.
+        // Worker connects fire-and-forget via Task.Run, then StartWithClassicDesktopLifetime.
         // The blocking ConnectOrLaunchAsync().GetAwaiter().GetResult() must NOT appear in Start method.
         Assert.Contains("Task.Run(async", source, StringComparison.Ordinal);
         Assert.Contains("ConnectOrLaunchWorkerAsync", source, StringComparison.Ordinal);
@@ -41,7 +41,7 @@ public sealed class AppStartupPolicyTests
     }
 
     /// <summary>
-    /// ADR 0053 M2 regression guard: MainWindow.axaml.cs must contain ZERO
+    /// Regression guard: MainWindow.axaml.cs must contain ZERO
     /// sync-over-async calls (.GetAwaiter().GetResult() / .Result / .Wait()).
     /// </summary>
     [Fact]

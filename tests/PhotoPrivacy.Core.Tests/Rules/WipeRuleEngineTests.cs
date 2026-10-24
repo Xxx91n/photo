@@ -6,7 +6,7 @@ namespace PhotoPrivacy.Core.Tests.Rules;
 
 /// <summary>
 /// 票 19 检查点 B: 纯函数测试——给定规则集合 → 生成命令与勾选一致。
-/// 同时锁定: 票 18 默认规则下，8 个格式族与 ADR 0053 M6a 命令表逐字一致（零行为漂移）。
+/// 同时锁定: 票 18 默认规则下，8 个格式族与安全默认命令表逐字一致（零行为漂移）。
 /// </summary>
 public sealed class WipeRuleEngineTests
 {
@@ -67,7 +67,7 @@ public sealed class WipeRuleEngineTests
     [Fact]
     public void StoreDefaults_Through_Engine_Produce_Legacy_Panel_Commands()
     {
-        // 跨层缝合: FormatRulesStore.LoadDefaults()（票 18 schema）→ 引擎 → ADR 0053 面板族命令。
+        // 跨层缝合: FormatRulesStore.LoadDefaults()（票 18 schema）→ 引擎 → 面板族命令。
         using var dir = new TempDirHolder();
         var store = new FormatRulesStore(dir.Path);
         var defaults = store.LoadDefaults();
@@ -118,7 +118,7 @@ public sealed class WipeRuleEngineTests
     [Fact]
     public void Raw_StripAll_Never_Emits_All_Equals()
     {
-        // ADR 0053 安全不变量: RAW 全擦意图展开为全部安全组，永不 -all=（MakerNotes 毁渲染）。
+        // 安全不变量: RAW 全擦意图展开为全部安全组，永不 -all=（MakerNotes 毁渲染）。
         var rules = PanelDefaults();
         rules[K("raw", "strip_all")] = true;
         rules[K("raw", "strip_time")] = true;

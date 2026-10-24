@@ -7,7 +7,7 @@ namespace PhotoPrivacy.IntegrationTests;
 /// endpoint-ownership fix: the socket file may only be deleted by the endpoint owner
 /// (the server-side instance that called ListenAsync, detected via
 /// <c>ownsEndpoint = _listener is not null</c>). Client transports are per-call
-/// (ADR 0057) and share the same socket path — an unconditional File.Delete there
+/// Both endpoints share the same socket path — an unconditional File.Delete there
 /// unlinks the live server endpoint after the first call and every later connect
 /// fails (AddressNotAvailable on Linux/macOS).
 /// The ClassifyDisposeAsync classifier is a pure function so the negative self-proof can feed
@@ -26,7 +26,7 @@ public sealed class UdsEndpointOwnershipGuardTests
     /// Locked shape: (1) the ownership flag must be derived as
     /// <c>ownsEndpoint = _listener is not null</c>; (2) every File.Delete touching the
     /// socket path inside DisposeAsync must sit inside an <c>if (ownsEndpoint)</c> block.
-    /// File.Delete in ListenAsync (ADR 0026 stale-socket cleanup, pre-bind) is
+    /// File.Delete in ListenAsync (stale-socket cleanup, pre-bind) is
     /// out of scope here — it runs before the endpoint exists and is guarded separately.
     /// </summary>
     internal static List<string> ClassifyDisposeAsync(string transportSource)

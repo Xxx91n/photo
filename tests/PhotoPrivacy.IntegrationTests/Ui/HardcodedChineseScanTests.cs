@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 namespace PhotoPrivacy.IntegrationTests.Ui;
 
 /// <summary>
-/// ADR 0047 test closure — scan src/PhotoPrivacy.Ui source for hardcoded CJK string literals
+/// Test closure — scan src/PhotoPrivacy.Ui source for hardcoded CJK string literals
 /// outside comments. With full i18n extraction, no .cs (except LocalizationService BuiltIn
 /// dictionaries which are the embedded-resource fallback by design) or .axaml (except the
 /// language picker whose ComboBoxItem Content natively shows each language name in itself)
