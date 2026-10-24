@@ -227,7 +227,7 @@ public sealed class DesignSystemTests
         Assert.Contains("{DynamicResource SemiColorText2}", source, StringComparison.Ordinal);
     }
 
-    // （ui-craft2 / D-004）：防 Avalonia #9660 式回归 —— ExtendClientArea + 不透明背景窗口
+    // （ui-craft2）：防 Avalonia #9660 式回归 —— ExtendClientArea + 不透明背景窗口
     // 若依赖 WindowCornerPreference 默认值 Default，Win11 上曾出过硬边（hard edges）回归，上游修复
     // 路径即显式 DwmSetWindowAttribute(Round)。本断言锁显式 Round 在位，防属性被删/回退缺省后
     // 圆角静默失效回潮为直角。静态断言即可——DwmGetWindowAttribute 读回的是 preference 而非实际
@@ -522,9 +522,9 @@ public sealed class DesignSystemTests
     [Fact]
     public void Button_Elements_Must_Carry_A_Variant_Class()
     {
-        // （ui-craft / A-001）——防的 bug：新增 Button 忘记挂 Classes 变体类，吃 Semi 默认样式，
+        // （ui-craft）——防的 bug：新增 Button 忘记挂 Classes 变体类，吃 Semi 默认样式，
         // 尺寸与反馈脱离七变体体系（用户原话「按钮长度和大小都不统一」的字面来源）。
-        // D-006 定性：本断言是变更探测器而非契约——只能证明现役按钮全部归队，不能证明视觉等宽。
+        // 本断言是变更探测器而非契约——只能证明现役按钮全部归队，不能证明视觉等宽。
         var viewsDir = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views");
         var source = string.Concat(Directory.GetFiles(viewsDir, "*.axaml", SearchOption.AllDirectories)
             .Select(f => File.ReadAllText(f, Encoding.UTF8)));
@@ -540,7 +540,7 @@ public sealed class DesignSystemTests
     [Fact]
     public void Button_Groups_Must_Use_Equal_Width_Mechanism()
     {
-        // （ui-craft R1-1）——防的 bug：按钮组回退到 StackPanel 内容宽度，同组按钮长短不一（A-001）。
+        // （ui-craft R1-1）——防的 bug：按钮组回退到 StackPanel 内容宽度，同组按钮长短不一。
         // 等宽走 Grid + SharedSizeGroup（按组内最长文案动态定宽），不取固定 MinWidth——
         // 本项目 10 语言，长文案（德/俄）会撑破定值导致等宽失效。
         var servicePath = Path.Combine(SourceLint.RepoRoot, "src", "PhotoPrivacy.Ui", "Views", "Pages", "ServiceManagerPage.axaml");

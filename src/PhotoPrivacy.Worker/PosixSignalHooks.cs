@@ -16,7 +16,7 @@ internal sealed class PosixSignalHooks : IDisposable
     /// <summary>
     /// Register signal hooks. onSignal is called for SIGINT/SIGTERM/SIGQUIT.
     /// onReload is called for SIGHUP (config reload) — async 委托；
-    /// （T1 承接 / A-005 同族）：信号回调线程不得 sync-over-async，
+    /// （T1 承接）：信号回调线程不得 sync-over-async，
     /// reload 由本层 Task.Run 编组到线程池并立即返回；重入串行化由
     /// MetadataCleanerWorker._reloadGate 兜底，异常由调用方在 onReload 内部记录。
     /// </summary>

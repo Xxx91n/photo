@@ -3,7 +3,7 @@ using System.Text;
 namespace PhotoPrivacy.IntegrationTests.Ui;
 
 /// <summary>
-/// （ui-craft2 / D-007 / A-003 / 规范 §6 升现役）source-lint：
+/// （ui-craft2 / 规范 §6 升现役）source-lint：
 /// - toast 宿主必须挂在 MainWindow 壳层根 Grid 末位（应用级右下锚定，跨页面恒定）
 /// - ToastService 必须维持 sonner 堆叠契约（上限 4 / 默认 4s / 14px+0.05 每层 / 同 key 去重）
 /// - toast 卡片必须走 AppTheme Border.toast-card 四型语义浅底 + TransformOperationsTransition 可中断过渡

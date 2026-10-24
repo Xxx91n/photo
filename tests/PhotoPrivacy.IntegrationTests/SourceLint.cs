@@ -3,7 +3,7 @@ using System.Text;
 namespace PhotoPrivacy.IntegrationTests;
 
 /// <summary>
-/// B06 / 架构恢复 — source-lint guard 共享 helper（唯一实现）。
+/// 架构恢复 — source-lint guard 共享 helper（唯一实现）。
 /// 仓库根定位、源码读取、行注释剥除与 Ui 源文件枚举的唯一出处；
 /// 各 source-lint guard（UiLauncherSourceTests / DesignSystemTests /
 /// WorkerProcessManagerTests / HardcodedChineseScanTests 等）统一改调本类，断言语义零变化。

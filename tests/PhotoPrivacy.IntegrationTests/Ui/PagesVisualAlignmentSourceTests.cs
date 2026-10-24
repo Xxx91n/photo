@@ -10,10 +10,10 @@ namespace PhotoPrivacy.IntegrationTests.Ui;
 /// 定值依据：docs/design/ui-visual-standard.md
 ///   §3.3 B1（分隔线自标签列起点 inset）/ B2（控件列宽度收归共享 class）/ B3（分组卡片之间须有间距）
 ///   §4.2（空态）、§5.2 P1（同级分组卡片之间 SpaceLg）/ P5（侧栏导航项 SpaceXs）/ P7（禁等距均匀）
-///   §5.4 A-008（间距字面量随票清至 SpaceXxx）
+///   §5.4 间距字面量已清理至 SpaceXxx
 /// 边界：本文件只锁结构不变量；色彩 / 节奏 / 观感不交给文本断言单独背锅，
 /// 走人工 before/after 同机位截图对照（规范 §7 V5）。
-/// 每条断言的行内注释写明「防什么 bug」（tests/TEST-CONVENTIONS.md R1，D-006）。
+/// 每条断言的行内注释写明「防什么 bug」（tests/TEST-CONVENTIONS.md R1）。
 /// 定性：变更探测器而非契约 —— 锁的是规范定值的落位，规范改值时须同步改本文件。
 /// </summary>
 public class PagesVisualAlignmentSourceTests
@@ -52,7 +52,7 @@ public class PagesVisualAlignmentSourceTests
     [Fact]
     public void Views_Spacing_Must_Use_DynamicResource_Not_Literal()
     {
-        // 防：A-008 回潮 —— 改编 / 新增页面时把 Spacing 写回字面量（如 Spacing="10"），
+        // 防：间距字面量回潮 —— 改编 / 新增页面时把 Spacing 写回字面量（如 Spacing="10"），
         // 间距再次脱离 Space ramp 单点权威，改 token 时页面不跟随（规范 §5.4）。
         // Spacing 是 Double，可安全走 DynamicResource；本条不适用于 Thickness（见下一条断言）。
         // ui-craft
@@ -71,7 +71,7 @@ public class PagesVisualAlignmentSourceTests
     [Fact]
     public void Views_Margin_Padding_Literals_Must_Sit_On_Space_Ramp()
     {
-        // 防：A-008 回潮 —— Margin / Padding 写出 ramp 外的值（历史上为 20 / 10 / 6 三档），
+        // 防：间距字面量回潮 —— Margin / Padding 写出 ramp 外的值（历史上为 20 / 10 / 6 三档），
         // 与 DesignTokens 的 Space ramp 脱钩，页面节奏退回散值（规范 §5.4、§5.2 P7）。
         // 注意：Margin / Padding 属 Thickness，受 CONTEXT「Padding Literal Quantization」约束
         // 必须保持字面量 —— DynamicResource Double 赋 Thickness 会跳过 ThicknessTypeConverter
@@ -107,7 +107,7 @@ public class PagesVisualAlignmentSourceTests
     [Fact]
     public void Sidebar_Panel_Must_Follow_Column_Width_Not_Fixed_200()
     {
-        // 防：A-007 回潮 —— 侧栏内部 Border 重新硬钉 Width="200"。它与 GridSplitter 可拖宽
+        // 防：侧栏内部定宽回潮 —— 侧栏内部 Border 重新硬钉 Width="200"。它与 GridSplitter 可拖宽
         // （Clamp 170-400：MainWindow.axaml.cs 的 RestoreSidebarWidth / OnSidebarSplitterDragCompleted）
         // 直接冲突：拖宽后面板右侧留背景断层，拖窄则面板溢出被裁。
         // 修复形态 = 删除 Width，Border 在 Grid cell 内默认 Stretch 自动跟随列宽。
@@ -115,7 +115,7 @@ public class PagesVisualAlignmentSourceTests
         var source = ReadXaml(new[] { "src", "PhotoPrivacy.Ui", "Views", "MainWindow.axaml" });
         Assert.False(
             source.Contains("Width=\"200\""),
-            "侧栏内部 Border 不得硬钉 Width=200（A-007）：须跟随 Column[0] 实际列宽");
+            "侧栏内部 Border 不得硬钉 Width=200：须跟随 Column[0] 实际列宽");
     }
 
     [Fact]

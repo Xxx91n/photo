@@ -87,7 +87,7 @@ public sealed class RuleEngineTests
     }
 
     /// <summary>
-    /// 宣称收敛（D-005.1）：以下扩展名原先在 allowed_extensions 里但不在
+    /// 宣称收敛：以下扩展名原先在 allowed_extensions 里但不在
     /// WipeStrategyResolver.ExtensionFamilyMap 映射面——即“宣称支持但没有擦除策略”。
     /// 收敛后默认不再处理（fail-closed）；即使被用户旧配置放进来，ExifToolBridge 也会立即跳过
     /// 并落 wipe_skipped_unknown 审计（见 UnsupportedFormatPipelineTests）。
@@ -151,7 +151,7 @@ public sealed class RuleEngineTests
     }
 
     // ---------------------------------------------------------------------------------------
-    // （A-003）：排除清单真通配（* / ?）行为测试。
+    // 排除清单真通配（* / ?）行为测试。
     // 语义边界 = 纯文件名匹配（与收敛前一致）；大小写口径 = OrdinalIgnoreCase（与收敛前一致）；
     // 断言全部走 RuleEngine.Decide 的公共行为（Reason 字段），不读源码文本。
     // 注意：allowed_extensions 先于 excluded_patterns 判定，故探针文件名的扩展名必须在放行面内，

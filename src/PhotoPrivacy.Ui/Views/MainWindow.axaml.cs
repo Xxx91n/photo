@@ -25,7 +25,7 @@ public partial class MainWindow : Window
     // 版本/服务状态轮询已下沉 WindowPollingHostedService（_versionSnapshot/_versionPollCts/
     // _versionPollTask/_serviceModePollCts/_serviceModePollTask 五字段随之删除）。
     private readonly WindowPollingHostedService _pollingHostedService;
-    // （ui-craft2 / D-007 / 规范 §6）：应用级 toast 服务（DI 单例）——配置保存/规则/服务操作
+    // （ui-craft2 / 规范 §6）：应用级 toast 服务（DI 单例）——配置保存/规则/服务操作
     // 反馈链统一出口；SaveStatus 行内文本保留为持久态，toast 承载瞬时反馈。
     private readonly ToastService _toastService;
     private string _exifToolHint = string.Empty;

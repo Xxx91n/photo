@@ -37,7 +37,7 @@ public sealed class WorkerIpcClient
             readCts.CancelAfter(ReadTimeoutMs);
             try
             {
-                // （A-005）：缓冲读（原先此处与服务端各复制了一份 new byte[1] 逐字节读循环）。
+                // 缓冲读（原先此处与服务端各复制了一份 new byte[1] 逐字节读循环）。
                 // 有界语义不变：达到 MaxResponseBytes 上限即返回 null（超长响应丢弃）。
                 var line = await IpcLineReader.ReadBoundedLineAsync(stream, MaxResponseBytes, readCts.Token);
                 if (string.IsNullOrWhiteSpace(line))

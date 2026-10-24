@@ -30,7 +30,7 @@ public sealed class AuditTailService
     private Task? _backfillTask;
     private string _currentAuditFilePath;
     private long _lastPosition;
-    // B04: all reads/writes of this flag take _gate — reads via the BackfillSucceeded
+    // all reads/writes of this flag take _gate — reads via the BackfillSucceeded
     // getter, the write inside EnqueueBackfillLines' _gate section (atomic with the
     // delivery claim). No lock-free access remains, so future concurrent fetchers are safe.
     private bool _backfillSucceeded;
@@ -403,7 +403,7 @@ public sealed class AuditTailService
         return 0;
     }
 
-    /// <summary>Reads <c>_backfillSucceeded</c> under _gate (B04): the flag is only
+    /// <summary>Reads <c>_backfillSucceeded</c> under _gate: the flag is only
     /// meaningful in relation to _gate-guarded delivery, so observe it under the same lock.</summary>
     private bool BackfillSucceeded
     {
@@ -421,7 +421,7 @@ public sealed class AuditTailService
         // Fetch once when the worker becomes reachable; failures stay silent.
         // `_backfillSucceeded` is set atomically under _gate together with the backfill
         // delivery claim so the tail can never re-deliver lines the backfill already
-        // showed; the loop reads it through BackfillSucceeded (also under _gate, B04).
+        // showed; the loop reads it through BackfillSucceeded (also under _gate).
         while (!token.IsCancellationRequested && !BackfillSucceeded)
         {
             string[]? lines = null;
@@ -442,7 +442,7 @@ public sealed class AuditTailService
             {
                 // Fetcher contract: non-null = worker reachable (empty array allowed);
                 // null = unreachable/failed — retry silently. EnqueueBackfillLines sets
-                // `_backfillSucceeded` under _gate on success (B04), so no unlocked write here.
+                // `_backfillSucceeded` under _gate on success, so no unlocked write here.
                 EnqueueBackfillLines(lines);
             }
 
@@ -490,7 +490,7 @@ public sealed class AuditTailService
                 _backfillPendingEntries.Enqueue(entry);
             }
 
-            // B04: success flag under the same _gate section as the delivery claim — set
+            // success flag under the same _gate section as the delivery claim — set
             // only after every fetched line is recorded (dedup memory), so a future
             // concurrent fetcher can never observe "succeeded" mid-delivery.
             _backfillSucceeded = true;

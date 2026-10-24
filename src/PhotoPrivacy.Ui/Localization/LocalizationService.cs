@@ -364,7 +364,7 @@ public sealed class LocalizationService : System.ComponentModel.INotifyPropertyC
         ["msg.save_failed_exception"] = "✗ 保存失败：{0}",
         ["msg.invalid_exiftool_path"] = "✗ ExifTool 路径无效，请先选择正确的 exiftool.exe",
         ["msg.saved_worker_down"] = "✓ 已保存（Worker 未运行，下次启动生效）",
-        // （ui-craft2 / D-007）：toast 反馈链文案 —— 10 语言 JSON 同步（Locales/*.json toast 节点）。
+        // （ui-craft2）：toast 反馈链文案 —— 10 语言 JSON 同步（Locales/*.json toast 节点）。
         ["toast.config_saved"] = "已自动保存",
         ["toast.config_saved_worker_down"] = "已自动保存（Worker 未运行）",
         ["toast.config_save_failed"] = "保存失败",
@@ -543,7 +543,7 @@ public sealed class LocalizationService : System.ComponentModel.INotifyPropertyC
         ["msg.save_failed_exception"] = "✗ Save failed: {0}",
         ["msg.invalid_exiftool_path"] = "✗ Invalid ExifTool path, please select correct exiftool.exe",
         ["msg.saved_worker_down"] = "✓ Saved (Worker not running, takes effect on next start)",
-        // (ui-craft2 / D-007): toast feedback chain strings — kept in sync with Locales/*.json.
+        // (ui-craft2): toast feedback chain strings — kept in sync with Locales/*.json.
         ["toast.config_saved"] = "Auto-saved",
         ["toast.config_saved_worker_down"] = "Auto-saved (Worker not running)",
         ["toast.config_save_failed"] = "Save failed",

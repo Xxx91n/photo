@@ -22,7 +22,7 @@ public sealed class FswFolderWatcherTests
 
         try
         {
-            // B03 检查点 A：默认值即 64KB（非分页池成本仅落在监控目录 watcher 上）
+            // 检查点 A：默认值即 64KB（非分页池成本仅落在监控目录 watcher 上）
             Assert.Equal(65536, AppConfig.Default.Watch.InternalBufferSize);
             watcher.Start();
             var created = Assert.Single(factory.Created);

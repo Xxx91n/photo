@@ -127,7 +127,7 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
 
     public async Task<WipeResult> WipeMetadataAsync(string targetPath, CancellationToken cancellationToken)
     {
-        // （A-001）：未知扩展名一律立即跳过——不进 ExifTool、不写协议块、不注册等待 marker。
+        // 未知扩展名一律立即跳过——不进 ExifTool、不写协议块、不注册等待 marker。
         // 必须早于 EnsureStartedAsync：不支持的格式不值得拉起进程，也不允许出现
         // “等一个永不出现的 TASK_DONE_ marker”的挂死路径。
         if (WipeStrategyResolver.ResolveFamily(targetPath) is WipeFormatFamily.Unknown)
@@ -214,7 +214,7 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
         }
 
         // Phase 3: Wipe
-        // （A-001）：写盘前再解析一次策略。skip 情形（unknown_format / no_rules）绝不注册
+        // 写盘前再解析一次策略。skip 情形（unknown_format / no_rules）绝不注册
         // 等待 marker——否则命令块里没有 TASK_DONE_，TCS 会挂到取消为止（原挂死链）。
         var wipeStrategy = WipeStrategyResolver.Resolve(targetPath, _wipeRules);
         if (wipeStrategy.SkipReason is not null)
@@ -323,7 +323,7 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
     }
 
     /// <summary>
-    /// （A-005）：重启路径必须持 <see cref="_startLock"/>——与冷启动互斥。
+    /// 重启路径必须持 <see cref="_startLock"/>——与冷启动互斥。
     ///
     /// 原实现只有冷启动分支持锁，本方法完全无同步：多个调用方同时探测到 unhealthy 时会
     /// 并发 Stop/Start 同一进程（重启风暴），且 <c>_started</c> 标志被交错改写。
@@ -392,7 +392,7 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
 
             // Use explicit \n (not AppendLine/\r\n) — ExifTool stay_open protocol
             // requires LF-only line endings; \r\n breaks argument parsing.
-            // （A-005）：轻量存活探针——只做一次 stdin/stdout 往返（-echo1 marker + -execute），
+            // 轻量存活探针——只做一次 stdin/stdout 往返（-echo1 marker + -execute），
             // 绝不把任何路径当「待解析文件」喂入。原实现把 _config.ExifTool.Path 当输入文件，
             // ExifTool 会真去解析那个（可能十几 MB 的）二进制，慢机上 >500ms 触发 health_timeout，
             // 于是每处理一个文件就整进程重启一次，摧毁 stay_open 常驻收益（不变量④）。

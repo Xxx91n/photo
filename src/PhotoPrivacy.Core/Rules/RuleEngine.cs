@@ -72,7 +72,7 @@ public sealed class RuleEngine
             ? Pipeline.BackupPathResolver.ResolveDefaultBackupDir(_config.Watch.HotFolder)
             : backup.Directory;
 
-        // （A-006 / D-006）：镜像相对路径布局——备份根下按源文件相对监控根的
+        // 镜像相对路径布局——备份根下按源文件相对监控根的
         // 子路径镜像，结构性消除跨子目录同名文件的备份互相覆盖；无法归位监控子树时
         // 回退 "_unsorted/文件名.短哈希" 兜底。防穿越/规范化/保留名由 Resolver 收口。
         return Pipeline.BackupPathResolver.ResolveBackupSlot(
@@ -80,7 +80,7 @@ public sealed class RuleEngine
     }
 
     /// <summary>
-    /// （A-003）：真通配匹配——<c>*</c> 匹配任意长度（含空）序列，<c>?</c> 匹配恰好一个字符，
+    /// 真通配匹配——<c>*</c> 匹配任意长度（含空）序列，<c>?</c> 匹配恰好一个字符，
     /// 其余字符按字面量匹配；整串锚定（非子串包含），大小写口径与收敛前两个字面量分支一致
     /// （OrdinalIgnoreCase）。匹配对象是文件名（<see cref="Path.GetFileName(string)"/>），
     /// 故模式里的路径分隔符永远匹配不到——该情形由 <c>AppConfigValidator.CollectWarnings</c>

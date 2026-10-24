@@ -153,7 +153,7 @@ public sealed class UnixDomainSocketIpcTransport : IIpcTransport
         // Best-effort cleanup of socket file — only by the endpoint owner (server side).
         // Client instances (per-call WorkerIpcClient.SendAsync transports) share the same socket
         // path; deleting it there unlinks the live server endpoint after the first call, making
-        // every later connect fail (B11 finding: 2nd connect fails with AddressNotAvailable).
+        // every later connect fail (2nd connect fails with AddressNotAvailable).
         if (ownsEndpoint)
         {
             try { if (File.Exists(_socketPath)) File.Delete(_socketPath); } catch { /* ignore */ }

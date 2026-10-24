@@ -47,7 +47,7 @@ public sealed class ExifToolCommandBuilderTests
     [Fact]
     public void BuildWipeTaskBlock_Should_Throw_For_Unmapped_Format()
     {
-        // （A-001）：skip 情形不得产出不可完成的块（旧行为：回显 SKIP_ 而调用方等 TASK_DONE_ → 挂死）。
+        // skip 情形不得产出不可完成的块（旧行为：回显 SKIP_ 而调用方等 TASK_DONE_ → 挂死）。
         var target = Path.Combine(Path.GetTempPath(), "pp-cb", "a.webp");
 
         var ex = Assert.Throws<InvalidOperationException>(

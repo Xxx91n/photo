@@ -9,7 +9,7 @@ using PhotoPrivacy.Ui.Services;
 
 namespace PhotoPrivacy.Ui.ViewModels;
 
-// （ui-craft2 / D-007 / 规范 §6）：toast 语义型别 —— sonner rich-colors 四型。
+// （ui-craft2 / 规范 §6）：toast 语义型别 —— sonner rich-colors 四型。
 public enum ToastKind
 {
     Success,
@@ -19,7 +19,7 @@ public enum ToastKind
 }
 
 /// <summary>
-/// （ui-craft2 / D-007 / 规范 §6 T3-T7）：单条 toast 卡片 VM。
+/// （ui-craft2 / 规范 §6 T3-T7）：单条 toast 卡片 VM。
 /// 堆叠位移/卡宽/透明度由 ToastService.RecalculateStack 统一驱动（Margin → ThicknessTransition
 /// + Width/Opacity → DoubleTransition 400ms 可中断过渡，sonner 形态）；自动消失用 DispatcherTimer
 /// + Stopwatch 记剩余，hover 暂停/恢复。

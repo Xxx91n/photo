@@ -9,7 +9,7 @@ using PhotoPrivacy.Ui.ViewModels;
 namespace PhotoPrivacy.Ui.Services;
 
 /// <summary>
-/// （ui-craft2 / D-007 / A-003 / 规范 §6 升现役）：应用级 toast 服务 —— 自绘
+/// （ui-craft2 / 规范 §6 升现役）：应用级 toast 服务 —— 自绘
 /// ItemsControl overlay 路线（atomcode 调研裁决：Ursa WindowNotificationManager/WindowToastManager
 /// 仅覆盖 5/10 需求维，sonner 核心交互 hover 展开/暂停/堆叠位移缩放/可中断过渡/同 key 去重
 /// 全缺，fork 补齐成本高于自绘；零新 NuGet 依赖）。

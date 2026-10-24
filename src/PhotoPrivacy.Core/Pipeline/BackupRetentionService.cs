@@ -11,7 +11,7 @@ public static class BackupRetentionService
         if (string.IsNullOrWhiteSpace(backupDirectory) || !Directory.Exists(backupDirectory))
             return;
 
-        // （A-006 / D-006）：镜像相对路径布局后备份分散于子目录树，
+        // 镜像相对路径布局后备份分散于子目录树，
         // 旁路版本（名字.时间戳.bak）与 _unsorted 兜底槽位均以 .bak 结尾，
         // 必须 AllDirectories 递归才能兑现 size/TTL 兜底。
         var files = EnumerateBackupFiles(backupDirectory);

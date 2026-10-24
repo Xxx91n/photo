@@ -3,7 +3,7 @@ using System.Diagnostics;
 namespace PhotoPrivacy.IntegrationTests.Smoke;
 
 /// <summary>
-/// （B09+B13）— smoke.ps1 DLL-first 与失败诊断回归锁定：
+/// smoke.ps1 DLL-first 与失败诊断回归锁定：
 /// 1) smoke.ps1 无 dotnet run 残留且直启 PhotoPrivacyWorker.dll（source guard）；
 /// 2) release-readiness.ps1 对 smoke/publish 子脚本做输出捕获并打印尾部（source guard）；
 /// 3) 冒烟失败路径诊断含子进程 stdout/stderr 尾部（行为测试，坏 exiftool 路径触发校验失败）。

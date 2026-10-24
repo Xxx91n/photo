@@ -78,7 +78,7 @@ public sealed class FswFolderWatcher
     {
         var watcher = _factory.Create(_config.Watch.HotFolder);
         watcher.IncludeSubdirectories = _config.Watch.IncludeSubdirectories;
-        // B03: the FSW buffer lives in the non-paged pool - only the hot-folder watcher
+        // the FSW buffer lives in the non-paged pool - only the hot-folder watcher
         // is raised to 64KB (config default); the audit-log tail watcher keeps the 8KB default.
         watcher.InternalBufferSize = _config.Watch.InternalBufferSize;
         watcher.NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.DirectoryName;

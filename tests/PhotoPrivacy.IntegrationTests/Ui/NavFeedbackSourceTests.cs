@@ -4,8 +4,8 @@ using Xunit;
 namespace PhotoPrivacy.IntegrationTests.Ui;
 
 /// <summary>
-/// ui-craft — 侧栏 nav hover 反馈体系防回潮守卫（对应 decision-ledger D-004 三根因）。
-/// ui-craft2 — 视觉语言换胶囊三态（D-002 / D-003 / D-008），本文件随之改写：
+/// ui-craft — 侧栏 nav hover 反馈体系防回潮守卫（对应 hover 反馈三根因）。
+/// ui-craft2 — 视觉语言换胶囊三态，本文件随之改写：
 /// 定值依据：docs/design/ui-visual-standard.md §2.1「nav 胶囊三态」。
 /// 约束依据：§2.2 N1（纯色 / 透明度叙事，禁 scale 与弹性缓动）、N2（过渡须覆盖 Background 与 Foreground）、
 /// N3（三态层次分明：idle 透明 / hover 半透明中性胶囊 / active 主色实心胶囊）。
@@ -41,7 +41,7 @@ public class NavFeedbackSourceTests
     [Fact]
     public void Nav_Transitions_Must_Cover_Foreground_Not_Only_Background()
     {
-        // 防：上轮 D-004 根因残留现场 —— 全局 Button 过渡只含 Background / BorderBrush，
+        // 防：上轮根因残留现场 —— 全局 Button 过渡只含 Background / BorderBrush，
         // nav hover 的前景（文字 + 20px 图标）0ms 硬切，是“塑料感”第一现场（规范 §2.2 N2）。
         // 回潮形态：删掉 nav 段 Transitions 里的 Foreground 一路，或新增 nav 变体时只抄 Background。
         // ui-craft 立； / ui-craft2 复核保留（胶囊语言下两路仍必备）。
@@ -58,9 +58,9 @@ public class NavFeedbackSourceTests
     public void Nav_Hover_Must_Paint_Neutral_Capsule_And_Not_Retint_Foreground()
     {
         // 防（改造自 的 Nav_Hover_Foreground_Must_Narrate_Primary_Not_Neutral_White）：
-        // ui-craft2 D-008 裁定 hover 前景不变色（MangoDisk/VS Code/WinUI/Discord 实物均中性），
-        // 上轮 D-004「向 primary 叙事」revised —— pointerover 不得再写任何 Foreground setter，
-        // 否则 hover 上文字/图标又被染成主色；同时必须有实体胶囊底色块（D-002 否决纯变色 hover），
+        // ui-craft2 裁定 hover 前景不变色（MangoDisk/VS Code/WinUI/Discord 实物均中性），
+        // 上轮「向 primary 叙事」revised —— pointerover 不得再写任何 Foreground setter，
+        // 否则 hover 上文字/图标又被染成主色；同时必须有实体胶囊底色块（否决纯变色 hover），
         // 即 Background 必须是 SemiColorNavItemHover 中性半透明刷而非 Transparent / 主色系。
         // ui-craft2
         var source = AppTheme();
@@ -78,7 +78,7 @@ public class NavFeedbackSourceTests
     {
         // 防（改造自 的 Nav_Hover_Must_Preview_Active_Accent_Bar）：
         // 4px 左缘 accent 槽位体系（BorderThickness 4,0,0,0 + Transparent 占位 + BorderBrush 预示）
-        // 随 D-002 整体退役 —— 回潮形态：把槽位加回来、或给胶囊态重新引入 BorderBrush/BorderThickness。
+        // 随之整体退役 —— 回潮形态：把槽位加回来、或给胶囊态重新引入 BorderBrush/BorderThickness。
         // 同时锁胶囊正向结构：base 段必须有 CornerRadius=RadiusLg（规范 §2.1 圆角 8）。
         // ui-craft2
         var source = AppTheme();
@@ -101,7 +101,7 @@ public class NavFeedbackSourceTests
     [Fact]
     public void Nav_Active_Must_Be_Solid_Primary_Capsule_With_OnPrimary_Foreground()
     {
-        // 防：D-003 / D-008 定值回潮 —— active 必须是主色实心胶囊（SemiColorPrimary）+
+        // 防：定值回潮 —— active 必须是主色实心胶囊（SemiColorPrimary）+
         // on-primary 深字（SemiColorNavActiveForeground）+ SemiBold（MangoDisk 字重 600 信号）。
         // 回潮形态一：active 退回浅色底（SemiColorPrimaryLight）与 hover 层次不分明（规范 §2.2 N3 禁同浅）；
         // 回潮形态二：前景退回白字/Text0 —— 五主题 pastel 主色上白字仅 2.0–2.5:1，不达 WCAG AA（实测表）。

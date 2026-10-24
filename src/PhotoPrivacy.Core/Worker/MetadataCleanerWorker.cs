@@ -74,7 +74,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
         CleanupStaleTempFiles();
         _audit = new JsonLineAuditLogger(config.Audit.LogDirectory, config.Audit.RetainDays, config.Audit.DiagnosticMode, AuditLevelParser.Parse(config.Audit.LogLevel));
         IAuditLogger auditLogger = _audit is not null ? _audit : new NoopAuditLogger();
-        // （A-003）：启动路径的软告警落点（排除清单不可匹配/未支持模式）。
+        // 启动路径的软告警落点（排除清单不可匹配/未支持模式）。
         await EmitConfigWarningsAsync(config, stoppingToken);
         _bridge = CreateBridge(config, auditLogger);
         _pipeline = new FileTaskPipeline(config, new RuleEngine(config), _bridge, new LocalFileOperations(), auditLogger, new FileProcessedRecordStore(config.Audit.LogDirectory));
@@ -466,7 +466,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
     }
 
     /// <summary>
-    /// （A-003 / 不变量①④）：把 validator 的排除清单告警落成可见信号——
+    /// （不变量①④）：把 validator 的排除清单告警落成可见信号——
     /// 结构化日志 + <c>config_warning</c> 审计事件（UI 审计视图对未知事件类型回退显示原事件名）。
     /// <see cref="AppConfigValidator.Validate"/> 负责 fail-closed 的硬拒，
     /// 本方法负责「不阻断但绝不静默」的软路径：不可匹配/未支持的模式必须留痕。
@@ -506,7 +506,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
             throw;
         }
 
-        // （A-003）：reload 路径的软告警落点（写进当前生效的审计日志）。
+        // reload 路径的软告警落点（写进当前生效的审计日志）。
         await EmitConfigWarningsAsync(config, token);
 
         _watcher?.Stop();

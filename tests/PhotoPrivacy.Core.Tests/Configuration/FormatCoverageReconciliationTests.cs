@@ -7,7 +7,7 @@ using PhotoPrivacy.Core.ExifTool;
 namespace PhotoPrivacy.Core.Tests.Configuration;
 
 /// <summary>
-/// （A-009 / 不变量⑤宣称-实现一致）：格式覆盖面对账断言——随 CI 硬失败。
+/// （不变量⑤宣称-实现一致）：格式覆盖面对账断言——随 CI 硬失败。
 ///
 /// 背景：收敛前 allowed_extensions 有 109 条，而 ExtensionFamilyMap 只有 35 条
 /// （有效交集 34，差集 75 条无擦除策略）；README 则宣称“109 种扩展名”
