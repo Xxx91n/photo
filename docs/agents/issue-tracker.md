@@ -26,6 +26,11 @@ When set to `yes`, PRs run through the same labels and states as issues, using t
 
 GitHub shares one number space across issues and PRs, so a bare `#42` may be either: resolve with `gh pr view 42` and fall back to `gh issue view 42`.
 
+## PR 正文证据（本仓约定）
+
+- Evidence 写 CI run id/URL（`.github/workflows/ci.yml` 的 `test` job），不写本机测试计数——本仓 CI-only。
+- 每次返修 push 后刷新正文的 diff 统计、证据与结论；合并前正文必须对应当前 head。
+
 ## When a skill says "publish to the issue tracker"
 
 Create a GitHub issue.
