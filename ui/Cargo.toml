@@ -7,8 +7,8 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.97"
 
-# Design(#53): gpui 走 gpui-pre（Zed gpui 的 crates.io 快照，zed rev 08cbb88, 0.3.10）并锁死补丁版本；
-# T4 裁决已接受「锁 rev / 跟 breaking」的依赖治理形态，禁止改成范围版本。
+# Design(#49): gpui 走 gpui-pre（Zed gpui 的 crates.io 快照，zed rev 08cbb88, 0.3.10）并锁死补丁版本；
+# T4 裁决（#53，已关闭）已接受「锁 rev / 跟 breaking」的依赖治理形态，禁止改成范围版本。
 # 不依赖 gpui-pre-platform：它在 Windows 上强制 `windows-manifest`，而本机宿主 rustc 是 MSVC、目标却是
 # windows-gnu，embed-resource 会调用 rc.exe 产出 MinGW 链接器不认的 .lib；平台后端由本 workspace 自行装配。
 [workspace.dependencies]

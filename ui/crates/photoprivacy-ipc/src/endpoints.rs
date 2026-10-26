@@ -88,7 +88,7 @@ mod tests {
 
     #[test]
     fn windows_pipe_names_match_dotnet_contract() {
-        // 防：Windows 管道名漂移后连不上已安装的 Worker（契约出处 WorkerIpcEndpointNames.cs）。
+        // 防：Windows 管道名漂移后连不上已安装的 Worker（契约出处 WorkerIpcEndpointNames.cs，#54）。
         assert_eq!(
             resolve_endpoint(HostPlatform::Windows, WorkerMode::Background, None),
             Some(Endpoint::Pipe("PhotoPrivacyCleaner.Background".into()))
@@ -101,7 +101,7 @@ mod tests {
 
     #[test]
     fn linux_socket_paths_match_dotnet_contract() {
-        // 防：Unix socket 路径与 systemd RuntimeDirectory 下的 Worker 不一致（旧 UI 的既有缺陷）。
+        // 防：Unix socket 路径与 systemd RuntimeDirectory 下的 Worker 不一致（旧 UI 的既有缺陷，#54）。
         assert_eq!(
             resolve_endpoint(HostPlatform::Linux, WorkerMode::Background, None),
             Some(Endpoint::UnixSocket(
@@ -116,7 +116,7 @@ mod tests {
 
     #[test]
     fn macos_socket_paths_live_under_user_home() {
-        // 防：macOS 端点落到错误的目录，或缺少 HOME 时静默拼出相对路径。
+        // 防：macOS 端点落到错误的目录，或缺少 HOME 时静默拼出相对路径（#54）。
         let home = Path::new("/Users/example");
         assert_eq!(
             resolve_endpoint(HostPlatform::MacOs, WorkerMode::Background, Some(home)),

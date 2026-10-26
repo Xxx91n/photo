@@ -120,7 +120,7 @@ mod tests {
 
     #[tokio::test]
     async fn eof_terminates_line_without_trailing_newline() {
-        // 防：照抄「按行读」直觉等换行——Worker 响应没有结尾换行，等下去会读到读超时。
+        // 防：照抄「按行读」直觉等换行——Worker 响应没有结尾换行，等下去会读到读超时（#54）。
         let payload = br#"{"ok":true,"v":1}"#;
         assert_eq!(
             read_all(payload, MAX_RESPONSE_BYTES).await.as_deref(),
@@ -130,6 +130,7 @@ mod tests {
 
     #[tokio::test]
     async fn newline_terminates_line_and_drops_carriage_returns() {
+        // 防：把 CR 留在 JSON 末尾导致解析失败，或读完第一条响应继续吞后续字节（#54）。
         let payload = b"{\"ok\":true}\r\n{\"ok\":false}";
         assert_eq!(
             read_all(payload, MAX_RESPONSE_BYTES).await.as_deref(),
@@ -139,18 +140,20 @@ mod tests {
 
     #[tokio::test]
     async fn empty_stream_is_an_empty_line() {
+        // 防：空响应被当作错误抛出，调用方把「Worker 已关闭连接」误判为协议异常（#54）。
         assert_eq!(read_all(b"", MAX_RESPONSE_BYTES).await.as_deref(), Some(""));
     }
 
     #[tokio::test]
     async fn oversize_line_is_rejected() {
+        // 防：超长响应被整段读入内存，或被截断后当作合法 JSON 解析（#54）。
         let payload = vec![b'x'; 32];
         assert_eq!(read_all(&payload, 16).await, None);
     }
 
     #[test]
     fn request_serializes_dotnet_compatible_fields() {
-        // 防：请求字段名/大小写漂移，Worker 反序列化后 method 为空而回 invalid request。
+        // 防：请求字段名/大小写漂移，Worker 反序列化后 method 为空而回 invalid request（#54）。
         let json = serde_json::to_string(&Request::new(methods::GET_STATUS, Some("7"))).unwrap();
         assert_eq!(json, r#"{"method":"GetStatus","id":"7","v":1}"#);
         let json = serde_json::to_string(&Request::new(methods::PING, None)).unwrap();
@@ -159,7 +162,7 @@ mod tests {
 
     #[test]
     fn response_parses_real_worker_payload() {
-        // 防：字段改名后 Response 静默取默认值（如 mode 变空串），UI 显示「已连接但无版本信息」。
+        // 防：字段改名后 Response 静默取默认值（如 mode 变空串），UI 显示「已连接但无版本信息」（#54）。
         let line = r#"{"ok":true,"data":{"isPaused":false,"exifToolVersion":"13.20","watchDirectory":"C:\\photos","mode":"background"},"logs":null,"message":null,"id":null,"v":1}"#;
         let response: Response = serde_json::from_str(line).unwrap();
         assert!(response.ok);
@@ -173,6 +176,7 @@ mod tests {
 
     #[test]
     fn response_tolerates_unknown_and_missing_fields() {
+        // 防：Worker 新增字段或省略可空字段时客户端解析失败，把正常响应当成协议错误（#54）。
         let response: Response =
             serde_json::from_str(r#"{"ok":false,"message":"unknown method","future":42}"#).unwrap();
         assert!(!response.ok);

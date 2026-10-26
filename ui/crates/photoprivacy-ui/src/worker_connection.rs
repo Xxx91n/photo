@@ -65,7 +65,7 @@ pub fn start(
                     snapshot.endpoint = Some(endpoint.display());
                     snapshot.worker_mode = Some(mode);
                 });
-                spawn_monitor(client, endpoint, mode, snapshots);
+                spawn_monitor(client, endpoint, snapshots);
             }
             None => {
                 snapshots.send_modify(|snapshot| {
@@ -174,7 +174,7 @@ mod tests {
 
     #[test]
     fn worker_launch_matches_old_ui_arguments() {
-        // 防：启动参数漂移导致 Worker 用错模式或忽略 UI 指定的配置（旧 UI 契约见 WorkerProcessManager）。
+        // 防：启动参数漂移导致 Worker 用错模式或忽略 UI 指定的配置（旧 UI 契约见 WorkerProcessManager，#54）。
         let config = Path::new("C:/tmp/config.json");
         let command = background_worker_command(Path::new("PhotoPrivacyWorker.exe"), Some(config));
         let args: Vec<_> = command
@@ -189,7 +189,7 @@ mod tests {
 
     #[test]
     fn worker_launch_omits_config_when_absent() {
-        // 防：无配置时仍传 `--config ""` 之类的空参数，让 Worker 解析到空路径。
+        // 防：无配置时仍传 `--config ""` 之类的空参数，让 Worker 解析到空路径（#54）。
         let command = background_worker_command(Path::new("PhotoPrivacyWorker"), None);
         let args: Vec<_> = command
             .get_args()

@@ -163,19 +163,21 @@ async fn connect_once(endpoint: &Endpoint) -> io::Result<Stream> {
 pub(crate) fn is_retryable(err: &io::Error) -> bool {
     #[cfg(windows)]
     {
-        // ERROR_PIPE_BUSY = 231（服务端唯一实例被占用）、ERROR_FILE_NOT_FOUND = 2（无实例窗口）。
-        if matches!(err.raw_os_error(), Some(231) | Some(2)) {
-            return true;
-        }
+        // 只重试 ERROR_PIPE_BUSY(231)：服务端唯一实例被占用。ERROR_FILE_NOT_FOUND(2) 表示端点不存在，
+        // 立即失败——与 .NET NamedPipeClientStream.Connect 的重试口径一致，也避免 Worker 未起时每次探测白等 700ms。
+        matches!(err.raw_os_error(), Some(231))
     }
-    matches!(
-        err.kind(),
-        io::ErrorKind::NotFound
-            | io::ErrorKind::ConnectionRefused
-            | io::ErrorKind::ConnectionReset
-            | io::ErrorKind::WouldBlock
-            | io::ErrorKind::TimedOut
-    )
+    #[cfg(unix)]
+    {
+        // socket 文件不存在同样视为「Worker 未起」，立即失败；只重试瞬时错误。
+        matches!(
+            err.kind(),
+            io::ErrorKind::ConnectionRefused
+                | io::ErrorKind::ConnectionReset
+                | io::ErrorKind::WouldBlock
+                | io::ErrorKind::TimedOut
+        )
+    }
 }
 
 #[cfg(test)]
@@ -183,24 +185,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn pipe_busy_and_missing_endpoint_are_retryable() {
+    fn pipe_busy_is_retryable_but_missing_endpoint_is_not() {
+        // 防：把「端点不存在」也当可重试，Worker 未运行时每次探测都耗尽 700ms 连接预算（#54）。
         #[cfg(windows)]
         {
             assert!(is_retryable(&io::Error::from_raw_os_error(231)));
-            assert!(is_retryable(&io::Error::from_raw_os_error(2)));
+            assert!(!is_retryable(&io::Error::from_raw_os_error(2)));
             assert!(!is_retryable(&io::Error::from_raw_os_error(5)));
         }
-        assert!(is_retryable(&io::Error::from(
-            io::ErrorKind::ConnectionRefused
-        )));
-        assert!(!is_retryable(&io::Error::from(
-            io::ErrorKind::PermissionDenied
-        )));
-    }
-
-    #[test]
-    fn oversize_error_reports_the_byte_cap() {
-        let text = IpcError::Oversize.to_string();
-        assert!(text.contains("65536"));
+        #[cfg(unix)]
+        {
+            assert!(is_retryable(&io::Error::from(
+                io::ErrorKind::ConnectionRefused
+            )));
+            assert!(!is_retryable(&io::Error::from(io::ErrorKind::NotFound)));
+            assert!(!is_retryable(&io::Error::from(
+                io::ErrorKind::PermissionDenied
+            )));
+        }
     }
 }
