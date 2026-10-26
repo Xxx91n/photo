@@ -52,8 +52,9 @@ pub fn current_home() -> Option<PathBuf> {
     std::env::var_os("HOME").map(PathBuf::from)
 }
 
-// Design(#49): IPC 端点名是协议主缝的一部分——这里与 `WorkerIpcEndpointNames` 逐字一致，不改协议；
-// 旧 C# UI 全程硬编码 Windows 管道名，新客户端（#54）改按 OS 解析，修的是客户端缺陷而不是协议。
+// IPC 端点名是协议主缝的一部分：与 `WorkerIpcEndpointNames` 逐字一致，不改协议；旧 C# UI 全程硬编码
+// Windows 管道名（Linux/macOS 实际连不上），新客户端（#54）改按 OS 解析，修的是客户端缺陷而非协议。
+// Design(#49): 端点名冻结为既有契约，禁止为解析方便改名。
 pub fn resolve_endpoint(
     platform: HostPlatform,
     mode: WorkerMode,

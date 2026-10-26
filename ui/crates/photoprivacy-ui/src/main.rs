@@ -52,8 +52,9 @@ impl Args {
     }
 }
 
-// Design(#54): 平台后端在这里就地装配，替代 gpui_platform 聚合 crate（原因见 ui/Cargo.toml）。
+// 平台后端在这里就地装配，替代 gpui_platform 聚合 crate（原因见 ui/Cargo.toml）。
 #[cfg(target_os = "windows")]
+// Design(#54): 平台后端由本 crate 装配，禁止再引入 gpui_platform 聚合 crate。
 fn application() -> gpui::Application {
     let platform = std::rc::Rc::new(
         gpui_windows::WindowsPlatform::new(false).expect("初始化 Windows 图形后端失败"),
