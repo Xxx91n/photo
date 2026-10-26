@@ -54,8 +54,9 @@ impl ConnectionSnapshot {
 
 const BACKOFF_STEPS: [u64; 7] = [1, 2, 4, 8, 16, 32, 60];
 
-// Design(#54): 心跳退避与旧 UI 的 ConnectionStateService 逐步一致（1s→60s）。
-// 状态机：Connecting → Connected / Reconnecting；Disconnected 只用于端点无法解析（任务永不启动）。
+// 心跳退避与旧 UI 的 ConnectionStateService 逐步一致（1s→60s）；状态机 Connecting → Connected /
+// Reconnecting，Disconnected 只用于端点无法解析（任务永不启动）。
+// Design(#54): 退避序列与旧 UI 对齐并封顶 60s。
 pub fn next_backoff(current: Duration) -> Duration {
     let seconds = current.as_secs();
     let next = BACKOFF_STEPS
@@ -67,8 +68,10 @@ pub fn next_backoff(current: Duration) -> Duration {
 }
 
 /// 心跳循环：成功每 1s 一次，失败按退避步进；状态经 `watch` 广播给 UI。
-// Design(#54): 心跳探针用 GetStatus 而非旧 UI 的 Ping——每跳顺带刷新协议版本、模式与 ExifTool 版本，
-// 代价是「Ping 通但 GetStatus 失败」会被判为不可用；旧 UI 不用这些字段所以只发 Ping。
+///
+/// 探针用 GetStatus 而非旧 UI 的 Ping：每跳顺带刷新协议版本、模式与 ExifTool 版本；代价是
+/// 「Ping 通但 GetStatus 失败」会被判为不可用（旧 UI 不用这些字段，所以只发 Ping）。
+// Design(#54): 心跳探针固定为 GetStatus，版本可见性优先于 Ping 的纯活性语义。
 pub fn spawn_monitor(
     client: Arc<IpcClient>,
     endpoint: Endpoint,

@@ -41,8 +41,9 @@ impl fmt::Display for IpcError {
 
 impl std::error::Error for IpcError {}
 
-// Design(#54): 单飞——Worker 服务端同一时刻只预建一个管道实例，并发连接会撞 ERROR_PIPE_BUSY
-// 甚至极短的「无实例」窗口；因此所有请求共用一把异步锁，并在连接阶段重试 busy/not-found。
+// Worker 服务端同一时刻只预建一个管道实例，并发连接会撞 ERROR_PIPE_BUSY，属主重建实例时还有极短的
+// 「无实例」窗口（ERROR_FILE_NOT_FOUND）。
+// Design(#54): 所有 IPC 请求共用一把异步锁（单飞），连接阶段对 busy/not-found 重试到连接超时。
 pub struct IpcClient {
     connect_timeout: Duration,
     request_timeout: Duration,
@@ -163,21 +164,20 @@ async fn connect_once(endpoint: &Endpoint) -> io::Result<Stream> {
 pub(crate) fn is_retryable(err: &io::Error) -> bool {
     #[cfg(windows)]
     {
-        // 只重试 ERROR_PIPE_BUSY(231)：服务端唯一实例被占用。ERROR_FILE_NOT_FOUND(2) 表示端点不存在，
-        // 立即失败——与 .NET NamedPipeClientStream.Connect 的重试口径一致，也避免 Worker 未起时每次探测白等 700ms。
-        matches!(err.raw_os_error(), Some(231))
+        // ERROR_PIPE_BUSY = 231（实例被占用）、ERROR_FILE_NOT_FOUND = 2（属主重建实例的空窗）。
+        // 与 .NET NamedPipeClientStream.Connect 一致：两者都重试，直到调用方的超时兜底。
+        if matches!(err.raw_os_error(), Some(231) | Some(2)) {
+            return true;
+        }
     }
-    #[cfg(unix)]
-    {
-        // socket 文件不存在同样视为「Worker 未起」，立即失败；只重试瞬时错误。
-        matches!(
-            err.kind(),
-            io::ErrorKind::ConnectionRefused
-                | io::ErrorKind::ConnectionReset
-                | io::ErrorKind::WouldBlock
-                | io::ErrorKind::TimedOut
-        )
-    }
+    matches!(
+        err.kind(),
+        io::ErrorKind::NotFound
+            | io::ErrorKind::ConnectionRefused
+            | io::ErrorKind::ConnectionReset
+            | io::ErrorKind::WouldBlock
+            | io::ErrorKind::TimedOut
+    )
 }
 
 #[cfg(test)]
@@ -185,20 +185,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn pipe_busy_is_retryable_but_missing_endpoint_is_not() {
-        // 防：把「端点不存在」也当可重试，Worker 未运行时每次探测都耗尽 700ms 连接预算（#54）。
+    fn busy_and_missing_endpoint_are_retryable() {
+        // 防：把属主重建实例时的 ERROR_FILE_NOT_FOUND 当永久失败，恰逢空窗的唤起/心跳被判离线（#54）。
         #[cfg(windows)]
         {
             assert!(is_retryable(&io::Error::from_raw_os_error(231)));
-            assert!(!is_retryable(&io::Error::from_raw_os_error(2)));
+            assert!(is_retryable(&io::Error::from_raw_os_error(2)));
             assert!(!is_retryable(&io::Error::from_raw_os_error(5)));
         }
         #[cfg(unix)]
         {
+            assert!(is_retryable(&io::Error::from(io::ErrorKind::NotFound)));
             assert!(is_retryable(&io::Error::from(
                 io::ErrorKind::ConnectionRefused
             )));
-            assert!(!is_retryable(&io::Error::from(io::ErrorKind::NotFound)));
             assert!(!is_retryable(&io::Error::from(
                 io::ErrorKind::PermissionDenied
             )));

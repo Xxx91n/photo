@@ -2,6 +2,7 @@
 name = "photoprivacy-ipc"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 description = "PhotoPrivacy Worker IPC 客户端：端点解析、JSON 行协议、心跳状态、单实例守卫"
 
 [dependencies]

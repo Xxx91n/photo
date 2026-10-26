@@ -79,9 +79,9 @@ pub fn start(
 }
 
 /// 连接顺序与旧 UI `WorkerProcessManager.ConnectOrLaunchAsync` 对齐：服务端点优先，其次后台端点，
-/// 都不可用时启动后台 Worker 并轮询 5s。
-// Design(#58): 服务「已安装未运行」的探测属于服务管理票，本轮不做；因此不会像旧 UI 那样停在服务壳，
-// 而是落到后台 Worker——这是本竖切的已知差异，等 #58 补齐探测后收敛。
+/// 都不可用时启动后台 Worker 并轮询 5s。服务「已安装未运行」时本版会落到后台 Worker，而不是像旧 UI
+/// 停在服务壳——服务安装态探测属 #58，补齐后收敛。
+// Design(#58): 服务安装态探测延后到 #58，本版不做。
 async fn connect_worker(
     client: &IpcClient,
     options: &ConnectOptions,
@@ -91,16 +91,15 @@ async fn connect_worker(
     let service = resolve_endpoint(platform, WorkerMode::Service, home.as_deref());
     let background = resolve_endpoint(platform, WorkerMode::Background, home.as_deref());
 
-    if let Some(endpoint) = service.as_ref()
-        && client.is_alive(endpoint).await
-    {
-        return Some((endpoint.clone(), WorkerMode::Service));
-    }
-
-    if let Some(endpoint) = background.as_ref()
-        && client.is_alive(endpoint).await
-    {
-        return Some((endpoint.clone(), WorkerMode::Background));
+    for (mode, endpoint) in [
+        (WorkerMode::Service, service),
+        (WorkerMode::Background, background.clone()),
+    ] {
+        if let Some(endpoint) = endpoint
+            && client.is_alive(&endpoint).await
+        {
+            return Some((endpoint, mode));
+        }
     }
 
     if let (Some(endpoint), Some(worker)) = (

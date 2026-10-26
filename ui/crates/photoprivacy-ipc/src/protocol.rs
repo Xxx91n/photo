@@ -1,6 +1,5 @@
-// Design(#49): 协议字段与语义沿用既有 IPC 契约——方法名、请求 {method,id,v}、响应
-// {ok,data,logs,message,id,v} 都不动；可选字段为空时省略（服务端按可空字段解析），
-// 新 UI 只是同一协议的另一个客户端实现。
+// 协议字段与语义沿用既有 IPC 契约：方法名、请求 {method,id,v}、响应 {ok,data,logs,message,id,v}
+// 都不动；可选字段为空时省略（服务端按可空字段解析），新 UI 只是同一协议的另一个客户端实现。
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncRead, AsyncReadExt};
 
@@ -14,6 +13,7 @@ pub mod methods {
     pub const GET_STATUS: &str = "GetStatus";
 }
 
+// Design(#49): IPC JSON 行协议是新旧 UI 的唯一主缝——方法名与字段语义冻结，新能力只以 method 名扩展。
 #[derive(Debug, Clone, Serialize)]
 pub struct Request<'a> {
     pub method: &'a str,
