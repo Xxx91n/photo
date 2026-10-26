@@ -79,6 +79,21 @@ public static class SourceLint
             .ToList();
     }
 
+    /// <summary>
+    /// （#65）枚举 src/ 下全部手写 .cs（Core/Ipc/Ui/Worker 四工程），
+    /// 排除 bin/obj 与生成代码 —— 全仓级形态守卫的唯一枚举出处，不在各 guard 里重复。
+    /// </summary>
+    public static List<string> SrcCsFiles()
+    {
+        var srcRoot = Path.Combine(RepoRoot, "src");
+        Assert.True(Directory.Exists(srcRoot), $"src root not found: {srcRoot}");
+        return Directory.GetFiles(srcRoot, "*.cs", SearchOption.AllDirectories)
+            .Where(f => !f.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar) &&
+                        !f.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar) &&
+                        !f.EndsWith(".g.cs") && !f.EndsWith(".GlobalUsings.g.cs"))
+            .ToList();
+    }
+
     private static string FindRepoRoot()
     {
         var dir = AppContext.BaseDirectory;
