@@ -62,14 +62,16 @@ public sealed class DesignMarkerSourceTests
     public void Design_Marker_Should_Sit_Immediately_Above_The_Governed_Declaration()
     {
         // 防的具体回潮形态：#52 首批落地时把标记插在 AppComposition 与 NamedPipeIpcTransport.ServerOptions 的 /// 文档块之上
-        // （PR #64 评审点名才修）—— grep 命中的标记指向一段文档注释而非受约束声明，"决策贴着代码"退化成"决策贴着注释"，
-        // 空行隔开同理。关联 issue #65。
+        // （PR #64 评审点名才修）—— grep 命中的标记指向一段文档注释而非受约束声明，"决策贴着代码"退化成"决策贴着注释"；
+        // 空行隔开、下方压一行 /* 块注释 */ 同罪。关联 issue #65。
         var offenders = ScanMarkers()
             .Where(m => CanonicalMarker.IsMatch(m.Text))
-            .Where(m => string.IsNullOrEmpty(m.NextLine) || m.NextLine.StartsWith("//", StringComparison.Ordinal))
+            .Where(m => string.IsNullOrEmpty(m.NextLine) ||
+                        m.NextLine.StartsWith("//", StringComparison.Ordinal) ||
+                        m.NextLine.StartsWith("/*", StringComparison.Ordinal))
             .ToList();
         Assert.True(offenders.Count == 0,
-            $"Design 标记的紧邻下一行必须是受约束声明（不得是空行、/// 文档行或 // 注释行）：\n{string.Join("\n", offenders.Select(Describe))}");
+            $"Design 标记的紧邻下一行必须是受约束声明（不得是空行、// 或 /// 注释行、/* 块注释）：\n{string.Join("\n", offenders.Select(Describe))}");
     }
 
     [Fact]
