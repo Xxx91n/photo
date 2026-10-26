@@ -2,6 +2,7 @@ using System.Text.Json.Serialization;
 
 namespace PhotoPrivacy.Ipc;
 
+// Design(#49): IPC JSON 行协议是新旧 UI 的唯一主缝——换栈只换客户端实现，方法名与既有字段语义不动，新能力一律以 method 名扩展。
 public static class WorkerIpcMethods
 {
     public const string Ping = "Ping";
