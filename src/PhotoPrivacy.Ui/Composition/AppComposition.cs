@@ -15,7 +15,7 @@ namespace PhotoPrivacy.Ui.Composition;
 /// Program.Start（应用启动处）是 Build 的唯一调用点；MainWindow 停止手写 new 依赖。
 /// 静态单例逐票收敛（spec Out of Scope）：本票先收敛 LocalizationService 入口（检查点 B）。
 /// </summary>
-// Design(#49): DI 装配只在组合根这一处发生，视图不得手写 new 依赖；旧 Avalonia UI 已冻结，#23 的 6+1 条残余视图缝收敛随 T4 裁决作废（只修致命 bug）。
+// Design(#49): DI 装配只在组合根这一处发生，视图不得手写 new 依赖；旧 Avalonia UI 已冻结，残余视图缝不再收敛（只修致命 bug）。
 public static class AppComposition
 {
     public static IServiceProvider Build(AppConfig config, string configPath, string? workerPath)
