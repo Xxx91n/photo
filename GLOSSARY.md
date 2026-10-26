@@ -78,7 +78,7 @@
 
 ## UI
 
-> 旧 UI 视觉词条（`UI Visual Standard`、`MangoDisk Benchmark` 等）均指冻结旧 Avalonia UI；新 UI 的视觉标尺见 #49 T4。
+> `UI Visual Standard` 与 `MangoDisk Benchmark` 仅指冻结旧 Avalonia UI；新 UI 的视觉标尺见 #49 T4。`Aesthetic Anchor` 与 `Visual Baseline` 不受此限。
 
 **Aesthetic Anchor**：新 UI 的观感“像不像”标尺；六锚清单与取舍见 #49 T4，MangoDisk 仅保留给冻结旧 UI。
 **Semi.Avalonia**：Semi Design 的 Avalonia 实现，主题基座。
