@@ -1,5 +1,6 @@
-// Design(#54): 协议字段与语义逐字沿用既有 IPC 契约——方法名、请求 {method,id,v}、响应
-// {ok,data,logs,message,id,v} 都不动；新 UI 只是同一协议的另一个客户端实现。
+// Design(#49): 协议字段与语义沿用既有 IPC 契约——方法名、请求 {method,id,v}、响应
+// {ok,data,logs,message,id,v} 都不动；可选字段为空时省略（服务端按可空字段解析），
+// 新 UI 只是同一协议的另一个客户端实现。
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncRead, AsyncReadExt};
 
@@ -119,7 +120,7 @@ mod tests {
 
     #[tokio::test]
     async fn eof_terminates_line_without_trailing_newline() {
-        // Worker 服务端写完响应就关闭连接，不发换行——客户端必须读到 EOF 才停。
+        // 防：照抄「按行读」直觉等换行——Worker 响应没有结尾换行，等下去会读到读超时。
         let payload = br#"{"ok":true,"v":1}"#;
         assert_eq!(
             read_all(payload, MAX_RESPONSE_BYTES).await.as_deref(),
@@ -149,6 +150,7 @@ mod tests {
 
     #[test]
     fn request_serializes_dotnet_compatible_fields() {
+        // 防：请求字段名/大小写漂移，Worker 反序列化后 method 为空而回 invalid request。
         let json = serde_json::to_string(&Request::new(methods::GET_STATUS, Some("7"))).unwrap();
         assert_eq!(json, r#"{"method":"GetStatus","id":"7","v":1}"#);
         let json = serde_json::to_string(&Request::new(methods::PING, None)).unwrap();
@@ -157,6 +159,7 @@ mod tests {
 
     #[test]
     fn response_parses_real_worker_payload() {
+        // 防：字段改名后 Response 静默取默认值（如 mode 变空串），UI 显示「已连接但无版本信息」。
         let line = r#"{"ok":true,"data":{"isPaused":false,"exifToolVersion":"13.20","watchDirectory":"C:\\photos","mode":"background"},"logs":null,"message":null,"id":null,"v":1}"#;
         let response: Response = serde_json::from_str(line).unwrap();
         assert!(response.ok);

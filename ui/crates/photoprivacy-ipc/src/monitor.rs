@@ -50,18 +50,12 @@ impl ConnectionSnapshot {
             last_error: None,
         }
     }
-
-    pub fn with_endpoint(mut self, endpoint: &Endpoint, mode: WorkerMode) -> Self {
-        self.endpoint = Some(endpoint.display());
-        self.worker_mode = Some(mode);
-        self
-    }
 }
 
 const BACKOFF_STEPS: [u64; 7] = [1, 2, 4, 8, 16, 32, 60];
 
-// Design(#54): 心跳退避与旧 UI 的 ConnectionStateService 逐步一致（1s→60s），
-// 状态机同构：Connecting → Connected / Reconnecting，取消时才进 Disconnected。
+// Design(#54): 心跳退避与旧 UI 的 ConnectionStateService 逐步一致（1s→60s）。
+// 状态机：Connecting → Connected / Reconnecting；Disconnected 只用于端点无法解析（任务永不启动）。
 pub fn next_backoff(current: Duration) -> Duration {
     let seconds = current.as_secs();
     let next = BACKOFF_STEPS
@@ -73,6 +67,8 @@ pub fn next_backoff(current: Duration) -> Duration {
 }
 
 /// 心跳循环：成功每 1s 一次，失败按退避步进；状态经 `watch` 广播给 UI。
+// Design(#54): 心跳探针用 GetStatus 而非旧 UI 的 Ping——每跳顺带刷新协议版本、模式与 ExifTool 版本，
+// 代价是「Ping 通但 GetStatus 失败」会被判为不可用；旧 UI 不用这些字段所以只发 Ping。
 pub fn spawn_monitor(
     client: Arc<IpcClient>,
     endpoint: Endpoint,
@@ -135,18 +131,5 @@ mod tests {
         assert_eq!(snapshot.state, ConnectionState::Connecting);
         assert!(snapshot.endpoint.is_none());
         assert_eq!(snapshot.round_trips, 0);
-    }
-
-    #[test]
-    fn snapshot_records_resolved_endpoint() {
-        let snapshot = ConnectionSnapshot::connecting().with_endpoint(
-            &Endpoint::Pipe("PhotoPrivacyCleaner.Background".into()),
-            WorkerMode::Background,
-        );
-        assert_eq!(
-            snapshot.endpoint.as_deref(),
-            Some("PhotoPrivacyCleaner.Background")
-        );
-        assert_eq!(snapshot.worker_mode, Some(WorkerMode::Background));
     }
 }

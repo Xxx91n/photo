@@ -11,6 +11,7 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=resources/app.rc");
     println!("cargo:rerun-if-changed=resources/app.manifest");
+    println!("cargo:rerun-if-env-changed=WINDRES");
 
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
         return;
@@ -18,6 +19,10 @@ fn main() {
     if std::env::var("CARGO_CFG_TARGET_ENV").as_deref() != Ok("gnu") {
         // Design(#61): MSVC 目标本轮不嵌清单（gpui 依赖 TaskDialogIndirect，缺清单会在加载期失败）；
         // 发布链与 MSVC 接法归切换/发布对账票统一处置，本票只在 windows-gnu 上验证。
+        println!(
+            "cargo:warning=未为 {target} 嵌入应用清单：gpui 依赖 comctl32 v6，缺清单的产物启动即失败",
+            target = std::env::var("TARGET").unwrap_or_default()
+        );
         return;
     }
 

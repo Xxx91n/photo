@@ -80,10 +80,7 @@ impl IpcClient {
     }
 
     pub async fn is_alive(&self, endpoint: &Endpoint) -> bool {
-        matches!(
-            self.request(endpoint, methods::PING).await,
-            Ok(Response { ok: true, .. })
-        )
+        self.request(endpoint, methods::PING).await.is_ok()
     }
 
     pub async fn request(&self, endpoint: &Endpoint, method: &str) -> Result<Response, IpcError> {
@@ -202,7 +199,7 @@ mod tests {
     }
 
     #[test]
-    fn timeout_errors_are_displayed_with_the_contract_value() {
+    fn oversize_error_reports_the_byte_cap() {
         let text = IpcError::Oversize.to_string();
         assert!(text.contains("65536"));
     }
