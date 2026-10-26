@@ -94,6 +94,7 @@ mod tests {
 
     #[test]
     fn system_mode_follows_the_os_appearance() {
+        // 防：Vibrant* 变体被当成另一种外观，系统深浅色切换后界面不跟随（#54）。
         assert!(is_dark(WindowAppearance::Dark));
         assert!(is_dark(WindowAppearance::VibrantDark));
         assert!(!is_dark(WindowAppearance::Light));
@@ -102,6 +103,7 @@ mod tests {
 
     #[test]
     fn explicit_mode_overrides_the_os_appearance() {
+        // 防：强制 Light/Dark 被系统外观覆盖（或写反），切换按钮点下去没有效果（#54）。
         let forced_light = Theme::resolve(ThemeMode::Light, true);
         let forced_dark = Theme::resolve(ThemeMode::Dark, false);
         assert_eq!(forced_light.bg, Theme::light().bg);

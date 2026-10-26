@@ -18,7 +18,7 @@ PhotoPrivacy 新 UI（gpui 骨架竖切）
 
 用法: photoprivacy-ui [--config <config.json>] [--worker <PhotoPrivacyWorker 路径>]
 
-  --config  启动后台 Worker 时传入的配置路径（默认同目录 config/config.json，存在才用）
+  --config  启动后台 Worker 时传入的配置路径（默认同目录 config/config.json，与旧 UI 一致始终传入）
   --worker  后台 Worker 可执行文件路径（默认同目录 PhotoPrivacyWorker[.exe]，存在才用）
 ";
 

@@ -184,7 +184,14 @@ async fn send_show_window(name: &str) -> std::io::Result<()> {
     // 避免恰好撞上属主重建管道实例的瞬间而漏掉唤起（上限由外层 500ms 超时兜住）。
     loop {
         #[cfg(windows)]
-        let opened = tokio::net::windows::named_pipe::ClientOptions::new().open(&path);
+        let opened = {
+            // 只写打开：旧 UI 的唤起管道是 PipeDirection.In（仅入站），请求读权会 ACCESS_DENIED，
+            // 新 UI 作为第二实例将唤不起仍在运行的旧 UI（#54 迁移期兼容）。
+            tokio::net::windows::named_pipe::ClientOptions::new()
+                .read(false)
+                .write(true)
+                .open(&path)
+        };
         #[cfg(unix)]
         let opened = tokio::net::UnixStream::connect(&path).await;
 
@@ -291,6 +298,7 @@ mod tests {
 
     #[tokio::test]
     async fn second_guard_is_not_owner() {
+        // 防：非属主保留句柄导致「旧实例已退出但新实例仍被判非属主」；或锁未随 Drop 释放（#54）。
         let name = unique_name("guard");
         let first = SingleInstanceGuard::acquire(&name);
         assert!(first.is_owner());
@@ -305,6 +313,7 @@ mod tests {
 
     #[tokio::test]
     async fn show_window_notification_reaches_running_instance() {
+        // 防：唤起协议（SHOW_WINDOW 行 + 500ms 超时）与旧 UI 不一致，第二实例唤起静默失效（#54）。
         let name = unique_name("notify");
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         let server = spawn_show_window_server_named(&name, move || {
@@ -328,6 +337,7 @@ mod tests {
 
     #[tokio::test]
     async fn notification_without_listener_reports_failure() {
+        // 防：无实例时 notify 挂死或误报成功，第二实例卡在退出前（#54）。
         let name = unique_name("absent");
         assert!(!notify_existing_instance_named(&name, Duration::from_millis(100)).await);
     }

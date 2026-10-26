@@ -2,6 +2,7 @@
 name = "photoprivacy-ui"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 description = "PhotoPrivacy 新 UI：gpui 骨架竖切（窗口壳 + IPC 连通 + 单实例 + light/dark）"
 
 [[bin]]

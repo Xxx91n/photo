@@ -72,11 +72,9 @@ pub fn next_backoff(current: Duration) -> Duration {
 pub fn spawn_monitor(
     client: Arc<IpcClient>,
     endpoint: Endpoint,
-    mode: WorkerMode,
     tx: watch::Sender<ConnectionSnapshot>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        tx.send_modify(|snapshot| snapshot.worker_mode = Some(mode));
         let mut backoff = Duration::from_secs(1);
         loop {
             let started = Instant::now();
@@ -116,6 +114,7 @@ mod tests {
 
     #[test]
     fn backoff_steps_match_connection_state_service() {
+        // 防：退避步进漂移（旧 UI 1→2→4→8→16→32→60，封顶 60），心跳过密或状态久不刷新（#54）。
         let mut delay = Duration::from_secs(1);
         let mut seen = Vec::new();
         for _ in 0..8 {
@@ -127,6 +126,7 @@ mod tests {
 
     #[test]
     fn snapshot_starts_connecting_without_endpoint() {
+        // 防：首帧就报 Connected/Disconnected，界面在协议往返前谎报连接状态（#54）。
         let snapshot = ConnectionSnapshot::connecting();
         assert_eq!(snapshot.state, ConnectionState::Connecting);
         assert!(snapshot.endpoint.is_none());
