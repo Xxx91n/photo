@@ -31,3 +31,7 @@ Five canonical triage roles map one-to-one to `needs-triage`, `needs-info`, `rea
 ### Domain docs
 
 Single-context: domain vocabulary lives in `GLOSSARY.md` at the repo root. See `docs/agents/domain.md`.
+
+### Design markers
+
+写或改 `// Design(#<issue>): ` 决策注释时读 `docs/agents/design-markers.md`（选号、挂级、正文取舍）。
