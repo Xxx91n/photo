@@ -75,12 +75,12 @@ public sealed class NamedPipeIpcTransport : IIpcTransport
             options: ServerOptions(isFirstInstance));
     }
 
-    // Design(#7): IPC 认证以 OS 身份为边界——Windows 侧 CurrentUserOnly、Unix 侧 SO_PEERCRED 比对；只防同机低权限，同用户抢先建管道暂未加固，候选记在 #7。
     /// <summary>
     /// 服务端管道选项。CurrentUserOnly 与 FirstPipeInstance 均为 Windows 内核语义，
     /// 仅在 Windows 上施加；Unix 上 NamedPipeServerStream 为 FIFO 实现，
     /// 保持既有无标志语义（Unix 侧认证由 UnixDomainSocketIpcTransport 负责）。
     /// </summary>
+    // Design(#7): IPC 认证以 OS 身份为边界——Windows 侧 CurrentUserOnly、Unix 侧 SO_PEERCRED 比对；只防同机低权限，同用户抢先建管道暂未加固，候选记在 #7。
     private static PipeOptions ServerOptions(bool isFirstInstance)
     {
         var options = PipeOptions.Asynchronous;
