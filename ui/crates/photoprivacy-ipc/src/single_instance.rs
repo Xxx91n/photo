@@ -240,7 +240,7 @@ async fn serve_show_window_once(
     // tokio 未暴露 SECURITY_ATTRIBUTES，唤起管道使用进程默认 DACL（当前用户 + SYSTEM + 管理员），
     // 比旧 UI 的 PipeOptions.CurrentUserOnly（仅当前用户）宽松一档；同机其他普通用户仍连不上。
     // 双向访问是客户端可连的前提：旧 UI 客户端以 PipeDirection.Out（只写）打开。
-    // Design(#54): 唤起管道不收紧到 CurrentUserOnly（tokio 无 SDDL 入口），差异登记在票面未决项。
+    // Design(#54): 唤起管道维持进程默认 DACL，不做 CurrentUserOnly 级别的 SDDL 收紧。
     let mut server = tokio::net::windows::named_pipe::ServerOptions::new()
         .create(format!(r"\\.\pipe\{name}"))?;
     server.connect().await?;
