@@ -9,6 +9,7 @@ using PhotoPrivacy.Ui.Views;
 
 namespace PhotoPrivacy.Ui.Composition;
 
+// Design(#23): DI 装配只在组合根这一处发生，视图不得手写 new 依赖；白名单登记的 6+1 条残余缝由 #23 收敛（挂起，随 #53 换栈裁决定生死）。
 /// <summary>
 /// （架构恢复第七轮）：组合根 —— 全局服务装配唯一出处（spec 研究输入 Q1/Q2：
 /// 工业范式 = 组合根持有单例服务 + VM 构造注入，StabilityMatrix / Files.App / MarkSmith 模板）。

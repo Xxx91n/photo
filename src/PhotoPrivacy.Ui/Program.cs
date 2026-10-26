@@ -12,6 +12,7 @@ using PhotoPrivacy.Ui.Services;
 
 namespace PhotoPrivacy.Ui;
 
+// Design(#49): 旧 Avalonia UI 自换栈决议起冻结——只修致命 bug，视觉与结构投入一律拒收；新栈骨架见 #54，本工程退役判据见 #61。
 public static class UiProgram
 {
     public static void Main(string[] args)
