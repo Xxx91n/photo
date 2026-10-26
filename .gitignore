@@ -28,6 +28,9 @@ logs/
 # nuget local cache (project-level isolation)
 .nuget/
 
+# rust (ui/ workspace)
+ui/target/
+
 
 # tmp
 tmp/
