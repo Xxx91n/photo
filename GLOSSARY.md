@@ -4,7 +4,7 @@
 
 ## 治理
 
-**Design Marker（决策标记）**：架构决策在源码里的可检索前缀 `// Design(#<issue>): `，插在受该决策约束的声明行紧邻上方（声明带 `///` 文档块时插在文档块与声明之间）；issue 号是该决策的存续出处，全仓搜 `Design(#` 即得决策索引。约定生效于 #52，不恢复 ADR 目录。
+**Design Marker（决策标记）**：源码里可检索的架构决策锚 `// Design(#<issue>): <决策>`，紧贴受约束声明；issue 号 = 决策存续出处。取舍判据见 `docs/agents/design-markers.md`，形态由 `DesignMarkerSourceTests` 守。
 
 ## 业务
 
