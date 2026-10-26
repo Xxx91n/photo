@@ -15,6 +15,10 @@ public sealed class DesignMarkerSourceTests
     private static readonly Regex CanonicalMarker =
         new(@"^\s*//\s*Design\(#\d+\): \S", RegexOptions.Compiled, TimeSpan.FromSeconds(5));
 
+    /// <summary>候选=「像是想写标记」的行，含 <c>Design (#65)</c> 这类多一个空格的走形；放宽检测才能让形态断言拒掉它。</summary>
+    private static readonly Regex MarkerCandidate =
+        new(@"Design\s*\(#", RegexOptions.Compiled, TimeSpan.FromSeconds(5));
+
     private sealed record Marker(string File, int Line, string Text, string? NextLine);
 
     private static List<Marker> ScanMarkers()
@@ -25,7 +29,7 @@ public sealed class DesignMarkerSourceTests
             var lines = File.ReadAllLines(file);
             for (var i = 0; i < lines.Length; i++)
             {
-                if (!lines[i].Contains("Design(#", StringComparison.Ordinal))
+                if (!MarkerCandidate.IsMatch(lines[i]))
                 {
                     continue;
                 }
@@ -73,7 +77,7 @@ public sealed class DesignMarkerSourceTests
     {
         // 防的具体回潮形态：整批标记被手工删光或被格式化/重排脚本吃掉，GLOSSARY 词条还写着约定生效、守卫却一条都不红。
         // 关联 issue #65。
-        var count = ScanMarkers().Count;
+        var count = ScanMarkers().Count(m => CanonicalMarker.IsMatch(m.Text));
         Assert.True(count >= FirstBatchFloor,
             $"src/ 里的 Design 标记不得少于 #52 首批的 {FirstBatchFloor} 处（当前 {count} 处）");
     }

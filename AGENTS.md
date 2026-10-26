@@ -34,4 +34,4 @@ Single-context: domain vocabulary lives in `GLOSSARY.md` at the repo root. See `
 
 ### Design markers
 
-写或改 `// Design(#<issue>): ` 决策注释时读 `docs/agents/design-markers.md`（选号、挂级、正文取舍）。
+写或改 `// Design(#<issue>): <决策>` 注释时读 `docs/agents/design-markers.md`（选号、挂级、正文取舍）。
