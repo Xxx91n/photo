@@ -52,8 +52,8 @@ pub fn current_home() -> Option<PathBuf> {
     std::env::var_os("HOME").map(PathBuf::from)
 }
 
-// Design(#54): 新 UI 客户端按 OS 解析端点；旧 C# UI 全程硬编码 Windows 管道名，Linux/macOS 实际连不上
-// （换栈调研 §2.6 的第一条既有缺陷）。端点常量与 `WorkerIpcEndpointNames` 逐字一致，不改协议。
+// Design(#49): IPC 端点名是协议主缝的一部分——这里与 `WorkerIpcEndpointNames` 逐字一致，不改协议；
+// 旧 C# UI 全程硬编码 Windows 管道名，新客户端（#54）改按 OS 解析，修的是客户端缺陷而不是协议。
 pub fn resolve_endpoint(
     platform: HostPlatform,
     mode: WorkerMode,
@@ -88,6 +88,7 @@ mod tests {
 
     #[test]
     fn windows_pipe_names_match_dotnet_contract() {
+        // 防：Windows 管道名漂移后连不上已安装的 Worker（契约出处 WorkerIpcEndpointNames.cs）。
         assert_eq!(
             resolve_endpoint(HostPlatform::Windows, WorkerMode::Background, None),
             Some(Endpoint::Pipe("PhotoPrivacyCleaner.Background".into()))
@@ -100,6 +101,7 @@ mod tests {
 
     #[test]
     fn linux_socket_paths_match_dotnet_contract() {
+        // 防：Unix socket 路径与 systemd RuntimeDirectory 下的 Worker 不一致（旧 UI 的既有缺陷）。
         assert_eq!(
             resolve_endpoint(HostPlatform::Linux, WorkerMode::Background, None),
             Some(Endpoint::UnixSocket(
@@ -114,6 +116,7 @@ mod tests {
 
     #[test]
     fn macos_socket_paths_live_under_user_home() {
+        // 防：macOS 端点落到错误的目录，或缺少 HOME 时静默拼出相对路径。
         let home = Path::new("/Users/example");
         assert_eq!(
             resolve_endpoint(HostPlatform::MacOs, WorkerMode::Background, Some(home)),

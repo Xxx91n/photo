@@ -124,9 +124,12 @@ async fn connect_worker(
 }
 
 fn launch_background_worker(worker: &Path, config: Option<&Path>) -> std::io::Result<()> {
-    background_worker_command(worker, config)
-        .spawn()
-        .map(|_| ())
+    let mut child = background_worker_command(worker, config).spawn()?;
+    // 旧 UI 不持有 Worker 句柄；这里补一个回收线程，避免 Unix 上 Worker 先退出时留下僵尸。
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
+    Ok(())
 }
 
 fn background_worker_command(worker: &Path, config: Option<&Path>) -> std::process::Command {
@@ -151,8 +154,8 @@ fn exe_dir() -> Option<PathBuf> {
 }
 
 fn default_config_path() -> Option<PathBuf> {
-    let path = exe_dir()?.join("config").join("config.json");
-    path.exists().then_some(path)
+    // 与旧 UI 一致：默认路径始终传给 Worker（存在与否由 Worker 自己校验），不做存在性筛选。
+    Some(exe_dir()?.join("config").join("config.json"))
 }
 
 fn default_worker_path() -> Option<PathBuf> {
@@ -171,6 +174,7 @@ mod tests {
 
     #[test]
     fn worker_launch_matches_old_ui_arguments() {
+        // 防：启动参数漂移导致 Worker 用错模式或忽略 UI 指定的配置（旧 UI 契约见 WorkerProcessManager）。
         let config = Path::new("C:/tmp/config.json");
         let command = background_worker_command(Path::new("PhotoPrivacyWorker.exe"), Some(config));
         let args: Vec<_> = command
@@ -185,6 +189,7 @@ mod tests {
 
     #[test]
     fn worker_launch_omits_config_when_absent() {
+        // 防：无配置时仍传 `--config ""` 之类的空参数，让 Worker 解析到空路径。
         let command = background_worker_command(Path::new("PhotoPrivacyWorker"), None);
         let args: Vec<_> = command
             .get_args()

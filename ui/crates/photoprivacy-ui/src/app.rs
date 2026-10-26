@@ -126,7 +126,7 @@ impl AppView {
     }
 }
 
-fn present(value: Option<String>) -> String {
+fn or_dash(value: Option<String>) -> String {
     value
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| "—".to_string())
@@ -138,12 +138,12 @@ impl Render for AppView {
         let state = self.snapshot.state;
         let dot = Self::state_color(state, &theme);
 
-        let endpoint = present(self.snapshot.endpoint.clone());
-        let mode = self
-            .snapshot
-            .worker_mode
-            .map(|mode| mode.label().to_string())
-            .unwrap_or_else(|| "—".to_string());
+        let endpoint = or_dash(self.snapshot.endpoint.clone());
+        let mode = or_dash(
+            self.snapshot
+                .worker_mode
+                .map(|mode| mode.label().to_string()),
+        );
         let round_trip = match self.snapshot.last_round_trip {
             Some(elapsed) => format!("last round trip {} ms", elapsed.as_millis()),
             None => "no round trip yet".to_string(),
@@ -219,24 +219,17 @@ impl Render for AppView {
             }));
 
         let rows = [
-            (
-                "Worker mode",
-                present(
-                    self.snapshot
-                        .worker_mode
-                        .map(|mode| mode.label().to_string()),
-                ),
-            ),
-            ("Reported mode", present(self.snapshot.status_mode.clone())),
+            ("Worker mode", mode.clone()),
+            ("Reported mode", or_dash(self.snapshot.status_mode.clone())),
             (
                 "Protocol",
-                present(
+                or_dash(
                     self.snapshot
                         .protocol_version
                         .map(|version| format!("v{version}")),
                 ),
             ),
-            ("ExifTool", present(self.snapshot.exif_tool_version.clone())),
+            ("ExifTool", or_dash(self.snapshot.exif_tool_version.clone())),
             ("Round trips", self.snapshot.round_trips.to_string()),
         ];
 
