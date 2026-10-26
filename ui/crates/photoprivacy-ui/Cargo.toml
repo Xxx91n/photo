@@ -1,0 +1,24 @@
+[package]
+name = "photoprivacy-ui"
+version.workspace = true
+edition.workspace = true
+description = "PhotoPrivacy 新 UI：gpui 骨架竖切（窗口壳 + IPC 连通 + 单实例 + light/dark）"
+
+[[bin]]
+name = "photoprivacy-ui"
+path = "src/main.rs"
+
+[dependencies]
+photoprivacy-ipc = { path = "../photoprivacy-ipc" }
+gpui.workspace = true
+tokio.workspace = true
+anyhow.workspace = true
+
+[target.'cfg(target_os = "windows")'.dependencies]
+gpui_windows = { package = "gpui-pre-windows", version = "=0.3.10", default-features = false }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+gpui_macos = { package = "gpui-pre-macos", version = "=0.3.10", default-features = false, features = ["font-kit"] }
+
+[target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies]
+gpui_linux = { package = "gpui-pre-linux", version = "=0.3.10", default-features = false, features = ["wayland", "x11"] }

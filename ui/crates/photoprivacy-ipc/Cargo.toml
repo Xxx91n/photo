@@ -1,0 +1,16 @@
+[package]
+name = "photoprivacy-ipc"
+version.workspace = true
+edition.workspace = true
+description = "PhotoPrivacy Worker IPC 客户端：端点解析、JSON 行协议、心跳状态、单实例守卫"
+
+[dependencies]
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
