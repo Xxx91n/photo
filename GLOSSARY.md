@@ -78,6 +78,7 @@
 
 ## UI
 
+**Aesthetic Anchor**：新 UI 的观感“像不像”标尺；六锚清单与取舍见 #49 T4，MangoDisk 仅保留给冻结旧 UI。
 **Semi.Avalonia**：Semi Design 的 Avalonia 实现，主题基座。
 **Ursa.Avalonia**：Avalonia 控件扩展库，与 Semi 搭配。
 **Semi Token**：SemiColor*/SemiBackground* 语义 token，替代硬编码色值。
