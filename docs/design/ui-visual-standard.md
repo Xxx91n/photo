@@ -1,7 +1,7 @@
 # UI 视觉规范（UI Visual Standard）
 
-> **状态**：现役活文档（living document） ｜ **建立**：2026-09-12（ui-craft 轮票 01） ｜ **版本**：v2.0
-> **权威**：本文件是 PhotoPrivacy **页面级**视觉规范的唯一现役标准，永远代表当前标准。
+> **状态**：冻结（旧 Avalonia UI 专用） ｜ **建立**：2026-09-12（ui-craft 轮票 01） ｜ **版本**：v2.8
+> **权威**：本文件是 PhotoPrivacy **旧 Avalonia UI** 页面级视觉规范的唯一标准；新 UI 的视觉标尺见 #49 T4。
 > **换栈注记（2026-10-26，#53 T4）**：本规范只适用于冻结的旧 Avalonia UI（只修致命 bug）；新 UI 的“像不像”标尺改为 #49 T4 登记的六锚，MangoDisk 不再作为新栈基准。
 > **分工**：token / 变体级规范的取舍理由已折进源码注释；本文件记「是什么」。
 > **引用方式**：后续 UI 票在验收条件中直接引用节号（例：「须符合 ui-visual-standard.md §2」）。
@@ -9,7 +9,7 @@
 
 ---
 
-## 0. 审美基准（D-005 / ui-craft2 —— 全文唯一的「像不像」标尺）
+## 0. 审美基准（D-005 / ui-craft2 —— 旧 UI 唯一的「像不像」标尺）
 
 > **v2.0 变更**：主基准 = **MangoDisk 观感级全面对标**（ui-craft2 决策 D-005）。上轮三锚（Wasabi / Apple / VS Code·Discord）**降级为气质参考**——保留其「克制 / 分组 / 密度」的心智约束，不再作为逐条对标的定值来源。
 
@@ -441,3 +441,4 @@
 | v2.5 | 2026-09-15 | 票 06 / ui-craft2 | **RulesPage 整页对齐落地（D-005/D-006）**：页壳 58+page-title+副标题+右侧操作区（保存/重置 SharedSizeGroup 组+SaveStatus 迁入页头，atomcode 调研裁决一：页面级操作放页头右侧操作区、绝不进过滤工具条）；专家横幅卡沿用裸 settings-card（§3.1 明许非行集合卡）；36px 过滤工具条（LayoutToolbarHeight，搜索左置=数据作用域）；DataGrid `RowHeight=LayoutResultRowHeight`(44)；§4.2 规则页 E2 骨架落地（empty-icon/title/desc + 空因双文案 E5 随 `SearchFilterActive` 切换，`rules.empty_desc`/`rules.empty_filtered` ×10 语言新增、`rules.panel.title` 孤儿键清除）；VM +`SearchFilterActive` 收口通知 |
 | v2.6 | 2026-09-15 | 票 07 / ui-craft2 | **ServiceManagerPage 整页对齐落地（D-005/D-006）**：页壳 58+page-title（nav.service_manager）+内容 readable 1160 居中；状态卡/操作卡合并为单组单卡（atomcode 裁决三：状态自成服务卡首行不独立成卡），组标签 service.section.service 出卡上方 + settings-card.grouped 四行（状态行=service.status 标签+状态点/文案、安装 primary、启停刷 ghost SharedSizeGroup 沿用、卸载 danger）；§5.2 P1 组间距 SpaceLg→SpaceXl 收紧完成（过渡态注记消除）；硬编码 "ACTIONS" 段头清零（i18n 缺口修复）；孤儿键 service.section.status/actions 十语言+内嵌兜底同步清除、service.status 孤儿键激活为状态行标签；§1.2/§3.2/§3.3 B3/§4.2/附录 B 实态与行号跟随；登记张力 T-6（卸载缺确认对话框——调研裁决二建议 danger 操作配确认流，属行为变更超本票审美范围，交大脑裁定） |
 | v2.7 | 2026-09-15 | 票 08 / ui-craft2 | **Toast 反馈链落地（D-007 / A-003）**：§6 规划转现役——组件选型 atomcode 调研裁决自绘 ItemsControl overlay（Ursa WindowNotificationManager/WindowToastManager 仅覆盖 5/10 维，sonner 核心交互全缺，零新 NuGet 依赖）；ToastService DI 单例 + ToastHost 挂 MainWindow 根 Grid 末位右下锚定；T1 触发点接入配置防抖保存三态 / 规则保存重置 / 服务操作四分型；rich-colors 四型落 Semi*Light 语义浅底 + Material.Icons 16px；400ms CubicEaseOut 可中断堆叠过渡（实物 = ThicknessTransition(Margin) + DoubleTransition(Width/Opacity/Height) styled-property 通道；TransformOperationsTransition 经 dll 元数据核验在 Avalonia 12.1.1 不存在，缩放维度以卡宽收窄 18px/层近似，见 §3 API 纠偏）；gap=10 基准按 §5.2 P4 同组档量化落 SpaceSm(8)（离轨映射登记） |
+| v2.8 | 2026-10-26 | 票 #53 / T4 | **换栈注记（AC4）**：本规范限定为冻结旧 Avalonia UI（只修致命 bug）；新 UI 的“像不像”标尺改为 #49 T4 六锚，MangoDisk 不再作为新栈基准；头部状态/权威与 §0 标题同步限定旧 UI。 |
