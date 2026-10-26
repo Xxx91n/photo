@@ -7,7 +7,7 @@ PhotoPrivacy：批量清理照片/视频/文档隐私元数据的 C#/.NET 10 跨
 ## 怎么跑
 
 - 构建：`dotnet build PhotoPrivacy.sln`（CI 口径 `--configuration Release`）。
-- 测试：`dotnet test PhotoPrivacy.sln --configuration Release --filter "Category!=Smoke&Category!=ExifTool"`。
+- 测试：CI 跑 `dotnet test PhotoPrivacy.sln --configuration Release --filter "Category!=Smoke&Category!=ExifTool"`；本机只做静态门禁（`git diff --check` 等），CI-only 纪律见 `tests/TEST-CONVENTIONS.md` §3。
 - 发布/安装/门禁：`scripts/publish-app.ps1` 或 `scripts/publish.sh`；`scripts/install-service.ps1`、`scripts/install-systemd-service.sh`、`scripts/install-launchd-service.sh`；`scripts/release-readiness.ps1`；发布属性只经脚本 `/p:` 传入，禁写回 csproj。
 
 ## 别改的目录
