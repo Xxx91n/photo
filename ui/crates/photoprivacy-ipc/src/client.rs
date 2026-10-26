@@ -139,6 +139,10 @@ impl IpcClient {
     }
 }
 
+// 旧 UI 的客户端带 `PipeOptions.CurrentUserOnly`，连接后校验管道属主 == 当前用户。该选项在服务模式下
+// 自相矛盾（服务 Worker 以 LocalSystem 运行，属主是 SYSTEM，用户 UI 必然被拒）——换栈调研 §2.6 已把
+// 「Windows 服务模式管道认证」登记为既有缺陷，属主边界改由服务端 DACL 承担，客户端不复制该校验。
+// Design(#49): IPC 认证以 OS 身份为边界（服务端 DACL），客户端不做属主校验。
 #[cfg(windows)]
 async fn connect_once(endpoint: &Endpoint) -> io::Result<Stream> {
     let Endpoint::Pipe(name) = endpoint else {
