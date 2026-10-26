@@ -1,6 +1,6 @@
 # 决策标记（Design Marker）判据
 
-> 定位：写或改 `// Design(#<issue>): ` 注释时的操作判据。术语定义在 `GLOSSARY.md`「治理」段；标记的**形态**由 `tests/PhotoPrivacy.IntegrationTests/DesignMarkerSourceTests.cs` 机械守住（本文件不复述正则），这里只管机器判不了的**取舍**。
+> 定位：写或改 `// Design(#<issue>): <决策>` 注释时的操作判据。术语定义在 `GLOSSARY.md`「治理」段；标记的**形态**由 `tests/PhotoPrivacy.IntegrationTests/DesignMarkerSourceTests.cs` 机械守住（本文件不复述正则），这里只管机器判不了的**取舍**。
 > 生效：#52；守卫：#65。
 
 ## 选号：指向存续出处
