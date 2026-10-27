@@ -180,7 +180,7 @@ struct FieldView {
     focus: FocusHandle,
 }
 
-// Design(#55): 新 UI 尚未建立 DesignTokens 层（#61）；本页尺寸/字号沿用骨架 px 字面量，旧 UI 的 token 规则只约束冻结的 Avalonia UI。
+// Design(#49): 新 UI 尚未建立 DesignTokens 层；本页尺寸/字号沿用骨架 px 字面量，旧 UI 的 token 规则只约束冻结的 Avalonia UI。
 pub struct AppView {
     snapshot: ConnectionSnapshot,
     snapshots: watch::Receiver<ConnectionSnapshot>,
@@ -353,11 +353,14 @@ impl AppView {
     }
 
     fn mark_dirty(&mut self, cx: &mut Context<Self>) {
-        // 旧 UI 的日志级别下拉会联动 LogEnabled；ConfigEditor 再由 LogLevel 推导 diagnostic_mode。
-        self.config.audit.diagnostic_mode = matches!(
-            self.config.audit.log_level.to_ascii_lowercase().as_str(),
-            "all" | "debug"
-        );
+        // 旧 UI 的日志级别下拉会联动 LogEnabled；ConfigEditor 再由 LogLevel 推导 diagnostic_mode，
+        // 未知级别保留原值（ResolveDiagnosticMode 的 fallback）。
+        self.config.audit.diagnostic_mode =
+            match self.config.audit.log_level.to_ascii_lowercase().as_str() {
+                "all" | "debug" => true,
+                "info" | "warn" | "error" => false,
+                _ => self.config.audit.diagnostic_mode,
+            };
         let _ = self
             .config_commands
             .send(ConfigCommand::Edit(Box::new(self.config.clone())));

@@ -10,7 +10,7 @@
 //! 旧 UI 用 FileSystemWatcher；这里用 500ms 内容指纹轮询取得同样的用户可见行为，
 //! 且不引入平台 watcher 依赖。
 
-use crate::config::AppConfig;
+use crate::config::{AppConfig, default_backup_directory_for};
 use crate::config_file::ConfigFile;
 use photoprivacy_ipc::{Endpoint, IpcClient};
 use std::sync::Arc;
@@ -171,7 +171,12 @@ fn merge_editable_fields(mut disk: AppConfig, draft: &AppConfig) -> AppConfig {
     disk.watch.hot_folder = draft.watch.hot_folder.clone();
     disk.watch.auto_excluded_directories = draft.watch.auto_excluded_directories.clone();
     disk.backup.enabled = draft.backup.enabled;
-    disk.backup.directory = draft.backup.directory.clone();
+    // 旧 UI ConfigEditor.ResolveBackupDirectory：空白时把 `<hot>/bak` 落盘，而不是留空串。
+    disk.backup.directory = if draft.backup.directory.trim().is_empty() {
+        default_backup_directory_for(&draft.watch.hot_folder)
+    } else {
+        draft.backup.directory.clone()
+    };
     disk.quarantine.enabled = draft.quarantine.enabled;
     disk.quarantine.directory = draft.quarantine.directory.clone();
     disk.audit.log_directory = draft.audit.log_directory.clone();
@@ -477,5 +482,40 @@ mod tests {
             "坏文件必须拒绝覆盖，实际 {event:?}"
         );
         assert_eq!(fs::read_to_string(dir.config_path()).unwrap(), "{broken");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn save_materializes_default_backup_directory() {
+        // 防：空白 backup.directory 原样落盘，与旧 UI ConfigEditor 写出的 <hot>/bak 形态不一致（#55）。
+        let dir = TempDir::new("backup-default");
+        let mut harness = start(&dir);
+        assert!(matches!(
+            next_event(&mut harness).await,
+            ConfigEvent::Loaded(_)
+        ));
+
+        let hot = dir.0.join("photos");
+        let mut draft = AppConfig::default();
+        draft.watch.hot_folder = hot.display().to_string();
+        draft.backup.directory = String::new();
+        harness
+            .commands
+            .send(ConfigCommand::Edit(Box::new(draft)))
+            .unwrap();
+        tokio::time::advance(Duration::from_millis(150)).await;
+        tokio::task::yield_now().await;
+        loop {
+            match next_event(&mut harness).await {
+                ConfigEvent::Saved { .. } => break,
+                ConfigEvent::ExternalReload(_) | ConfigEvent::ExternalLoadFailed(_) => continue,
+                other => panic!("保存应成功，实际 {other:?}"),
+            }
+        }
+
+        let saved = AppConfig::from_json(&fs::read_to_string(dir.config_path()).unwrap()).unwrap();
+        assert_eq!(
+            saved.backup.directory,
+            hot.join("bak").display().to_string()
+        );
     }
 }
