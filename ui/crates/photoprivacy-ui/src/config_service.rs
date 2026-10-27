@@ -18,7 +18,7 @@ use std::time::Duration;
 use tokio::sync::{mpsc, watch};
 use tokio::time::{Instant, MissedTickBehavior, sleep_until};
 
-// Design(#55): 配置保存防抖 500ms，与旧 UI ConfigFileWatcher/ConfigEditor 同窗口。
+// Design(#49): 配置保存防抖 500ms，与旧 UI ConfigFileWatcher/ConfigEditor 同窗口。
 pub const SAVE_DEBOUNCE: Duration = Duration::from_millis(500);
 pub const EXTERNAL_POLL_INTERVAL: Duration = Duration::from_millis(500);
 

@@ -3,7 +3,7 @@ name = "photoprivacy-ui"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "PhotoPrivacy 新 UI：gpui 骨架竖切（窗口壳 + IPC 连通 + 单实例 + light/dark）"
+description = "PhotoPrivacy 新 UI：gpui 骨架竖切（窗口壳 + IPC 连通 + 单实例 + light/dark + 规则页）"
 
 [[bin]]
 name = "photoprivacy-ui"
@@ -12,6 +12,7 @@ path = "src/main.rs"
 [dependencies]
 photoprivacy-ipc = { path = "../photoprivacy-ipc" }
 photoprivacy-logs = { path = "../photoprivacy-logs" }
+photoprivacy-rules = { path = "../photoprivacy-rules" }
 photoprivacy-service = { path = "../photoprivacy-service" }
 gpui.workspace = true
 tokio.workspace = true

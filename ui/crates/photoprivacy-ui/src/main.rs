@@ -3,6 +3,7 @@ mod config;
 mod config_file;
 mod config_service;
 mod log_service;
+mod rules_page;
 mod service_page;
 mod theme;
 // Design(#49): gpui 无内建托盘（T4 已接受自建/第三方），托盘用 tray-icon 原生菜单实现。
@@ -18,6 +19,7 @@ use log_service::LogBatch;
 use photoprivacy_ipc::{
     ConnectionSnapshot, SingleInstanceGuard, UI_INSTANCE_NAME, notify_existing_instance,
 };
+use photoprivacy_rules::RulesEditor;
 use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -164,6 +166,7 @@ fn main() -> anyhow::Result<()> {
         config_state: Rc::new(RefCell::new(app::ConfigUiState::new(initial_config))),
         config_commands: config_command_tx,
         config_path,
+        rules: Rc::new(RefCell::new(RulesEditor::open_default())),
     };
 
     application().run(move |cx: &mut App| {

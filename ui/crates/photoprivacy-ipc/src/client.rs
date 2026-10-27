@@ -18,7 +18,7 @@ const CONNECT_RETRY_INTERVAL: Duration = Duration::from_millis(25);
 
 /// ReloadConfig 会停 watcher → 重建 bridge → 重启 watcher；旧 UI 的 3s 读超时覆盖不了，
 /// 会把「正在重载」误判成 Worker 掉线。契约要求 ≥6s，这里取 10s 留余量。
-// Design(#55): ReloadConfig 的读超时独立于普通请求（10s），避免热重载被 3s 超时误杀。
+// Design(#49): ReloadConfig 的读超时独立于普通请求（10s），避免热重载被 3s 超时误杀。
 pub const RELOAD_CONFIG_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug)]
