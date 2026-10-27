@@ -151,6 +151,7 @@ where
     }
 }
 
+/// 可达性探测结果 → 服务可达性枚举。
 fn service_reachability(reachable: bool) -> ServiceReachability {
     if reachable {
         ServiceReachability::Reachable
@@ -159,6 +160,7 @@ fn service_reachability(reachable: bool) -> ServiceReachability {
     }
 }
 
+/// 心跳成功后写入连接字段；服务可达性由独立的 3s 拍维护，不在这里覆盖。
 fn apply_success(
     snapshot: &mut ConnectionSnapshot,
     status: &Status,
@@ -176,6 +178,7 @@ fn apply_success(
 
 // 失败时清掉连接期字段：它们只代表上一次成功往返，留在界面上会被读成 Worker 的当前状态。
 // `last_round_trip` 保留——界面文案本身就是「上次往返」的历史语义。
+/// 心跳失败后清掉连接期字段；保留历史往返与服务可达性。
 fn apply_failure(snapshot: &mut ConnectionSnapshot, err: &IpcError) {
     snapshot.state = ConnectionState::Reconnecting;
     snapshot.protocol_version = None;

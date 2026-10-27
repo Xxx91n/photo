@@ -1,4 +1,5 @@
 mod app;
+mod log_service;
 mod theme;
 // Design(#49): gpui 无内建托盘（T4 已接受自建/第三方），托盘用 tray-icon 原生菜单实现。
 mod tray;
@@ -12,7 +13,7 @@ use gpui::{
 use photoprivacy_ipc::{
     ConnectionSnapshot, SingleInstanceGuard, UI_INSTANCE_NAME, notify_existing_instance,
 };
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Duration;
@@ -81,6 +82,13 @@ fn application() -> gpui::Application {
     gpui::Application::with_platform(gpui_linux::current_platform(false))
 }
 
+fn audit_fallback_directory() -> PathBuf {
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|dir| dir.join("hot").join("_audit")))
+        .unwrap_or_else(|| PathBuf::from("hot").join("_audit"))
+}
+
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
@@ -99,12 +107,28 @@ fn main() -> anyhow::Result<()> {
 
     let options = ConnectOptions::discover().with_overrides(args.config_path, args.worker_path);
     let ui_options = ui_options::load(options.config_path.as_deref());
+    // 日志页读取与 Worker 相同的 config.json 切片；缺失/为空时回落到 `<base>/hot/_audit`
+    // （旧 UI 经 AppConfigLoader 把空串补成 DefaultPaths.DefaultAuditLogDirectory）。
+    let audit_config = photoprivacy_logs::resolve_audit_config(
+        options.config_path.as_deref(),
+        &audit_fallback_directory(),
+    );
+    let log_level = audit_config.log_level;
+
     let (snapshot_tx, snapshot_rx) = watch::channel(ConnectionSnapshot::connecting());
     let (event_tx, event_rx) = mpsc::unbounded_channel();
-    worker_connection::start(runtime.handle(), options, snapshot_tx, event_tx);
+    let (log_tx, log_rx) = mpsc::unbounded_channel();
+    let link = worker_connection::start(runtime.handle(), options, snapshot_tx, event_tx);
+    let log_service = log_service::start(runtime.handle(), audit_config, link, log_tx);
 
-    // 主题在关窗驻守/重建之间延续；窗口本身不保留（gpui 没有隐藏窗口的 API）。
-    let theme_mode = Rc::new(Cell::new(theme::ThemeMode::System));
+    // 主题与日志缓冲在关窗驻守/重建之间延续；窗口本身不保留（gpui 没有隐藏窗口的 API）。
+    let deps = app::AppDeps {
+        snapshots: snapshot_rx,
+        theme_mode: Rc::new(Cell::new(theme::ThemeMode::System)),
+        log_state: Rc::new(RefCell::new(app::LogState::new(log_level))),
+        log_batches: Rc::new(RefCell::new(Some(log_rx))),
+        log_service,
+    };
 
     application().run(move |cx: &mut App| {
         // 托盘必须在主线程、平台就绪后创建（tray-icon 要求同线程有消息循环）。
@@ -113,13 +137,7 @@ fn main() -> anyhow::Result<()> {
         let start_hidden =
             tray::should_start_hidden(ui_options.hide_main_window_on_startup, has_tray);
 
-        spawn_event_pump(
-            cx,
-            tray_handle,
-            event_rx,
-            snapshot_rx.clone(),
-            theme_mode.clone(),
-        );
+        spawn_event_pump(cx, tray_handle, event_rx, deps.clone());
 
         // 关窗语义：托盘在 → 窗口销毁、进程与托盘继续驻守；托盘唤起会重建窗口。
         // 没有托盘 → 关窗即退出（与旧 UI 的 UseTrayIcon == false 分支一致）。
@@ -134,7 +152,7 @@ fn main() -> anyhow::Result<()> {
         .detach();
 
         if !start_hidden {
-            open_main_window(cx, snapshot_rx.clone(), theme_mode.clone());
+            open_main_window(cx, deps);
         }
     });
 
@@ -143,12 +161,12 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// 事件泵：轮询托盘/唤起事件并在 UI 线程执行；窗口关闭后仍继续驻守。
 fn spawn_event_pump(
     cx: &mut App,
     tray: Option<tray::TrayHandle>,
     mut events: mpsc::UnboundedReceiver<UiEvent>,
-    snapshots: watch::Receiver<ConnectionSnapshot>,
-    theme_mode: Rc<Cell<theme::ThemeMode>>,
+    deps: app::AppDeps,
 ) {
     cx.spawn(async move |cx| {
         loop {
@@ -183,69 +201,56 @@ fn spawn_event_pump(
             }
 
             if show_window {
-                show_main_window(cx, snapshots.clone(), theme_mode.clone());
+                show_main_window(cx, deps.clone());
             }
         }
     })
     .detach();
 }
 
-// Design(#49): gpui 无窗口隐藏 API——关窗驻守销毁窗口，托盘唤起时重建；主题状态跨重建保留，
+/// 唤起已有窗口，或在托盘驻守后重建窗口。
+// Design(#49): gpui 无窗口隐藏 API——关窗驻守销毁窗口，托盘唤起时重建；主题与日志状态跨重建保留，
 // 窗口位置/尺寸会重置为居中（旧 UI 是隐藏/显示，尺寸沿用）。
-fn show_main_window(
-    cx: &mut AsyncApp,
-    snapshots: watch::Receiver<ConnectionSnapshot>,
-    theme_mode: Rc<Cell<theme::ThemeMode>>,
-) {
+fn show_main_window(cx: &mut AsyncApp, deps: app::AppDeps) {
     let windows = cx.update(|cx| cx.windows());
     if let Some(handle) = windows.into_iter().next() {
         let _ = handle.update(cx, |_, window, _| window.activate_window());
     } else {
-        open_main_window_async(cx, snapshots, theme_mode);
+        open_main_window_async(cx, deps);
     }
     cx.update(|cx| cx.activate(true));
 }
 
-fn open_main_window(
-    cx: &mut App,
-    snapshots: watch::Receiver<ConnectionSnapshot>,
-    theme_mode: Rc<Cell<theme::ThemeMode>>,
-) {
+/// 同步创建主窗口（启动路径）。
+fn open_main_window(cx: &mut App, deps: app::AppDeps) {
     cx.open_window(centered_window_options(cx), move |window, cx| {
-        build_main_view(window, cx, snapshots, theme_mode)
+        build_main_view(window, cx, deps)
     })
     .expect("创建主窗口失败");
 }
 
-fn open_main_window_async(
-    cx: &mut AsyncApp,
-    snapshots: watch::Receiver<ConnectionSnapshot>,
-    theme_mode: Rc<Cell<theme::ThemeMode>>,
-) {
+/// 异步重建主窗口（托盘/单实例唤起路径）；退出竞争中失败只记日志。
+fn open_main_window_async(cx: &mut AsyncApp, deps: app::AppDeps) {
     let options = cx.update(|cx| centered_window_options(cx));
     // 退出过程中仍可能收到最后一次唤起（应用已在 quit 状态时 open_window 会返回 Err）；
     // 这里不 panic，避免把正常退出变成崩溃。
-    if let Err(err) = cx.open_window(options, move |window, cx| {
-        build_main_view(window, cx, snapshots, theme_mode)
-    }) {
+    if let Err(err) = cx.open_window(options, move |window, cx| build_main_view(window, cx, deps)) {
         eprintln!("[photoprivacy-ui] 重建主窗口失败: {err}");
     }
 }
 
-fn build_main_view(
-    window: &mut Window,
-    cx: &mut App,
-    snapshots: watch::Receiver<ConnectionSnapshot>,
-    theme_mode: Rc<Cell<theme::ThemeMode>>,
-) -> Entity<app::AppView> {
+/// 构造 AppView；窗口级依赖统一从 `AppDeps` 取。
+fn build_main_view(window: &mut Window, cx: &mut App, deps: app::AppDeps) -> Entity<app::AppView> {
     cx.activate(false);
-    cx.new(|cx| app::AppView::new(window, cx, snapshots, theme_mode))
+    cx.new(|cx| app::AppView::new(window, cx, deps))
 }
 
+/// 居中主窗口的尺寸与选项。
 fn centered_window_options(cx: &App) -> WindowOptions {
     window_options(Bounds::centered(None, size(px(820.), px(580.)), cx))
 }
 
+/// 主窗口的固定选项（标题栏、背景、最小尺寸）。
 fn window_options(bounds: Bounds<Pixels>) -> WindowOptions {
     WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(bounds)),

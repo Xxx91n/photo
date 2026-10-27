@@ -93,6 +93,14 @@ impl IpcClient {
         self.request(endpoint, methods::PING).await.is_ok()
     }
 
+    /// 拉取 Worker 侧今日审计尾部（旧 UI 的 IPC Log Pull / backfill 通道）。
+    ///
+    /// `Ok` 表示 Worker 可达；空数组是合法结果（今日还没有审计行），由调用方决定是否继续等待。
+    pub async fn recent_logs(&self, endpoint: &Endpoint) -> Result<Vec<String>, IpcError> {
+        let response = self.request(endpoint, methods::GET_RECENT_LOGS).await?;
+        Ok(response.logs.map(|logs| logs.lines).unwrap_or_default())
+    }
+
     pub async fn request(&self, endpoint: &Endpoint, method: &str) -> Result<Response, IpcError> {
         let _gate = self.gate.lock().await;
         let id = format!("ui-{}", self.next_id.fetch_add(1, Ordering::Relaxed));

@@ -61,6 +61,7 @@ pub fn should_start_hidden(hide_main_window_on_startup: bool, tray_available: bo
 }
 
 impl TrayHandle {
+    /// 构建托盘图标、原生菜单与左键/退出命令。
     // Design(#60): 托盘菜单与工具提示暂为英文，10 语言接入归 #60。
     fn build() -> anyhow::Result<Self> {
         // 旧菜单还有 Pause/Resume；本票 AC 只要求显示/退出，Worker 暂停/恢复控制不在本票范围，
@@ -113,11 +114,13 @@ impl TrayHandle {
         command
     }
 
+    /// 移除托盘图标（退出前调用，避免通知区域残留）。
     pub fn hide(&self) {
         let _ = self.icon.set_visible(false);
     }
 }
 
+/// 由强调色生成 32px 圆点位图并交给 tray-icon。
 fn dot_icon() -> anyhow::Result<Icon> {
     let (rgba, size) = dot_rgba();
     Ok(Icon::from_rgba(rgba, size, size)?)

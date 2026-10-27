@@ -13,12 +13,14 @@ pub struct UiOptions {
     pub hide_tray_icon: bool,
 }
 
+/// 从 config.json 读取驻守开关；文件缺失或不可读时回落到默认值。
 pub fn load(path: Option<&Path>) -> UiOptions {
     path.and_then(|path| std::fs::read_to_string(path).ok())
         .map(|text| parse(&text))
         .unwrap_or_default()
 }
 
+/// 解析 `ui.*` 两个布尔开关；坏 JSON 或非布尔值回落默认。
 // Design(#55): 这里只认驻守相关的两个开关，配置页的读写/热重载由 #55 接管。
 fn parse(text: &str) -> UiOptions {
     // Windows 编辑器/脚本常写 UTF-8 BOM；serde_json 不认 BOM，先剥掉再解析。
@@ -33,6 +35,7 @@ fn parse(text: &str) -> UiOptions {
     }
 }
 
+/// 读取指定 JSON pointer 的布尔值；缺失或类型不符按 false。
 fn read_bool(json: &Value, pointer: &str) -> bool {
     json.pointer(pointer)
         .and_then(Value::as_bool)
