@@ -315,7 +315,13 @@ impl AppView {
                 self.save_state = SaveState::ExternalLoadFailed(error);
                 self.save_status_deadline = None;
             }
-            ConfigEvent::Saved { worker_error } => {
+            ConfigEvent::Saved {
+                config,
+                worker_error,
+            } => {
+                // 与旧 UI ApplyConfigImmediatelyAsync 的 ApplyRuntimeConfigToUiState 一致：
+                // 落盘后按实际写出的配置刷新显示（例如空备份目录已物化为 <hot>/bak）。
+                self.set_config(*config, false);
                 self.save_state = match worker_error {
                     Some(error) => SaveState::SavedWorkerDown(error),
                     None => SaveState::Saved,
@@ -1200,8 +1206,18 @@ impl AppView {
         // 日志组
         let mut log_rows = Vec::new();
         let mut level_chips = Vec::new();
+        // 旧 UI 的 LogLevelIndex 对未知级别回落 info 选中（MainWindowViewModel）。
+        let configured_level = self.config.audit.log_level.to_ascii_lowercase();
+        let selected_level = if LOG_LEVELS
+            .iter()
+            .any(|level| level.eq_ignore_ascii_case(&configured_level))
+        {
+            configured_level.as_str()
+        } else {
+            "info"
+        };
         for &level in LOG_LEVELS {
-            let active = self.config.audit.log_level.eq_ignore_ascii_case(level);
+            let active = selected_level == level;
             let level_for_config = level.to_string();
             level_chips.push(Self::choice_chip(
                 format!("loglevel-{level}"),
@@ -1450,5 +1466,27 @@ impl Render for AppView {
                     .child(page),
             )
             .child(footer)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn field_ids_and_specs_stay_aligned() {
+        // 防：FieldId 判别式与 FIELD_SPECS 顺序错位，编辑一个字段却写到另一个字段（#55）。
+        assert_eq!(FIELD_SPECS.len(), FieldId::ALL.len());
+        for (index, id) in FieldId::ALL.into_iter().enumerate() {
+            assert_eq!(
+                id as usize, index,
+                "{id:?} 的判别式必须等于它在 ALL 中的位置"
+            );
+            assert_eq!(id.spec().element_id, id.element_id());
+        }
+        let mut element_ids: Vec<&str> = FIELD_SPECS.iter().map(|spec| spec.element_id).collect();
+        element_ids.sort_unstable();
+        element_ids.dedup();
+        assert_eq!(element_ids.len(), FIELD_SPECS.len(), "element_id 不可重复");
     }
 }

@@ -35,8 +35,12 @@ pub enum ConfigEvent {
     ExternalReload(AppConfig),
     /// 外部文件存在但解析失败；UI 保留当前值并显示错误。
     ExternalLoadFailed(String),
-    /// 写盘成功。`worker_error=None` 表示 Worker 已重载；`Some` 说明配置已落盘但未热重载。
-    Saved { worker_error: Option<String> },
+    /// 写盘成功。`config` 是实际落盘的合并结果（含默认备份目录等读改写），UI 用它刷新显示；
+    /// `worker_error=None` 表示 Worker 已重载，`Some` 说明配置已落盘但未热重载。
+    Saved {
+        config: Box<AppConfig>,
+        worker_error: Option<String>,
+    },
     /// 写盘本身失败。
     SaveFailed(String),
 }
@@ -134,7 +138,10 @@ pub async fn run(
                                 .map(|err| err.to_string()),
                             None => Some("Worker 未连接，配置已保存但未热重载".to_string()),
                         };
-                        let _ = events.send(ConfigEvent::Saved { worker_error });
+                        let _ = events.send(ConfigEvent::Saved {
+                            config: Box::new(merged),
+                            worker_error,
+                        });
                     }
                     Err(err) => {
                         let _ = events.send(ConfigEvent::SaveFailed(err.to_string()));
@@ -287,12 +294,20 @@ mod tests {
         tokio::time::advance(Duration::from_millis(150)).await;
         tokio::task::yield_now().await;
         let event = next_event(&mut harness).await;
-        assert_eq!(
-            event,
+        match event {
             ConfigEvent::Saved {
-                worker_error: Some("Worker 未连接，配置已保存但未热重载".to_string()),
+                config,
+                worker_error,
+            } => {
+                assert_eq!(
+                    worker_error,
+                    Some("Worker 未连接，配置已保存但未热重载".to_string())
+                );
+                // Saved 携带实际落盘结果，UI 据此刷新（旧 UI 保存后 ApplyRuntimeConfigToUiState）。
+                assert_eq!(config.audit.log_level, "error");
             }
-        );
+            other => panic!("应收到 Saved，实际 {other:?}"),
+        }
 
         let saved = fs::read_to_string(dir.config_path()).unwrap();
         assert_eq!(
@@ -303,12 +318,15 @@ mod tests {
         // 防抖窗口内第二次编辑被合并：不应再出现第二个 Saved 或自身写入触发的 ExternalReload。
         tokio::time::advance(Duration::from_millis(500)).await;
         tokio::task::yield_now().await;
-        assert!(harness.events.try_recv().is_err());
+        assert!(matches!(
+            harness.events.try_recv(),
+            Err(mpsc::error::TryRecvError::Empty)
+        ));
     }
 
     #[tokio::test(start_paused = true)]
-    async fn external_write_is_reloaded_but_self_write_is_not() {
-        // 防：旧 UI 里「UI→磁盘→UI」自激回灌；或外部编辑器改配置后新 UI 仍显示旧值（#55）。
+    async fn external_write_is_reloaded() {
+        // 防：外部编辑器改配置后新 UI 仍显示旧值（#55）。自身写入不反弹由防抖测试覆盖。
         let dir = TempDir::new("external");
         let config_file = ConfigFile::new(dir.config_path());
         let mut initial = AppConfig::default();
