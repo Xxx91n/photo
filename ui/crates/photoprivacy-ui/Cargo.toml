@@ -11,6 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 photoprivacy-ipc = { path = "../photoprivacy-ipc" }
+photoprivacy-logs = { path = "../photoprivacy-logs" }
 gpui.workspace = true
 tokio.workspace = true
 anyhow.workspace = true
