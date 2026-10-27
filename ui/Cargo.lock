@@ -3580,6 +3580,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "photoprivacy-logs"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "photoprivacy-ui"
 version = "0.1.0"
 dependencies = [
@@ -3589,6 +3598,7 @@ dependencies = [
  "gpui-pre-macos",
  "gpui-pre-windows",
  "photoprivacy-ipc",
+ "photoprivacy-logs",
  "tokio",
 ]
 
