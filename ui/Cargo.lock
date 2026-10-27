@@ -3695,6 +3695,7 @@ dependencies = [
  "photoprivacy-ipc",
  "photoprivacy-logs",
  "photoprivacy-service",
+ "serde",
  "serde_json",
  "tokio",
  "tray-icon",

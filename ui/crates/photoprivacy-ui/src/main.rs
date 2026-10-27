@@ -1,4 +1,7 @@
 mod app;
+mod config;
+mod config_file;
+mod config_service;
 mod log_service;
 mod service_page;
 mod theme;
@@ -108,6 +111,10 @@ fn main() -> anyhow::Result<()> {
     }
 
     let options = ConnectOptions::discover().with_overrides(args.config_path, args.worker_path);
+    // 不回落到 CWD：Worker 以 AppContext.BaseDirectory 为基准，UI 若用相对路径会读写不同文件。
+    let config_path = options.config_path.clone().ok_or_else(|| {
+        anyhow::anyhow!("无法确定 config.json 路径：未能从可执行文件目录解析默认配置路径")
+    })?;
     let ui_options = ui_options::load(options.config_path.as_deref());
     // 日志页读取与 Worker 相同的 config.json 切片；缺失/为空时回落到 `<base>/hot/_audit`
     // （旧 UI 经 AppConfigLoader 把空串补成 DefaultPaths.DefaultAuditLogDirectory）。
@@ -126,9 +133,27 @@ fn main() -> anyhow::Result<()> {
         options.config_path.clone(),
     );
     let link = worker_connection::start(runtime.handle(), options, snapshot_tx, event_tx);
+
+    // 配置服务复用心跳的 IpcClient（单飞锁在同一实例内生效），并用连接编排发布的端点；
+    // 服务模式与后台/托盘模式只是端点值不同，ReloadConfig 链路本身不分支。
+    let (config_command_tx, config_command_rx) = mpsc::unbounded_channel();
+    let (config_event_tx, config_event_rx) = mpsc::unbounded_channel();
+    // 窗口出现前同步读一次，避免 Loaded 到达前的编辑拿默认值覆盖盘上字段。
+    let initial_config = config_file::ConfigFile::new(config_path.clone())
+        .load_or_default()
+        .ok();
+    config_service::spawn(
+        runtime.handle(),
+        config_path.clone(),
+        link.client.clone(),
+        link.endpoint.clone(),
+        config_command_rx,
+        config_event_tx,
+    );
+
     let log_service = log_service::start(runtime.handle(), audit_config, link, log_tx);
 
-    // 主题、日志缓冲与服务快照在关窗驻守/重建之间延续；窗口本身不保留（gpui 没有隐藏窗口的 API）。
+    // 主题、日志缓冲、服务快照与配置草稿在关窗驻守/重建之间延续；窗口本身不保留。
     let deps = app::AppDeps {
         snapshots: snapshot_rx,
         theme_mode: Rc::new(Cell::new(theme::ThemeMode::System)),
@@ -136,6 +161,9 @@ fn main() -> anyhow::Result<()> {
         log_service,
         service_snapshots,
         service_commands,
+        config_state: Rc::new(RefCell::new(app::ConfigUiState::new(initial_config))),
+        config_commands: config_command_tx,
+        config_path,
     };
 
     application().run(move |cx: &mut App| {
@@ -145,7 +173,14 @@ fn main() -> anyhow::Result<()> {
         let start_hidden =
             tray::should_start_hidden(ui_options.hide_main_window_on_startup, has_tray);
 
-        spawn_event_pump(cx, tray_handle, event_rx, log_rx, deps.clone());
+        spawn_event_pump(
+            cx,
+            tray_handle,
+            event_rx,
+            log_rx,
+            config_event_rx,
+            deps.clone(),
+        );
 
         // 关窗语义：托盘在 → 窗口销毁、进程与托盘继续驻守；托盘唤起会重建窗口。
         // 没有托盘 → 关窗即退出（与旧 UI 的 UseTrayIcon == false 分支一致）。
@@ -169,12 +204,13 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// 事件泵：轮询托盘/唤起事件、排空日志批次，并在 UI 线程执行；窗口关闭后仍继续驻守。
+/// 事件泵：轮询托盘/唤起事件、排空日志批次与配置事件，并在 UI 线程执行；窗口关闭后仍继续驻守。
 fn spawn_event_pump(
     cx: &mut App,
     tray: Option<tray::TrayHandle>,
     mut events: mpsc::UnboundedReceiver<UiEvent>,
     mut log_batches: mpsc::UnboundedReceiver<LogBatch>,
+    mut config_events: mpsc::UnboundedReceiver<config_service::ConfigEvent>,
     deps: app::AppDeps,
 ) {
     cx.spawn(async move |cx| {
@@ -189,6 +225,18 @@ fn spawn_event_pump(
                 }
             }
             if logs_changed {
+                cx.refresh();
+            }
+
+            // 配置事件同样由 app 级任务应用：窗口关闭期间外部改动/保存结果不能丢。
+            let mut config_changed = false;
+            while let Ok(event) = config_events.try_recv() {
+                if let Some(theme) = deps.config_state.borrow_mut().apply_event(event) {
+                    deps.theme_mode.set(theme);
+                }
+                config_changed = true;
+            }
+            if config_changed {
                 cx.refresh();
             }
 
@@ -265,9 +313,9 @@ fn build_main_view(window: &mut Window, cx: &mut App, deps: app::AppDeps) -> Ent
     cx.new(|cx| app::AppView::new(window, cx, deps))
 }
 
-/// 居中主窗口的尺寸与选项。
+/// 居中主窗口的尺寸与选项：配置页四组并排需要更宽的画布。
 fn centered_window_options(cx: &App) -> WindowOptions {
-    window_options(Bounds::centered(None, size(px(820.), px(580.)), cx))
+    window_options(Bounds::centered(None, size(px(980.), px(720.)), cx))
 }
 
 /// 主窗口的固定选项（标题栏、背景、最小尺寸）。
@@ -280,7 +328,7 @@ fn window_options(bounds: Bounds<Pixels>) -> WindowOptions {
             traffic_light_position: None,
         }),
         window_background: WindowBackgroundAppearance::Opaque,
-        window_min_size: Some(size(px(680.), px(520.))),
+        window_min_size: Some(size(px(820.), px(600.))),
         show: true,
         focus: true,
         ..Default::default()

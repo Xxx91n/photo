@@ -11,6 +11,7 @@ pub const MAX_RESPONSE_BYTES: usize = 64 * 1024;
 pub mod methods {
     pub const PING: &str = "Ping";
     pub const GET_STATUS: &str = "GetStatus";
+    pub const RELOAD_CONFIG: &str = "ReloadConfig";
     pub const GET_EXIF_TOOL_VERSION: &str = "GetExifToolVersion";
     pub const GET_RECENT_LOGS: &str = "GetRecentLogs";
 }
@@ -160,6 +161,15 @@ mod tests {
         assert_eq!(json, r#"{"method":"GetStatus","id":"7","v":1}"#);
         let json = serde_json::to_string(&Request::new(methods::PING, None)).unwrap();
         assert_eq!(json, r#"{"method":"Ping","v":1}"#);
+    }
+
+    #[test]
+    fn reload_config_method_matches_dotnet_contract() {
+        // 防：方法名拼成 ReloadConfiguration/reloadConfig，Worker 回 unknown method，
+        // 「应用配置」看起来成功但 Worker 从未重载（#55）。
+        assert_eq!(methods::RELOAD_CONFIG, "ReloadConfig");
+        let json = serde_json::to_string(&Request::new(methods::RELOAD_CONFIG, Some("9"))).unwrap();
+        assert_eq!(json, r#"{"method":"ReloadConfig","id":"9","v":1}"#);
     }
 
     #[test]

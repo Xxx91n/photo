@@ -23,6 +23,7 @@
 | 读取 | 循环读到 EOF；行内 CR 丢弃；达到 64 KB 即丢弃整条响应 | `IpcLineReader.cs` |
 | 连接超时 | 700 ms（每次尝试都受剩余预算约束） | `WorkerIpcClient.cs` |
 | 读超时 | 3 s（`ReloadConfig` 需要 ≥6 s） | `WorkerIpcClient.cs` |
+| 新 UI 的 `ReloadConfig` 读超时 | 10 s（与普通请求分离，避免热重载被 3 s 误杀） | `ui/crates/photoprivacy-ipc/src/client.rs` |
 | 并发 | 单飞：服务端同一时刻只预建一个管道实例 | `NamedPipeIpcTransport.cs` |
 | 重试 | `ERROR_PIPE_BUSY`(231) 与 `ERROR_FILE_NOT_FOUND`(2，属主重建实例的空窗)；Unix 为瞬时错误 | `NamedPipeClientStream.Connect` |
 | 一连接一请求 | 不复用连接，不帧化 | `WorkerIpcServerLoop.cs` |
@@ -36,6 +37,7 @@ UI 侧并发探测（#59）：新 UI 另起短连接预算客户端（连接 250
 
 `Ping`、`GetStatus`、`Pause`、`Resume`、`GetExifToolVersion`、`Shutdown`、`ReloadConfig`、`GetRecentLogs`。
 `Shutdown` 仅 CLI 模式可用（服务/后台模式返回 `ok:false`，退出不要依赖它）。协议版本 `v` 当前为 1。
+`ReloadConfig` 在服务模式与后台（托盘）模式下走同一方法、同一客户端实现，差异只是调用方当前连上的端点。
 
 ## UI 侧轮询
 
