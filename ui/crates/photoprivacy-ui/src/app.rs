@@ -192,6 +192,8 @@ pub struct AppView {
     config_commands: mpsc::UnboundedSender<ConfigCommand>,
     save_state: SaveState,
     save_status_deadline: Option<Instant>,
+    /// 每次编辑递增；Saved 回来时只有等于当前值才能刷新，避免回滚保存期间的新输入。
+    edit_revision: u64,
     exiftool_hint: Option<String>,
     fields: HashMap<FieldId, FieldState>,
     config_path: PathBuf,
@@ -242,6 +244,7 @@ impl AppView {
             config_commands,
             save_state: SaveState::Idle,
             save_status_deadline: None,
+            edit_revision: 0,
             exiftool_hint: None,
             fields,
             config_path,
@@ -317,11 +320,15 @@ impl AppView {
             }
             ConfigEvent::Saved {
                 config,
+                revision,
                 worker_error,
             } => {
                 // 与旧 UI ApplyConfigImmediatelyAsync 的 ApplyRuntimeConfigToUiState 一致：
                 // 落盘后按实际写出的配置刷新显示（例如空备份目录已物化为 <hot>/bak）。
-                self.set_config(*config, false);
+                // 保存期间又有新编辑时保留草稿，等下一次 Saved 再刷新，避免输入被回滚。
+                if revision == self.edit_revision {
+                    self.set_config(*config, false);
+                }
                 self.save_state = match worker_error {
                     Some(error) => SaveState::SavedWorkerDown(error),
                     None => SaveState::Saved,
@@ -338,14 +345,15 @@ impl AppView {
     fn set_config(&mut self, mut config: AppConfig, auto_detect_exiftool: bool) {
         config.ui.theme_variant = normalize_theme_variant(&config.ui.theme_variant).to_string();
         self.theme_mode = ThemeMode::from_variant(&config.ui.theme_variant);
-        // 旧 UI 的 ResolveExifToolPath：当前路径不存在时探测常见安装位置并显示提示。
-        if auto_detect_exiftool
-            && let Some(detected) = crate::config::detect_exiftool_path(&config.exiftool.path)
-        {
-            config.exiftool.path = detected.clone();
-            self.exiftool_hint = Some(detected);
-        } else {
-            self.exiftool_hint = None;
+        // 旧 UI 的 ResolveExifToolPath：首次加载时当前路径不存在则探测并显示提示；
+        // 外部回灌/保存回读不清掉已有提示（旧 UI 只在启动时设置 hint）。
+        if auto_detect_exiftool {
+            if let Some(detected) = crate::config::detect_exiftool_path(&config.exiftool.path) {
+                config.exiftool.path = detected.clone();
+                self.exiftool_hint = Some(detected);
+            } else {
+                self.exiftool_hint = None;
+            }
         }
         self.config = config;
 
@@ -385,9 +393,11 @@ impl AppView {
                 "info" | "warn" | "error" => false,
                 _ => self.config.audit.diagnostic_mode,
             };
-        let _ = self
-            .config_commands
-            .send(ConfigCommand::Edit(Box::new(self.config.clone())));
+        self.edit_revision += 1;
+        let _ = self.config_commands.send(ConfigCommand::Edit {
+            config: Box::new(self.config.clone()),
+            revision: self.edit_revision,
+        });
         self.save_state = SaveState::Pending;
         self.save_status_deadline = None;
         cx.notify();

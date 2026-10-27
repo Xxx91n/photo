@@ -24,7 +24,11 @@ pub const EXTERNAL_POLL_INTERVAL: Duration = Duration::from_millis(500);
 
 #[derive(Debug, Clone)]
 pub enum ConfigCommand {
-    Edit(Box<AppConfig>),
+    /// 编辑草稿。`revision` 由 UI 单调递增，用于判断保存期间是否又有新编辑。
+    Edit {
+        config: Box<AppConfig>,
+        revision: u64,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -39,6 +43,7 @@ pub enum ConfigEvent {
     /// `worker_error=None` 表示 Worker 已重载，`Some` 说明配置已落盘但未热重载。
     Saved {
         config: Box<AppConfig>,
+        revision: u64,
         worker_error: Option<String>,
     },
     /// 写盘本身失败。
@@ -85,7 +90,7 @@ pub async fn run(
         }
     }
 
-    let mut pending: Option<AppConfig> = None;
+    let mut pending: Option<(AppConfig, u64)> = None;
     let mut deadline: Option<Instant> = None;
     let mut ticker = tokio::time::interval(poll_interval);
     ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
@@ -101,8 +106,8 @@ pub async fn run(
         tokio::select! {
             command = commands.recv() => {
                 match command {
-                    Some(ConfigCommand::Edit(config)) => {
-                        pending = Some(*config);
+                    Some(ConfigCommand::Edit { config, revision }) => {
+                        pending = Some((*config, revision));
                         deadline = Some(Instant::now() + debounce);
                     }
                     None => break,
@@ -110,7 +115,7 @@ pub async fn run(
             }
             () = debounce_elapsed => {
                 deadline = None;
-                let Some(draft) = pending.take() else { continue };
+                let Some((draft, revision)) = pending.take() else { continue };
                 // 与旧 UI ConfigEditor.UpdateConfig 一致：写前重新读盘。文件坏了就拒绝覆盖，
                 // 而不是用内存默认值把用户手改坏的配置抹掉。
                 let disk = match file.load_or_default() {
@@ -140,6 +145,7 @@ pub async fn run(
                         };
                         let _ = events.send(ConfigEvent::Saved {
                             config: Box::new(merged),
+                            revision,
                             worker_error,
                         });
                     }
@@ -279,7 +285,10 @@ mod tests {
         first.audit.log_level = "warn".to_string();
         harness
             .commands
-            .send(ConfigCommand::Edit(Box::new(first)))
+            .send(ConfigCommand::Edit {
+                config: Box::new(first),
+                revision: 1,
+            })
             .unwrap();
         tokio::task::yield_now().await;
 
@@ -287,7 +296,10 @@ mod tests {
         second.audit.log_level = "error".to_string();
         harness
             .commands
-            .send(ConfigCommand::Edit(Box::new(second)))
+            .send(ConfigCommand::Edit {
+                config: Box::new(second),
+                revision: 2,
+            })
             .unwrap();
         tokio::task::yield_now().await;
 
@@ -297,13 +309,15 @@ mod tests {
         match event {
             ConfigEvent::Saved {
                 config,
+                revision,
                 worker_error,
             } => {
                 assert_eq!(
                     worker_error,
                     Some("Worker 未连接，配置已保存但未热重载".to_string())
                 );
-                // Saved 携带实际落盘结果，UI 据此刷新（旧 UI 保存后 ApplyRuntimeConfigToUiState）。
+                // Saved 携带实际落盘结果与最后一次合并的编辑版本，UI 据此刷新。
+                assert_eq!(revision, 2);
                 assert_eq!(config.audit.log_level, "error");
             }
             other => panic!("应收到 Saved，实际 {other:?}"),
@@ -399,7 +413,10 @@ mod tests {
         ));
 
         command_tx
-            .send(ConfigCommand::Edit(Box::default()))
+            .send(ConfigCommand::Edit {
+                config: Box::default(),
+                revision: 1,
+            })
             .unwrap();
         tokio::time::advance(Duration::from_millis(150)).await;
         tokio::task::yield_now().await;
@@ -442,7 +459,10 @@ mod tests {
         draft.ui.theme_variant = "dark".to_string();
         harness
             .commands
-            .send(ConfigCommand::Edit(Box::new(draft)))
+            .send(ConfigCommand::Edit {
+                config: Box::new(draft),
+                revision: 1,
+            })
             .unwrap();
         tokio::time::advance(Duration::from_millis(150)).await;
         tokio::task::yield_now().await;
@@ -489,7 +509,10 @@ mod tests {
         draft.ui.theme_variant = "dark".to_string();
         harness
             .commands
-            .send(ConfigCommand::Edit(Box::new(draft)))
+            .send(ConfigCommand::Edit {
+                config: Box::new(draft),
+                revision: 1,
+            })
             .unwrap();
         tokio::time::advance(Duration::from_millis(150)).await;
         tokio::task::yield_now().await;
@@ -518,7 +541,10 @@ mod tests {
         draft.backup.directory = String::new();
         harness
             .commands
-            .send(ConfigCommand::Edit(Box::new(draft)))
+            .send(ConfigCommand::Edit {
+                config: Box::new(draft),
+                revision: 1,
+            })
             .unwrap();
         tokio::time::advance(Duration::from_millis(150)).await;
         tokio::task::yield_now().await;
