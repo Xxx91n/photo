@@ -97,6 +97,7 @@ mod platform {
         let path = lock_path(name);
         let file = match OpenOptions::new()
             .create(true)
+            .truncate(false)
             .read(true)
             .write(true)
             .open(&path)
@@ -291,12 +292,10 @@ mod tests {
     use super::*;
 
     fn unique_name(tag: &str) -> String {
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let full = format!("PhotoPrivacyTest_{tag}_{}_{nanos}", std::process::id());
-        full
+        // macOS 的 sun_path 上限 104 字节：名字必须短，否则 bind 失败会让「无监听」用例因路径过长而假通过。
+        static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let seq = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        format!("pp_{tag}_{}_{seq}", std::process::id())
     }
 
     #[tokio::test]
