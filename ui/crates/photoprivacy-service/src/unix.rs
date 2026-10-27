@@ -70,10 +70,7 @@ mod linux {
                 );
             }
 
-            let args = vec![
-                "sh".to_string(),
-                self.script_path.to_string_lossy().into_owned(),
-            ];
+            let args = install_args(&self.script_path, current_gui_user().as_deref());
             self.run_pkexec(args, "systemd service installed")
         }
 
@@ -105,6 +102,31 @@ mod linux {
             let args = vec!["sh".to_string(), "-c".to_string(), command];
             self.run_pkexec(args, "systemd service uninstalled")
         }
+    }
+
+    /// 安装脚本声明的是 Bash（`set -euo pipefail`），不能再用 `sh` 覆盖解释器。
+    /// pkexec 不会提供 `SUDO_USER`，所以从 UI 进程带一个校验过的 `--gui-user` 给安装脚本。
+    pub(super) fn install_args(script_path: &Path, gui_user: Option<&str>) -> Vec<String> {
+        let mut args = vec![
+            "bash".to_string(),
+            script_path.to_string_lossy().into_owned(),
+        ];
+        if let Some(user) = gui_user.filter(|user| is_valid_gui_user(user)) {
+            args.push("--gui-user".to_string());
+            args.push(user.to_string());
+        }
+        args
+    }
+
+    fn current_gui_user() -> Option<String> {
+        std::env::var("USER")
+            .ok()
+            .or_else(|| std::env::var("LOGNAME").ok())
+            .map(|user| user.trim().to_string())
+    }
+
+    fn is_valid_gui_user(user: &str) -> bool {
+        !user.is_empty() && !user.starts_with('-') && !user.chars().any(char::is_whitespace)
     }
 
     fn elevated_result(output: CommandOutput, success_message: &str) -> ServiceCommandResult {
@@ -406,11 +428,41 @@ mod tests {
         let result = ops.install(None, None);
 
         assert_eq!(result.status, ServiceCommandStatus::Success);
-        assert_eq!(
-            runner.calls(),
-            vec![vec!["sh".to_string(), script.display().to_string()]]
-        );
+        let calls = runner.calls();
+        assert_eq!(calls[0][0], "bash");
+        assert_eq!(calls[0][1], script.display().to_string());
+        if calls[0].len() > 2 {
+            assert_eq!(calls[0][2], "--gui-user");
+            assert!(!calls[0][3].is_empty());
+        }
         let _ = std::fs::remove_file(script);
+    }
+
+    #[test]
+    fn linux_install_args_use_bash_and_validated_gui_user() {
+        // 防：用 sh 跑 Bash 脚本（pipefail 失败）或把未校验的 GUI 用户传给安装脚本（#58 CodeRabbit）。
+        let script = Path::new("/repo/scripts/install-systemd-service.sh");
+        assert_eq!(
+            linux::install_args(script, Some("alice")),
+            vec![
+                "bash".to_string(),
+                script.display().to_string(),
+                "--gui-user".to_string(),
+                "alice".to_string(),
+            ]
+        );
+        assert_eq!(
+            linux::install_args(script, None),
+            vec!["bash".to_string(), script.display().to_string()]
+        );
+        assert_eq!(
+            linux::install_args(script, Some("-bad")),
+            vec!["bash".to_string(), script.display().to_string()]
+        );
+        assert_eq!(
+            linux::install_args(script, Some("bad user")),
+            vec!["bash".to_string(), script.display().to_string()]
+        );
     }
 
     #[test]
