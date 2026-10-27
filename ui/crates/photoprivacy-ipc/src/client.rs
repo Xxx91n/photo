@@ -29,7 +29,7 @@ pub enum IpcError {
 impl fmt::Display for IpcError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            IpcError::Timeout => write!(f, "IPC 读写超时"),
+            IpcError::Timeout => write!(f, "IPC 连接/读写超时"),
             IpcError::Connect(err) => write!(f, "连接 Worker 失败: {err}"),
             IpcError::Io(err) => write!(f, "IPC 传输错误: {err}"),
             IpcError::Oversize => write!(f, "响应超过 {MAX_RESPONSE_BYTES} 字节上限"),
@@ -125,16 +125,20 @@ impl IpcClient {
     async fn connect(&self, endpoint: &Endpoint) -> Result<Stream, IpcError> {
         let deadline = Instant::now() + self.connect_timeout;
         loop {
-            match connect_once(endpoint).await {
-                Ok(stream) => return Ok(stream),
-                Err(err) => {
+            // 每次尝试都套上剩余预算：Unix 非阻塞 connect 可能等到可写（EINPROGRESS），
+            // 不设上限会让一次探测挂到 OS 级连接超时，远超 700ms 的连接预算。
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            match timeout(remaining, connect_once(endpoint)).await {
+                Ok(Ok(stream)) => return Ok(stream),
+                Ok(Err(err)) => {
                     let retryable = is_retryable(&err);
                     if !retryable || Instant::now() >= deadline {
                         return Err(IpcError::Connect(err));
                     }
-                    tokio::time::sleep(CONNECT_RETRY_INTERVAL).await;
                 }
+                Err(_elapsed) => return Err(IpcError::Timeout),
             }
+            tokio::time::sleep(CONNECT_RETRY_INTERVAL).await;
         }
     }
 }

@@ -1,5 +1,6 @@
-use crate::client::IpcClient;
+use crate::client::{IpcClient, IpcError};
 use crate::endpoints::{Endpoint, WorkerMode};
+use crate::protocol::Status;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::watch;
@@ -88,27 +89,43 @@ pub fn spawn_monitor(
                 Ok((status, protocol_version)) => {
                     backoff = Duration::from_secs(1);
                     tx.send_modify(|snapshot| {
-                        snapshot.state = ConnectionState::Connected;
-                        snapshot.protocol_version = protocol_version;
-                        snapshot.exif_tool_version = Some(status.exif_tool_version);
-                        snapshot.status_mode = Some(status.mode);
-                        snapshot.round_trips += 1;
-                        snapshot.last_round_trip = Some(elapsed);
-                        snapshot.last_error = None;
+                        apply_success(snapshot, &status, protocol_version, elapsed)
                     });
                     tokio::time::sleep(Duration::from_secs(1)).await;
                 }
                 Err(err) => {
                     backoff = next_backoff(backoff);
-                    tx.send_modify(|snapshot| {
-                        snapshot.state = ConnectionState::Reconnecting;
-                        snapshot.last_error = Some(err.to_string());
-                    });
+                    tx.send_modify(|snapshot| apply_failure(snapshot, &err));
                     tokio::time::sleep(backoff).await;
                 }
             }
         }
     })
+}
+
+fn apply_success(
+    snapshot: &mut ConnectionSnapshot,
+    status: &Status,
+    protocol_version: Option<i32>,
+    elapsed: Duration,
+) {
+    snapshot.state = ConnectionState::Connected;
+    snapshot.protocol_version = protocol_version;
+    snapshot.exif_tool_version = Some(status.exif_tool_version.clone());
+    snapshot.status_mode = Some(status.mode.clone());
+    snapshot.round_trips += 1;
+    snapshot.last_round_trip = Some(elapsed);
+    snapshot.last_error = None;
+}
+
+// 失败时清掉连接期字段：它们只代表上一次成功往返，留在界面上会被读成 Worker 的当前状态。
+// `last_round_trip` 保留——界面文案本身就是「上次往返」的历史语义。
+fn apply_failure(snapshot: &mut ConnectionSnapshot, err: &IpcError) {
+    snapshot.state = ConnectionState::Reconnecting;
+    snapshot.protocol_version = None;
+    snapshot.exif_tool_version = None;
+    snapshot.status_mode = None;
+    snapshot.last_error = Some(err.to_string());
 }
 
 #[cfg(test)]
@@ -134,5 +151,30 @@ mod tests {
         assert_eq!(snapshot.state, ConnectionState::Connecting);
         assert!(snapshot.endpoint.is_none());
         assert_eq!(snapshot.round_trips, 0);
+    }
+
+    #[test]
+    fn failure_clears_connection_scoped_details() {
+        // 防：Worker 掉线后界面仍显示上一次的协议版本/ExifTool/模式，把陈旧值当成当前状态（#54）。
+        let mut snapshot = ConnectionSnapshot::connecting();
+        apply_success(
+            &mut snapshot,
+            &Status {
+                exif_tool_version: "13.20".into(),
+                mode: "background".into(),
+                ..Status::default()
+            },
+            Some(1),
+            Duration::from_millis(3),
+        );
+        assert_eq!(snapshot.state, ConnectionState::Connected);
+
+        apply_failure(&mut snapshot, &IpcError::Timeout);
+        assert_eq!(snapshot.state, ConnectionState::Reconnecting);
+        assert!(snapshot.protocol_version.is_none());
+        assert!(snapshot.exif_tool_version.is_none());
+        assert!(snapshot.status_mode.is_none());
+        assert_eq!(snapshot.last_round_trip, Some(Duration::from_millis(3)));
+        assert!(snapshot.last_error.is_some());
     }
 }
