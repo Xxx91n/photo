@@ -111,10 +111,10 @@ fn main() -> anyhow::Result<()> {
     }
 
     let options = ConnectOptions::discover().with_overrides(args.config_path, args.worker_path);
-    let config_path = options
-        .config_path
-        .clone()
-        .unwrap_or_else(|| PathBuf::from("config").join("config.json"));
+    // 不回落到 CWD：Worker 以 AppContext.BaseDirectory 为基准，UI 若用相对路径会读写不同文件。
+    let config_path = options.config_path.clone().ok_or_else(|| {
+        anyhow::anyhow!("无法确定 config.json 路径：未能从可执行文件目录解析默认配置路径")
+    })?;
     let ui_options = ui_options::load(options.config_path.as_deref());
     // 日志页读取与 Worker 相同的 config.json 切片；缺失/为空时回落到 `<base>/hot/_audit`
     // （旧 UI 经 AppConfigLoader 把空串补成 DefaultPaths.DefaultAuditLogDirectory）。
