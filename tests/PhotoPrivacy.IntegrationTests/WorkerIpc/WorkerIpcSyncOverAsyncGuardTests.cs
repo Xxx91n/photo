@@ -90,12 +90,15 @@ public sealed class WorkerIpcSyncOverAsyncGuardTests
     [Fact]
     public void Ipc_Line_Reader_Should_Be_The_Single_Buffered_Implementation()
     {
-        // 回潮守卫：逐字节读循环（new byte[1]）不得重新出现在服务端/客户端。
+        // 回潮守卫：逐字节读循环（new byte[1]）不得重新出现在服务端；客户端侧
+        // 旧 Ui WorkerIpcClient 已随旧工程退役（#61），客户端等价物为 Rust 侧
+        // photoprivacy-ipc::protocol::read_bounded_line（语义对齐 IpcLineReader），
+        // 此处只钉「客户端实现确为有界共享读」的存在性，字节级细节由 cargo test 守护。
         var loop = SourceLint.ReadStripped("src", "PhotoPrivacy.Worker", "WorkerIpcServerLoop.cs");
-        var client = SourceLint.ReadStripped("src", "PhotoPrivacy.Ui", "Services", "WorkerIpcClient.cs");
+        var rustProtocol = SourceLint.Read("ui", "crates", "photoprivacy-ipc", "src", "protocol.rs");
 
         Assert.DoesNotContain("new byte[1]", loop, StringComparison.Ordinal);
-        Assert.DoesNotContain("new byte[1]", client, StringComparison.Ordinal);
-        Assert.Contains("IpcLineReader.ReadBoundedLineAsync", client, StringComparison.Ordinal);
+        Assert.Contains("pub async fn read_bounded_line", rustProtocol, StringComparison.Ordinal);
+        Assert.Contains("read_bounded_line", SourceLint.Read("ui", "crates", "photoprivacy-ipc", "src", "client.rs"), StringComparison.Ordinal);
     }
 }

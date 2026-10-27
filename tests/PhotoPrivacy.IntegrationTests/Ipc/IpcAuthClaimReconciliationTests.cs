@@ -2,11 +2,11 @@ namespace PhotoPrivacy.IntegrationTests.Ipc;
 
 /// <summary>
 /// IPC 与部署安全不变量守卫：每条断言都直接对账代码/脚本/配置，改措辞不会让它变红。
-/// 1) UiSingleInstance 不得重新调用 NamedPipeServerStreamAcl / System.Security.AccessControl，
-///    且必须保留 PipeOptions.CurrentUserOnly（同用户边界）；
-/// 2) install-systemd-service.sh 的 unit 模板必须钉住 RuntimeDirectoryMode=0750 并提供 GUI 用户组供给；
-/// 3) NamedPipeIpcTransport 的 FirstPipeInstance 仅施加于 ListenAsync 预建的首实例。
+/// 1) install-systemd-service.sh 的 unit 模板必须钉住 RuntimeDirectoryMode=0750 并提供 GUI 用户组供给；
+/// 2) NamedPipeIpcTransport 的 FirstPipeInstance 仅施加于 ListenAsync 预建的首实例。
 /// 每组守卫都带 negative self-proof：把源码改坏后备守卫必须变红，防止守卫空转。
+/// 原 UiSingleInstance ACL 守卫随旧 Ui 工程退役（#61）；新 UI 单实例管线的 DACL 决策见
+/// ui/crates/photoprivacy-ipc/src/single_instance.rs（Design(#49)），由 cargo test 守护。
 /// </summary>
 public sealed class IpcAuthClaimReconciliationTests
 {
@@ -22,62 +22,7 @@ public sealed class IpcAuthClaimReconciliationTests
         return count;
     }
 
-    // ---------- 1. UiSingleInstance 不使用 ACL 管道 API ----------
-
-    internal static List<string> ClassifyUiSingleInstance(string strippedSource)
-    {
-        var violations = new List<string>();
-        if (strippedSource.Contains("NamedPipeServerStreamAcl", StringComparison.Ordinal))
-        {
-            violations.Add("UiSingleInstance 重新调用了 NamedPipeServerStreamAcl（该 API 会泄漏管道 ACL 边界）");
-        }
-        if (strippedSource.Contains("System.Security.AccessControl", StringComparison.Ordinal))
-        {
-            violations.Add("UiSingleInstance 重新引入 System.Security.AccessControl（ACL 路径）");
-        }
-        if (!strippedSource.Contains("PipeOptions.CurrentUserOnly", StringComparison.Ordinal))
-        {
-            violations.Add("UiSingleInstance 缺少 PipeOptions.CurrentUserOnly（同用户边界未落实）");
-        }
-        return violations;
-    }
-
-    [Fact]
-    public void UiSingleInstance_Should_Not_Call_The_Acl_Pipe_Api()
-    {
-        var stripped = SourceLint.ReadStripped("src", "PhotoPrivacy.Ui", "Services", "UiSingleInstance.cs");
-        var violations = ClassifyUiSingleInstance(stripped);
-        Assert.True(violations.Count == 0, string.Join(Environment.NewLine, violations));
-    }
-
-    [Fact]
-    public void UiSingleInstance_Guard_Negative_Self_Proof()
-    {
-        var green = SourceLint.ReadStripped("src", "PhotoPrivacy.Ui", "Services", "UiSingleInstance.cs");
-        var failing = new (string Source, string Reason)[]
-        {
-            (green + Environment.NewLine + "var p = NamedPipeServerStreamAcl.Create(null);", "ACL 调用回潮"),
-            (green.Replace("PipeOptions.CurrentUserOnly", "PipeOptions.Asynchronous"), "同用户边界被删"),
-        };
-
-        var failures = new List<string>();
-        foreach (var (source, reason) in failing)
-        {
-            if (source == green)
-            {
-                failures.Add("MUTATION DID NOT APPLY (sample equals green): " + reason);
-                continue;
-            }
-            if (ClassifyUiSingleInstance(source).Count == 0)
-            {
-                failures.Add("MISSED (should be red): " + reason);
-            }
-        }
-
-        Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
-    }
-
-    // ---------- 2. systemd unit 模板安全设置 ----------
+    // ---------- 1. systemd unit 模板安全设置 ----------
 
     internal static List<string> ClassifySystemdUnit(string script)
     {

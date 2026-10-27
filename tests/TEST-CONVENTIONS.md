@@ -6,7 +6,7 @@
 
 ## 0. 适用范围
 
-- **source-lint 断言**：把源码 / AXAML / 文档当文本做 grep、正则、字面量存在性判断的编译时静态断言（本项目 `DesignSystemTests` / `UiLauncherSourceTests` / `MainWindowShellSourceTests` / `PublishPropertiesCsprojGuardTests` 等属此类）。
+- **source-lint 断言**：把源码 / AXAML / 文档当文本做 grep、正则、字面量存在性判断的编译时静态断言（旧栈的 Ui source-lint 守卫族已随旧 Ui 工程退役（#61）；本项目现存 `PublishPropertiesCsprojGuardTests` / `SmokeScriptDiagnosticsTests` / `DesignMarkerSourceTests` / `WorkerIpcSyncOverAsyncGuardTests` 等属此类）。
 - 行为测试（单元 / 集成）不受 R1 约束，但撞红时同样适用 R2 的分类治理。
 
 ## R1. 新断言必须写「防什么」注释 —— 写不出就不许加
