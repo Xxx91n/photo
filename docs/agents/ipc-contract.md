@@ -27,10 +27,20 @@
 | 重试 | `ERROR_PIPE_BUSY`(231) 与 `ERROR_FILE_NOT_FOUND`(2，属主重建实例的空窗)；Unix 为瞬时错误 | `NamedPipeClientStream.Connect` |
 | 一连接一请求 | 不复用连接，不帧化 | `WorkerIpcServerLoop.cs` |
 
+UI 侧并发探测（#59）：新 UI 另起一条短预算客户端（连接 250 ms，`IpcClient::with_connect_timeout`）
+每 3 s 探测服务端点。服务端单飞契约不变；客户端侧两个 `IpcClient` 各自串行，争用同一管道实例时
+仍靠 `ERROR_PIPE_BUSY` 重试兜底。
+
 ## 方法
 
 `Ping`、`GetStatus`、`Pause`、`Resume`、`GetExifToolVersion`、`Shutdown`、`ReloadConfig`、`GetRecentLogs`。
 `Shutdown` 仅 CLI 模式可用（服务/后台模式返回 `ok:false`，退出不要依赖它）。协议版本 `v` 当前为 1。
+
+## UI 侧轮询
+
+- 心跳：`GetStatus` 每 1 s；失败按 1→2→4→8→16→32→60 s 退避（`ui/crates/photoprivacy-ipc/src/monitor.rs`）。
+- 版本：随心跳 `GetStatus` 刷新，连接稳态为 1 s 节奏。
+- 服务态：每 3 s 探测服务端点可达性；完整 SCM/launchd/systemd 安装态探测归 #58。
 
 ## Worker 启动
 

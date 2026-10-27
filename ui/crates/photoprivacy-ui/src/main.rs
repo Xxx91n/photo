@@ -6,7 +6,7 @@ mod ui_options;
 mod worker_connection;
 
 use gpui::{
-    App, AppContext, AsyncApp, Bounds, Pixels, QuitMode, TitlebarOptions,
+    App, AppContext, AsyncApp, Bounds, Entity, Pixels, QuitMode, TitlebarOptions, Window,
     WindowBackgroundAppearance, WindowBounds, WindowOptions, px, size,
 };
 use photoprivacy_ipc::{
@@ -108,14 +108,14 @@ fn main() -> anyhow::Result<()> {
 
     application().run(move |cx: &mut App| {
         // 托盘必须在主线程、平台就绪后创建（tray-icon 要求同线程有消息循环）。
-        let window_tray = tray::install(ui_options.hide_tray_icon);
-        let has_tray = window_tray.is_some();
+        let tray_handle = tray::install(ui_options.hide_tray_icon);
+        let has_tray = tray_handle.is_some();
         let start_hidden =
             tray::should_start_hidden(ui_options.hide_main_window_on_startup, has_tray);
 
         spawn_event_pump(
             cx,
-            window_tray,
+            tray_handle,
             event_rx,
             snapshot_rx.clone(),
             theme_mode.clone(),
@@ -190,7 +190,8 @@ fn spawn_event_pump(
     .detach();
 }
 
-// Design(#49): gpui 无窗口隐藏 API——关窗驻守销毁窗口，托盘唤起时重建；主题状态跨重建保留。
+// Design(#49): gpui 无窗口隐藏 API——关窗驻守销毁窗口，托盘唤起时重建；主题状态跨重建保留，
+// 窗口位置/尺寸会重置为居中（旧 UI 是隐藏/显示，尺寸沿用）。
 fn show_main_window(
     cx: &mut AsyncApp,
     snapshots: watch::Receiver<ConnectionSnapshot>,
@@ -210,10 +211,8 @@ fn open_main_window(
     snapshots: watch::Receiver<ConnectionSnapshot>,
     theme_mode: Rc<Cell<theme::ThemeMode>>,
 ) {
-    let bounds = Bounds::centered(None, size(px(820.), px(580.)), cx);
-    cx.open_window(window_options(bounds), move |window, cx| {
-        cx.activate(false);
-        cx.new(|cx| app::AppView::new(window, cx, snapshots, theme_mode))
+    cx.open_window(centered_window_options(cx), move |window, cx| {
+        build_main_view(window, cx, snapshots, theme_mode)
     })
     .expect("创建主窗口失败");
 }
@@ -223,15 +222,28 @@ fn open_main_window_async(
     snapshots: watch::Receiver<ConnectionSnapshot>,
     theme_mode: Rc<Cell<theme::ThemeMode>>,
 ) {
-    let bounds = cx.update(|cx| Bounds::centered(None, size(px(820.), px(580.)), cx));
+    let options = cx.update(|cx| centered_window_options(cx));
     // 退出过程中仍可能收到最后一次唤起（应用已在 quit 状态时 open_window 会返回 Err）；
     // 这里不 panic，避免把正常退出变成崩溃。
-    if let Err(err) = cx.open_window(window_options(bounds), move |window, cx| {
-        cx.activate(false);
-        cx.new(|cx| app::AppView::new(window, cx, snapshots, theme_mode))
+    if let Err(err) = cx.open_window(options, move |window, cx| {
+        build_main_view(window, cx, snapshots, theme_mode)
     }) {
         eprintln!("[photoprivacy-ui] 重建主窗口失败: {err}");
     }
+}
+
+fn build_main_view(
+    window: &mut Window,
+    cx: &mut App,
+    snapshots: watch::Receiver<ConnectionSnapshot>,
+    theme_mode: Rc<Cell<theme::ThemeMode>>,
+) -> Entity<app::AppView> {
+    cx.activate(false);
+    cx.new(|cx| app::AppView::new(window, cx, snapshots, theme_mode))
+}
+
+fn centered_window_options(cx: &App) -> WindowOptions {
+    window_options(Bounds::centered(None, size(px(820.), px(580.)), cx))
 }
 
 fn window_options(bounds: Bounds<Pixels>) -> WindowOptions {

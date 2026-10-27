@@ -9,8 +9,13 @@ use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, 
 
 const TOOLTIP: &str = "PhotoPrivacy";
 const ICON_SIZE: u32 = 32;
-// 与 theme::Theme::light().accent 同色，浅/深色任务栏上都可见。
-const ICON_COLOR: [u8; 4] = [0x2F, 0x6F, 0xEB, 0xFF];
+// 与浅色主题强调色同源，浅/深色任务栏上都可见。
+const ICON_COLOR: [u8; 4] = [
+    (crate::theme::ACCENT_RGB >> 16) as u8,
+    (crate::theme::ACCENT_RGB >> 8) as u8,
+    crate::theme::ACCENT_RGB as u8,
+    0xFF,
+];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TrayCommand {
@@ -26,6 +31,10 @@ pub struct TrayHandle {
 
 /// 托盘创建失败时返回 `None`：窗口保持常显、关窗即退出，绝不出现「窗口藏了但托盘没建起来」
 /// 的无入口状态（旧 UI 用 `trayReady` 表达同一约束）。
+///
+/// 旧 UI 的 `TrayPolicy` 只在「后台模式且服务未安装」时显示托盘；安装态探测与服务模式切换归 #58，
+/// 本版按配置常驻（服务模式也显示托盘），#58 补齐探测后收敛。
+// Design(#58): 托盘可见性暂按配置常驻；服务安装态探测与模式切换归 #58。
 pub fn install(hide_tray_icon: bool) -> Option<TrayHandle> {
     if hide_tray_icon {
         return None;
@@ -42,12 +51,16 @@ pub fn install(hide_tray_icon: bool) -> Option<TrayHandle> {
 
 /// 与旧 UI `MainWindowRuntimePolicy.ShouldHideOnStartup` 的真值表对齐：只有勾选「启动时隐藏」
 /// 且托盘真的可用时才不建窗口（`UseTrayIcon && !HideTrayIcon && trayIconReady`）。
+///
+/// 旧 UI 还要求运行模式为 tray（服务模式从不隐藏窗口）；服务壳与安装态探测归 #58，
+/// 本版在托盘可用时即允许隐藏，因此服务模式下也会隐藏——#58 收敛。
 pub fn should_start_hidden(hide_main_window_on_startup: bool, tray_available: bool) -> bool {
     hide_main_window_on_startup && tray_available
 }
 
 impl TrayHandle {
     fn build() -> anyhow::Result<Self> {
+        // 旧菜单还有 Pause/Resume；本票 AC 只要求显示/退出，Worker 暂停/恢复控制不在本票范围。
         let open_window = MenuItem::new("Open Window", true, None);
         let exit = MenuItem::new("Exit", true, None);
         let menu = Menu::new();

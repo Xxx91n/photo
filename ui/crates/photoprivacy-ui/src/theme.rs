@@ -1,5 +1,8 @@
 use gpui::{Rgba, WindowAppearance, rgb};
 
+/// 浅色主题强调色，也是托盘图标的取色出处（避免两处写死同一个十六进制值）。
+pub const ACCENT_RGB: u32 = 0x2F6FEB;
+
 /// 主题选择：默认跟随系统，允许临时强制 light/dark（持久化随配置页票 #55 再做）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ThemeMode {
@@ -55,7 +58,7 @@ impl Theme {
             text: rgb(0x1A1A19),
             text_muted: rgb(0x6B6B66),
             text_faint: rgb(0x9A9A94),
-            accent: rgb(0x2F6FEB),
+            accent: rgb(ACCENT_RGB),
             success: rgb(0x1F8A5F),
             warning: rgb(0xB7791F),
             danger: rgb(0xC0392B),

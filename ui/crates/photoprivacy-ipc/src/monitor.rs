@@ -7,6 +7,8 @@ use std::time::{Duration, Instant};
 use tokio::sync::watch;
 
 /// 心跳节拍：成功时每 1s 一次 GetStatus，顺带刷新协议版本与 ExifTool 版本（版本 1s 节奏）。
+/// 断连退避期间版本随心跳停止刷新；旧 UI 的独立 1s 版本轮询此时也只会反复得到 unknown，
+/// 因此「版本 1s」只在连接稳态等效。
 pub const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(1);
 /// 服务态节拍：与旧 UI `ServiceModeController.PollServiceModeTransitionAsync` 同为 3s。
 pub const SERVICE_POLL_INTERVAL: Duration = Duration::from_secs(3);
@@ -40,16 +42,6 @@ pub enum ServiceState {
     Unknown,
     Reachable,
     Unreachable,
-}
-
-impl ServiceState {
-    pub fn label(self) -> &'static str {
-        match self {
-            ServiceState::Unknown => "—",
-            ServiceState::Reachable => "reachable",
-            ServiceState::Unreachable => "unreachable",
-        }
-    }
 }
 
 #[derive(Clone, Debug)]

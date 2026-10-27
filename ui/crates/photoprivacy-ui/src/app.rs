@@ -1,11 +1,13 @@
 use crate::theme::{self, Theme, ThemeMode};
 use gpui::prelude::*;
 use gpui::{Context, FontWeight, IntoElement, Render, Rgba, Subscription, Window, div, px};
-use photoprivacy_ipc::{ConnectionSnapshot, ConnectionState};
+use photoprivacy_ipc::{ConnectionSnapshot, ConnectionState, ServiceState};
 use std::cell::Cell;
 use std::rc::Rc;
 use std::time::Duration;
 use tokio::sync::watch;
+
+const SNAPSHOT_POLL_INTERVAL: Duration = Duration::from_millis(200);
 
 pub struct AppView {
     snapshot: ConnectionSnapshot,
@@ -39,9 +41,7 @@ impl AppView {
     fn spawn_updates(&self, window: &Window, cx: &mut Context<Self>) {
         cx.spawn_in(window, async move |this, cx| {
             loop {
-                cx.background_executor()
-                    .timer(Duration::from_millis(200))
-                    .await;
+                cx.background_executor().timer(SNAPSHOT_POLL_INTERVAL).await;
 
                 // 关窗驻守后本视图实体会被释放；此时必须退出循环，否则每次重建窗口都会留下一个
                 // 永远 upgrade 失败的空转任务。
@@ -125,6 +125,14 @@ fn or_dash(value: Option<String>) -> String {
     value
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| "—".to_string())
+}
+
+fn service_label(state: ServiceState) -> &'static str {
+    match state {
+        ServiceState::Unknown => "—",
+        ServiceState::Reachable => "reachable",
+        ServiceState::Unreachable => "unreachable",
+    }
 }
 
 impl Render for AppView {
@@ -218,7 +226,7 @@ impl Render for AppView {
             ("Reported mode", or_dash(self.snapshot.status_mode.clone())),
             (
                 "Service IPC",
-                self.snapshot.service_state.label().to_string(),
+                service_label(self.snapshot.service_state).to_string(),
             ),
             (
                 "Protocol",
