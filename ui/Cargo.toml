@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/photoprivacy-ipc",
     "crates/photoprivacy-logs",
+    "crates/photoprivacy-service",
     "crates/photoprivacy-ui",
 ]
 

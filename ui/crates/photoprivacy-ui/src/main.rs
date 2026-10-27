@@ -1,5 +1,6 @@
 mod app;
 mod log_service;
+mod service_page;
 mod theme;
 mod worker_connection;
 
@@ -15,7 +16,7 @@ use std::time::Duration;
 use worker_connection::ConnectOptions;
 
 const USAGE: &str = "\
-PhotoPrivacy 新 UI（gpui 骨架竖切）
+PhotoPrivacy 新 UI（gpui）
 
 用法: photoprivacy-ui [--config <config.json>] [--worker <PhotoPrivacyWorker 路径>]
 
@@ -108,6 +109,11 @@ fn main() -> anyhow::Result<()> {
     let (snapshot_tx, snapshot_rx) = tokio::sync::watch::channel(ConnectionSnapshot::connecting());
     let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
     let (log_tx, log_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (service_snapshots, service_commands) = service_page::start(
+        runtime.handle(),
+        options.worker_path.clone(),
+        options.config_path.clone(),
+    );
     let link = worker_connection::start(runtime.handle(), options, snapshot_tx, event_tx);
     let log_service = log_service::start(runtime.handle(), audit_config, link, log_tx);
 
@@ -138,11 +144,15 @@ fn main() -> anyhow::Result<()> {
                     app::AppView::new(
                         window,
                         cx,
-                        snapshot_rx,
-                        event_rx,
-                        log_rx,
-                        log_service,
-                        log_level,
+                        app::AppViewInit {
+                            snapshots: snapshot_rx,
+                            events: event_rx,
+                            log_batches: log_rx,
+                            log_service,
+                            initial_level: log_level,
+                            service_snapshots,
+                            service_commands,
+                        },
                     )
                 })
             },

@@ -1,4 +1,5 @@
 use crate::log_service::{LogBatch, LogService};
+use crate::service_page::{ServiceCommand, ServiceFeedback, ServiceSnapshot};
 use crate::theme::{self, Theme, ThemeMode};
 use crate::worker_connection::UiEvent;
 use gpui::prelude::*;
@@ -8,12 +9,14 @@ use gpui::{
 };
 use photoprivacy_ipc::{ConnectionSnapshot, ConnectionState};
 use photoprivacy_logs::{AuditRecord, EventTone, LevelFilter, LogBuffer};
+use photoprivacy_service::{ServiceRuntimeState, button_state};
 use std::time::Duration;
 use tokio::sync::{mpsc, watch};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Page {
     Overview,
+    Service,
     Logs,
 }
 
@@ -21,13 +24,21 @@ impl Page {
     fn label(self) -> &'static str {
         match self {
             Self::Overview => "Overview",
+            Self::Service => "Service",
             Self::Logs => "Logs",
         }
     }
 
-    fn all() -> [Self; 2] {
-        [Self::Overview, Self::Logs]
+    fn all() -> [Self; 3] {
+        [Self::Overview, Self::Service, Self::Logs]
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ButtonKind {
+    Primary,
+    Ghost,
+    Danger,
 }
 
 pub struct AppView {
@@ -35,6 +46,9 @@ pub struct AppView {
     snapshot: ConnectionSnapshot,
     snapshots: watch::Receiver<ConnectionSnapshot>,
     events: mpsc::UnboundedReceiver<UiEvent>,
+    service: ServiceSnapshot,
+    service_snapshots: watch::Receiver<ServiceSnapshot>,
+    service_commands: mpsc::UnboundedSender<ServiceCommand>,
     theme_mode: ThemeMode,
     logs: LogBuffer,
     visible_indices: Vec<usize>,
@@ -46,23 +60,39 @@ pub struct AppView {
     _appearance_subscription: Subscription,
 }
 
+/// 组合根一次性注入的 UI 依赖面，避免构造函数参数继续膨胀。
+pub struct AppViewInit {
+    pub snapshots: watch::Receiver<ConnectionSnapshot>,
+    pub events: mpsc::UnboundedReceiver<UiEvent>,
+    pub log_batches: mpsc::UnboundedReceiver<LogBatch>,
+    pub log_service: LogService,
+    pub initial_level: LevelFilter,
+    pub service_snapshots: watch::Receiver<ServiceSnapshot>,
+    pub service_commands: mpsc::UnboundedSender<ServiceCommand>,
+}
+
 impl AppView {
-    pub fn new(
-        window: &mut Window,
-        cx: &mut Context<Self>,
-        snapshots: watch::Receiver<ConnectionSnapshot>,
-        events: mpsc::UnboundedReceiver<UiEvent>,
-        log_batches: mpsc::UnboundedReceiver<LogBatch>,
-        log_service: LogService,
-        initial_level: LevelFilter,
-    ) -> Self {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>, init: AppViewInit) -> Self {
+        let AppViewInit {
+            snapshots,
+            events,
+            log_batches,
+            log_service,
+            initial_level,
+            service_snapshots,
+            service_commands,
+        } = init;
         let appearance_subscription = cx.observe_window_appearance(window, |_, _, cx| cx.notify());
         let snapshot = snapshots.borrow().clone();
+        let service = service_snapshots.borrow().clone();
         let view = Self {
             page: Page::Overview,
             snapshot,
             snapshots,
             events,
+            service,
+            service_snapshots,
+            service_commands,
             theme_mode: ThemeMode::System,
             logs: LogBuffer::new(),
             visible_indices: Vec::new(),
@@ -93,6 +123,10 @@ impl AppView {
 
                         if this.snapshots.has_changed().unwrap_or(false) {
                             this.snapshot = this.snapshots.borrow_and_update().clone();
+                            cx.notify();
+                        }
+                        if this.service_snapshots.has_changed().unwrap_or(false) {
+                            this.service = this.service_snapshots.borrow_and_update().clone();
                             cx.notify();
                         }
                         while let Ok(event) = this.events.try_recv() {
@@ -598,6 +632,267 @@ impl AppView {
                     .child(description),
             )
     }
+
+    fn service_state_color(state: ServiceRuntimeState, theme: &Theme) -> Rgba {
+        match state {
+            ServiceRuntimeState::Running => theme.success,
+            ServiceRuntimeState::StartPending | ServiceRuntimeState::ContinuePending => {
+                theme.accent
+            }
+            ServiceRuntimeState::Paused
+            | ServiceRuntimeState::PausePending
+            | ServiceRuntimeState::StopPending
+            | ServiceRuntimeState::Unknown => theme.warning,
+            ServiceRuntimeState::Stopped => theme.text_muted,
+            ServiceRuntimeState::NotInstalled => theme.text_faint,
+        }
+    }
+
+    fn service_row(
+        label: &'static str,
+        description: &'static str,
+        action: impl IntoElement,
+        theme: &Theme,
+    ) -> Div {
+        div()
+            .flex()
+            .items_center()
+            .justify_between()
+            .gap(px(16.))
+            .py(px(10.))
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(3.))
+                    .child(div().text_size(px(13.)).text_color(theme.text).child(label))
+                    .child(
+                        div()
+                            .text_size(px(11.))
+                            .text_color(theme.text_muted)
+                            .child(description),
+                    ),
+            )
+            .child(action)
+    }
+
+    fn action_button(
+        label: &'static str,
+        command: ServiceCommand,
+        enabled: bool,
+        kind: ButtonKind,
+        theme: &Theme,
+        commands: mpsc::UnboundedSender<ServiceCommand>,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let (background, foreground, border) = if !enabled {
+            (theme.surface_raised, theme.text_faint, theme.border)
+        } else {
+            match kind {
+                ButtonKind::Primary => (theme.accent, theme.on_accent, theme.accent),
+                ButtonKind::Ghost => (theme.surface_raised, theme.text, theme.border),
+                ButtonKind::Danger => (theme.danger, theme.on_accent, theme.danger),
+            }
+        };
+
+        let button = div()
+            .id(label)
+            .px(px(12.))
+            .py(px(6.))
+            .rounded(px(7.))
+            .border_1()
+            .border_color(border)
+            .bg(background)
+            .text_size(px(12.))
+            .text_color(foreground)
+            .child(label);
+
+        if !enabled {
+            return button;
+        }
+
+        let on_click = cx.listener(move |_, _, _, _| {
+            let _ = commands.send(command);
+        });
+        let button = button.cursor_pointer().on_click(on_click);
+        if matches!(kind, ButtonKind::Ghost) {
+            button.hover(|element| element.bg(theme.surface))
+        } else {
+            // 实心主按钮/危险按钮的 hover 改成 surface 会让 on_accent 前景失去对比度，只保留点击。
+            button
+        }
+    }
+
+    fn divider(theme: &Theme) -> Div {
+        div().h(px(1.)).bg(theme.border)
+    }
+
+    fn feedback_banner(feedback: &ServiceFeedback, theme: &Theme) -> Div {
+        let (color, label) = match feedback.status {
+            photoprivacy_service::ServiceCommandStatus::Success => (theme.success, "Success"),
+            photoprivacy_service::ServiceCommandStatus::Skipped => (theme.text_muted, "Skipped"),
+            photoprivacy_service::ServiceCommandStatus::ElevationCancelled => {
+                (theme.warning, "Cancelled")
+            }
+            photoprivacy_service::ServiceCommandStatus::Failed => (theme.danger, "Failed"),
+        };
+
+        div()
+            .flex()
+            .items_center()
+            .gap(px(8.))
+            .p(px(10.))
+            .rounded(px(8.))
+            .border_1()
+            .border_color(color)
+            .bg(theme.surface)
+            .child(
+                div()
+                    .text_size(px(11.))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(color)
+                    .child(label),
+            )
+            .child(
+                div()
+                    .text_size(px(12.))
+                    .text_color(theme.text)
+                    .child(feedback.message.clone()),
+            )
+    }
+
+    fn service_page(&self, theme: &Theme, cx: &mut Context<Self>) -> Div {
+        let service = self.service.clone();
+        let commands = self.service_commands.clone();
+        let buttons = button_state(service.state);
+        let busy = service.busy;
+        let enabled = |available: bool| available && !busy;
+
+        let status_dot = Self::service_state_color(service.state, theme);
+        let status_text = service.state.label().to_string();
+        let status_row = Self::service_row(
+            "Status",
+            if busy {
+                "Applying service command…"
+            } else {
+                "Refreshed every 3 s"
+            },
+            div()
+                .flex()
+                .items_center()
+                .gap(px(8.))
+                .child(div().size(px(8.)).rounded_full().bg(status_dot))
+                .child(
+                    div()
+                        .text_size(px(13.))
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(theme.text)
+                        .child(status_text),
+                ),
+            theme,
+        );
+
+        let install_row = Self::service_row(
+            "Install service",
+            "Registers PhotoPrivacy as a system service.",
+            Self::action_button(
+                "Install",
+                ServiceCommand::Install,
+                enabled(buttons.install),
+                ButtonKind::Primary,
+                theme,
+                commands.clone(),
+                cx,
+            ),
+            theme,
+        );
+
+        let start_stop_row = Self::service_row(
+            "Start / stop",
+            "Controls the installed service process.",
+            div()
+                .flex()
+                .items_center()
+                .gap(px(6.))
+                .child(Self::action_button(
+                    "Start",
+                    ServiceCommand::Start,
+                    enabled(buttons.start),
+                    ButtonKind::Ghost,
+                    theme,
+                    commands.clone(),
+                    cx,
+                ))
+                .child(Self::action_button(
+                    "Stop",
+                    ServiceCommand::Stop,
+                    enabled(buttons.stop),
+                    ButtonKind::Ghost,
+                    theme,
+                    commands.clone(),
+                    cx,
+                ))
+                .child(Self::action_button(
+                    "Refresh",
+                    ServiceCommand::Refresh,
+                    true,
+                    ButtonKind::Ghost,
+                    theme,
+                    commands.clone(),
+                    cx,
+                )),
+            theme,
+        );
+
+        let uninstall_row = Self::service_row(
+            "Uninstall service",
+            "Stops and removes the service registration.",
+            Self::action_button(
+                "Uninstall",
+                ServiceCommand::Uninstall,
+                enabled(buttons.uninstall),
+                ButtonKind::Danger,
+                theme,
+                commands,
+                cx,
+            ),
+            theme,
+        );
+
+        let card = div()
+            .flex()
+            .flex_col()
+            .px(px(16.))
+            .bg(theme.surface)
+            .border_1()
+            .border_color(theme.border)
+            .rounded(px(12.))
+            .child(status_row)
+            .child(Self::divider(theme))
+            .child(install_row)
+            .child(Self::divider(theme))
+            .child(start_stop_row)
+            .child(Self::divider(theme))
+            .child(uninstall_row);
+
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(10.))
+            .child(
+                div()
+                    .text_size(px(11.))
+                    .text_color(theme.text_faint)
+                    .child("SERVICE"),
+            )
+            .child(card)
+            .children(
+                service
+                    .feedback
+                    .as_ref()
+                    .map(|feedback| Self::feedback_banner(feedback, theme)),
+            )
+    }
 }
 
 fn or_dash(value: Option<String>) -> String {
@@ -655,6 +950,7 @@ impl Render for AppView {
 
         let content = match self.page {
             Page::Overview => self.overview_body(&theme),
+            Page::Service => self.service_page(&theme, cx).into_any_element(),
             Page::Logs => self.logs_body(&theme, cx),
         };
 

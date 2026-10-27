@@ -118,7 +118,7 @@ SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 # systemctl enable --now does not restart an already-running unit after daemon-reload,
 # so we stop first to guarantee the new unit actually starts fresh.
 if systemctl is-active --quiet "${SERVICE_NAME}" 2>/dev/null; then
-    systemctl stop "${SERVICE_NAME}" || true
+    systemctl stop "${SERVICE_NAME}"
 fi
 
 cat > "$SERVICE_FILE" <<EOF
@@ -137,7 +137,7 @@ RestartSec=3
 NoNewPrivileges=true
 RuntimeDirectory=photoprivacy
 RuntimeDirectoryMode=0750
-ExecReload=/bin/kill -HUP $MAINPID
+ExecReload=/bin/kill -HUP \$MAINPID
 
 [Install]
 WantedBy=multi-user.target
@@ -145,7 +145,8 @@ EOF
 
 systemctl daemon-reload
 # First-time enable, then restart to pick up the new binary (covers both fresh install and upgrade).
-systemctl enable "${SERVICE_NAME}" 2>/dev/null || true
+# set -e makes enable/restart failures abort the install instead of reporting a disabled service as success.
+systemctl enable "${SERVICE_NAME}" 2>/dev/null
 systemctl restart "${SERVICE_NAME}"
 
 echo "Installed and started ${SERVICE_NAME}.service"
