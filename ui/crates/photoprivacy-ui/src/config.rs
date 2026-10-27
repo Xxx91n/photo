@@ -12,8 +12,8 @@
 //!
 //! 写侧规则（对齐 `AppConfigJson.ToIndentedJson`）：所有节都写出、顺序固定、两空格缩进。
 
-use serde::{Deserialize, Serialize, Serializer};
-use std::path::{Path, PathBuf};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::path::{Component, Path, PathBuf};
 
 pub const DEFAULT_SCHEMA_VERSION: i32 = 1;
 
@@ -81,7 +81,8 @@ impl AppConfig {
             .and_then(serde_json::Value::as_str)
             .is_some_and(|path| !path.trim().is_empty());
 
-        let mut config: Self = serde_json::from_value(value)?;
+        // 旧侧 JsonSerializerOptions.PropertyNameCaseInsensitive = true：键名大小写不敏感。
+        let mut config: Self = serde_json::from_value(lowercase_object_keys(value))?;
         config.normalize(legacy_exiftool_path, nested_exiftool_path_is_set);
         Ok(config)
     }
@@ -127,7 +128,10 @@ impl AppConfig {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ExifToolConfig {
-    #[serde(default = "default_exiftool_path")]
+    #[serde(
+        default = "default_exiftool_path",
+        deserialize_with = "null_as_empty_string"
+    )]
     pub path: String,
     #[serde(default = "default_true")]
     pub enable_windows_long_path: bool,
@@ -135,7 +139,7 @@ pub struct ExifToolConfig {
     pub enable_large_file_support: bool,
     #[serde(default)]
     pub dry_run: bool,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_empty_vec")]
     pub extra_exiftool_args: Vec<String>,
     #[serde(default = "default_stay_open_pool_size")]
     pub stay_open_pool_size: i32,
@@ -159,7 +163,10 @@ impl Default for ExifToolConfig {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WatchConfig {
-    #[serde(default = "default_hot_folder")]
+    #[serde(
+        default = "default_hot_folder",
+        deserialize_with = "null_as_empty_string"
+    )]
     pub hot_folder: String,
     #[serde(default = "default_true")]
     pub include_subdirectories: bool,
@@ -167,7 +174,7 @@ pub struct WatchConfig {
     pub debounce_ms: i32,
     #[serde(default = "default_internal_buffer_size")]
     pub internal_buffer_size: i32,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_empty_vec")]
     pub auto_excluded_directories: Vec<String>,
     #[serde(default)]
     pub polling_interval_seconds: i32,
@@ -188,13 +195,23 @@ impl Default for WatchConfig {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RulesConfig {
-    #[serde(default = "default_allowed_extensions")]
+    // 缺字段用 AppConfig.Default；显式 null 与旧侧 `?? []` 一致，回落空列表。
+    #[serde(
+        default = "default_allowed_extensions",
+        deserialize_with = "null_as_empty_vec"
+    )]
     pub allowed_extensions: Vec<String>,
-    #[serde(default = "default_excluded_patterns")]
+    #[serde(
+        default = "default_excluded_patterns",
+        deserialize_with = "null_as_empty_vec"
+    )]
     pub excluded_patterns: Vec<String>,
-    #[serde(default = "default_output_mode")]
+    #[serde(
+        default = "default_output_mode",
+        deserialize_with = "null_as_empty_string"
+    )]
     pub output_mode: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_empty_string")]
     pub output_directory: String,
 }
 
@@ -213,7 +230,11 @@ impl Default for RulesConfig {
 pub struct RetryConfig {
     #[serde(default = "default_max_attempts")]
     pub max_attempts: i32,
-    #[serde(default = "default_backoff_seconds")]
+    // 旧侧显式 null 走 `?? [1]`，与缺字段的 AppConfig.Default（[1,3,10]）不同。
+    #[serde(
+        default = "default_backoff_seconds",
+        deserialize_with = "null_as_single_retry"
+    )]
     pub backoff_seconds: Vec<i32>,
 }
 
@@ -230,9 +251,12 @@ impl Default for RetryConfig {
 pub struct BackupConfig {
     #[serde(default = "default_true")]
     pub enabled: bool,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_empty_string")]
     pub directory: String,
-    #[serde(default = "default_backup_suffix")]
+    #[serde(
+        default = "default_backup_suffix",
+        deserialize_with = "null_as_empty_string"
+    )]
     pub suffix: String,
     #[serde(default = "default_backup_max_size_mb")]
     pub max_size_mb: i32,
@@ -256,7 +280,10 @@ impl Default for BackupConfig {
 pub struct QuarantineConfig {
     #[serde(default = "default_true")]
     pub enabled: bool,
-    #[serde(default = "default_quarantine_directory")]
+    #[serde(
+        default = "default_quarantine_directory",
+        deserialize_with = "null_as_empty_string"
+    )]
     pub directory: String,
 }
 
@@ -271,13 +298,19 @@ impl Default for QuarantineConfig {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AuditConfig {
-    #[serde(default = "default_audit_directory")]
+    #[serde(
+        default = "default_audit_directory",
+        deserialize_with = "null_as_empty_string"
+    )]
     pub log_directory: String,
     #[serde(default = "default_retain_days")]
     pub retain_days: i32,
     #[serde(default)]
     pub diagnostic_mode: bool,
-    #[serde(default = "default_log_level")]
+    #[serde(
+        default = "default_log_level",
+        deserialize_with = "null_as_empty_string"
+    )]
     pub log_level: String,
 }
 
@@ -298,11 +331,17 @@ pub struct UiConfig {
     pub hide_main_window_on_startup: bool,
     #[serde(default)]
     pub hide_tray_icon: bool,
-    #[serde(default = "default_theme_variant")]
+    #[serde(
+        default = "default_theme_variant",
+        deserialize_with = "null_as_empty_string"
+    )]
     pub theme_variant: String,
-    #[serde(default = "default_theme_id")]
+    #[serde(
+        default = "default_theme_id",
+        deserialize_with = "null_as_empty_string"
+    )]
     pub theme_id: String,
-    #[serde(default = "default_locale")]
+    #[serde(default = "default_locale", deserialize_with = "null_as_empty_string")]
     pub locale: String,
     #[serde(
         default = "default_sidebar_width",
@@ -384,7 +423,19 @@ fn normalize_path(path: &str) -> String {
         return String::new();
     }
     let absolute = std::path::absolute(path).unwrap_or_else(|_| PathBuf::from(path));
-    let mut text = absolute.to_string_lossy().into_owned();
+    // 旧侧是 Path.GetFullPath，会消掉 `.`/`..`；std::path::absolute 不消，需要自己折叠。
+    let mut collapsed = PathBuf::new();
+    for component in absolute.components() {
+        match component {
+            Component::CurDir => {}
+            // 根/前缀上的 pop 是空操作，`C:\..\x` 不会跑出盘符。
+            Component::ParentDir => {
+                collapsed.pop();
+            }
+            other => collapsed.push(other.as_os_str()),
+        }
+    }
+    let mut text = collapsed.to_string_lossy().into_owned();
     // 根路径（`C:\` / `/`）保留尾分隔符，其余去掉；旧 UI 的 NormalizePath 同口径。
     let root_len = if text.len() >= 2 && text.as_bytes()[1] == b':' {
         3
@@ -469,11 +520,15 @@ fn default_audit_directory() -> String {
     default_hot_folder() + std::path::MAIN_SEPARATOR_STR + "_audit"
 }
 
-fn default_backup_directory_for(hot_folder: &str) -> String {
+pub(crate) fn default_backup_directory_for(hot_folder: &str) -> String {
     if hot_folder.trim().is_empty() {
         String::new()
     } else {
-        format!("{hot_folder}{}bak", std::path::MAIN_SEPARATOR)
+        // Path::join 与 C# Path.Combine 一样吞掉热目录的尾分隔符，不会写出 `hot\\bak`。
+        Path::new(hot_folder)
+            .join("bak")
+            .to_string_lossy()
+            .into_owned()
     }
 }
 
@@ -607,6 +662,44 @@ fn exiftool_file_name() -> &'static str {
     }
 }
 
+/// `System.Text.Json` 的键名匹配大小写不敏感；serde 默认敏感，这里统一折成小写再反序列化。
+/// 配置里没有自由格式 map，折叠键名不会碰到用户数据。
+fn lowercase_object_keys(value: serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Object(map) => serde_json::Value::Object(
+            map.into_iter()
+                .map(|(key, value)| (key.to_lowercase(), lowercase_object_keys(value)))
+                .collect(),
+        ),
+        serde_json::Value::Array(items) => {
+            serde_json::Value::Array(items.into_iter().map(lowercase_object_keys).collect())
+        }
+        other => other,
+    }
+}
+
+fn null_as_empty_string<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Ok(Option::<String>::deserialize(deserializer)?.unwrap_or_default())
+}
+
+fn null_as_empty_vec<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Ok(Option::<Vec<T>>::deserialize(deserializer)?.unwrap_or_default())
+}
+
+fn null_as_single_retry<'de, D>(deserializer: D) -> Result<Vec<i32>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Ok(Option::<Vec<i32>>::deserialize(deserializer)?.unwrap_or_else(|| vec![1]))
+}
+
 /// System.Text.Json 对整数值 double 写出 `200` 而不是 `200.0`；保持同形，避免同一份
 /// 配置在两侧来回写时出现无意义的 diff。
 fn serialize_dotnet_number<S>(value: &f64, serializer: S) -> Result<S::Ok, S::Error>
@@ -654,7 +747,7 @@ mod tests {
                 .as_array()
                 .unwrap()
                 .len(),
-            34
+            ALLOWED_EXTENSIONS.len()
         );
         assert_eq!(
             value["retry"]["backoff_seconds"],
@@ -735,6 +828,74 @@ mod tests {
     }
 
     #[test]
+    fn null_values_fall_back_like_the_dotnet_loader() {
+        // 防：旧 UI 读得下的 null（数组/字符串）把新 UI 卡成「config.json error」并拒绝保存（#55）。
+        let config = AppConfig::from_json(
+            r#"{
+                "exiftool": {"path": null, "extra_exiftool_args": null},
+                "watch": {"hot_folder": null, "auto_excluded_directories": null},
+                "rules": {"allowed_extensions": null, "excluded_patterns": null,
+                          "output_mode": null, "output_directory": null},
+                "retry": {"backoff_seconds": null},
+                "backup": {"directory": null, "suffix": null},
+                "quarantine": {"directory": null},
+                "audit": {"log_directory": null, "log_level": null},
+                "ui": {"theme_variant": null, "theme_id": null, "locale": null}
+            }"#,
+        )
+        .expect("显式 null 必须可解析");
+
+        assert_eq!(config.exiftool.path, "");
+        assert!(config.exiftool.extra_exiftool_args.is_empty());
+        assert_eq!(config.watch.hot_folder, "");
+        assert!(config.watch.auto_excluded_directories.is_empty());
+        // 旧侧 `?? []`：显式 null 不等同于缺字段的 AppConfig.Default。
+        assert!(config.rules.allowed_extensions.is_empty());
+        assert!(config.rules.excluded_patterns.is_empty());
+        // 旧侧 Retry 显式 null 走 `?? [1]`。
+        assert_eq!(config.retry.backoff_seconds, vec![1]);
+        assert_eq!(config.backup.suffix, ".bak");
+        assert_eq!(config.audit.log_level, "info");
+        assert_eq!(config.ui.theme_variant, "system");
+        assert_eq!(config.ui.locale, "zh-CN");
+    }
+
+    #[test]
+    fn property_names_are_case_insensitive_like_dotnet() {
+        // 防：旧侧 PropertyNameCaseInsensitive=true 读得下的键，新 UI 静默落默认值再覆盖原文件（#55）。
+        let config = AppConfig::from_json(
+            r#"{"Schema_Version": 2, "Watch": {"Hot_Folder": "D:\\photos"},
+                "UI": {"Theme_Variant": "dark", "Locale": "en"}}"#,
+        )
+        .unwrap();
+        assert_eq!(config.schema_version, 2);
+        assert_eq!(config.watch.hot_folder, r"D:\photos");
+        assert_eq!(config.ui.theme_variant, "dark");
+        assert_eq!(config.ui.locale, "en");
+    }
+
+    #[test]
+    fn dot_segments_are_collapsed_before_subdirectory_checks() {
+        // 防：`<hot>/../photos-other` 被前缀比较误当成子目录，配置页列出错误排除项（#55）。
+        let base = std::env::temp_dir().join("photoprivacy-dot-segments-test");
+        let hot = base.join("photos");
+        let mut config = AppConfig::default();
+        config.watch.hot_folder = hot.display().to_string();
+        config.watch.auto_excluded_directories = vec![format!(
+            "{}{}..{}photos-other",
+            hot.display(),
+            std::path::MAIN_SEPARATOR,
+            std::path::MAIN_SEPARATOR
+        )];
+
+        let excluded = resolve_auto_excluded_subdirectories(&config);
+        assert!(
+            !excluded.iter().any(|path| path.ends_with("photos-other")),
+            "`..` 必须折叠后再判断，兄弟目录不能入排除列表：{excluded:?}"
+        );
+    }
+
+    #[test]
     fn auto_excluded_directories_match_old_ui_rules() {
         // 防：系统自动排除列表把监控目录本身或兄弟目录列进去，用户在配置页看到错误信息（#55）。
         let base = std::env::temp_dir().join("photoprivacy-auto-excluded-test");
@@ -750,7 +911,11 @@ mod tests {
         ];
 
         let excluded = resolve_auto_excluded_subdirectories(&config);
-        assert_eq!(excluded.len(), 4, "{excluded:?}");
+        assert_eq!(
+            excluded.len(),
+            4,
+            "备份+审计+隔离+自定义各一条：{excluded:?}"
+        );
         assert!(excluded.iter().any(|path| path.ends_with("bak")));
         assert!(excluded.iter().any(|path| path.ends_with("custom")));
         assert!(excluded.iter().any(|path| path.ends_with("_audit")));
