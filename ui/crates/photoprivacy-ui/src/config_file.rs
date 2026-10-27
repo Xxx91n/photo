@@ -61,7 +61,7 @@ impl ConfigFile {
     /// 文件不存在时返回 `AppConfig::default()`（与旧 UI 的 `LoadConfigOrDefault` 一致）；
     /// 文件存在但解析失败时把错误交给调用方，绝不静默重置用户配置。
     pub fn load_or_default(&self) -> Result<AppConfig, ConfigFileError> {
-        match fs::read_to_string(&self.path) {
+        match read_config_text(&self.path) {
             Ok(text) => Ok(AppConfig::from_json(&text)?),
             Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(AppConfig::default()),
             Err(err) => Err(ConfigFileError::Io(err)),
@@ -94,6 +94,41 @@ impl ConfigFile {
         bytes.hash(&mut hasher);
         Some(ConfigFingerprint(hasher.finish()))
     }
+}
+
+/// `File.ReadAllText` 会按 BOM 识别 UTF-8/UTF-16；Windows 记事本「另存为 Unicode」
+/// 产出的 UTF-16 配置旧 UI 能读，新 UI 也必须能读。
+fn read_config_text(path: &Path) -> io::Result<String> {
+    decode_config_text(&fs::read(path)?)
+}
+
+fn decode_config_text(bytes: &[u8]) -> io::Result<String> {
+    if let Some(rest) = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]) {
+        return String::from_utf8(rest.to_vec())
+            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err));
+    }
+    if let Some(rest) = bytes.strip_prefix(&[0xFF, 0xFE]) {
+        return decode_utf16(rest, u16::from_le_bytes);
+    }
+    if let Some(rest) = bytes.strip_prefix(&[0xFE, 0xFF]) {
+        return decode_utf16(rest, u16::from_be_bytes);
+    }
+    String::from_utf8(bytes.to_vec()).map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
+}
+
+fn decode_utf16(bytes: &[u8], from_bytes: fn([u8; 2]) -> u16) -> io::Result<String> {
+    if !bytes.len().is_multiple_of(2) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "UTF-16 配置字节数为奇数",
+        ));
+    }
+    let units = bytes
+        .chunks_exact(2)
+        .map(|chunk| from_bytes([chunk[0], chunk[1]]));
+    char::decode_utf16(units)
+        .collect::<Result<String, _>>()
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "UTF-16 配置包含非法代理项"))
 }
 
 /// `config.json` -> `config.json.bak`（旧 UI 用字符串追加，不替换扩展名）。
@@ -200,6 +235,34 @@ mod tests {
         file.save(&config).unwrap();
         let after = file.fingerprint().unwrap();
         assert_ne!(before, after);
+    }
+
+    #[test]
+    fn bom_and_utf16_files_load_like_dotnet_read_all_text() {
+        // 防：Windows 记事本另存为带 BOM/UTF-16 后，新 UI 报解析失败并拒绝保存（#55）。
+        let dir = TempDir::new("encoding");
+        let file = ConfigFile::new(dir.config_path());
+        fs::create_dir_all(dir.config_path().parent().unwrap()).unwrap();
+        let json = r#"{"ui":{"theme_variant":"dark"}}"#;
+
+        let mut utf8_bom = vec![0xEF, 0xBB, 0xBF];
+        utf8_bom.extend_from_slice(json.as_bytes());
+        fs::write(dir.config_path(), utf8_bom).unwrap();
+        assert_eq!(file.load_or_default().unwrap().ui.theme_variant, "dark");
+
+        let mut utf16_le = vec![0xFF, 0xFE];
+        for unit in json.encode_utf16() {
+            utf16_le.extend_from_slice(&unit.to_le_bytes());
+        }
+        fs::write(dir.config_path(), utf16_le).unwrap();
+        assert_eq!(file.load_or_default().unwrap().ui.theme_variant, "dark");
+
+        let mut utf16_be = vec![0xFE, 0xFF];
+        for unit in json.encode_utf16() {
+            utf16_be.extend_from_slice(&unit.to_be_bytes());
+        }
+        fs::write(dir.config_path(), utf16_be).unwrap();
+        assert_eq!(file.load_or_default().unwrap().ui.theme_variant, "dark");
     }
 
     #[test]
