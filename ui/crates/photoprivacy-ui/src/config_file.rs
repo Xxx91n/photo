@@ -107,6 +107,13 @@ fn decode_config_text(bytes: &[u8]) -> io::Result<String> {
         return String::from_utf8(rest.to_vec())
             .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err));
     }
+    // UTF-32 LE 以 FF FE 开头，必须先于 UTF-16 判断。
+    if let Some(rest) = bytes.strip_prefix(&[0xFF, 0xFE, 0x00, 0x00]) {
+        return decode_utf32(rest, u32::from_le_bytes);
+    }
+    if let Some(rest) = bytes.strip_prefix(&[0x00, 0x00, 0xFE, 0xFF]) {
+        return decode_utf32(rest, u32::from_be_bytes);
+    }
     if let Some(rest) = bytes.strip_prefix(&[0xFF, 0xFE]) {
         return decode_utf16(rest, u16::from_le_bytes);
     }
@@ -129,6 +136,23 @@ fn decode_utf16(bytes: &[u8], from_bytes: fn([u8; 2]) -> u16) -> io::Result<Stri
     char::decode_utf16(units)
         .collect::<Result<String, _>>()
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "UTF-16 配置包含非法代理项"))
+}
+
+fn decode_utf32(bytes: &[u8], from_bytes: fn([u8; 4]) -> u32) -> io::Result<String> {
+    if !bytes.len().is_multiple_of(4) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "UTF-32 配置字节数不是 4 的倍数",
+        ));
+    }
+    bytes
+        .chunks_exact(4)
+        .map(|chunk| {
+            char::from_u32(from_bytes([chunk[0], chunk[1], chunk[2], chunk[3]])).ok_or_else(|| {
+                io::Error::new(io::ErrorKind::InvalidData, "UTF-32 配置包含非法码点")
+            })
+        })
+        .collect()
 }
 
 /// `config.json` -> `config.json.bak`（旧 UI 用字符串追加，不替换扩展名）。
@@ -262,6 +286,13 @@ mod tests {
             utf16_be.extend_from_slice(&unit.to_be_bytes());
         }
         fs::write(dir.config_path(), utf16_be).unwrap();
+        assert_eq!(file.load_or_default().unwrap().ui.theme_variant, "dark");
+
+        let mut utf32_le = vec![0xFF, 0xFE, 0x00, 0x00];
+        for ch in json.chars() {
+            utf32_le.extend_from_slice(&(ch as u32).to_le_bytes());
+        }
+        fs::write(dir.config_path(), utf32_le).unwrap();
         assert_eq!(file.load_or_default().unwrap().ui.theme_variant, "dark");
     }
 
