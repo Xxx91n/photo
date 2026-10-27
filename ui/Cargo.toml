@@ -1,6 +1,10 @@
 [workspace]
 resolver = "2"
-members = ["crates/photoprivacy-ipc", "crates/photoprivacy-ui"]
+members = [
+    "crates/photoprivacy-ipc",
+    "crates/photoprivacy-service",
+    "crates/photoprivacy-ui",
+]
 
 [workspace.package]
 version = "0.1.0"

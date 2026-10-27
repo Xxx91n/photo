@@ -3580,6 +3580,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "photoprivacy-service"
+version = "0.1.0"
+dependencies = [
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "photoprivacy-ui"
 version = "0.1.0"
 dependencies = [
@@ -3589,6 +3596,7 @@ dependencies = [
  "gpui-pre-macos",
  "gpui-pre-windows",
  "photoprivacy-ipc",
+ "photoprivacy-service",
  "tokio",
 ]
 

@@ -1,4 +1,5 @@
 mod app;
+mod service_page;
 mod theme;
 mod worker_connection;
 
@@ -14,7 +15,7 @@ use std::time::Duration;
 use worker_connection::ConnectOptions;
 
 const USAGE: &str = "\
-PhotoPrivacy 新 UI（gpui 骨架竖切）
+PhotoPrivacy 新 UI（gpui）
 
 用法: photoprivacy-ui [--config <config.json>] [--worker <PhotoPrivacyWorker 路径>]
 
@@ -91,6 +92,11 @@ fn main() -> anyhow::Result<()> {
     let options = ConnectOptions::discover().with_overrides(args.config_path, args.worker_path);
     let (snapshot_tx, snapshot_rx) = tokio::sync::watch::channel(ConnectionSnapshot::connecting());
     let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (service_snapshots, service_commands) = service_page::start(
+        runtime.handle(),
+        options.worker_path.clone(),
+        options.config_path.clone(),
+    );
     worker_connection::start(runtime.handle(), options, snapshot_tx, event_tx);
 
     application().run(move |cx: &mut App| {
@@ -116,7 +122,16 @@ fn main() -> anyhow::Result<()> {
             },
             move |window, cx| {
                 cx.activate(false);
-                cx.new(|cx| app::AppView::new(window, cx, snapshot_rx, event_rx))
+                cx.new(|cx| {
+                    app::AppView::new(
+                        window,
+                        cx,
+                        snapshot_rx,
+                        event_rx,
+                        service_snapshots,
+                        service_commands,
+                    )
+                })
             },
         )
         .expect("创建主窗口失败");
