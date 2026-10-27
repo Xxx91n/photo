@@ -126,10 +126,10 @@ impl AppView {
             }
             ServiceRuntimeState::Paused
             | ServiceRuntimeState::PausePending
-            | ServiceRuntimeState::StopPending => theme.warning,
+            | ServiceRuntimeState::StopPending
+            | ServiceRuntimeState::Unknown => theme.warning,
             ServiceRuntimeState::Stopped => theme.text_muted,
             ServiceRuntimeState::NotInstalled => theme.text_faint,
-            ServiceRuntimeState::Unknown => theme.warning,
         }
     }
 

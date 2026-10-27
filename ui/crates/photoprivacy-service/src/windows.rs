@@ -236,10 +236,7 @@ impl ServiceOps for WindowsOps {
         };
 
         let precheck = self.ensure_removed_before_install();
-        if matches!(
-            precheck.status,
-            ServiceCommandStatus::Failed | ServiceCommandStatus::ElevationCancelled
-        ) {
+        if precheck.status != ServiceCommandStatus::Success {
             return precheck;
         }
 
@@ -247,10 +244,7 @@ impl ServiceOps for WindowsOps {
         if create.exit_code == Some(1073) {
             // 旧 UI 的竞态兜底：清理窗口里服务又被安装回来时，再删一次再 create。
             let retry = self.ensure_removed_before_install();
-            if matches!(
-                retry.status,
-                ServiceCommandStatus::Failed | ServiceCommandStatus::ElevationCancelled
-            ) {
+            if retry.status != ServiceCommandStatus::Success {
                 return retry;
             }
             create = self.run_sc(args, true);
