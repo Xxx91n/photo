@@ -54,8 +54,18 @@ pub struct ServiceButtonState {
     pub stop: bool,
 }
 
-/// 与旧 UI `ServiceUiPolicy.BuildButtonState` 的四分支逐项一致。
+/// 与旧 UI `ServiceUiPolicy.BuildButtonState` 的四分支一致；`Unknown` 是探测失败，
+/// 额外 fail-closed 成全禁用，等下一次 3s 探测恢复后再放行。
 pub fn button_state(state: ServiceRuntimeState) -> ServiceButtonState {
+    if state == ServiceRuntimeState::Unknown {
+        return ServiceButtonState {
+            install: false,
+            uninstall: false,
+            start: false,
+            stop: false,
+        };
+    }
+
     if !state.is_installed() {
         return ServiceButtonState {
             install: true,
@@ -130,10 +140,14 @@ mod tests {
     }
 
     #[test]
-    fn unknown_counts_as_installed() {
-        // 防：探测失败（Unknown）被当成未安装，界面放出 Install 并在已安装服务上触发 1073（#58）。
+    fn unknown_is_fail_closed_for_buttons() {
+        // 防：探测失败时放出启动/卸载，用户可能在真实状态未知时动服务（#58 CodeRabbit）。
         assert!(ServiceRuntimeState::Unknown.is_installed());
-        assert!(!button_state(ServiceRuntimeState::Unknown).install);
+        let buttons = button_state(ServiceRuntimeState::Unknown);
+        assert!(!buttons.install);
+        assert!(!buttons.uninstall);
+        assert!(!buttons.start);
+        assert!(!buttons.stop);
     }
 
     #[test]

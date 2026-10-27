@@ -166,6 +166,14 @@ mod tests {
             ServiceCommand::Uninstall,
             ServiceRuntimeState::Stopped
         ));
+        assert!(!command_allowed(
+            ServiceCommand::Start,
+            ServiceRuntimeState::Unknown
+        ));
+        assert!(!command_allowed(
+            ServiceCommand::Uninstall,
+            ServiceRuntimeState::Unknown
+        ));
     }
 
     #[test]

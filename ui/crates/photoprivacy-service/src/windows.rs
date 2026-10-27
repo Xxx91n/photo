@@ -58,7 +58,7 @@ impl ServiceProbe for WindowsProbe {
             &["query".to_string(), SERVICE_NAME.to_string()],
             PROBE_TIMEOUT,
         );
-        if output.spawn_error.is_some() || output.timed_out {
+        if output.spawn_error.is_some() || output.wait_error.is_some() || output.timed_out {
             return ServiceRuntimeState::Unknown;
         }
         parse_sc_query(output.exit_code.unwrap_or(-1), &output.stdout)

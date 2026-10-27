@@ -2,8 +2,8 @@ use std::io::Read;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-/// 子进程结果。`spawn_error` / `timed_out` 与正常退出分开，调用方才能把“没跑起来”
-/// 和“跑了但失败”区分成不同反馈。
+/// 子进程结果。`spawn_error` / `wait_error` / `timed_out` 与正常退出分开，
+/// 调用方才能把“没跑起来”“跑起来但等待失败”和“跑了但退出码失败”区分成不同反馈。
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct CommandOutput {
     pub exit_code: Option<i32>,
@@ -11,6 +11,7 @@ pub struct CommandOutput {
     pub stderr: String,
     pub timed_out: bool,
     pub spawn_error: Option<String>,
+    pub wait_error: Option<String>,
 }
 
 impl CommandOutput {
@@ -79,7 +80,8 @@ impl ProcessRunner for SystemProcessRunner {
                         stdout: stdout_reader.join().unwrap_or_default(),
                         stderr: stderr_reader.join().unwrap_or_default(),
                         timed_out: false,
-                        spawn_error: Some(error.to_string()),
+                        spawn_error: None,
+                        wait_error: Some(error.to_string()),
                     };
                 }
             }
@@ -91,6 +93,7 @@ impl ProcessRunner for SystemProcessRunner {
             stderr: stderr_reader.join().unwrap_or_default(),
             timed_out,
             spawn_error: None,
+            wait_error: None,
         }
     }
 }

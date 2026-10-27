@@ -34,7 +34,7 @@ mod linux {
                 &["is-active".to_string(), SYSTEMD_SERVICE.to_string()],
                 PROBE_TIMEOUT,
             );
-            if output.spawn_error.is_some() || output.timed_out {
+            if output.spawn_error.is_some() || output.wait_error.is_some() || output.timed_out {
                 return ServiceRuntimeState::Unknown;
             }
             parse_systemctl_active(output.exit_code.unwrap_or(-1), &output.stdout)
@@ -167,7 +167,7 @@ mod macos {
                 &["list".to_string(), LAUNCHD_LABEL.to_string()],
                 PROBE_TIMEOUT,
             );
-            if output.spawn_error.is_some() || output.timed_out {
+            if output.spawn_error.is_some() || output.wait_error.is_some() || output.timed_out {
                 return ServiceRuntimeState::Unknown;
             }
             macos_state(
@@ -242,7 +242,11 @@ mod macos {
 
         fn uninstall(&self) -> ServiceCommandResult {
             self.run_admin_shell(
-                &format!("launchctl unload -w {LAUNCHD_PLIST} 2>/dev/null; rm -f {LAUNCHD_PLIST}"),
+                // 仍删除 plist，但把 unload 的退出码透传出去，避免 rm 成功掩盖卸载失败。
+                &format!(
+                    "launchctl unload -w {LAUNCHD_PLIST} 2>/dev/null; unload_rc=$?; \
+                     rm -f {LAUNCHD_PLIST}; exit $unload_rc"
+                ),
                 "launchd service uninstalled",
             )
         }
@@ -519,6 +523,18 @@ mod tests {
         assert_eq!(result.status, ServiceCommandStatus::Failed);
         assert!(result.message.contains("install script not found"));
         assert!(runner.calls().is_empty());
+    }
+
+    #[test]
+    fn macos_uninstall_preserves_unload_exit_status() {
+        // 防：rm -f 成功覆盖 launchctl unload 失败，卸载在服务仍加载时报告成功（#58 CodeRabbit）。
+        let runner = Arc::new(QueueRunner::new("osascript", vec![ok()]));
+        let ops = macos::MacOps::new(runner.clone(), PathBuf::from("/missing/script.sh"));
+
+        assert_eq!(ops.uninstall().status, ServiceCommandStatus::Success);
+        let command = &runner.calls()[0][1];
+        assert!(command.contains("unload_rc=$?"));
+        assert!(command.contains("exit $unload_rc"));
     }
 
     #[test]

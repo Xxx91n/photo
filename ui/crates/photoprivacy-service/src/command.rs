@@ -96,6 +96,9 @@ pub(crate) fn result_from_output(
     if let Some(error) = output.spawn_error {
         return ServiceCommandResult::failed(format!("Failed to start {program}: {error}"), None);
     }
+    if let Some(error) = output.wait_error {
+        return ServiceCommandResult::failed(format!("{program} wait failed: {error}"), None);
+    }
     if output.timed_out {
         return ServiceCommandResult::failed(
             format!("{program} did not exit within 60 seconds"),
@@ -147,6 +150,25 @@ mod tests {
             "The service already exists"
         );
         assert_eq!(translate_exit_code(Some(9999)), "Unknown error (code 9999)");
+    }
+
+    #[test]
+    fn wait_failure_is_reported_as_wait_failure() {
+        // 防：进程已启动但 try_wait 失败被报成“Failed to start”，误导排障（#58 CodeRabbit）。
+        let output = CommandOutput {
+            wait_error: Some("os error 123".to_string()),
+            ..CommandOutput::default()
+        };
+        let result = result_from_output(
+            "sc.exe",
+            output,
+            "ok",
+            "cancelled",
+            |_| false,
+            |_| "failure".to_string(),
+        );
+        assert_eq!(result.status, ServiceCommandStatus::Failed);
+        assert!(result.message.contains("wait failed"));
     }
 
     #[test]
