@@ -43,7 +43,7 @@ impl std::error::Error for IpcError {}
 
 // Worker 服务端同一时刻只预建一个管道实例，并发连接会撞 ERROR_PIPE_BUSY，属主重建实例时还有极短的
 // 「无实例」窗口（ERROR_FILE_NOT_FOUND）。
-// Design(#54): 所有 IPC 请求共用一把异步锁（单飞），连接阶段对 busy/not-found 重试到连接超时。
+// Design(#49): 所有 IPC 请求共用一把异步锁（单飞），连接阶段对 busy/not-found 重试到连接超时。
 pub struct IpcClient {
     connect_timeout: Duration,
     request_timeout: Duration,
