@@ -3,6 +3,7 @@ use crate::config::{
     resolve_auto_excluded_subdirectories,
 };
 use crate::config_service::{ConfigCommand, ConfigEvent};
+use crate::i18n::{self, Catalog, keys as k};
 use crate::log_service::{LogBatch, LogService};
 use crate::rules_page;
 use crate::service_page::{ServiceCommand, ServiceFeedback, ServiceSnapshot};
@@ -10,10 +11,10 @@ use crate::theme::{self, Theme, ThemeMode};
 use gpui::prelude::*;
 use gpui::{
     AnyElement, Context, CursorStyle, Div, FocusHandle, FontWeight, IntoElement, KeyDownEvent,
-    MouseButton, PathPromptOptions, Render, Rgba, Stateful, Subscription, UniformListScrollHandle,
-    Window, div, px, uniform_list,
+    MouseButton, PathPromptOptions, Render, Rgba, Stateful, Styled, Subscription,
+    UniformListScrollHandle, Window, div, px, uniform_list,
 };
-use photoprivacy_ipc::{ConnectionSnapshot, ConnectionState, ServiceReachability};
+use photoprivacy_ipc::{ConnectionSnapshot, ConnectionState, ServiceReachability, WorkerMode};
 use photoprivacy_logs::{AuditRecord, EventTone, LevelFilter, LogBuffer};
 use photoprivacy_rules::RulesEditor;
 use photoprivacy_service::{ServiceRuntimeState, button_state};
@@ -166,10 +167,11 @@ enum FieldId {
 }
 
 /// 一个可编辑路径字段的静态元数据。加字段只改这张表与 `FieldId`，不再散落五处 match。
+/// placeholder 存 i18n 键（渲染时按当前语言取词），不存文案本身。
 struct FieldSpec {
     element_id: &'static str,
     browse_id: &'static str,
-    placeholder: &'static str,
+    placeholder_key: &'static str,
     files: bool,
     value: fn(&AppConfig) -> &str,
     value_mut: fn(&mut AppConfig) -> &mut String,
@@ -179,7 +181,7 @@ static FIELD_SPECS: [FieldSpec; 5] = [
     FieldSpec {
         element_id: "config-exiftool-path",
         browse_id: "browse-exiftool-path",
-        placeholder: r"C:\Program Files\ExifTool\exiftool.exe",
+        placeholder_key: k::CONFIG_PLACEHOLDER_EXIFTOOL_PATH,
         files: true,
         value: exiftool_path,
         value_mut: exiftool_path_mut,
@@ -187,7 +189,7 @@ static FIELD_SPECS: [FieldSpec; 5] = [
     FieldSpec {
         element_id: "config-hot-folder",
         browse_id: "browse-hot-folder",
-        placeholder: "Folder the worker watches",
+        placeholder_key: k::CONFIG_PLACEHOLDER_HOT_FOLDER,
         files: false,
         value: hot_folder,
         value_mut: hot_folder_mut,
@@ -195,7 +197,7 @@ static FIELD_SPECS: [FieldSpec; 5] = [
     FieldSpec {
         element_id: "config-backup-directory",
         browse_id: "browse-backup-directory",
-        placeholder: "Default: <hot folder>/bak",
+        placeholder_key: k::CONFIG_PLACEHOLDER_BACKUP_DIR,
         files: false,
         value: backup_directory,
         value_mut: backup_directory_mut,
@@ -203,7 +205,7 @@ static FIELD_SPECS: [FieldSpec; 5] = [
     FieldSpec {
         element_id: "config-quarantine-directory",
         browse_id: "browse-quarantine-directory",
-        placeholder: "Default: <hot folder>/_quarantine",
+        placeholder_key: k::CONFIG_PLACEHOLDER_QUARANTINE_DIR,
         files: false,
         value: quarantine_directory,
         value_mut: quarantine_directory_mut,
@@ -211,7 +213,7 @@ static FIELD_SPECS: [FieldSpec; 5] = [
     FieldSpec {
         element_id: "config-audit-log-directory",
         browse_id: "browse-audit-log-directory",
-        placeholder: "Default: <hot folder>/_audit",
+        placeholder_key: k::CONFIG_PLACEHOLDER_AUDIT_LOG_DIR,
         files: false,
         value: audit_log_directory,
         value_mut: audit_log_directory_mut,
@@ -239,8 +241,8 @@ impl FieldId {
         self.spec().browse_id
     }
 
-    fn placeholder(self) -> &'static str {
-        self.spec().placeholder
+    fn placeholder_key(self) -> &'static str {
+        self.spec().placeholder_key
     }
 
     fn files(self) -> bool {
@@ -311,13 +313,24 @@ enum Page {
 }
 
 impl Page {
-    fn label(self) -> &'static str {
+    /// 元素 id 用语言无关的静态串；显示文案走 i18n。
+    fn id(self) -> &'static str {
         match self {
-            Self::Overview => "Overview",
-            Self::Config => "Config",
-            Self::Service => "Service",
-            Self::Logs => "Logs",
-            Self::Rules => "Rules",
+            Self::Overview => "overview",
+            Self::Config => "config",
+            Self::Service => "service",
+            Self::Logs => "logs",
+            Self::Rules => "rules",
+        }
+    }
+
+    fn key(self) -> &'static str {
+        match self {
+            Self::Overview => k::NAV_OVERVIEW,
+            Self::Config => k::NAV_CONFIG,
+            Self::Service => k::NAV_SERVICE,
+            Self::Logs => k::NAV_LOGS,
+            Self::Rules => k::NAV_RULES,
         }
     }
 
@@ -346,6 +359,45 @@ pub struct AppDeps {
     pub config_commands: mpsc::UnboundedSender<ConfigCommand>,
     pub config_path: PathBuf,
     pub rules: Rc<RefCell<RulesEditor>>,
+    pub i18n: Rc<Catalog>,
+}
+
+/// RTL 语言下主轴行反向，行内「标签 + 控件」的左右顺序整体镜像。
+/// gpui 0.3.10 没有 `flex_direction` 通用设置器，只有 row/row_reverse 便捷方法，
+/// 用扩展 trait 保持调用方的链式写法。
+pub(crate) trait MirrorRow: Styled + Sized {
+    fn mirror_row(self, rtl: bool) -> Self {
+        if rtl { self.flex_row_reverse() } else { self }
+    }
+}
+impl<E: Styled + Sized> MirrorRow for E {}
+
+/// Worker 运行模式 → 展示键。
+fn mode_key(mode: WorkerMode) -> &'static str {
+    match mode {
+        WorkerMode::Background => k::MODE_BACKGROUND,
+        WorkerMode::Service => k::MODE_SERVICE,
+    }
+}
+
+/// 主题模式 → chips 展示键。
+fn theme_key(mode: ThemeMode) -> &'static str {
+    match mode {
+        ThemeMode::System => k::THEME_OPTION_SYSTEM,
+        ThemeMode::Light => k::THEME_OPTION_LIGHT,
+        ThemeMode::Dark => k::THEME_OPTION_DARK,
+    }
+}
+
+/// 日志级别 → chips 展示键。
+fn level_chip_key(level: LevelFilter) -> &'static str {
+    match level {
+        LevelFilter::All => k::LOGLEVEL_CHIP_ALL,
+        LevelFilter::Debug => k::LOGLEVEL_CHIP_DEBUG,
+        LevelFilter::Info => k::LOGLEVEL_CHIP_INFO,
+        LevelFilter::Warn => k::LOGLEVEL_CHIP_WARN,
+        LevelFilter::Error => k::LOGLEVEL_CHIP_ERROR,
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -378,6 +430,7 @@ pub struct AppView {
     edit_revision: u64,
     fields: HashMap<FieldId, FieldState>,
     pub(crate) rules: Rc<RefCell<RulesEditor>>,
+    i18n: Rc<Catalog>,
     _appearance_subscription: Subscription,
 }
 
@@ -395,6 +448,7 @@ impl AppView {
             config_commands,
             config_path,
             rules,
+            i18n,
         } = deps;
         let appearance_subscription = cx.observe_window_appearance(window, |_, _, cx| cx.notify());
         let snapshot = snapshots.borrow().clone();
@@ -440,10 +494,26 @@ impl AppView {
             edit_revision,
             fields,
             rules,
+            i18n,
             _appearance_subscription: appearance_subscription,
         };
         view.spawn_updates(window, cx);
         view
+    }
+
+    /// 按当前草稿语言取词；语言 chips 点击即改草稿并重渲染，因此切换即时生效（#60）。
+    pub(crate) fn t(&self, key: &str) -> String {
+        self.i18n.get(&self.config.ui.locale, key)
+    }
+
+    /// 带占位符取词（`{0}`…`{n}`）。
+    pub(crate) fn tr(&self, key: &str, args: &[&str]) -> String {
+        self.i18n.get_format(&self.config.ui.locale, key, args)
+    }
+
+    /// 当前草稿语言是否 RTL；布局镜像按页在渲染层做（gpui 0.3.10 无段落级方向 API）。
+    pub(crate) fn rtl(&self) -> bool {
+        i18n::is_rtl(&self.config.ui.locale)
     }
 
     /// Worker 快照从 tokio 线程来；这里在 UI 线程轮询，避免跨线程触碰 gpui 状态。
@@ -599,15 +669,18 @@ impl AppView {
     fn save_state_text(&self, theme: &Theme) -> (String, Rgba) {
         match &self.save_state {
             SaveState::Idle => (String::new(), theme.text_faint),
-            SaveState::Pending => ("Saving…".to_string(), theme.text_muted),
-            SaveState::Saved => ("Saved · Worker reloaded".to_string(), theme.success),
+            SaveState::Pending => (self.t(k::STATUS_SAVING), theme.text_muted),
+            SaveState::Saved => (self.t(k::STATUS_SAVED_RELOADED), theme.success),
             SaveState::SavedWorkerDown(error) => (
-                format!("Saved · Worker not reloaded: {error}"),
+                self.tr(k::STATUS_SAVED_WORKER_DOWN, &[error]),
                 theme.warning,
             ),
-            SaveState::Failed(error) => (format!("Save failed: {error}"), theme.danger),
+            SaveState::Failed(error) => (
+                self.tr(k::MSG_SAVE_FAILED_EXCEPTION, &[error]),
+                theme.danger,
+            ),
             SaveState::ExternalLoadFailed(error) => {
-                (format!("config.json error: {error}"), theme.danger)
+                (self.tr(k::STATUS_CONFIG_ERROR, &[error]), theme.danger)
             }
         }
     }
@@ -757,7 +830,7 @@ impl AppView {
     fn prompt_single_path(
         &mut self,
         files: bool,
-        prompt: &'static str,
+        prompt: String,
         window: &mut Window,
         cx: &mut Context<Self>,
         on_pick: impl FnOnce(&mut Self, String, &mut Context<Self>) + 'static,
@@ -786,9 +859,9 @@ impl AppView {
 
     fn pick_path(&mut self, id: FieldId, window: &mut Window, cx: &mut Context<Self>) {
         let prompt = if id.files() {
-            "Select ExifTool"
+            self.t(k::DIALOG_SELECT_EXIFTOOL)
         } else {
-            "Select folder"
+            self.t(k::DIALOG_SELECT_FOLDER)
         };
         self.prompt_single_path(id.files(), prompt, window, cx, move |this, text, cx| {
             let length = text.len();
@@ -799,19 +872,16 @@ impl AppView {
     }
 
     fn add_excluded_directory(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.prompt_single_path(
-            false,
-            "Select folder to exclude",
-            window,
-            cx,
-            |this, text, cx| {
-                this.config.watch.auto_excluded_directories.push(text);
-                this.mark_dirty(cx);
-            },
-        );
+        let prompt = self.t(k::DIALOG_SELECT_EXCLUDED_DIR);
+        self.prompt_single_path(false, prompt, window, cx, |this, text, cx| {
+            this.config.watch.auto_excluded_directories.push(text);
+            this.mark_dirty(cx);
+        });
     }
 
-    fn theme_switch(mode: ThemeMode, theme: &Theme, cx: &mut Context<Self>) -> Div {
+    fn theme_switch(&self, mode: ThemeMode, theme: &Theme, cx: &mut Context<Self>) -> Div {
+        let i18n = self.i18n.clone();
+        let locale = self.config.ui.locale.clone();
         div()
             .flex()
             .items_center()
@@ -822,9 +892,10 @@ impl AppView {
             .border_color(theme.border)
             .rounded(px(9.))
             .children(ThemeMode::all().into_iter().map(move |candidate| {
+                let label = theme_key(candidate);
                 let active = candidate == mode;
                 div()
-                    .id(candidate.label())
+                    .id(candidate.variant())
                     .px(px(10.))
                     .py(px(4.))
                     .rounded(px(7.))
@@ -841,18 +912,20 @@ impl AppView {
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.set_theme_mode(candidate, cx);
                     }))
-                    .child(candidate.label())
+                    .child(i18n.get(&locale, label))
             }))
     }
 
     fn row_base(
-        label: &'static str,
-        description: &'static str,
+        &self,
+        label: String,
+        description: String,
         control: AnyElement,
         theme: Theme,
     ) -> Div {
         div()
             .flex()
+            .mirror_row(self.rtl())
             .items_center()
             .justify_between()
             .gap(px(24.))
@@ -878,24 +951,28 @@ impl AppView {
     }
 
     fn settings_row(
-        label: &'static str,
-        description: &'static str,
+        &self,
+        label: String,
+        description: String,
         control: AnyElement,
         theme: Theme,
     ) -> AnyElement {
-        Self::row_base(label, description, control, theme).into_any_element()
+        self.row_base(label, description, control, theme)
+            .into_any_element()
     }
 
+    #[allow(clippy::too_many_arguments)] // 与 config_service 同款：行渲染的固有形状参数。
     fn toggle_row(
+        &self,
         id: &'static str,
-        label: &'static str,
-        description: &'static str,
+        label: String,
+        description: String,
         on: bool,
         theme: Theme,
         cx: &mut Context<Self>,
         toggle: impl Fn(&mut Self, &mut Context<Self>) + 'static,
     ) -> AnyElement {
-        Self::row_base(label, description, Self::toggle_switch(on, theme), theme)
+        self.row_base(label, description, Self::toggle_switch(on, theme), theme)
             .id(id)
             .cursor_pointer()
             .on_click(cx.listener(move |this, _, _, cx| toggle(this, cx)))
@@ -918,12 +995,13 @@ impl AppView {
     }
 
     fn choice_chip(
+        &self,
         id: String,
-        label: &'static str,
+        label: String,
         active: bool,
         theme: Theme,
         cx: &mut Context<Self>,
-        select: impl Fn(&mut Self, &mut Context<Self>) + 'static,
+        select: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
     ) -> AnyElement {
         div()
             .id(id)
@@ -944,12 +1022,13 @@ impl AppView {
             })
             .hover(|element| element.text_color(theme.text))
             .cursor_pointer()
-            .on_click(cx.listener(move |this, _, _, cx| select(this, cx)))
+            .on_click(cx.listener(move |this, _, window, cx| select(this, window, cx)))
             .child(label)
             .into_any_element()
     }
 
     fn text_field(
+        &self,
         id: FieldId,
         view: FieldView,
         theme: Theme,
@@ -967,7 +1046,7 @@ impl AppView {
             div()
                 .text_size(px(12.))
                 .text_color(theme.text_faint)
-                .child(id.placeholder())
+                .child(self.t(id.placeholder_key()))
                 .into_any_element()
         } else {
             let cursor = floor_char_boundary(&value, cursor);
@@ -1026,7 +1105,7 @@ impl AppView {
             .into_any_element()
     }
 
-    fn browse_button(id: FieldId, theme: Theme, cx: &mut Context<Self>) -> AnyElement {
+    fn browse_button(&self, id: FieldId, theme: Theme, cx: &mut Context<Self>) -> AnyElement {
         div()
             .id(id.browse_id())
             .px(px(10.))
@@ -1041,11 +1120,12 @@ impl AppView {
             .on_click(cx.listener(move |this, _, window, cx| {
                 this.pick_path(id, window, cx);
             }))
-            .child("Browse")
+            .child(self.t(k::BTN_BROWSE))
             .into_any_element()
     }
 
     fn path_control(
+        &self,
         id: FieldId,
         view: FieldView,
         theme: Theme,
@@ -1056,12 +1136,12 @@ impl AppView {
             .items_center()
             .gap(px(8.))
             .w(px(CONTROL_WIDTH))
-            .child(Self::text_field(id, view, theme, cx))
-            .child(Self::browse_button(id, theme, cx))
+            .child(self.text_field(id, view, theme, cx))
+            .child(self.browse_button(id, theme, cx))
             .into_any_element()
     }
 
-    fn group(title: &'static str, rows: Vec<AnyElement>, theme: Theme) -> AnyElement {
+    fn group(&self, title: String, rows: Vec<AnyElement>, theme: Theme) -> AnyElement {
         div()
             .flex()
             .flex_col()
@@ -1088,8 +1168,9 @@ impl AppView {
     }
 
     fn list_row(
-        label: &'static str,
-        description: &'static str,
+        &self,
+        label: String,
+        description: String,
         list: AnyElement,
         theme: Theme,
     ) -> AnyElement {
@@ -1127,7 +1208,7 @@ impl AppView {
         let mut path_rows = Vec::new();
         let exiftool_view = self.field_view(FieldId::ExifToolPath, window);
         let exiftool_control = {
-            let control = Self::path_control(FieldId::ExifToolPath, exiftool_view, theme, cx);
+            let control = self.path_control(FieldId::ExifToolPath, exiftool_view, theme, cx);
             if let Some(hint) = &self.exiftool_hint {
                 div()
                     .flex()
@@ -1140,34 +1221,34 @@ impl AppView {
                             .text_size(px(11.))
                             .text_color(theme.text_faint)
                             .truncate()
-                            .child(format!("Auto-detected: {hint}")),
+                            .child(format!("{}: {hint}", self.t(k::STATUS_AUTO_DETECTED))),
                     )
                     .into_any_element()
             } else {
                 control
             }
         };
-        path_rows.push(Self::settings_row(
-            "ExifTool path",
-            "Executable used for every cleanup run",
+        path_rows.push(self.settings_row(
+            self.t(k::SETTINGS_EXIFTOOL_PATH),
+            self.t(k::CONFIG_DESC_EXIFTOOL_PATH),
             exiftool_control,
             theme,
         ));
         let hot_view = self.field_view(FieldId::HotFolder, window);
-        path_rows.push(Self::settings_row(
-            "Hot folder",
-            "Directory the Worker watches for new media",
-            Self::path_control(FieldId::HotFolder, hot_view, theme, cx),
+        path_rows.push(self.settings_row(
+            self.t(k::SETTINGS_HOT_FOLDER),
+            self.t(k::CONFIG_DESC_HOT_FOLDER),
+            self.path_control(FieldId::HotFolder, hot_view, theme, cx),
             theme,
         ));
-        groups.push(Self::group("PATHS", path_rows, theme));
+        groups.push(self.group(self.t(k::CONFIG_SECTION_PATH), path_rows, theme));
 
         // 行为组
         let mut behavior_rows = Vec::new();
-        behavior_rows.push(Self::toggle_row(
+        behavior_rows.push(self.toggle_row(
             "toggle-backup",
-            "Back up before cleaning",
-            "Keep an untouched copy of every original",
+            self.t(k::CONFIG_ROW_ENABLE_BACKUP),
+            self.t(k::CONFIG_DESC_BACKUP_ENABLED),
             self.config.backup.enabled,
             theme,
             cx,
@@ -1178,17 +1259,17 @@ impl AppView {
         ));
         if self.config.backup.enabled {
             let view = self.field_view(FieldId::BackupDirectory, window);
-            behavior_rows.push(Self::settings_row(
-                "Backup directory",
-                "Empty means <hot folder>/bak",
-                Self::path_control(FieldId::BackupDirectory, view, theme, cx),
+            behavior_rows.push(self.settings_row(
+                self.t(k::SETTINGS_BACKUP_DIR),
+                self.t(k::CONFIG_DESC_BACKUP_DIR),
+                self.path_control(FieldId::BackupDirectory, view, theme, cx),
                 theme,
             ));
         }
-        behavior_rows.push(Self::toggle_row(
+        behavior_rows.push(self.toggle_row(
             "toggle-quarantine",
-            "Quarantine failed files",
-            "Move unreadable or failed media aside instead of deleting",
+            self.t(k::CONFIG_ROW_ENABLE_QUARANTINE),
+            self.t(k::CONFIG_DESC_QUARANTINE_ENABLED),
             self.config.quarantine.enabled,
             theme,
             cx,
@@ -1199,17 +1280,17 @@ impl AppView {
         ));
         if self.config.quarantine.enabled {
             let view = self.field_view(FieldId::QuarantineDirectory, window);
-            behavior_rows.push(Self::settings_row(
-                "Quarantine directory",
-                "Empty means <hot folder>/_quarantine",
-                Self::path_control(FieldId::QuarantineDirectory, view, theme, cx),
+            behavior_rows.push(self.settings_row(
+                self.t(k::SETTINGS_QUARANTINE_DIR),
+                self.t(k::CONFIG_DESC_QUARANTINE_DIR),
+                self.path_control(FieldId::QuarantineDirectory, view, theme, cx),
                 theme,
             ));
         }
-        behavior_rows.push(Self::toggle_row(
+        behavior_rows.push(self.toggle_row(
             "toggle-hide-startup",
-            "Hide window on startup",
-            "Start in the background with only the tray icon",
+            self.t(k::SETTINGS_HIDE_ON_STARTUP),
+            self.t(k::CONFIG_DESC_HIDE_ON_STARTUP),
             self.config.ui.hide_main_window_on_startup,
             theme,
             cx,
@@ -1219,10 +1300,10 @@ impl AppView {
                 this.mark_dirty(cx);
             },
         ));
-        behavior_rows.push(Self::toggle_row(
+        behavior_rows.push(self.toggle_row(
             "toggle-hide-tray",
-            "Hide tray icon",
-            "Run without a tray icon",
+            self.t(k::SETTINGS_HIDE_TRAY),
+            self.t(k::CONFIG_DESC_HIDE_TRAY),
             self.config.ui.hide_tray_icon,
             theme,
             cx,
@@ -1234,58 +1315,65 @@ impl AppView {
 
         let mut theme_chips = Vec::new();
         for candidate in ThemeMode::all() {
-            theme_chips.push(Self::choice_chip(
+            theme_chips.push(self.choice_chip(
                 format!("theme-{}", candidate.variant()),
-                candidate.label(),
+                self.t(theme_key(candidate)),
                 self.theme_mode.get() == candidate,
                 theme,
                 cx,
-                move |this, cx| this.set_theme_mode(candidate, cx),
+                move |this, _, cx| this.set_theme_mode(candidate, cx),
             ));
         }
-        behavior_rows.push(Self::settings_row(
-            "Theme",
-            "Light, dark, or follow the system appearance",
-            div()
-                .flex()
-                .items_center()
-                .gap(px(6.))
-                .w(px(CONTROL_WIDTH))
-                .children(theme_chips)
-                .into_any_element(),
-            theme,
-        ));
+        behavior_rows.push(
+            self.settings_row(
+                self.t(k::SETTINGS_THEME),
+                self.t(k::CONFIG_DESC_THEME),
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(6.))
+                    .w(px(CONTROL_WIDTH))
+                    .children(theme_chips)
+                    .into_any_element(),
+                theme,
+            ),
+        );
 
         let mut locale_chips = Vec::new();
         for &(code, label) in LOCALES {
             let active = self.config.ui.locale.eq_ignore_ascii_case(code);
             let code = code.to_string();
-            locale_chips.push(Self::choice_chip(
+            locale_chips.push(self.choice_chip(
                 format!("locale-{code}"),
-                label,
+                // 语言自称（endonym）不随界面语言翻译，与旧 UI 一致。
+                label.to_string(),
                 active,
                 theme,
                 cx,
-                move |this, cx| {
+                move |this, window, cx| {
                     this.config.ui.locale = code.clone();
                     this.mark_dirty(cx);
+                    // 窗口标题取词于 app.title；仅当 exe/用户目录覆盖层使各语言标题不同时可见差异。
+                    window.set_window_title(&this.t(k::APP_TITLE));
                 },
             ));
         }
-        behavior_rows.push(Self::settings_row(
-            "Language",
-            "Stored in config.json; new-UI translation lands in #60",
-            div()
-                .flex()
-                .flex_wrap()
-                .items_center()
-                .gap(px(6.))
-                .w(px(CONTROL_WIDTH))
-                .children(locale_chips)
-                .into_any_element(),
-            theme,
-        ));
-        groups.push(Self::group("BEHAVIOR", behavior_rows, theme));
+        behavior_rows.push(
+            self.settings_row(
+                self.t(k::SETTINGS_LANGUAGE),
+                self.t(k::CONFIG_DESC_LANGUAGE),
+                div()
+                    .flex()
+                    .flex_wrap()
+                    .items_center()
+                    .gap(px(6.))
+                    .w(px(CONTROL_WIDTH))
+                    .children(locale_chips)
+                    .into_any_element(),
+                theme,
+            ),
+        );
+        groups.push(self.group(self.t(k::CONFIG_SECTION_BEHAVIOR), behavior_rows, theme));
 
         // 排除目录组
         let mut excluded_rows = Vec::new();
@@ -1294,7 +1382,7 @@ impl AppView {
             div()
                 .text_size(px(12.))
                 .text_color(theme.text_faint)
-                .child("None")
+                .child(self.t(k::COMMON_NONE))
                 .into_any_element()
         } else {
             div()
@@ -1310,9 +1398,9 @@ impl AppView {
                 }))
                 .into_any_element()
         };
-        excluded_rows.push(Self::list_row(
-            "System excluded directories",
-            "Audit, quarantine, backup, and custom entries under the hot folder",
+        excluded_rows.push(self.list_row(
+            self.t(k::CONFIG_LABEL_SYSTEM_EXCLUDED),
+            self.t(k::CONFIG_DESC_SYSTEM_EXCLUDED),
             system_list,
             theme,
         ));
@@ -1323,7 +1411,7 @@ impl AppView {
                 div()
                     .text_size(px(12.))
                     .text_color(theme.text_faint)
-                    .child("No user-excluded directories")
+                    .child(self.t(k::CONFIG_EMPTY_USER_EXCLUDED))
                     .into_any_element(),
             );
         } else {
@@ -1377,7 +1465,7 @@ impl AppView {
                                     }
                                     this.mark_dirty(cx);
                                 }))
-                                .child("Remove"),
+                                .child(self.t(k::CONFIG_BTN_REMOVE_DIR)),
                         )
                         .into_any_element(),
                 );
@@ -1399,21 +1487,23 @@ impl AppView {
                 .on_click(cx.listener(|this, _, window, cx| {
                     this.add_excluded_directory(window, cx);
                 }))
-                .child("+ Add folder")
+                .child(self.t(k::CONFIG_BTN_ADD_FOLDER))
                 .into_any_element(),
         );
-        excluded_rows.push(Self::list_row(
-            "User excluded directories",
-            "Entries stored in watch.auto_excluded_directories",
-            div()
-                .flex()
-                .flex_col()
-                .gap(px(4.))
-                .children(user_excluded)
-                .into_any_element(),
-            theme,
-        ));
-        groups.push(Self::group("EXCLUDED DIRECTORIES", excluded_rows, theme));
+        excluded_rows.push(
+            self.list_row(
+                self.t(k::CONFIG_LABEL_USER_EXCLUDED),
+                self.t(k::CONFIG_DESC_USER_EXCLUDED),
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(4.))
+                    .children(user_excluded)
+                    .into_any_element(),
+                theme,
+            ),
+        );
+        groups.push(self.group(self.t(k::CONFIG_SECTION_EXCLUDED), excluded_rows, theme));
 
         // 日志组
         let mut log_rows = Vec::new();
@@ -1431,38 +1521,40 @@ impl AppView {
         for &level in LOG_LEVELS {
             let active = selected_level == level;
             let level_for_config = level.to_string();
-            level_chips.push(Self::choice_chip(
+            level_chips.push(self.choice_chip(
                 format!("loglevel-{level}"),
-                level,
+                self.t(level_chip_key(LevelFilter::parse(level))),
                 active,
                 theme,
                 cx,
-                move |this, cx| {
+                move |this, _, cx| {
                     this.config.audit.log_level = level_for_config.clone();
                     this.mark_dirty(cx);
                 },
             ));
         }
-        log_rows.push(Self::settings_row(
-            "Log level",
-            "Filters the audit tail; all/debug also enable diagnostic mode",
-            div()
-                .flex()
-                .items_center()
-                .gap(px(6.))
-                .w(px(CONTROL_WIDTH))
-                .children(level_chips)
-                .into_any_element(),
-            theme,
-        ));
+        log_rows.push(
+            self.settings_row(
+                self.t(k::SETTINGS_LOG_LEVEL),
+                self.t(k::CONFIG_DESC_LOG_LEVEL),
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(6.))
+                    .w(px(CONTROL_WIDTH))
+                    .children(level_chips)
+                    .into_any_element(),
+                theme,
+            ),
+        );
         let audit_view = self.field_view(FieldId::AuditLogDirectory, window);
-        log_rows.push(Self::settings_row(
-            "Audit log directory",
-            "Empty means <hot folder>/_audit",
-            Self::path_control(FieldId::AuditLogDirectory, audit_view, theme, cx),
+        log_rows.push(self.settings_row(
+            self.t(k::SETTINGS_AUDIT_LOG_DIR),
+            self.t(k::CONFIG_DESC_AUDIT_LOG_DIR),
+            self.path_control(FieldId::AuditLogDirectory, audit_view, theme, cx),
             theme,
         ));
-        groups.push(Self::group("LOGS", log_rows, theme));
+        groups.push(self.group(self.t(k::CONFIG_SECTION_LOGS), log_rows, theme));
 
         div()
             .flex()
@@ -1478,7 +1570,7 @@ impl AppView {
                         div()
                             .text_size(px(18.))
                             .font_weight(FontWeight::SEMIBOLD)
-                            .child("Configuration"),
+                            .child(self.t(k::NAV_CONFIG)),
                     )
                     .when(!status_text.is_empty(), |element| {
                         element.child(
@@ -1494,10 +1586,16 @@ impl AppView {
             .into_any_element()
     }
 
-    fn nav_tab(page: Page, current: Page, theme: &Theme, cx: &mut Context<Self>) -> Stateful<Div> {
+    fn nav_tab(
+        page: Page,
+        current: Page,
+        label: String,
+        theme: &Theme,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
         let active = page == current;
         div()
-            .id(page.label())
+            .id(page.id())
             .px(px(11.))
             .py(px(4.))
             .rounded(px(7.))
@@ -1515,14 +1613,17 @@ impl AppView {
                 this.page = page;
                 cx.notify();
             }))
-            .child(page.label())
+            .child(label)
     }
 
     fn level_filter_group(
+        &self,
         current_level: LevelFilter,
         theme: &Theme,
         cx: &mut Context<Self>,
     ) -> Div {
+        let i18n = self.i18n.clone();
+        let locale = self.config.ui.locale.clone();
         div()
             .flex()
             .items_center()
@@ -1554,13 +1655,14 @@ impl AppView {
                         this.rebuild_visible();
                         cx.notify();
                     }))
-                    .child(candidate.label())
+                    .child(i18n.get(&locale, level_chip_key(candidate)))
             }))
     }
 
-    fn detail_row(label: &'static str, value: String, theme: &Theme) -> Div {
+    fn detail_row(&self, label: String, value: String, theme: &Theme) -> Div {
         div()
             .flex()
+            .mirror_row(self.rtl())
             .items_center()
             .justify_between()
             .gap(px(16.))
@@ -1573,28 +1675,24 @@ impl AppView {
             .child(div().text_size(px(12.)).text_color(theme.text).child(value))
     }
 
-    /// 服务可达性 → 展示文案。
-    fn service_label(state: ServiceReachability) -> &'static str {
-        match state {
-            ServiceReachability::Unknown => "—",
-            ServiceReachability::Reachable => "reachable",
-            ServiceReachability::Unreachable => "unreachable",
-        }
-    }
-
     /// Overview 页：连接状态与 Worker 详情。
     fn overview_body(&self, theme: &Theme) -> AnyElement {
         let state = self.snapshot.state;
         let dot = Self::state_color(state, theme);
         let endpoint = or_dash(self.snapshot.endpoint.clone());
-        let mode = or_dash(
-            self.snapshot
-                .worker_mode
-                .map(|mode| mode.label().to_string()),
-        );
+        let mode = or_dash(self.snapshot.worker_mode.map(|mode| self.t(mode_key(mode))));
         let round_trip = match self.snapshot.last_round_trip {
-            Some(elapsed) => format!("last round trip {} ms", elapsed.as_millis()),
-            None => "no round trip yet".to_string(),
+            Some(elapsed) => self.tr(
+                k::OVERVIEW_LAST_ROUND_TRIP,
+                &[&elapsed.as_millis().to_string()],
+            ),
+            None => self.t(k::OVERVIEW_NO_ROUND_TRIP),
+        };
+        let state_label = match state {
+            ConnectionState::Connected => self.t(k::STATUS_CONNECTED),
+            ConnectionState::Connecting => self.t(k::STATUS_CONNECTING),
+            ConnectionState::Reconnecting => self.t(k::STATUS_RECONNECTING),
+            ConnectionState::Disconnected => self.t(k::STATUS_DISCONNECTED),
         };
 
         let status_card = div()
@@ -1616,7 +1714,7 @@ impl AppView {
                         div()
                             .text_size(px(14.))
                             .font_weight(FontWeight::MEDIUM)
-                            .child(state.label()),
+                            .child(state_label),
                     )
                     .child(
                         div()
@@ -1640,22 +1738,35 @@ impl AppView {
             }));
 
         let rows = [
-            ("Worker mode", mode.clone()),
-            ("Reported mode", or_dash(self.snapshot.status_mode.clone())),
+            (self.t(k::OVERVIEW_WORKER_MODE), mode.clone()),
             (
-                "Service IPC",
-                Self::service_label(self.snapshot.service_reachability).to_string(),
+                self.t(k::OVERVIEW_REPORTED_MODE),
+                or_dash(self.snapshot.status_mode.clone()),
             ),
             (
-                "Protocol",
+                self.t(k::OVERVIEW_SERVICE_IPC),
+                match self.snapshot.service_reachability {
+                    ServiceReachability::Unknown => "—".to_string(),
+                    ServiceReachability::Reachable => self.t(k::OVERVIEW_REACHABLE),
+                    ServiceReachability::Unreachable => self.t(k::OVERVIEW_UNREACHABLE),
+                },
+            ),
+            (
+                self.t(k::OVERVIEW_PROTOCOL),
                 or_dash(
                     self.snapshot
                         .protocol_version
                         .map(|version| format!("v{version}")),
                 ),
             ),
-            ("ExifTool", or_dash(self.snapshot.exif_tool_version.clone())),
-            ("Round trips", self.snapshot.round_trips.to_string()),
+            (
+                self.t(k::OVERVIEW_EXIFTOOL),
+                or_dash(self.snapshot.exif_tool_version.clone()),
+            ),
+            (
+                self.t(k::OVERVIEW_ROUND_TRIPS),
+                self.snapshot.round_trips.to_string(),
+            ),
         ];
 
         let details = div()
@@ -1671,11 +1782,11 @@ impl AppView {
                 div()
                     .text_size(px(11.))
                     .text_color(theme.text_faint)
-                    .child("WORKER"),
+                    .child(self.t(k::OVERVIEW_WORKER_SECTION)),
             )
             .children(
                 rows.into_iter()
-                    .map(|(label, value)| Self::detail_row(label, value, theme)),
+                    .map(|(label, value)| self.detail_row(label, value, theme)),
             );
 
         div()
@@ -1701,8 +1812,8 @@ impl AppView {
                 !state.logs.is_empty() && state.visible_indices.is_empty(),
             )
         };
-        let filter_group = Self::level_filter_group(level_filter, theme, cx);
-        let count_label = format!("{visible_len} entries");
+        let filter_group = self.level_filter_group(level_filter, theme, cx);
+        let count_label = self.tr(k::LOG_ENTRIES_COUNT, &[&visible_len.to_string()]);
         let toolbar = div()
             .flex()
             .items_center()
@@ -1731,7 +1842,7 @@ impl AppView {
                         this.clear_logs();
                         cx.notify();
                     }))
-                    .child("Clear"),
+                    .child(self.t(k::LOG_BTN_CLEAR)),
             );
 
         let heading = div()
@@ -1742,35 +1853,32 @@ impl AppView {
                 div()
                     .text_size(px(18.))
                     .font_weight(FontWeight::SEMIBOLD)
-                    .child("Logs"),
+                    .child(self.t(k::NAV_LOGS)),
             )
             .child(
                 div()
                     .text_size(px(12.))
                     .text_color(theme.text_muted)
-                    .child("Audit tail from the daily JSONL — local tail plus IPC backfill."),
+                    .child(self.t(k::LOG_SUBTITLE)),
             );
 
         let card = if logs_empty {
             Self::log_card(
                 theme,
-                Self::empty_state(
-                    "No audit entries yet",
-                    "Audit events appear here as files are processed.",
-                    theme,
-                ),
+                self.empty_state(self.t(k::LOG_EMPTY_TITLE), self.t(k::LOG_EMPTY_DESC), theme),
             )
         } else if filtered_empty {
             Self::log_card(
                 theme,
-                Self::empty_state(
-                    "No entries under the current level filter",
-                    "Lower the level or wait for matching events.",
+                self.empty_state(
+                    self.t(k::LOG_EMPTY_FILTERED_TITLE),
+                    self.t(k::LOG_EMPTY_FILTERED_DESC),
                     theme,
                 ),
             )
         } else {
             let row_theme = *theme;
+            let row_rtl = self.rtl();
             let list = uniform_list(
                 "audit-log",
                 visible_len,
@@ -1784,7 +1892,7 @@ impl AppView {
                         let Some(entry) = state.logs.get(entry_index) else {
                             continue;
                         };
-                        rows.push(Self::log_row(entry, &row_theme).into_any_element());
+                        rows.push(Self::log_row(entry, &row_theme, row_rtl).into_any_element());
                     }
                     rows
                 }),
@@ -1799,7 +1907,7 @@ impl AppView {
                     .flex()
                     .flex_col()
                     .overflow_hidden()
-                    .child(Self::log_header(theme))
+                    .child(self.log_header(theme))
                     .child(div().flex_1().overflow_hidden().child(list)),
             )
         };
@@ -1830,12 +1938,13 @@ impl AppView {
             .child(content)
     }
 
-    fn log_header(theme: &Theme) -> Div {
+    fn log_header(&self, theme: &Theme) -> Div {
         div()
             .h(px(32.))
             .flex_none()
             .w_full()
             .flex()
+            .mirror_row(self.rtl())
             .items_center()
             .gap(px(12.))
             .px(px(12.))
@@ -1843,18 +1952,29 @@ impl AppView {
             .border_color(theme.border)
             .text_size(px(11.))
             .text_color(theme.text_faint)
-            .child(div().w(px(64.)).flex_none().child("TIME"))
-            .child(div().w(px(150.)).flex_none().child("EVENT"))
-            .child(div().w(px(250.)).flex_none().child("SOURCE"))
-            .child(div().flex_1().child("MESSAGE"))
+            .child(div().w(px(64.)).flex_none().child(self.t(k::LOG_COL_TIME)))
+            .child(
+                div()
+                    .w(px(150.))
+                    .flex_none()
+                    .child(self.t(k::LOG_COL_EVENT)),
+            )
+            .child(
+                div()
+                    .w(px(250.))
+                    .flex_none()
+                    .child(self.t(k::LOG_COL_SOURCE)),
+            )
+            .child(div().flex_1().child(self.t(k::LOG_COL_MESSAGE)))
     }
 
-    fn log_row(entry: &AuditRecord, theme: &Theme) -> Div {
+    fn log_row(entry: &AuditRecord, theme: &Theme, rtl: bool) -> Div {
         let tone = Self::tone_color(entry.tone, theme);
         div()
             .h(px(40.))
             .w_full()
             .flex()
+            .mirror_row(rtl)
             .items_center()
             .gap(px(12.))
             .px(px(12.))
@@ -1902,7 +2022,7 @@ impl AppView {
             )
     }
 
-    fn empty_state(title: &'static str, description: &'static str, theme: &Theme) -> Div {
+    fn empty_state(&self, title: String, description: String, theme: &Theme) -> Div {
         div()
             .flex_1()
             .flex()
@@ -1942,13 +2062,15 @@ impl AppView {
     }
 
     fn service_row(
-        label: &'static str,
-        description: &'static str,
+        &self,
+        label: String,
+        description: String,
         action: impl IntoElement,
         theme: &Theme,
     ) -> Div {
         div()
             .flex()
+            .mirror_row(self.rtl())
             .items_center()
             .justify_between()
             .gap(px(16.))
@@ -1969,8 +2091,11 @@ impl AppView {
             .child(action)
     }
 
+    #[allow(clippy::too_many_arguments)] // 与 config_service 同款：按钮渲染的固有形状参数。
     fn action_button(
-        label: &'static str,
+        &self,
+        id: &'static str,
+        label: String,
         command: ServiceCommand,
         enabled: bool,
         kind: ButtonKind,
@@ -1989,7 +2114,7 @@ impl AppView {
         };
 
         let button = div()
-            .id(label)
+            .id(id)
             .px(px(12.))
             .py(px(6.))
             .rounded(px(7.))
@@ -2020,14 +2145,40 @@ impl AppView {
         div().h(px(1.)).bg(theme.border)
     }
 
-    fn feedback_banner(feedback: &ServiceFeedback, theme: &Theme) -> Div {
+    fn feedback_banner(&self, feedback: &ServiceFeedback, theme: &Theme) -> Div {
         let (color, label) = match feedback.status {
-            photoprivacy_service::ServiceCommandStatus::Success => (theme.success, "Success"),
-            photoprivacy_service::ServiceCommandStatus::Skipped => (theme.text_muted, "Skipped"),
-            photoprivacy_service::ServiceCommandStatus::ElevationCancelled => {
-                (theme.warning, "Cancelled")
+            photoprivacy_service::ServiceCommandStatus::Success => {
+                (theme.success, self.t(k::SERVICE_RESULT_SUCCESS))
             }
-            photoprivacy_service::ServiceCommandStatus::Failed => (theme.danger, "Failed"),
+            photoprivacy_service::ServiceCommandStatus::Skipped => {
+                (theme.text_muted, self.t(k::SERVICE_RESULT_SKIPPED))
+            }
+            photoprivacy_service::ServiceCommandStatus::ElevationCancelled => {
+                (theme.warning, self.t(k::SERVICE_RESULT_CANCELLED))
+            }
+            photoprivacy_service::ServiceCommandStatus::Failed => {
+                (theme.danger, self.t(k::SERVICE_RESULT_FAILED))
+            }
+        };
+
+        // 服务 crate 返回英文消息；带退出码的失败用 service.exitcode.* 键翻译（#60），
+        // 无退出码的失败（spawn/超时/提权）或无对应键的未知退出码保留 crate 的具体原因。
+        // service.exitcode.* 是 Windows 退出码语义；Linux/macOS 的 systemctl/launchctl/pkexec
+        // 退出码域不同，保留 crate 的平台适配消息，不做跨域误译。
+        let exit_code = if cfg!(windows) {
+            match feedback.status {
+                photoprivacy_service::ServiceCommandStatus::Failed => {
+                    feedback.exit_code.filter(|&code| code != 0)
+                }
+                _ => None,
+            }
+        } else {
+            None
+        };
+        let exit_code_key = exit_code.map(|code| format!("service.exitcode.{code}"));
+        let message = match &exit_code_key {
+            Some(key) if self.i18n.contains(&self.config.ui.locale, key) => self.t(key),
+            _ => feedback.message.clone(),
         };
 
         div()
@@ -2050,7 +2201,7 @@ impl AppView {
                 div()
                     .text_size(px(12.))
                     .text_color(theme.text)
-                    .child(feedback.message.clone()),
+                    .child(message),
             )
     }
 
@@ -2062,13 +2213,23 @@ impl AppView {
         let enabled = |available: bool| available && !busy;
 
         let status_dot = Self::service_state_color(service.state, theme);
-        let status_text = service.state.label().to_string();
-        let status_row = Self::service_row(
-            "Status",
+        let status_text = match service.state {
+            ServiceRuntimeState::NotInstalled => self.t(k::SERVICE_STATE_NOT_INSTALLED),
+            ServiceRuntimeState::Running => self.t(k::SERVICE_STATE_RUNNING),
+            ServiceRuntimeState::StartPending => self.t(k::SERVICE_STATE_START_PENDING),
+            ServiceRuntimeState::PausePending => self.t(k::SERVICE_STATE_PAUSE_PENDING),
+            ServiceRuntimeState::Paused => self.t(k::SERVICE_STATE_PAUSED),
+            ServiceRuntimeState::ContinuePending => self.t(k::SERVICE_STATE_CONTINUE_PENDING),
+            ServiceRuntimeState::Stopped => self.t(k::SERVICE_STATE_STOPPED),
+            ServiceRuntimeState::StopPending => self.t(k::SERVICE_STATE_STOP_PENDING),
+            ServiceRuntimeState::Unknown => self.t(k::SERVICE_STATE_UNKNOWN),
+        };
+        let status_row = self.service_row(
+            self.t(k::SERVICE_STATUS),
             if busy {
-                "Applying service command…"
+                self.t(k::SERVICE_DESC_APPLYING)
             } else {
-                "Refreshed every 3 s"
+                self.t(k::SERVICE_DESC_REFRESH_3S)
             },
             div()
                 .flex()
@@ -2085,11 +2246,12 @@ impl AppView {
             theme,
         );
 
-        let install_row = Self::service_row(
-            "Install service",
-            "Registers PhotoPrivacy as a system service.",
-            Self::action_button(
-                "Install",
+        let install_row = self.service_row(
+            self.t(k::SERVICE_BTN_INSTALL),
+            self.t(k::SERVICE_DESC_INSTALL),
+            self.action_button(
+                "service-install",
+                self.t(k::SERVICE_BTN_INSTALL_SHORT),
                 ServiceCommand::Install,
                 enabled(buttons.install),
                 ButtonKind::Primary,
@@ -2100,15 +2262,16 @@ impl AppView {
             theme,
         );
 
-        let start_stop_row = Self::service_row(
-            "Start / stop",
-            "Controls the installed service process.",
+        let start_stop_row = self.service_row(
+            self.t(k::SERVICE_ROW_START_STOP),
+            self.t(k::SERVICE_DESC_START_STOP),
             div()
                 .flex()
                 .items_center()
                 .gap(px(6.))
-                .child(Self::action_button(
-                    "Start",
+                .child(self.action_button(
+                    "service-start",
+                    self.t(k::SERVICE_BTN_START),
                     ServiceCommand::Start,
                     enabled(buttons.start),
                     ButtonKind::Ghost,
@@ -2116,8 +2279,9 @@ impl AppView {
                     commands.clone(),
                     cx,
                 ))
-                .child(Self::action_button(
-                    "Stop",
+                .child(self.action_button(
+                    "service-stop",
+                    self.t(k::SERVICE_BTN_STOP),
                     ServiceCommand::Stop,
                     enabled(buttons.stop),
                     ButtonKind::Ghost,
@@ -2125,8 +2289,9 @@ impl AppView {
                     commands.clone(),
                     cx,
                 ))
-                .child(Self::action_button(
-                    "Refresh",
+                .child(self.action_button(
+                    "service-refresh",
+                    self.t(k::SERVICE_BTN_REFRESH),
                     ServiceCommand::Refresh,
                     true,
                     ButtonKind::Ghost,
@@ -2137,11 +2302,12 @@ impl AppView {
             theme,
         );
 
-        let uninstall_row = Self::service_row(
-            "Uninstall service",
-            "Stops and removes the service registration.",
-            Self::action_button(
-                "Uninstall",
+        let uninstall_row = self.service_row(
+            self.t(k::SERVICE_BTN_UNINSTALL),
+            self.t(k::SERVICE_DESC_UNINSTALL),
+            self.action_button(
+                "service-uninstall",
+                self.t(k::SERVICE_BTN_UNINSTALL_SHORT),
                 ServiceCommand::Uninstall,
                 enabled(buttons.uninstall),
                 ButtonKind::Danger,
@@ -2176,14 +2342,14 @@ impl AppView {
                 div()
                     .text_size(px(11.))
                     .text_color(theme.text_faint)
-                    .child("SERVICE"),
+                    .child(self.t(k::SERVICE_SECTION)),
             )
             .child(card)
             .children(
                 service
                     .feedback
                     .as_ref()
-                    .map(|feedback| Self::feedback_banner(feedback, theme)),
+                    .map(|feedback| self.feedback_banner(feedback, theme)),
             )
     }
 }
@@ -2229,8 +2395,10 @@ fn or_dash(value: Option<String>) -> String {
 impl Render for AppView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = Theme::resolve(self.theme_mode.get(), theme::is_dark(window.appearance()));
+        let rtl = self.rtl();
         let header = div()
             .flex()
+            .mirror_row(rtl)
             .items_center()
             .gap(px(16.))
             .px(px(24.))
@@ -2245,13 +2413,13 @@ impl Render for AppView {
                         div()
                             .text_size(px(18.))
                             .font_weight(FontWeight::SEMIBOLD)
-                            .child("PhotoPrivacy"),
+                            .child(self.t(k::APP_TITLE)),
                     )
                     .child(
                         div()
                             .text_size(px(11.))
                             .text_color(theme.text_muted)
-                            .child("Metadata cleanup"),
+                            .child(self.t(k::APP_SUBTITLE)),
                     ),
             )
             .child(
@@ -2264,14 +2432,13 @@ impl Render for AppView {
                     .border_1()
                     .border_color(theme.border)
                     .rounded(px(9.))
-                    .children(
-                        Page::all()
-                            .into_iter()
-                            .map(|page| Self::nav_tab(page, self.page, &theme, cx)),
-                    ),
+                    .children(Page::all().into_iter().map(|page| {
+                        let label = self.t(page.key());
+                        Self::nav_tab(page, self.page, label, &theme, cx)
+                    })),
             )
             .child(div().flex_1())
-            .child(Self::theme_switch(self.theme_mode.get(), &theme, cx));
+            .child(self.theme_switch(self.theme_mode.get(), &theme, cx));
 
         let content = match self.page {
             Page::Overview => self.overview_body(&theme),
@@ -2291,6 +2458,7 @@ impl Render for AppView {
 
         let footer = div()
             .flex()
+            .mirror_row(rtl)
             .items_center()
             .justify_between()
             .gap(px(16.))

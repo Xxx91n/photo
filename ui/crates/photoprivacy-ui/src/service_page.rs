@@ -13,6 +13,8 @@ pub const SERVICE_POLL_INTERVAL: Duration = Duration::from_secs(3);
 pub struct ServiceFeedback {
     pub status: ServiceCommandStatus,
     pub message: String,
+    /// 失败命令的平台退出码；UI 用 `service.exitcode.*` 键翻译成当前语言（#60）。
+    pub exit_code: Option<i32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -116,6 +118,7 @@ pub fn start(
                 snapshot.feedback = Some(ServiceFeedback {
                     status: result.status,
                     message: result.message,
+                    exit_code: result.exit_code,
                 });
             });
         }

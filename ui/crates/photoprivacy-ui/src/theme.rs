@@ -14,14 +14,6 @@ pub enum ThemeMode {
 }
 
 impl ThemeMode {
-    pub fn label(self) -> &'static str {
-        match self {
-            ThemeMode::System => "System",
-            ThemeMode::Light => "Light",
-            ThemeMode::Dark => "Dark",
-        }
-    }
-
     /// 写回 config.json 的 `ui.theme_variant` 值（旧 UI 的取值域）。
     pub fn variant(self) -> &'static str {
         THEME_VARIANTS[self as usize]

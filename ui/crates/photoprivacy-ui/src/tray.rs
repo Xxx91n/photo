@@ -2,12 +2,13 @@
 //!
 //! gpui 没有内建托盘（#49 T4 已接受自建/第三方），这里用 Tauri 的 `tray-icon`：
 //! Windows/macOS 走系统原生菜单，Linux/BSD 走 ksni（StatusNotifierItem）避免引入 GTK 系统依赖。
-//! 菜单文案暂为英文，10 语言接入归 #60。
+//! 菜单文案经 i18n 目录取词（#60），语言切换后在下一次事件轮询时原位改写菜单文本。
 
+use crate::i18n::{Catalog, keys as k};
+use std::rc::Rc;
 use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 
-const TOOLTIP: &str = "PhotoPrivacy";
 const ICON_SIZE: u32 = 32;
 // 与浅色主题强调色同源，浅/深色任务栏上都可见。
 const ICON_COLOR: [u8; 4] = [
@@ -27,6 +28,10 @@ pub struct TrayHandle {
     icon: TrayIcon,
     open_window_id: MenuId,
     exit_id: MenuId,
+    open_window: MenuItem,
+    exit: MenuItem,
+    i18n: Rc<Catalog>,
+    locale: String,
 }
 
 /// 托盘创建失败时返回 `None`：窗口保持常显、关窗即退出，绝不出现「窗口藏了但托盘没建起来」
@@ -36,12 +41,12 @@ pub struct TrayHandle {
 /// 但托盘可见性/启动隐藏的模式门控不在 #58 的 AC 内。本版按配置常驻（服务模式也显示托盘），
 /// 该偏离作为未收口项登记，功能对等核销归 #61。
 // Design(#49): 托盘可见性暂按配置常驻；服务模式的 TrayPolicy 门控未实现（#58 出探测、#61 核销对等）。
-pub fn install(hide_tray_icon: bool) -> Option<TrayHandle> {
+pub fn install(hide_tray_icon: bool, i18n: Rc<Catalog>, locale: &str) -> Option<TrayHandle> {
     if hide_tray_icon {
         return None;
     }
 
-    match TrayHandle::build() {
+    match TrayHandle::build(i18n, locale) {
         Ok(handle) => Some(handle),
         Err(err) => {
             eprintln!("[photoprivacy-ui] 托盘创建失败，窗口保持常显: {err}");
@@ -62,17 +67,17 @@ pub fn should_start_hidden(hide_main_window_on_startup: bool, tray_available: bo
 
 impl TrayHandle {
     /// 构建托盘图标、原生菜单与左键/退出命令。
-    // Design(#60): 托盘菜单与工具提示暂为英文，10 语言接入归 #60。
-    fn build() -> anyhow::Result<Self> {
+    // Design(#49): 托盘文案归新栈 i18n（#60 落地后存续出处随换栈主线）；语言切换经 `poll` 原位改写。
+    fn build(i18n: Rc<Catalog>, locale: &str) -> anyhow::Result<Self> {
         // 旧菜单还有 Pause/Resume；本票 AC 只要求显示/退出，Worker 暂停/恢复控制不在本票范围，
         // 对等核销时需在 #61 的清单里显式处置。
-        let open_window = MenuItem::new("Open Window", true, None);
-        let exit = MenuItem::new("Exit", true, None);
+        let open_window = MenuItem::new(i18n.get(locale, k::TRAY_OPEN_WINDOW), true, None);
+        let exit = MenuItem::new(i18n.get(locale, k::TRAY_EXIT), true, None);
         let menu = Menu::new();
         menu.append_items(&[&open_window, &PredefinedMenuItem::separator(), &exit])?;
 
         let icon = TrayIconBuilder::new()
-            .with_tooltip(TOOLTIP)
+            .with_tooltip(i18n.get(locale, k::TRAY_TOOLTIP))
             .with_menu(Box::new(menu))
             .with_icon(dot_icon()?)
             // 旧 UI 左键唤起窗口、右键出菜单；默认左键也会弹菜单，这里关掉。
@@ -83,11 +88,26 @@ impl TrayHandle {
             icon,
             open_window_id: open_window.id().clone(),
             exit_id: exit.id().clone(),
+            open_window,
+            exit,
+            i18n,
+            locale: locale.to_string(),
         })
     }
 
     /// 排空托盘与菜单事件；退出优先于唤起，避免同一拍里既重建窗口又退出。
-    pub fn poll(&self) -> Option<TrayCommand> {
+    /// 语言与上次构建不同时，原位改写菜单文本与工具提示（托盘不随语言切换重建）。
+    pub fn poll(&mut self, locale: &str) -> Option<TrayCommand> {
+        if locale != self.locale {
+            self.locale = locale.to_string();
+            self.open_window
+                .set_text(self.i18n.get(locale, k::TRAY_OPEN_WINDOW));
+            self.exit.set_text(self.i18n.get(locale, k::TRAY_EXIT));
+            let _ = self
+                .icon
+                .set_tooltip(Some(self.i18n.get(locale, k::TRAY_TOOLTIP)));
+        }
+
         let mut command = None;
         while let Ok(event) = TrayIconEvent::receiver().try_recv() {
             if matches!(

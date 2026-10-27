@@ -1,0 +1,377 @@
+{
+  "app": {
+    "title": "PhotoPrivacy",
+    "subtitle": "تنظيف البيانات الوصفية"
+  },
+  "nav": {
+    "config": "الإعدادات",
+    "logs": "السجلات",
+    "service": "الخدمة",
+    "service_manager": "مدير الخدمة",
+    "rules": "القواعد",
+    "overview": "نظرة عامة"
+  },
+  "btn": {
+    "pause": "⏸ إيقاف مؤقت",
+    "resume": "▶ استئناف",
+    "save": "حفظ الإعدادات",
+    "clear_logs": "مسح السجلات",
+    "browse": "تصفح...",
+    "open_config_dir": "فتح مجلد الإعدادات",
+    "ellipsis": "…",
+    "add": "+",
+    "remove": "-"
+  },
+  "status": {
+    "running": "قيد التشغيل",
+    "paused": "متوقف مؤقتاً",
+    "stopped": "متوقف",
+    "detecting": "جاري الكشف…",
+    "connecting": "Worker يتصل...",
+    "exiftool_not_found": "ExifTool غير موجود",
+    "auto_detected": "تم الكشف تلقائياً",
+    "service_mode": "وضع الخدمة",
+    "tray_mode": "وضع الدرج",
+    "service_running": "الخدمة قيد التشغيل",
+    "service_stopped": "الخدمة متوقفة",
+    "tray_paused": "الدرج متوقف مؤقتاً",
+    "tray_running": "الدرج قيد التشغيل",
+    "pause_service_unavailable": "إيقاف مؤقت (غير متاح في وضع الخدمة)",
+    "connected": "متصل",
+    "reconnecting": "إعادة الاتصال",
+    "disconnected": "غير متصل",
+    "saving": "جارٍ الحفظ…",
+    "saved_reloaded": "تم الحفظ · أعيد تحميل Worker",
+    "saved_worker_down": "تم الحفظ · لم يُعَد تحميل Worker: {0}",
+    "config_error": "خطأ في config.json: {0}"
+  },
+  "mode": {
+    "tray": "وضع الدرج",
+    "service": "وضع الخدمة",
+    "background": "وضع الخلفية"
+  },
+  "settings": {
+    "exiftool_path": "مسار ExifTool",
+    "hot_folder": "مجلد المراقبة",
+    "backup": "النسخ الاحتياطي",
+    "backup_dir": "مجلد النسخ الاحتياطي",
+    "theme": "السمة",
+    "theme_preset": "إعداد الموضوع",
+    "language": "اللغة",
+    "font": "الخط",
+    "font_size": "حجم الخط",
+    "hide_on_startup": "إخفاء النافذة عند بدء التشغيل",
+    "hide_tray": "إخفاء أيقونة الدرج",
+    "quarantine": "الحجر",
+    "quarantine_dir": "مجلد الحجر",
+    "audit_log_dir": "مجلد سجل التدقيق",
+    "audit_log_dir_label": "مسار تخزين السجل",
+    "log_level": "مستوى السجل",
+    "excluded_dirs": "المجلدات المستبعدة",
+    "system_excluded": "الاستثناءات التلقائية للنظام",
+    "enable_backup": "تفعيل النسخ الاحتياطي",
+    "enable_backup_full": "تفعيل النسخ الاحتياطي"
+  },
+  "config": {
+    "section": {
+      "path": "إعدادات المسار",
+      "behavior": "إعدادات السلوك",
+      "logs": "إعدادات السجل",
+      "excluded": "قائمة الاستثناءات"
+    },
+    "row": {
+      "enable_backup": "تفعيل النسخ الاحتياطي",
+      "enable_quarantine": "تفعيل الحجر"
+    },
+    "desc": {
+      "exiftool_path": "المسار الكامل لملف exiftool التنفيذي",
+      "hot_folder": "تنظيف البيانات الوصفية تلقائياً من الملفات الجديدة في هذا المجلد",
+      "backup_enabled": "نسخ الملفات الأصلية إلى مجلد النسخ الاحتياطي قبل التنظيف",
+      "backup_dir": "اتركه فارغاً لاستخدام <مجلد المراقبة>/bak",
+      "quarantine_enabled": "نقل الملفات الفاشلة إلى هذا المجلد للحجر",
+      "quarantine_dir": "مسار تخزين الملفات الفاشلة",
+      "hide_on_startup": "العرض في الدرج فقط بعد بدء التشغيل، بدون نافذة رئيسية",
+      "hide_tray": "إخفاء أيقونة الدرج في وضع الدرج، الاحتفاظ بالمعالجة في الخلفية فقط",
+      "theme": "التبديل بحرية بين النظام/فاتح/داكن",
+      "language": "اختر لغة عرض الواجهة",
+      "log_level": "info=سجل قياسي، debug=سجل تصحيح مفصل",
+      "audit_log_dir": "المجلد حيث تُخزن ملفات JSONL للتدقيق",
+      "system_excluded": "مجلدات السجل والنسخ الاحتياطي والحجر مستبعدة تلقائياً من المراقبة",
+      "user_excluded": "أضف مسارات إضافية للاستثناء من المراقبة"
+    },
+    "label": {
+      "system_excluded": "المجلدات المستثناة تلقائياً (للقراءة فقط)",
+      "user_excluded": "مجلدات الاستثناء المعرفة من قبل المستخدم"
+    },
+    "tooltip": {
+      "add_excluded_dir": "إضافة دليل لاستثناءه من المراقبة",
+      "remove_excluded_dir": "إزالة الدليل المستبعد المحدد"
+    },
+    "placeholder": {
+      "exiftool_path": "C:\\Program Files\\ExifTool\\exiftool.exe",
+      "hot_folder": "المجلد الذي يراقبه Worker",
+      "backup_dir": "الافتراضي: <المجلد المراقَب>/bak",
+      "quarantine_dir": "الافتراضي: <المجلد المراقَب>/_quarantine",
+      "audit_log_dir": "الافتراضي: <المجلد المراقَب>/_audit"
+    },
+    "empty": {
+      "user_excluded": "لا توجد أدلة مستثناة من قبل المستخدم"
+    },
+    "btn": {
+      "remove_dir": "إزالة",
+      "add_folder": "+ إضافة مجلد"
+    }
+  },
+  "theme": {
+    "option": {
+      "system": "اتبع النظام",
+      "light": "فاتح",
+      "dark": "داكن"
+    },
+    "preset": {
+      "catppuccin": "كاتبتشين",
+      "dracula": "دراكولا",
+      "nord": "نورد",
+      "onedarkpro": "وان دارك برو",
+      "tokyonight": "طوكيو الليل"
+    }
+  },
+  "loglevel": {
+    "option": {
+      "all": "ALL (الكل)",
+      "info": "INFO (قياسي)",
+      "debug": "DEBUG (مفصل)",
+      "warn": "WARN (تحذيرات)",
+      "error": "ERROR (أخطاء)"
+    },
+    "chip": {
+      "all": "الكل",
+      "debug": "تصحيح",
+      "info": "معلومات",
+      "warn": "تحذير",
+      "error": "خطأ"
+    }
+  },
+  "log": {
+    "section": {
+      "logs": "السجلات"
+    },
+    "btn": {
+      "clear": "مسح"
+    },
+    "empty": "لا توجد سجلات تدقيق بعد — في انتظار أحداث مراقبة الملفات",
+    "empty_desc": "تظهر أحداث التدقيق هنا عند معالجة الملفات.",
+    "empty_filtered": "لا توجد إدخالات ضمن مرشح المستوى الحالي — اخفض المستوى أو انتظر الأحداث المطابقة.",
+    "subtitle": "ذيل التدقيق من ملف JSONL اليومي — الذيل المحلي بالإضافة إلى التعبئة عبر IPC.",
+    "empty_title": "لا توجد إدخالات تدقيق بعد",
+    "empty_filtered_title": "لا توجد إدخالات ضمن تصفية المستوى الحالية",
+    "empty_filtered_desc": "اخفض المستوى أو انتظر الأحداث المطابقة.",
+    "entries_count": "{0} إدخالات",
+    "col": {
+      "time": "الوقت",
+      "event": "الحدث",
+      "source": "المصدر",
+      "message": "الرسالة"
+    }
+  },
+  "service": {
+    "section": {
+      "service": "الخدمة"
+    },
+    "status": "حالة الخدمة",
+    "install": "تثبيت الخدمة",
+    "uninstall": "إزالة الخدمة",
+    "start": "بدء الخدمة",
+    "stop": "إيقاف الخدمة",
+    "running": "قيد التشغيل",
+    "stopped": "متوقف",
+    "failed": "فشل",
+    "row": {
+      "install_start": "تثبيت وبدء الخدمة",
+      "start_stop": "بدء / إيقاف الخدمة",
+      "uninstall": "إزالة الخدمة"
+    },
+    "desc": {
+      "install": "تسجيل PhotoPrivacyWorker كخدمة نظام ويندوز",
+      "start_stop": "التحكم اليدوي في حالة تشغيل الخدمة المثبتة",
+      "uninstall": "إزالة الخدمة من النظام، التبديل إلى وضع الدرج",
+      "applying": "جارٍ تنفيذ أمر الخدمة…",
+      "refresh_3s": "يُحدَّث كل 3 ثوانٍ"
+    },
+    "btn": {
+      "install": "تثبيت الخدمة",
+      "start": "بدء",
+      "stop": "إيقاف",
+      "refresh": "تحديث",
+      "uninstall": "إزالة الخدمة",
+      "install_short": "تثبيت",
+      "uninstall_short": "إزالة التثبيت"
+    },
+    "status_format_skip": "{0} | تم التخطي：{1}",
+    "status_format_cancel": "{0} | تم الإلغاء：{1}",
+    "status_format_fail": "{0} | فشل：{1}",
+    "uninstalling": "جاري إزالة الخدمة...",
+    "state": {
+      "not_installed": "غير مثبت",
+      "start_pending": "جاري التشغيل",
+      "pause_pending": "جاري الإيقاف المؤقت",
+      "continue_pending": "جاري الاستئناف",
+      "stop_pending": "جاري الإيقاف",
+      "unknown": "غير معروف",
+      "not_installed_short": "غير مثبت",
+      "running": "قيد التشغيل",
+      "paused": "متوقفة مؤقتًا",
+      "stopped": "متوقفة"
+    },
+    "msg": {
+      "operation_success": "اكتملت العملية بنجاح",
+      "use_systemd": "استخدم systemd لإدارة الخدمات على Linux/macOS",
+      "must_use_worker": "يتطلب تثبيت الخدمة PhotoPrivacyWorker.exe",
+      "invalid_target": "يجب أن يكون هدف الخدمة PhotoPrivacyWorker.exe",
+      "path_empty": "لا يمكن أن يكون المسار فارغاً",
+      "path_invalid_chars": "يحتوي المسار على أحرف غير مسموح بها: {0}",
+      "path_must_be_absolute": "يجب أن يكون المسار مطلقاً",
+      "elevation_cancelled": "ألغى المستخدم ترخيص المسؤول"
+    },
+    "exitcode": {
+      "0": "اكتملت العملية بنجاح",
+      "5": "صلاحيات غير كافية،يرجى التشغيل كمسؤول",
+      "1053": "انتهت مهلة بدء الخدمة،تحقق من مسار ExifTool وملف الإعدادات",
+      "1055": "قاعدة بيانات الخدمة مقفلة،يرجى المحاولة لاحقاً",
+      "1056": "الخدمة قيد التشغيل بالفعل",
+      "1058": "الخدمة معطلة",
+      "1060": "الخدمة غير موجودة，يرجى التثبيت أولاً",
+      "1062": "الخدمة غير قيد التشغيل，لا حاجة للإيقاف",
+      "1072": "تم تعليم الخدمة للحذف，يرجى إعادة تشغيل النظام والمحاولة مرة أخرى",
+      "1073": "الخدمة موجودة بالفعل，تم إزالتها وإعادة تثبيتها تلقائياً",
+      "unknown": "خطأ غير معروف（رمز {0}）"
+    },
+    "result": {
+      "success": "نجاح",
+      "skipped": "تم التخطي",
+      "cancelled": "أُلغيت",
+      "failed": "فشل"
+    }
+  },
+  "msg": {
+    "saved": "تم حفظ الإعدادات",
+    "save_failed": "فشل الحفظ",
+    "exiftool_not_found": "ExifTool غير موجود",
+    "worker_not_found": "ملف Worker التنفيذي غير موجود",
+    "tray_still_running": "Worker الدرج لا يزال قيد التشغيل. تم إلغاء بدء الخدمة، يرجى إعادة المحاولة لاحقاً.",
+    "auto_saved": "تم الحفظ تلقائياً",
+    "auto_saved_worker_down": "تم الحفظ تلقائياً (Worker غير يعمل)",
+    "save_failed_exception": "فشل الحفظ：{0}",
+    "invalid_exiftool_path": "مسار ExifTool غير صالح，يرجى اختيار exiftool.exe الصحيح",
+    "saved_worker_down": "تم الحفظ (Worker غير يعمل،يسري في التشغيل التالي)",
+    "applied": "تم التطبيق",
+    "apply_failed_exception": "فشل التطبيق：{0}",
+    "config_apply_failed": "فشل تطبيق الإعدادات",
+    "worker_not_found_detail": "ملف Worker التنفيذي غير موجود（PhotoPrivacyWorker）",
+    "tray_worker_running": "Worker الدرج لا يزال قيد التشغيل。تم إلغاء بدء الخدمة，يرجى المحاولة لاحقاً"
+  },
+  "tray": {
+    "pause": "إيقاف مؤقت",
+    "resume": "استئناف",
+    "open_window": "فتح النافذة الرئيسية",
+    "exit": "خروج",
+    "tooltip": "PhotoPrivacy"
+  },
+  "dialog": {
+    "select_exiftool": "اختر ملف ExifTool التنفيذي",
+    "select_hot_folder": "اختر مجلد المراقبة",
+    "select_backup_dir": "اختر مجلد النسخ الاحتياطي",
+    "select_log_dir": "اختر مجلد السجل",
+    "select_quarantine_dir": "اختر مجلد الحجر",
+    "select_excluded_dir": "إضافة مجلد للاستثناء من المراقبة",
+    "select_folder": "اختر مجلدًا"
+  },
+  "audit": {
+    "exiftool_started": "بدء ExifTool",
+    "service_started": "بدء الخدمة",
+    "file_cleaned": "اكتمل التنظيف",
+    "file_skipped": "تم التخطي",
+    "file_detected": "تم كشف ملف",
+    "instance_conflict": "تم رفض الإطلاق المكرر",
+    "file_failed": "فشل التنظيف"
+  },
+  "rules": {
+    "panel": {
+      "subtitle": "تكوين استراتيجية تنظيف البيانات الوصفية لكل عائلة تنسيق؛ الوضع الخبير يفتح الخيارات الخطرة"
+    },
+    "expert": {
+      "mode": "الوضع الخبير",
+      "infobar": "لتجاوز الحماية، فعّل الوضع الخبير. يخفف الوضع الخبير الحمايات — استخدم بحذر.",
+      "hides_note": "· يخفي ملاحظة السلامة لـ Video / PDF / EPS"
+    },
+    "search": {
+      "placeholder": "ابحث عن الامتدادات أو عائلة التنسيق، مثل jpg، raw، mp4…"
+    },
+    "btn": {
+      "save": "حفظ القواعد المخصصة",
+      "reset": "استعادة الافتراضي"
+    },
+    "col": {
+      "family": "العائلة",
+      "extensions": "الامتدادات",
+      "enabled": "مفعّل",
+      "strip_all": "حذف الكل",
+      "preserve_icc": "الحفاظ على ICC",
+      "strip_exif": "EXIF",
+      "strip_xmp": "XMP",
+      "strip_iptc": "IPTC",
+      "strip_time": "الوقت",
+      "warning": "تحذير",
+      "effective_args": "الوسائط"
+    },
+    "empty": "لا توجد قواعد تنظيف مطابقة",
+    "empty_desc": "تظهر هنا قواعد التنظيف لكل عائلة تنسيق – استخدم «استعادة الافتراضي» لإعادة تحميل المجموعة المدمجة.",
+    "empty_filtered": "لا توجد قواعد مطابقة للبحث الحالي – امسح مربع البحث لإظهار الكل.",
+    "unsaved": "تغييرات غير محفوظة",
+    "caution": "حذر",
+    "stored_in": "مخزّن في {0}",
+    "save_failed": "تعذر حفظ القواعد: {0}",
+    "reset_failed": "تعذر إعادة تعيين القواعد: {0}",
+    "family": {
+      "jpeg": "JPEG",
+      "raw": "RAW",
+      "video": "فيديو",
+      "pdf": "PDF",
+      "eps": "EPS/PS"
+    },
+    "load_warning": "تحذير القواعد: {0}"
+  },
+  "titlebar": {
+    "minimize": "تصغير",
+    "maximize": "تكبير",
+    "close": "إغلاق"
+  },
+  "toast": {
+    "config_saved": "تم الحفظ تلقائيًا",
+    "config_saved_worker_down": "تم الحفظ تلقائيًا (Worker غير قيد التشغيل)",
+    "config_save_failed": "فشل الحفظ",
+    "rules_saved": "تم حفظ القواعد",
+    "rules_reset": "تمت إعادة القواعد إلى الوضع الافتراضي",
+    "service_success": "نجحت عملية الخدمة",
+    "service_failed": "فشلت عملية الخدمة",
+    "service_cancelled": "تم إلغاء العملية",
+    "service_skipped": "تم تخطي العملية",
+    "dismiss": "إغلاق"
+  },
+  "common": {
+    "none": "لا شيء"
+  },
+  "overview": {
+    "worker_section": "Worker",
+    "worker_mode": "وضع Worker",
+    "reported_mode": "الوضع المُبلَّغ عنه",
+    "service_ipc": "IPC للخدمة",
+    "protocol": "البروتوكول",
+    "exiftool": "ExifTool",
+    "round_trips": "رحلات الذهاب والعودة",
+    "last_round_trip": "آخر رحلة ذهاب وعودة {0} ms",
+    "no_round_trip": "لا رحلات ذهاب وعودة بعد",
+    "reachable": "يمكن الوصول إليه",
+    "unreachable": "لا يمكن الوصول إليه"
+  }
+}

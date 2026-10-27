@@ -66,7 +66,8 @@ impl ServiceCommandResult {
     }
 }
 
-/// 与旧 UI `ServiceManager.TranslateExitCode` 的 code 集合一致；文案待 #60 统一接入 locale。
+/// 与旧 UI `ServiceManager.TranslateExitCode` 的 code 集合一致；这里的英文文案只是
+/// fallback，UI 侧用 `service.exitcode.*` 键按当前语言显示（#60），无对应键时才落到本串。
 pub fn translate_exit_code(code: Option<i32>) -> String {
     match code {
         Some(0) => "Operation succeeded".to_string(),
