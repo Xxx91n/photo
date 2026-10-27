@@ -3677,6 +3677,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "photoprivacy-rules"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "photoprivacy-service"
 version = "0.1.0"
 dependencies = [
@@ -3694,6 +3701,7 @@ dependencies = [
  "gpui-pre-windows",
  "photoprivacy-ipc",
  "photoprivacy-logs",
+ "photoprivacy-rules",
  "photoprivacy-service",
  "serde",
  "serde_json",

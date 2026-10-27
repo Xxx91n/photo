@@ -4,6 +4,7 @@ use crate::config::{
 };
 use crate::config_service::{ConfigCommand, ConfigEvent};
 use crate::log_service::{LogBatch, LogService};
+use crate::rules_page;
 use crate::service_page::{ServiceCommand, ServiceFeedback, ServiceSnapshot};
 use crate::theme::{self, Theme, ThemeMode};
 use gpui::prelude::*;
@@ -14,6 +15,7 @@ use gpui::{
 };
 use photoprivacy_ipc::{ConnectionSnapshot, ConnectionState, ServiceReachability};
 use photoprivacy_logs::{AuditRecord, EventTone, LevelFilter, LogBuffer};
+use photoprivacy_rules::RulesEditor;
 use photoprivacy_service::{ServiceRuntimeState, button_state};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -305,6 +307,7 @@ enum Page {
     Config,
     Service,
     Logs,
+    Rules,
 }
 
 impl Page {
@@ -314,11 +317,18 @@ impl Page {
             Self::Config => "Config",
             Self::Service => "Service",
             Self::Logs => "Logs",
+            Self::Rules => "Rules",
         }
     }
 
-    fn all() -> [Self; 4] {
-        [Self::Overview, Self::Config, Self::Service, Self::Logs]
+    fn all() -> [Self; 5] {
+        [
+            Self::Overview,
+            Self::Config,
+            Self::Service,
+            Self::Logs,
+            Self::Rules,
+        ]
     }
 }
 
@@ -335,6 +345,7 @@ pub struct AppDeps {
     pub config_state: Rc<RefCell<ConfigUiState>>,
     pub config_commands: mpsc::UnboundedSender<ConfigCommand>,
     pub config_path: PathBuf,
+    pub rules: Rc<RefCell<RulesEditor>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -366,6 +377,7 @@ pub struct AppView {
     exiftool_hint: Option<String>,
     edit_revision: u64,
     fields: HashMap<FieldId, FieldState>,
+    pub(crate) rules: Rc<RefCell<RulesEditor>>,
     _appearance_subscription: Subscription,
 }
 
@@ -382,6 +394,7 @@ impl AppView {
             config_state,
             config_commands,
             config_path,
+            rules,
         } = deps;
         let appearance_subscription = cx.observe_window_appearance(window, |_, _, cx| cx.notify());
         let snapshot = snapshots.borrow().clone();
@@ -426,6 +439,7 @@ impl AppView {
             exiftool_hint,
             edit_revision,
             fields,
+            rules,
             _appearance_subscription: appearance_subscription,
         };
         view.spawn_updates(window, cx);
@@ -2272,6 +2286,7 @@ impl Render for AppView {
                 .into_any_element(),
             Page::Service => self.service_page(&theme, cx).into_any_element(),
             Page::Logs => self.logs_body(&theme, cx),
+            Page::Rules => rules_page::render(self, &theme, cx).into_any_element(),
         };
 
         let footer = div()

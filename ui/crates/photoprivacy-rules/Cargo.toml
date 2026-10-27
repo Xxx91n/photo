@@ -1,0 +1,9 @@
+[package]
+name = "photoprivacy-rules"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "PhotoPrivacy rules.json 契约：五格式族 × 六组开关的键值资产（新旧 UI 共用）"
+
+[dependencies]
+serde_json.workspace = true
