@@ -1,6 +1,7 @@
 use photoprivacy_ipc::{
     ConnectionSnapshot, ConnectionState, Endpoint, IpcClient, WorkerMode, current_home,
     current_platform, resolve_endpoint, spawn_monitor, spawn_show_window_server,
+    watch_service_reachability, watch_version,
 };
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -42,18 +43,21 @@ pub enum UiEvent {
     ShowWindow,
 }
 
-/// 启动 IPC 侧的全部后台任务：唤起管道服务、连接编排、心跳监控。
+/// 日志 backfill 需要的 Worker 访问面：共享客户端 + 连接编排解析出的端点。
 ///
-/// `endpoints` 把「当前实际连上的端点」发给配置服务：服务模式与后台模式都只是这里的
-/// 不同端点值，ReloadConfig 走同一条链路。
+/// 端点可能在心跳之前就广播（连接探测成功后立刻可见），backfill 自行重试到 Worker 可达。
+pub struct WorkerLink {
+    pub client: Arc<IpcClient>,
+    pub endpoint: watch::Receiver<Option<Endpoint>>,
+}
+
+/// 启动 IPC 侧的全部后台任务：唤起管道服务、连接编排、心跳监控。
 pub fn start(
     runtime: &tokio::runtime::Handle,
     options: ConnectOptions,
-    client: Arc<IpcClient>,
     snapshots: watch::Sender<ConnectionSnapshot>,
-    endpoints: watch::Sender<Option<Endpoint>>,
     events: mpsc::UnboundedSender<UiEvent>,
-) {
+) -> WorkerLink {
     let events_for_server = events.clone();
     runtime.spawn(async move {
         spawn_show_window_server(move || {
@@ -61,16 +65,51 @@ pub fn start(
         });
     });
 
+    // 服务态 3s 拍：与连接编排并行起跑（旧 UI 的服务模式轮询同样独立于心跳）。
+    // 短连接预算：服务未安装时不值得每拍耗满 700ms 的重试预算。
+    if let Some(endpoint) = resolve_endpoint(
+        current_platform(),
+        WorkerMode::Service,
+        current_home().as_deref(),
+    ) {
+        let probe = Arc::new(IpcClient::with_connect_timeout(Duration::from_millis(250)));
+        runtime.spawn(watch_service_reachability(
+            move || {
+                let probe = probe.clone();
+                let endpoint = endpoint.clone();
+                async move { probe.is_alive(&endpoint).await }
+            },
+            snapshots.clone(),
+        ));
+    }
+
+    let client = Arc::new(IpcClient::new());
+    let (endpoint_tx, endpoint_rx) = watch::channel(None);
+    let link = WorkerLink {
+        client: client.clone(),
+        endpoint: endpoint_rx,
+    };
+
     runtime.spawn(async move {
         match connect_worker(&client, &options).await {
             Some((endpoint, mode)) => {
+                let _ = endpoint_tx.send(Some(endpoint.clone()));
                 snapshots.send_modify(|snapshot| {
                     snapshot.state = ConnectionState::Connecting;
                     snapshot.endpoint = Some(endpoint.display());
                     snapshot.worker_mode = Some(mode);
                 });
-                let _ = endpoints.send(Some(endpoint.clone()));
-                spawn_monitor(client, endpoint, snapshots);
+                spawn_monitor(client, endpoint.clone(), snapshots.clone());
+                // 独立 1s 版本轮询：单独客户端避免与心跳的单飞锁互相拖慢；心跳退避不影响版本节拍。
+                let version_client = Arc::new(IpcClient::new());
+                tokio::spawn(watch_version(
+                    move || {
+                        let client = version_client.clone();
+                        let endpoint = endpoint.clone();
+                        async move { client.exif_tool_version(&endpoint).await.ok() }
+                    },
+                    snapshots,
+                ));
             }
             None => {
                 snapshots.send_modify(|snapshot| {
@@ -81,12 +120,14 @@ pub fn start(
             }
         }
     });
+
+    link
 }
 
 /// 连接顺序与旧 UI `WorkerProcessManager.ConnectOrLaunchAsync` 对齐：服务端点优先，其次后台端点，
 /// 都不可用时启动后台 Worker 并轮询 5s。服务「已安装未运行」时本版会落到后台 Worker，而不是像旧 UI
-/// 停在服务壳——服务安装态探测属 #58，补齐后收敛。
-// Design(#58): 服务安装态探测延后到 #58，本版不做。
+/// 停在服务壳；服务态本身由服务页独立探测。
+// Design(#70): 服务管道 DACL 修复前，连接仍优先回落到后台 Worker。
 async fn connect_worker(
     client: &IpcClient,
     options: &ConnectOptions,

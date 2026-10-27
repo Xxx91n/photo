@@ -2,28 +2,40 @@ mod app;
 mod config;
 mod config_file;
 mod config_service;
+mod log_service;
+mod service_page;
 mod theme;
+// Design(#49): gpui 无内建托盘（T4 已接受自建/第三方），托盘用 tray-icon 原生菜单实现。
+mod tray;
+mod ui_options;
 mod worker_connection;
 
 use gpui::{
-    App, AppContext, Bounds, TitlebarOptions, WindowBackgroundAppearance, WindowBounds,
-    WindowOptions, px, size,
+    App, AppContext, AsyncApp, Bounds, Entity, Pixels, QuitMode, TitlebarOptions, Window,
+    WindowBackgroundAppearance, WindowBounds, WindowOptions, px, size,
 };
+use log_service::LogBatch;
 use photoprivacy_ipc::{
-    ConnectionSnapshot, Endpoint, SingleInstanceGuard, UI_INSTANCE_NAME, notify_existing_instance,
+    ConnectionSnapshot, SingleInstanceGuard, UI_INSTANCE_NAME, notify_existing_instance,
 };
+use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::time::Duration;
-use worker_connection::ConnectOptions;
+use tokio::sync::{mpsc, watch};
+use worker_connection::{ConnectOptions, UiEvent};
 
 const USAGE: &str = "\
-PhotoPrivacy 新 UI（gpui 骨架竖切）
+PhotoPrivacy 新 UI（gpui）
 
 用法: photoprivacy-ui [--config <config.json>] [--worker <PhotoPrivacyWorker 路径>]
 
   --config  启动后台 Worker 时传入的配置路径（默认同目录 config/config.json，与旧 UI 一致始终传入）
   --worker  后台 Worker 可执行文件路径（默认同目录 PhotoPrivacyWorker[.exe]，存在才用）
 ";
+
+/// 托盘/唤起事件的轮询间隔：事件来自托盘库的线程或 tokio 侧，统一切回 UI 线程处理。
+const EVENT_POLL_INTERVAL: Duration = Duration::from_millis(200);
 
 struct Args {
     config_path: Option<PathBuf>,
@@ -75,6 +87,13 @@ fn application() -> gpui::Application {
     gpui::Application::with_platform(gpui_linux::current_platform(false))
 }
 
+fn audit_fallback_directory() -> PathBuf {
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|dir| dir.join("hot").join("_audit")))
+        .unwrap_or_else(|| PathBuf::from("hot").join("_audit"))
+}
+
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
@@ -96,23 +115,29 @@ fn main() -> anyhow::Result<()> {
         .config_path
         .clone()
         .unwrap_or_else(|| PathBuf::from("config").join("config.json"));
-
-    let (snapshot_tx, snapshot_rx) = tokio::sync::watch::channel(ConnectionSnapshot::connecting());
-    let (endpoint_tx, endpoint_rx) = tokio::sync::watch::channel::<Option<Endpoint>>(None);
-    let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
-    // 心跳与配置重载共用同一个 IpcClient：单飞锁在同一实例内生效（docs/agents/ipc-contract.md）。
-    let ipc_client = std::sync::Arc::new(photoprivacy_ipc::IpcClient::new());
-    worker_connection::start(
-        runtime.handle(),
-        options,
-        ipc_client.clone(),
-        snapshot_tx,
-        endpoint_tx,
-        event_tx,
+    let ui_options = ui_options::load(options.config_path.as_deref());
+    // 日志页读取与 Worker 相同的 config.json 切片；缺失/为空时回落到 `<base>/hot/_audit`
+    // （旧 UI 经 AppConfigLoader 把空串补成 DefaultPaths.DefaultAuditLogDirectory）。
+    let audit_config = photoprivacy_logs::resolve_audit_config(
+        options.config_path.as_deref(),
+        &audit_fallback_directory(),
     );
+    let log_level = audit_config.log_level;
 
-    let (config_command_tx, config_command_rx) = tokio::sync::mpsc::unbounded_channel();
-    let (config_event_tx, config_event_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (snapshot_tx, snapshot_rx) = watch::channel(ConnectionSnapshot::connecting());
+    let (event_tx, event_rx) = mpsc::unbounded_channel();
+    let (log_tx, log_rx) = mpsc::unbounded_channel();
+    let (service_snapshots, service_commands) = service_page::start(
+        runtime.handle(),
+        options.worker_path.clone(),
+        options.config_path.clone(),
+    );
+    let link = worker_connection::start(runtime.handle(), options, snapshot_tx, event_tx);
+
+    // 配置服务复用心跳的 IpcClient（单飞锁在同一实例内生效），并用连接编排发布的端点；
+    // 服务模式与后台/托盘模式只是端点值不同，ReloadConfig 链路本身不分支。
+    let (config_command_tx, config_command_rx) = mpsc::unbounded_channel();
+    let (config_event_tx, config_event_rx) = mpsc::unbounded_channel();
     // 窗口出现前同步读一次，避免 Loaded 到达前的编辑拿默认值覆盖盘上字段。
     let initial_config = config_file::ConfigFile::new(config_path.clone())
         .load_or_default()
@@ -120,55 +145,192 @@ fn main() -> anyhow::Result<()> {
     config_service::spawn(
         runtime.handle(),
         config_path.clone(),
-        ipc_client,
-        endpoint_rx,
+        link.client.clone(),
+        link.endpoint.clone(),
         config_command_rx,
         config_event_tx,
     );
 
+    let log_service = log_service::start(runtime.handle(), audit_config, link, log_tx);
+
+    // 主题、日志缓冲、服务快照与配置草稿在关窗驻守/重建之间延续；窗口本身不保留。
+    let deps = app::AppDeps {
+        snapshots: snapshot_rx,
+        theme_mode: Rc::new(Cell::new(theme::ThemeMode::System)),
+        log_state: Rc::new(RefCell::new(app::LogState::new(log_level))),
+        log_service,
+        service_snapshots,
+        service_commands,
+        config_state: Rc::new(RefCell::new(app::ConfigUiState::new(initial_config))),
+        config_commands: config_command_tx,
+        config_path,
+    };
+
     application().run(move |cx: &mut App| {
-        cx.on_window_closed(|cx, _| {
-            if cx.windows().is_empty() {
+        // 托盘必须在主线程、平台就绪后创建（tray-icon 要求同线程有消息循环）。
+        let tray_handle = tray::install(ui_options.hide_tray_icon);
+        let has_tray = tray_handle.is_some();
+        let start_hidden =
+            tray::should_start_hidden(ui_options.hide_main_window_on_startup, has_tray);
+
+        spawn_event_pump(
+            cx,
+            tray_handle,
+            event_rx,
+            log_rx,
+            config_event_rx,
+            deps.clone(),
+        );
+
+        // 关窗语义：托盘在 → 窗口销毁、进程与托盘继续驻守；托盘唤起会重建窗口。
+        // 没有托盘 → 关窗即退出（与旧 UI 的 UseTrayIcon == false 分支一致）。
+        // 必须显式关掉 gpui 的「最后一个窗口关闭即退出」默认——QuitMode::Default 在非 macOS 上
+        // 会无条件退出，驻守时窗口一关进程就没了。
+        cx.set_quit_mode(QuitMode::Explicit);
+        cx.on_window_closed(move |cx, _| {
+            if cx.windows().is_empty() && !has_tray {
                 cx.quit();
             }
         })
         .detach();
 
-        let bounds = Bounds::centered(None, size(px(980.), px(720.)), cx);
-        cx.open_window(
-            WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(bounds)),
-                titlebar: Some(TitlebarOptions {
-                    title: Some("PhotoPrivacy".into()),
-                    appears_transparent: false,
-                    traffic_light_position: None,
-                }),
-                window_background: WindowBackgroundAppearance::Opaque,
-                window_min_size: Some(size(px(820.), px(600.))),
-                ..Default::default()
-            },
-            move |window, cx| {
-                cx.activate(false);
-                cx.new(|cx| {
-                    app::AppView::new(
-                        window,
-                        cx,
-                        snapshot_rx,
-                        event_rx,
-                        config_event_rx,
-                        config_command_tx,
-                        app::ConfigBootstrap {
-                            path: config_path,
-                            initial: initial_config,
-                        },
-                    )
-                })
-            },
-        )
-        .expect("创建主窗口失败");
+        if !start_hidden {
+            open_main_window(cx, deps);
+        }
     });
 
     drop(guard);
     runtime.shutdown_timeout(Duration::from_millis(300));
     Ok(())
+}
+
+/// 事件泵：轮询托盘/唤起事件、排空日志批次与配置事件，并在 UI 线程执行；窗口关闭后仍继续驻守。
+fn spawn_event_pump(
+    cx: &mut App,
+    tray: Option<tray::TrayHandle>,
+    mut events: mpsc::UnboundedReceiver<UiEvent>,
+    mut log_batches: mpsc::UnboundedReceiver<LogBatch>,
+    mut config_events: mpsc::UnboundedReceiver<config_service::ConfigEvent>,
+    deps: app::AppDeps,
+) {
+    cx.spawn(async move |cx| {
+        loop {
+            cx.background_executor().timer(EVENT_POLL_INTERVAL).await;
+
+            // 日志批次必须由 app 级任务排空：窗口关闭期间视图任务已退出，通道不能无界堆积。
+            let mut logs_changed = false;
+            while let Ok(batch) = log_batches.try_recv() {
+                if deps.log_state.borrow_mut().apply_batch(batch) {
+                    logs_changed = true;
+                }
+            }
+            if logs_changed {
+                cx.refresh();
+            }
+
+            // 配置事件同样由 app 级任务应用：窗口关闭期间外部改动/保存结果不能丢。
+            let mut config_changed = false;
+            while let Ok(event) = config_events.try_recv() {
+                if let Some(theme) = deps.config_state.borrow_mut().apply_event(event) {
+                    deps.theme_mode.set(theme);
+                }
+                config_changed = true;
+            }
+            if config_changed {
+                cx.refresh();
+            }
+
+            let mut show_window = false;
+            let mut exit = false;
+
+            while let Ok(event) = events.try_recv() {
+                if matches!(event, UiEvent::ShowWindow) {
+                    show_window = true;
+                }
+            }
+
+            if let Some(tray) = &tray {
+                while let Some(command) = tray.poll() {
+                    match command {
+                        tray::TrayCommand::ShowWindow => show_window = true,
+                        tray::TrayCommand::Exit => exit = true,
+                    }
+                }
+            }
+
+            if exit {
+                // 旧 UI 退出前会向后台 Worker 发 Shutdown，但 Worker 只在 CLI 模式接受该请求
+                //（`WorkerIpcRequestHandler`），后台/服务模式必被拒；这里直接退进程，效果一致。
+                if let Some(tray) = &tray {
+                    tray.hide();
+                }
+                cx.update(|cx| cx.quit());
+                break;
+            }
+
+            if show_window {
+                show_main_window(cx, deps.clone());
+            }
+        }
+    })
+    .detach();
+}
+
+/// 唤起已有窗口，或在托盘驻守后重建窗口。
+// Design(#49): gpui 无窗口隐藏 API——关窗驻守销毁窗口，托盘唤起时重建；主题与日志状态跨重建保留，
+// 窗口位置/尺寸会重置为居中（旧 UI 是隐藏/显示，尺寸沿用）。
+fn show_main_window(cx: &mut AsyncApp, deps: app::AppDeps) {
+    let windows = cx.update(|cx| cx.windows());
+    if let Some(handle) = windows.into_iter().next() {
+        let _ = handle.update(cx, |_, window, _| window.activate_window());
+    } else {
+        open_main_window_async(cx, deps);
+    }
+    cx.update(|cx| cx.activate(true));
+}
+
+/// 同步创建主窗口（启动路径）。
+fn open_main_window(cx: &mut App, deps: app::AppDeps) {
+    cx.open_window(centered_window_options(cx), move |window, cx| {
+        build_main_view(window, cx, deps)
+    })
+    .expect("创建主窗口失败");
+}
+
+/// 异步重建主窗口（托盘/单实例唤起路径）；退出竞争中失败只记日志。
+fn open_main_window_async(cx: &mut AsyncApp, deps: app::AppDeps) {
+    let options = cx.update(|cx| centered_window_options(cx));
+    // 退出过程中仍可能收到最后一次唤起（应用已在 quit 状态时 open_window 会返回 Err）；
+    // 这里不 panic，避免把正常退出变成崩溃。
+    if let Err(err) = cx.open_window(options, move |window, cx| build_main_view(window, cx, deps)) {
+        eprintln!("[photoprivacy-ui] 重建主窗口失败: {err}");
+    }
+}
+
+/// 构造 AppView；窗口级依赖统一从 `AppDeps` 取。
+fn build_main_view(window: &mut Window, cx: &mut App, deps: app::AppDeps) -> Entity<app::AppView> {
+    cx.activate(false);
+    cx.new(|cx| app::AppView::new(window, cx, deps))
+}
+
+/// 居中主窗口的尺寸与选项：配置页四组并排需要更宽的画布。
+fn centered_window_options(cx: &App) -> WindowOptions {
+    window_options(Bounds::centered(None, size(px(980.), px(720.)), cx))
+}
+
+/// 主窗口的固定选项（标题栏、背景、最小尺寸）。
+fn window_options(bounds: Bounds<Pixels>) -> WindowOptions {
+    WindowOptions {
+        window_bounds: Some(WindowBounds::Windowed(bounds)),
+        titlebar: Some(TitlebarOptions {
+            title: Some("PhotoPrivacy".into()),
+            appears_transparent: false,
+            traffic_light_position: None,
+        }),
+        window_background: WindowBackgroundAppearance::Opaque,
+        window_min_size: Some(size(px(820.), px(600.))),
+        show: true,
+        focus: true,
+        ..Default::default()
+    }
 }

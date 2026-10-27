@@ -12,6 +12,8 @@ pub mod methods {
     pub const PING: &str = "Ping";
     pub const GET_STATUS: &str = "GetStatus";
     pub const RELOAD_CONFIG: &str = "ReloadConfig";
+    pub const GET_EXIF_TOOL_VERSION: &str = "GetExifToolVersion";
+    pub const GET_RECENT_LOGS: &str = "GetRecentLogs";
 }
 
 // Design(#49): IPC JSON 行协议是新旧 UI 的唯一主缝——方法名与字段语义冻结，新能力只以 method 名扩展。
@@ -182,6 +184,25 @@ mod tests {
         assert_eq!(status.exif_tool_version, "13.20");
         assert_eq!(status.watch_directory, "C:\\photos");
         assert!(!status.is_paused);
+    }
+
+    #[test]
+    fn response_parses_recent_log_lines() {
+        // 防：GetRecentLogs 的 logs.lines 字段名漂移后被静默读成空数组，日志页 backfill 永远无内容（#57）。
+        let line = r#"{"ok":true,"logs":{"lines":["{\"event_type\":\"file_detected\"}","{\"event_type\":\"file_skipped\"}"]},"v":1}"#;
+        let response: Response = serde_json::from_str(line).unwrap();
+        assert!(response.ok);
+        let logs = response.logs.expect("logs payload");
+        assert_eq!(logs.lines.len(), 2);
+        assert_eq!(logs.lines[0], r#"{"event_type":"file_detected"}"#);
+    }
+
+    #[test]
+    fn response_accepts_empty_recent_logs() {
+        // 防：Worker 可达但今日还没有审计行时把空数组当协议错误，backfill 无法按契约进入等待（#57）。
+        let response: Response =
+            serde_json::from_str(r#"{"ok":true,"logs":{"lines":[]},"v":1}"#).unwrap();
+        assert!(response.logs.is_some_and(|logs| logs.lines.is_empty()));
     }
 
     #[test]

@@ -1,0 +1,13 @@
+[package]
+name = "photoprivacy-logs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "审计日志双通道：本地 tail、IPC backfill 合并去重、解析与级别过滤"
+
+[dependencies]
+chrono.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

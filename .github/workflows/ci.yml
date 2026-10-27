@@ -35,12 +35,12 @@ jobs:
       - name: Rust format
         working-directory: ui
         run: cargo fmt --all -- --check
-      - name: Rust clippy (photoprivacy-ipc)
+      - name: Rust clippy (photoprivacy-ipc + photoprivacy-logs + photoprivacy-service)
         working-directory: ui
-        run: cargo clippy -p photoprivacy-ipc --all-targets -- -D warnings
-      - name: Rust tests (photoprivacy-ipc)
+        run: cargo clippy -p photoprivacy-ipc -p photoprivacy-logs -p photoprivacy-service --all-targets -- -D warnings
+      - name: Rust tests (photoprivacy-ipc + photoprivacy-logs + photoprivacy-service)
         working-directory: ui
-        run: cargo test -p photoprivacy-ipc --locked
+        run: cargo test -p photoprivacy-ipc -p photoprivacy-logs -p photoprivacy-service --locked
 
   # UI crate 只做 check：build.rs 在 MSVC 目标上跳过 comctl32 清单（见 ui/crates/photoprivacy-ui/build.rs），
   # link 仍需 MinGW windres，发版链归 #61。
@@ -64,6 +64,12 @@ jobs:
       - name: Rust check (photoprivacy-ui)
         working-directory: ui
         run: cargo check -p photoprivacy-ui --locked
+      - name: Rust clippy (photoprivacy-service, Windows)
+        working-directory: ui
+        run: cargo clippy -p photoprivacy-service --all-targets -- -D warnings
+      - name: Rust tests (photoprivacy-service, Windows)
+        working-directory: ui
+        run: cargo test -p photoprivacy-service --locked
 
   markers:
     runs-on: ubuntu-latest

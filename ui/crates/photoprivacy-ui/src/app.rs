@@ -1,28 +1,157 @@
-//! 主窗口与配置页。
-//!
-//! 配置页只做三件事：编辑 `AppConfig` 草稿、把草稿交给 `config_service` 防抖保存、
-//! 把服务回报的状态显示出来。文件 IO 与 IPC 都不在 UI 线程上（见 `config_service`）。
-
 use crate::config::{
-    AppConfig, LOCALES, LOG_LEVELS, normalize_theme_variant, resolve_auto_excluded_subdirectories,
+    AppConfig, LOCALES, LOG_LEVELS, detect_exiftool_path, normalize_theme_variant,
+    resolve_auto_excluded_subdirectories,
 };
 use crate::config_service::{ConfigCommand, ConfigEvent};
+use crate::log_service::{LogBatch, LogService};
+use crate::service_page::{ServiceCommand, ServiceFeedback, ServiceSnapshot};
 use crate::theme::{self, Theme, ThemeMode};
-use crate::worker_connection::UiEvent;
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, Context, CursorStyle, FocusHandle, FontWeight, IntoElement, KeyDownEvent,
-    MouseButton, PathPromptOptions, Render, Rgba, Subscription, Window, div, px,
+    AnyElement, Context, CursorStyle, Div, FocusHandle, FontWeight, IntoElement, KeyDownEvent,
+    MouseButton, PathPromptOptions, Render, Rgba, Stateful, Subscription, UniformListScrollHandle,
+    Window, div, px, uniform_list,
 };
-use photoprivacy_ipc::{ConnectionSnapshot, ConnectionState};
+use photoprivacy_ipc::{ConnectionSnapshot, ConnectionState, ServiceReachability};
+use photoprivacy_logs::{AuditRecord, EventTone, LevelFilter, LogBuffer};
+use photoprivacy_service::{ServiceRuntimeState, button_state};
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, watch};
 
+const SNAPSHOT_POLL_INTERVAL: Duration = Duration::from_millis(200);
 const CONTROL_WIDTH: f32 = 430.0;
 /// 旧 UI 的 SaveStatus 3 秒后自动清空（MainWindow.ScheduleSaveStatusClear）。
 const SAVE_STATUS_TTL: Duration = Duration::from_secs(3);
+
+/// 日志页跨窗口重建保留的状态：托盘驻守时窗口会销毁/重建，日志缓冲不能随视图一起丢。
+pub struct LogState {
+    logs: LogBuffer,
+    visible_indices: Vec<usize>,
+    level_filter: LevelFilter,
+    generation: u64,
+}
+
+impl LogState {
+    /// 用初始级别创建空的共享日志状态。
+    pub fn new(level_filter: LevelFilter) -> Self {
+        Self {
+            logs: LogBuffer::new(),
+            visible_indices: Vec::new(),
+            level_filter,
+            generation: 0,
+        }
+    }
+
+    /// 应用一个日志批次（代际校验通过时），返回状态是否变化。
+    /// 由 app 级事件泵调用，窗口关闭期间也持续排空通道，避免无界队列堆积。
+    pub fn apply_batch(&mut self, batch: LogBatch) -> bool {
+        if batch.generation < self.generation {
+            return false;
+        }
+        self.logs.push_batch(batch.records);
+        self.visible_indices = self.logs.visible_indices(self.level_filter);
+        true
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum SaveState {
+    Idle,
+    Pending,
+    Saved,
+    SavedWorkerDown(String),
+    Failed(String),
+    ExternalLoadFailed(String),
+}
+
+/// 配置页跨窗口重建保留的状态：草稿、保存状态、ExifTool 提示与编辑版本。
+/// 配置事件由 main 的 app 级事件泵应用，窗口关闭期间也持续消费。
+pub struct ConfigUiState {
+    pub config: AppConfig,
+    pub save_state: SaveState,
+    pub save_status_deadline: Option<Instant>,
+    pub exiftool_hint: Option<String>,
+    /// 每次编辑递增；Saved 回来时只有等于当前值才能刷新，避免回滚保存期间的新输入。
+    pub edit_revision: u64,
+}
+
+impl ConfigUiState {
+    pub fn new(initial: Option<AppConfig>) -> Self {
+        Self {
+            config: initial.unwrap_or_default(),
+            save_state: SaveState::Idle,
+            save_status_deadline: None,
+            exiftool_hint: None,
+            edit_revision: 0,
+        }
+    }
+
+    /// 应用配置服务事件；返回 `Some(theme)` 表示主题需要同步到共享 `theme_mode`。
+    pub fn apply_event(&mut self, event: ConfigEvent) -> Option<ThemeMode> {
+        match event {
+            ConfigEvent::Loaded(config) => {
+                let theme = self.set_config(config, true);
+                self.save_state = SaveState::Idle;
+                self.save_status_deadline = None;
+                Some(theme)
+            }
+            ConfigEvent::ExternalReload(config) => {
+                // 外部回灌不再探测 ExifTool：否则会把手改但暂时不存在的路径替换掉。
+                let theme = self.set_config(config, false);
+                self.save_state = SaveState::Idle;
+                self.save_status_deadline = None;
+                Some(theme)
+            }
+            ConfigEvent::ExternalLoadFailed(error) => {
+                self.save_state = SaveState::ExternalLoadFailed(error);
+                self.save_status_deadline = None;
+                None
+            }
+            ConfigEvent::Saved {
+                config,
+                revision,
+                worker_error,
+            } => {
+                // 与旧 UI ApplyConfigImmediatelyAsync 的 ApplyRuntimeConfigToUiState 一致：
+                // 落盘后按实际写出的配置刷新显示（例如空备份目录已物化为 <hot>/bak）。
+                // 保存期间又有新编辑时保留草稿，等下一次 Saved 再刷新，避免输入被回滚。
+                let theme =
+                    (revision == self.edit_revision).then(|| self.set_config(*config, false));
+                self.save_state = match worker_error {
+                    Some(error) => SaveState::SavedWorkerDown(error),
+                    None => SaveState::Saved,
+                };
+                self.save_status_deadline = Some(Instant::now() + SAVE_STATUS_TTL);
+                theme
+            }
+            ConfigEvent::SaveFailed(error) => {
+                self.save_state = SaveState::Failed(error);
+                self.save_status_deadline = Some(Instant::now() + SAVE_STATUS_TTL);
+                None
+            }
+        }
+    }
+
+    fn set_config(&mut self, mut config: AppConfig, auto_detect_exiftool: bool) -> ThemeMode {
+        config.ui.theme_variant = normalize_theme_variant(&config.ui.theme_variant).to_string();
+        // 旧 UI 的 ResolveExifToolPath：首次加载时当前路径不存在则探测并显示提示；
+        // 外部回灌/保存回读不清掉已有提示（旧 UI 只在启动时设置 hint）。
+        if auto_detect_exiftool {
+            if let Some(detected) = detect_exiftool_path(&config.exiftool.path) {
+                config.exiftool.path = detected.clone();
+                self.exiftool_hint = Some(detected);
+            } else {
+                self.exiftool_hint = None;
+            }
+        }
+        self.config = config;
+        ThemeMode::from_variant(&self.config.ui.theme_variant)
+    }
+}
 
 #[repr(usize)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -157,16 +286,6 @@ fn audit_log_directory_mut(config: &mut AppConfig) -> &mut String {
     &mut config.audit.log_directory
 }
 
-#[derive(Clone, Debug, PartialEq)]
-enum SaveState {
-    Idle,
-    Pending,
-    Saved,
-    SavedWorkerDown(String),
-    Failed(String),
-    ExternalLoadFailed(String),
-}
-
 struct FieldState {
     focus: FocusHandle,
     cursor: usize,
@@ -180,48 +299,103 @@ struct FieldView {
     focus: FocusHandle,
 }
 
-// Design(#49): 新 UI 尚未建立 DesignTokens 层；本页尺寸/字号沿用骨架 px 字面量，旧 UI 的 token 规则只约束冻结的 Avalonia UI。
-pub struct AppView {
-    snapshot: ConnectionSnapshot,
-    snapshots: watch::Receiver<ConnectionSnapshot>,
-    events: mpsc::UnboundedReceiver<UiEvent>,
-    theme_mode: ThemeMode,
-    _appearance_subscription: Subscription,
-    config: AppConfig,
-    config_events: mpsc::UnboundedReceiver<ConfigEvent>,
-    config_commands: mpsc::UnboundedSender<ConfigCommand>,
-    save_state: SaveState,
-    save_status_deadline: Option<Instant>,
-    /// 每次编辑递增；Saved 回来时只有等于当前值才能刷新，避免回滚保存期间的新输入。
-    edit_revision: u64,
-    exiftool_hint: Option<String>,
-    fields: HashMap<FieldId, FieldState>,
-    config_path: PathBuf,
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Page {
+    Overview,
+    Config,
+    Service,
+    Logs,
 }
 
-/// 窗口创建时带入的配置起点：先同步读一次盘，避免 Loaded 到达前的编辑用默认值覆盖。
-pub struct ConfigBootstrap {
-    pub path: PathBuf,
-    pub initial: Option<AppConfig>,
+impl Page {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Overview => "Overview",
+            Self::Config => "Config",
+            Self::Service => "Service",
+            Self::Logs => "Logs",
+        }
+    }
+
+    fn all() -> [Self; 4] {
+        [Self::Overview, Self::Config, Self::Service, Self::Logs]
+    }
+}
+
+/// 视图跨窗口重建需要沿用的依赖：Worker/服务快照、主题、日志状态与后台控制面。
+/// 打包成一个类型，避免同一组参数在事件泵/开窗/视图构造之间反复穿行。
+#[derive(Clone)]
+pub struct AppDeps {
+    pub snapshots: watch::Receiver<ConnectionSnapshot>,
+    pub theme_mode: Rc<Cell<ThemeMode>>,
+    pub log_state: Rc<RefCell<LogState>>,
+    pub log_service: LogService,
+    pub service_snapshots: watch::Receiver<ServiceSnapshot>,
+    pub service_commands: mpsc::UnboundedSender<ServiceCommand>,
+    pub config_state: Rc<RefCell<ConfigUiState>>,
+    pub config_commands: mpsc::UnboundedSender<ConfigCommand>,
+    pub config_path: PathBuf,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ButtonKind {
+    Primary,
+    Ghost,
+    Danger,
+}
+
+pub struct AppView {
+    page: Page,
+    snapshot: ConnectionSnapshot,
+    snapshots: watch::Receiver<ConnectionSnapshot>,
+    /// 主题、日志与服务快照都跨窗口重建保留（关窗驻守后托盘会重建窗口）。
+    theme_mode: Rc<Cell<ThemeMode>>,
+    log_state: Rc<RefCell<LogState>>,
+    service: ServiceSnapshot,
+    service_snapshots: watch::Receiver<ServiceSnapshot>,
+    service_commands: mpsc::UnboundedSender<ServiceCommand>,
+    log_service: LogService,
+    log_scroll: UniformListScrollHandle,
+    config_state: Rc<RefCell<ConfigUiState>>,
+    config_commands: mpsc::UnboundedSender<ConfigCommand>,
+    config_path: PathBuf,
+    /// 配置草稿的窗口内镜像；每次轮询从 `config_state` 同步（保存/外部回灌都写共享状态）。
+    config: AppConfig,
+    save_state: SaveState,
+    save_status_deadline: Option<Instant>,
+    exiftool_hint: Option<String>,
+    edit_revision: u64,
+    fields: HashMap<FieldId, FieldState>,
+    _appearance_subscription: Subscription,
 }
 
 impl AppView {
-    pub fn new(
-        window: &mut Window,
-        cx: &mut Context<Self>,
-        snapshots: watch::Receiver<ConnectionSnapshot>,
-        events: mpsc::UnboundedReceiver<UiEvent>,
-        config_events: mpsc::UnboundedReceiver<ConfigEvent>,
-        config_commands: mpsc::UnboundedSender<ConfigCommand>,
-        bootstrap: ConfigBootstrap,
-    ) -> Self {
-        let ConfigBootstrap {
-            path: config_path,
-            initial: initial_config,
-        } = bootstrap;
+    /// 构造视图：Worker/服务快照、主题、日志与配置状态都从 `AppDeps` 取，跨窗口重建复用。
+    pub fn new(window: &mut Window, cx: &mut Context<Self>, deps: AppDeps) -> Self {
+        let AppDeps {
+            snapshots,
+            theme_mode,
+            log_state,
+            log_service,
+            service_snapshots,
+            service_commands,
+            config_state,
+            config_commands,
+            config_path,
+        } = deps;
         let appearance_subscription = cx.observe_window_appearance(window, |_, _, cx| cx.notify());
         let snapshot = snapshots.borrow().clone();
-        let config = initial_config.unwrap_or_default();
+        let service = service_snapshots.borrow().clone();
+        let (config, save_state, save_status_deadline, exiftool_hint, edit_revision) = {
+            let shared = config_state.borrow();
+            (
+                shared.config.clone(),
+                shared.save_state.clone(),
+                shared.save_status_deadline,
+                shared.exiftool_hint.clone(),
+                shared.edit_revision,
+            )
+        };
         let mut fields = HashMap::new();
         for id in FieldId::ALL {
             fields.insert(
@@ -232,140 +406,180 @@ impl AppView {
                 },
             );
         }
-
         let view = Self {
+            page: Page::Overview,
             snapshot,
             snapshots,
-            events,
-            theme_mode: ThemeMode::from_variant(&config.ui.theme_variant),
-            _appearance_subscription: appearance_subscription,
-            config,
-            config_events,
+            theme_mode,
+            log_state,
+            service,
+            service_snapshots,
+            service_commands,
+            log_service,
+            log_scroll: UniformListScrollHandle::new(),
+            config_state,
             config_commands,
-            save_state: SaveState::Idle,
-            save_status_deadline: None,
-            edit_revision: 0,
-            exiftool_hint: None,
-            fields,
             config_path,
+            config,
+            save_state,
+            save_status_deadline,
+            exiftool_hint,
+            edit_revision,
+            fields,
+            _appearance_subscription: appearance_subscription,
         };
         view.spawn_updates(window, cx);
         view
     }
 
-    /// 后台快照、唤起事件与配置事件都从 tokio 线程来；这里在 UI 线程轮询，
-    /// 避免跨线程触碰 gpui 状态。
+    /// Worker 快照从 tokio 线程来；这里在 UI 线程轮询，避免跨线程触碰 gpui 状态。
+    /// 托盘、唤起与日志批次由 main 的 app 级事件泵处理（窗口不存在时也要能响应）。
     fn spawn_updates(&self, window: &Window, cx: &mut Context<Self>) {
         cx.spawn_in(window, async move |this, cx| {
             loop {
-                cx.background_executor()
-                    .timer(Duration::from_millis(200))
-                    .await;
+                cx.background_executor().timer(SNAPSHOT_POLL_INTERVAL).await;
 
-                let show_window = this
+                // 关窗驻守后本视图实体会被释放；此时必须退出循环，否则每次重建窗口都会留下一个
+                // 永远 upgrade 失败的空转任务。
+                let alive = this
                     .update(cx, |this, cx| {
-                        let mut show_window = false;
                         let mut changed = false;
                         if this.snapshots.has_changed().unwrap_or(false) {
                             this.snapshot = this.snapshots.borrow_and_update().clone();
                             changed = true;
                         }
-                        while let Ok(event) = this.events.try_recv() {
-                            if matches!(event, UiEvent::ShowWindow) {
-                                show_window = true;
-                            }
-                        }
-                        while let Ok(event) = this.config_events.try_recv() {
-                            this.apply_config_event(event);
+                        if this.service_snapshots.has_changed().unwrap_or(false) {
+                            this.service = this.service_snapshots.borrow_and_update().clone();
                             changed = true;
+                        }
+                        // 配置事件由 app 级事件泵写入共享状态；这里同步镜像供渲染与编辑使用。
+                        {
+                            let shared = this.config_state.borrow();
+                            if shared.config != this.config {
+                                this.config = shared.config.clone();
+                                let lengths: Vec<(FieldId, usize)> = FieldId::ALL
+                                    .iter()
+                                    .map(|id| (*id, field_value(&this.config, *id).len()))
+                                    .collect();
+                                for (id, length) in lengths {
+                                    if let Some(state) = this.fields.get_mut(&id) {
+                                        state.cursor = length;
+                                    }
+                                }
+                                changed = true;
+                            }
+                            if shared.save_state != this.save_state {
+                                this.save_state = shared.save_state.clone();
+                                changed = true;
+                            }
+                            if shared.save_status_deadline != this.save_status_deadline {
+                                this.save_status_deadline = shared.save_status_deadline;
+                                changed = true;
+                            }
+                            if shared.exiftool_hint != this.exiftool_hint {
+                                this.exiftool_hint = shared.exiftool_hint.clone();
+                                changed = true;
+                            }
+                            if shared.edit_revision != this.edit_revision {
+                                this.edit_revision = shared.edit_revision;
+                            }
                         }
                         if let Some(deadline) = this.save_status_deadline
                             && Instant::now() >= deadline
                         {
                             this.save_state = SaveState::Idle;
                             this.save_status_deadline = None;
+                            if let Ok(mut shared) = this.config_state.try_borrow_mut() {
+                                shared.save_state = SaveState::Idle;
+                                shared.save_status_deadline = None;
+                            }
                             changed = true;
                         }
                         if changed {
                             cx.notify();
                         }
-                        show_window
                     })
-                    .unwrap_or(false);
-
-                if show_window {
-                    let _ = cx.update(|window, _| window.activate_window());
+                    .is_ok();
+                if !alive {
+                    break;
                 }
             }
         })
         .detach();
     }
 
-    fn apply_config_event(&mut self, event: ConfigEvent) {
-        match event {
-            ConfigEvent::Loaded(config) => {
-                self.set_config(config, true);
-                self.save_state = SaveState::Idle;
-                self.save_status_deadline = None;
-            }
-            ConfigEvent::ExternalReload(config) => {
-                // 外部回灌不再探测 ExifTool：否则会把手改但暂时不存在的路径替换掉。
-                self.set_config(config, false);
-                self.save_state = SaveState::Idle;
-                self.save_status_deadline = None;
-            }
-            ConfigEvent::ExternalLoadFailed(error) => {
-                self.save_state = SaveState::ExternalLoadFailed(error);
-                self.save_status_deadline = None;
-            }
-            ConfigEvent::Saved {
-                config,
-                revision,
-                worker_error,
-            } => {
-                // 与旧 UI ApplyConfigImmediatelyAsync 的 ApplyRuntimeConfigToUiState 一致：
-                // 落盘后按实际写出的配置刷新显示（例如空备份目录已物化为 <hot>/bak）。
-                // 保存期间又有新编辑时保留草稿，等下一次 Saved 再刷新，避免输入被回滚。
-                if revision == self.edit_revision {
-                    self.set_config(*config, false);
-                }
-                self.save_state = match worker_error {
-                    Some(error) => SaveState::SavedWorkerDown(error),
-                    None => SaveState::Saved,
-                };
-                self.save_status_deadline = Some(Instant::now() + SAVE_STATUS_TTL);
-            }
-            ConfigEvent::SaveFailed(error) => {
-                self.save_state = SaveState::Failed(error);
-                self.save_status_deadline = Some(Instant::now() + SAVE_STATUS_TTL);
-            }
+    /// 按当前级别过滤共享日志并刷新可见索引。
+    fn rebuild_visible(&self) {
+        let mut state = self.log_state.borrow_mut();
+        let visible = state.logs.visible_indices(state.level_filter);
+        state.visible_indices = visible;
+    }
+
+    /// 清空共享日志缓冲并推进代际；旧代际批次由 app 级事件泵在应用时丢弃。
+    fn clear_logs(&mut self) {
+        let mut state = self.log_state.borrow_mut();
+        state.generation = state.generation.wrapping_add(1);
+        state.logs.clear();
+        state.visible_indices.clear();
+        let generation = state.generation;
+        drop(state);
+        self.log_scroll = UniformListScrollHandle::new();
+        self.log_service.clear(generation);
+    }
+
+    fn state_color(state: ConnectionState, theme: &Theme) -> Rgba {
+        match state {
+            ConnectionState::Connected => theme.success,
+            ConnectionState::Connecting => theme.accent,
+            ConnectionState::Reconnecting => theme.warning,
+            ConnectionState::Disconnected => theme.danger,
         }
     }
 
-    fn set_config(&mut self, mut config: AppConfig, auto_detect_exiftool: bool) {
-        config.ui.theme_variant = normalize_theme_variant(&config.ui.theme_variant).to_string();
-        self.theme_mode = ThemeMode::from_variant(&config.ui.theme_variant);
-        // 旧 UI 的 ResolveExifToolPath：首次加载时当前路径不存在则探测并显示提示；
-        // 外部回灌/保存回读不清掉已有提示（旧 UI 只在启动时设置 hint）。
-        if auto_detect_exiftool {
-            if let Some(detected) = crate::config::detect_exiftool_path(&config.exiftool.path) {
-                config.exiftool.path = detected.clone();
-                self.exiftool_hint = Some(detected);
-            } else {
-                self.exiftool_hint = None;
-            }
+    fn tone_color(tone: EventTone, theme: &Theme) -> Rgba {
+        match tone {
+            EventTone::Success => theme.success,
+            EventTone::Neutral => theme.text,
+            EventTone::Muted => theme.text_faint,
+            EventTone::Info => theme.text_muted,
+            EventTone::Warning => theme.warning,
+            EventTone::Danger => theme.danger,
         }
-        self.config = config;
+    }
 
-        let lengths: Vec<(FieldId, usize)> = FieldId::ALL
-            .iter()
-            .map(|id| (*id, field_value(&self.config, *id).len()))
-            .collect();
-        for (id, length) in lengths {
-            if let Some(state) = self.fields.get_mut(&id) {
-                state.cursor = length;
-            }
+    fn mark_dirty(&mut self, cx: &mut Context<Self>) {
+        // 旧 UI 的日志级别下拉会联动 LogEnabled；ConfigEditor 再由 LogLevel 推导 diagnostic_mode，
+        // 未知级别保留原值（ResolveDiagnosticMode 的 fallback）。
+        self.config.audit.diagnostic_mode =
+            match self.config.audit.log_level.to_ascii_lowercase().as_str() {
+                "all" | "debug" => true,
+                "info" | "warn" | "error" => false,
+                _ => self.config.audit.diagnostic_mode,
+            };
+        self.edit_revision += 1;
+        {
+            let mut shared = self.config_state.borrow_mut();
+            shared.config = self.config.clone();
+            shared.edit_revision = self.edit_revision;
+            shared.save_state = SaveState::Pending;
+            shared.save_status_deadline = None;
         }
+        let _ = self.config_commands.send(ConfigCommand::Edit {
+            config: Box::new(self.config.clone()),
+            revision: self.edit_revision,
+        });
+        self.save_state = SaveState::Pending;
+        self.save_status_deadline = None;
+        cx.notify();
+    }
+
+    fn set_theme_mode(&mut self, mode: ThemeMode, cx: &mut Context<Self>) {
+        if self.theme_mode.get() == mode {
+            return;
+        }
+        self.theme_mode.set(mode);
+        self.config.ui.theme_variant = mode.variant().to_string();
+        self.mark_dirty(cx);
     }
 
     fn save_state_text(&self, theme: &Theme) -> (String, Rgba) {
@@ -384,37 +598,9 @@ impl AppView {
         }
     }
 
-    fn mark_dirty(&mut self, cx: &mut Context<Self>) {
-        // 旧 UI 的日志级别下拉会联动 LogEnabled；ConfigEditor 再由 LogLevel 推导 diagnostic_mode，
-        // 未知级别保留原值（ResolveDiagnosticMode 的 fallback）。
-        self.config.audit.diagnostic_mode =
-            match self.config.audit.log_level.to_ascii_lowercase().as_str() {
-                "all" | "debug" => true,
-                "info" | "warn" | "error" => false,
-                _ => self.config.audit.diagnostic_mode,
-            };
-        self.edit_revision += 1;
-        let _ = self.config_commands.send(ConfigCommand::Edit {
-            config: Box::new(self.config.clone()),
-            revision: self.edit_revision,
-        });
-        self.save_state = SaveState::Pending;
-        self.save_status_deadline = None;
-        cx.notify();
-    }
-
-    fn set_theme_mode(&mut self, mode: ThemeMode, cx: &mut Context<Self>) {
-        if self.theme_mode == mode {
-            return;
-        }
-        self.theme_mode = mode;
-        self.config.ui.theme_variant = mode.variant().to_string();
-        self.mark_dirty(cx);
-    }
-
     fn edit_field(&mut self, id: FieldId, event: &KeyDownEvent, cx: &mut Context<Self>) {
         let modifiers = &event.keystroke.modifiers;
-        if modifiers.control || modifiers.platform {
+        if (modifiers.control && !modifiers.alt) || modifiers.platform {
             if event.keystroke.key.eq_ignore_ascii_case("v")
                 && let Some(item) = cx.read_from_clipboard()
                 && let Some(text) = item.text()
@@ -427,16 +613,28 @@ impl AppView {
             }
             return;
         }
+        // Windows AltGr 以 Ctrl+Alt 上报；带 key_char 时按文本插入，不让修饰键吞掉输入。
+        if modifiers.control
+            && modifiers.alt
+            && let Some(text) = event
+                .keystroke
+                .key_char
+                .as_deref()
+                .filter(|text| !text.is_empty())
+        {
+            self.insert_field_text(id, text, cx);
+            return;
+        }
 
         match event.keystroke.key.as_str() {
             "backspace" => self.backspace_field(id, cx),
             "delete" => self.delete_field(id, cx),
-            "left" => self.move_cursor(id, false),
-            "right" => self.move_cursor(id, true),
-            "home" => self.set_cursor(id, 0),
+            "left" => self.move_cursor(id, false, cx),
+            "right" => self.move_cursor(id, true, cx),
+            "home" => self.set_cursor(id, 0, cx),
             "end" => {
                 let end = field_value(&self.config, id).len();
-                self.set_cursor(id, end);
+                self.set_cursor(id, end, cx);
             }
             "enter" | "tab" | "escape" => {}
             _ => {
@@ -460,7 +658,7 @@ impl AppView {
             value.insert_str(cursor, text);
             cursor + text.len()
         };
-        self.set_cursor(id, new_cursor);
+        self.set_cursor(id, new_cursor, cx);
         self.mark_dirty(cx);
     }
 
@@ -477,7 +675,7 @@ impl AppView {
                 (start, true)
             }
         };
-        self.set_cursor(id, new_cursor);
+        self.set_cursor(id, new_cursor, cx);
         if changed {
             self.mark_dirty(cx);
         }
@@ -496,13 +694,13 @@ impl AppView {
                 (cursor, true)
             }
         };
-        self.set_cursor(id, new_cursor);
+        self.set_cursor(id, new_cursor, cx);
         if changed {
             self.mark_dirty(cx);
         }
     }
 
-    fn move_cursor(&mut self, id: FieldId, forward: bool) {
+    fn move_cursor(&mut self, id: FieldId, forward: bool, cx: &mut Context<Self>) {
         let cursor = self.field_cursor(id);
         let value = field_value(&self.config, id);
         let cursor = floor_char_boundary(value, cursor);
@@ -511,7 +709,7 @@ impl AppView {
         } else {
             prev_char_boundary(value, cursor)
         };
-        self.set_cursor(id, next);
+        self.set_cursor(id, next, cx);
     }
 
     fn field_cursor(&self, id: FieldId) -> usize {
@@ -521,10 +719,11 @@ impl AppView {
             .unwrap_or_default()
     }
 
-    fn set_cursor(&mut self, id: FieldId, cursor: usize) {
+    fn set_cursor(&mut self, id: FieldId, cursor: usize, cx: &mut Context<Self>) {
         if let Some(state) = self.fields.get_mut(&id) {
             state.cursor = cursor;
         }
+        cx.notify();
     }
 
     fn field_view(&self, id: FieldId, window: &Window) -> FieldView {
@@ -580,7 +779,7 @@ impl AppView {
         self.prompt_single_path(id.files(), prompt, window, cx, move |this, text, cx| {
             let length = text.len();
             *field_value_mut(&mut this.config, id) = text;
-            this.set_cursor(id, length);
+            this.set_cursor(id, length, cx);
             this.mark_dirty(cx);
         });
     }
@@ -598,16 +797,7 @@ impl AppView {
         );
     }
 
-    fn state_color(state: ConnectionState, theme: &Theme) -> Rgba {
-        match state {
-            ConnectionState::Connected => theme.success,
-            ConnectionState::Connecting => theme.accent,
-            ConnectionState::Reconnecting => theme.warning,
-            ConnectionState::Disconnected => theme.danger,
-        }
-    }
-
-    fn theme_switch(mode: ThemeMode, theme: Theme, cx: &mut Context<Self>) -> AnyElement {
+    fn theme_switch(mode: ThemeMode, theme: &Theme, cx: &mut Context<Self>) -> Div {
         div()
             .flex()
             .items_center()
@@ -639,7 +829,6 @@ impl AppView {
                     }))
                     .child(candidate.label())
             }))
-            .into_any_element()
     }
 
     fn row_base(
@@ -647,7 +836,7 @@ impl AppView {
         description: &'static str,
         control: AnyElement,
         theme: Theme,
-    ) -> gpui::Div {
+    ) -> Div {
         div()
             .flex()
             .items_center()
@@ -813,8 +1002,7 @@ impl AppView {
                 MouseButton::Left,
                 cx.listener(move |this, _, window, cx| {
                     window.focus(&focus_for_click, cx);
-                    this.set_cursor(id, cursor_for_click);
-                    cx.notify();
+                    this.set_cursor(id, cursor_for_click, cx);
                 }),
             )
             .on_key_down(cx.listener(move |this, event: &KeyDownEvent, _, cx| {
@@ -917,7 +1105,7 @@ impl AppView {
     }
 
     fn config_page(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
-        let theme = Theme::resolve(self.theme_mode, theme::is_dark(window.appearance()));
+        let theme = Theme::resolve(self.theme_mode.get(), theme::is_dark(window.appearance()));
         let (status_text, status_color) = self.save_state_text(&theme);
         let mut groups: Vec<AnyElement> = Vec::new();
 
@@ -1007,7 +1195,7 @@ impl AppView {
         behavior_rows.push(Self::toggle_row(
             "toggle-hide-startup",
             "Hide window on startup",
-            "Start in the background with only the tray icon (tray parity lands in #59)",
+            "Start in the background with only the tray icon",
             self.config.ui.hide_main_window_on_startup,
             theme,
             cx,
@@ -1020,7 +1208,7 @@ impl AppView {
         behavior_rows.push(Self::toggle_row(
             "toggle-hide-tray",
             "Hide tray icon",
-            "Run without a tray icon (tray parity lands in #59)",
+            "Run without a tray icon",
             self.config.ui.hide_tray_icon,
             theme,
             cx,
@@ -1035,7 +1223,7 @@ impl AppView {
             theme_chips.push(Self::choice_chip(
                 format!("theme-{}", candidate.variant()),
                 candidate.label(),
-                self.theme_mode == candidate,
+                self.theme_mode.get() == candidate,
                 theme,
                 cx,
                 move |this, cx| this.set_theme_mode(candidate, cx),
@@ -1291,6 +1479,699 @@ impl AppView {
             .children(groups)
             .into_any_element()
     }
+
+    fn nav_tab(page: Page, current: Page, theme: &Theme, cx: &mut Context<Self>) -> Stateful<Div> {
+        let active = page == current;
+        div()
+            .id(page.label())
+            .px(px(11.))
+            .py(px(4.))
+            .rounded(px(7.))
+            .text_size(px(12.))
+            .when(active, |element| {
+                element
+                    .bg(theme.surface)
+                    .text_color(theme.text)
+                    .font_weight(FontWeight::MEDIUM)
+            })
+            .when(!active, |element| element.text_color(theme.text_muted))
+            .hover(|element| element.bg(theme.surface))
+            .cursor_pointer()
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.page = page;
+                cx.notify();
+            }))
+            .child(page.label())
+    }
+
+    fn level_filter_group(
+        current_level: LevelFilter,
+        theme: &Theme,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        div()
+            .flex()
+            .items_center()
+            .gap(px(2.))
+            .p(px(2.))
+            .bg(theme.surface_raised)
+            .border_1()
+            .border_color(theme.border)
+            .rounded(px(9.))
+            .children(LevelFilter::all().into_iter().map(move |candidate| {
+                let active = candidate == current_level;
+                div()
+                    .id(candidate.label())
+                    .px(px(9.))
+                    .py(px(4.))
+                    .rounded(px(7.))
+                    .text_size(px(11.))
+                    .when(active, |element| {
+                        element
+                            .bg(theme.surface)
+                            .text_color(theme.text)
+                            .font_weight(FontWeight::MEDIUM)
+                    })
+                    .when(!active, |element| element.text_color(theme.text_muted))
+                    .hover(|element| element.bg(theme.surface))
+                    .cursor_pointer()
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.log_state.borrow_mut().level_filter = candidate;
+                        this.rebuild_visible();
+                        cx.notify();
+                    }))
+                    .child(candidate.label())
+            }))
+    }
+
+    fn detail_row(label: &'static str, value: String, theme: &Theme) -> Div {
+        div()
+            .flex()
+            .items_center()
+            .justify_between()
+            .gap(px(16.))
+            .child(
+                div()
+                    .text_size(px(12.))
+                    .text_color(theme.text_muted)
+                    .child(label),
+            )
+            .child(div().text_size(px(12.)).text_color(theme.text).child(value))
+    }
+
+    /// 服务可达性 → 展示文案。
+    fn service_label(state: ServiceReachability) -> &'static str {
+        match state {
+            ServiceReachability::Unknown => "—",
+            ServiceReachability::Reachable => "reachable",
+            ServiceReachability::Unreachable => "unreachable",
+        }
+    }
+
+    /// Overview 页：连接状态与 Worker 详情。
+    fn overview_body(&self, theme: &Theme) -> AnyElement {
+        let state = self.snapshot.state;
+        let dot = Self::state_color(state, theme);
+        let endpoint = or_dash(self.snapshot.endpoint.clone());
+        let mode = or_dash(
+            self.snapshot
+                .worker_mode
+                .map(|mode| mode.label().to_string()),
+        );
+        let round_trip = match self.snapshot.last_round_trip {
+            Some(elapsed) => format!("last round trip {} ms", elapsed.as_millis()),
+            None => "no round trip yet".to_string(),
+        };
+
+        let status_card = div()
+            .flex()
+            .flex_col()
+            .gap(px(8.))
+            .p(px(16.))
+            .bg(theme.surface)
+            .border_1()
+            .border_color(theme.border)
+            .rounded(px(12.))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .child(div().size(px(8.)).rounded_full().bg(dot))
+                    .child(
+                        div()
+                            .text_size(px(14.))
+                            .font_weight(FontWeight::MEDIUM)
+                            .child(state.label()),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(12.))
+                            .text_color(theme.text_muted)
+                            .child(format!("· {endpoint} · {mode}")),
+                    )
+                    .child(div().flex_1())
+                    .child(
+                        div()
+                            .text_size(px(11.))
+                            .text_color(theme.text_faint)
+                            .child(round_trip),
+                    ),
+            )
+            .children(self.snapshot.last_error.clone().map(|error| {
+                div()
+                    .text_size(px(12.))
+                    .text_color(theme.danger)
+                    .child(error)
+            }));
+
+        let rows = [
+            ("Worker mode", mode.clone()),
+            ("Reported mode", or_dash(self.snapshot.status_mode.clone())),
+            (
+                "Service IPC",
+                Self::service_label(self.snapshot.service_reachability).to_string(),
+            ),
+            (
+                "Protocol",
+                or_dash(
+                    self.snapshot
+                        .protocol_version
+                        .map(|version| format!("v{version}")),
+                ),
+            ),
+            ("ExifTool", or_dash(self.snapshot.exif_tool_version.clone())),
+            ("Round trips", self.snapshot.round_trips.to_string()),
+        ];
+
+        let details = div()
+            .flex()
+            .flex_col()
+            .gap(px(10.))
+            .p(px(16.))
+            .bg(theme.surface)
+            .border_1()
+            .border_color(theme.border)
+            .rounded(px(12.))
+            .child(
+                div()
+                    .text_size(px(11.))
+                    .text_color(theme.text_faint)
+                    .child("WORKER"),
+            )
+            .children(
+                rows.into_iter()
+                    .map(|(label, value)| Self::detail_row(label, value, theme)),
+            );
+
+        div()
+            .flex_1()
+            .flex()
+            .flex_col()
+            .gap(px(12.))
+            .px(px(24.))
+            .pb(px(12.))
+            .child(status_card)
+            .child(details)
+            .into_any_element()
+    }
+
+    /// Logs 页：级别过滤、清空与审计尾部列表。
+    fn logs_body(&mut self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
+        let (level_filter, visible_len, logs_empty, filtered_empty) = {
+            let state = self.log_state.borrow();
+            (
+                state.level_filter,
+                state.visible_indices.len(),
+                state.logs.is_empty(),
+                !state.logs.is_empty() && state.visible_indices.is_empty(),
+            )
+        };
+        let filter_group = Self::level_filter_group(level_filter, theme, cx);
+        let count_label = format!("{visible_len} entries");
+        let toolbar = div()
+            .flex()
+            .items_center()
+            .gap(px(12.))
+            .child(filter_group)
+            .child(
+                div()
+                    .text_size(px(11.))
+                    .text_color(theme.text_faint)
+                    .child(count_label),
+            )
+            .child(div().flex_1())
+            .child(
+                div()
+                    .id("clear-logs")
+                    .px(px(12.))
+                    .py(px(6.))
+                    .rounded(px(8.))
+                    .border_1()
+                    .border_color(theme.border)
+                    .text_size(px(12.))
+                    .text_color(theme.text_muted)
+                    .hover(|element| element.bg(theme.surface_raised).text_color(theme.text))
+                    .cursor_pointer()
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.clear_logs();
+                        cx.notify();
+                    }))
+                    .child("Clear"),
+            );
+
+        let heading = div()
+            .flex()
+            .flex_col()
+            .gap(px(3.))
+            .child(
+                div()
+                    .text_size(px(18.))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .child("Logs"),
+            )
+            .child(
+                div()
+                    .text_size(px(12.))
+                    .text_color(theme.text_muted)
+                    .child("Audit tail from the daily JSONL — local tail plus IPC backfill."),
+            );
+
+        let card = if logs_empty {
+            Self::log_card(
+                theme,
+                Self::empty_state(
+                    "No audit entries yet",
+                    "Audit events appear here as files are processed.",
+                    theme,
+                ),
+            )
+        } else if filtered_empty {
+            Self::log_card(
+                theme,
+                Self::empty_state(
+                    "No entries under the current level filter",
+                    "Lower the level or wait for matching events.",
+                    theme,
+                ),
+            )
+        } else {
+            let row_theme = *theme;
+            let list = uniform_list(
+                "audit-log",
+                visible_len,
+                cx.processor(move |this, range: std::ops::Range<usize>, _window, _cx| {
+                    let state = this.log_state.borrow();
+                    let mut rows = Vec::with_capacity(range.len());
+                    for index in range {
+                        let Some(entry_index) = state.visible_indices.get(index).copied() else {
+                            continue;
+                        };
+                        let Some(entry) = state.logs.get(entry_index) else {
+                            continue;
+                        };
+                        rows.push(Self::log_row(entry, &row_theme).into_any_element());
+                    }
+                    rows
+                }),
+            )
+            .track_scroll(&self.log_scroll)
+            .size_full();
+
+            Self::log_card(
+                theme,
+                div()
+                    .flex_1()
+                    .flex()
+                    .flex_col()
+                    .overflow_hidden()
+                    .child(Self::log_header(theme))
+                    .child(div().flex_1().overflow_hidden().child(list)),
+            )
+        };
+
+        div()
+            .flex_1()
+            .flex()
+            .flex_col()
+            .gap(px(12.))
+            .px(px(24.))
+            .pb(px(12.))
+            .child(heading)
+            .child(toolbar)
+            .child(card)
+            .into_any_element()
+    }
+
+    fn log_card(theme: &Theme, content: impl IntoElement) -> Div {
+        div()
+            .flex_1()
+            .flex()
+            .flex_col()
+            .overflow_hidden()
+            .bg(theme.surface)
+            .border_1()
+            .border_color(theme.border)
+            .rounded(px(12.))
+            .child(content)
+    }
+
+    fn log_header(theme: &Theme) -> Div {
+        div()
+            .h(px(32.))
+            .flex_none()
+            .w_full()
+            .flex()
+            .items_center()
+            .gap(px(12.))
+            .px(px(12.))
+            .border_b_1()
+            .border_color(theme.border)
+            .text_size(px(11.))
+            .text_color(theme.text_faint)
+            .child(div().w(px(64.)).flex_none().child("TIME"))
+            .child(div().w(px(150.)).flex_none().child("EVENT"))
+            .child(div().w(px(250.)).flex_none().child("SOURCE"))
+            .child(div().flex_1().child("MESSAGE"))
+    }
+
+    fn log_row(entry: &AuditRecord, theme: &Theme) -> Div {
+        let tone = Self::tone_color(entry.tone, theme);
+        div()
+            .h(px(40.))
+            .w_full()
+            .flex()
+            .items_center()
+            .gap(px(12.))
+            .px(px(12.))
+            .border_b_1()
+            .border_color(theme.border)
+            .hover(|element| element.bg(theme.surface_raised))
+            .child(
+                div()
+                    .w(px(64.))
+                    .flex_none()
+                    .text_size(px(12.))
+                    .text_color(theme.text_muted)
+                    .child(entry.time_text.clone()),
+            )
+            .child(
+                div().w(px(150.)).flex_none().child(
+                    div()
+                        .px(px(8.))
+                        .py(px(2.))
+                        .rounded_full()
+                        .bg(theme.surface_raised)
+                        .text_size(px(11.))
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(tone)
+                        .truncate()
+                        .child(entry.display_event.clone()),
+                ),
+            )
+            .child(
+                div()
+                    .w(px(250.))
+                    .flex_none()
+                    .truncate()
+                    .text_size(px(12.))
+                    .text_color(theme.text_muted)
+                    .child(entry.source_path_masked.clone()),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .truncate()
+                    .text_size(px(12.))
+                    .text_color(theme.text)
+                    .child(entry.message.clone()),
+            )
+    }
+
+    fn empty_state(title: &'static str, description: &'static str, theme: &Theme) -> Div {
+        div()
+            .flex_1()
+            .flex()
+            .flex_col()
+            .items_center()
+            .justify_center()
+            .gap(px(6.))
+            .p(px(24.))
+            .child(
+                div()
+                    .text_size(px(15.))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(theme.text)
+                    .child(title),
+            )
+            .child(
+                div()
+                    .text_size(px(12.))
+                    .text_color(theme.text_muted)
+                    .child(description),
+            )
+    }
+
+    fn service_state_color(state: ServiceRuntimeState, theme: &Theme) -> Rgba {
+        match state {
+            ServiceRuntimeState::Running => theme.success,
+            ServiceRuntimeState::StartPending | ServiceRuntimeState::ContinuePending => {
+                theme.accent
+            }
+            ServiceRuntimeState::Paused
+            | ServiceRuntimeState::PausePending
+            | ServiceRuntimeState::StopPending
+            | ServiceRuntimeState::Unknown => theme.warning,
+            ServiceRuntimeState::Stopped => theme.text_muted,
+            ServiceRuntimeState::NotInstalled => theme.text_faint,
+        }
+    }
+
+    fn service_row(
+        label: &'static str,
+        description: &'static str,
+        action: impl IntoElement,
+        theme: &Theme,
+    ) -> Div {
+        div()
+            .flex()
+            .items_center()
+            .justify_between()
+            .gap(px(16.))
+            .py(px(10.))
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(3.))
+                    .child(div().text_size(px(13.)).text_color(theme.text).child(label))
+                    .child(
+                        div()
+                            .text_size(px(11.))
+                            .text_color(theme.text_muted)
+                            .child(description),
+                    ),
+            )
+            .child(action)
+    }
+
+    fn action_button(
+        label: &'static str,
+        command: ServiceCommand,
+        enabled: bool,
+        kind: ButtonKind,
+        theme: &Theme,
+        commands: mpsc::UnboundedSender<ServiceCommand>,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let (background, foreground, border) = if !enabled {
+            (theme.surface_raised, theme.text_faint, theme.border)
+        } else {
+            match kind {
+                ButtonKind::Primary => (theme.accent, theme.on_accent, theme.accent),
+                ButtonKind::Ghost => (theme.surface_raised, theme.text, theme.border),
+                ButtonKind::Danger => (theme.danger, theme.on_accent, theme.danger),
+            }
+        };
+
+        let button = div()
+            .id(label)
+            .px(px(12.))
+            .py(px(6.))
+            .rounded(px(7.))
+            .border_1()
+            .border_color(border)
+            .bg(background)
+            .text_size(px(12.))
+            .text_color(foreground)
+            .child(label);
+
+        if !enabled {
+            return button;
+        }
+
+        let on_click = cx.listener(move |_, _, _, _| {
+            let _ = commands.send(command);
+        });
+        let button = button.cursor_pointer().on_click(on_click);
+        if matches!(kind, ButtonKind::Ghost) {
+            button.hover(|element| element.bg(theme.surface))
+        } else {
+            // 实心主按钮/危险按钮的 hover 改成 surface 会让 on_accent 前景失去对比度，只保留点击。
+            button
+        }
+    }
+
+    fn divider(theme: &Theme) -> Div {
+        div().h(px(1.)).bg(theme.border)
+    }
+
+    fn feedback_banner(feedback: &ServiceFeedback, theme: &Theme) -> Div {
+        let (color, label) = match feedback.status {
+            photoprivacy_service::ServiceCommandStatus::Success => (theme.success, "Success"),
+            photoprivacy_service::ServiceCommandStatus::Skipped => (theme.text_muted, "Skipped"),
+            photoprivacy_service::ServiceCommandStatus::ElevationCancelled => {
+                (theme.warning, "Cancelled")
+            }
+            photoprivacy_service::ServiceCommandStatus::Failed => (theme.danger, "Failed"),
+        };
+
+        div()
+            .flex()
+            .items_center()
+            .gap(px(8.))
+            .p(px(10.))
+            .rounded(px(8.))
+            .border_1()
+            .border_color(color)
+            .bg(theme.surface)
+            .child(
+                div()
+                    .text_size(px(11.))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(color)
+                    .child(label),
+            )
+            .child(
+                div()
+                    .text_size(px(12.))
+                    .text_color(theme.text)
+                    .child(feedback.message.clone()),
+            )
+    }
+
+    fn service_page(&self, theme: &Theme, cx: &mut Context<Self>) -> Div {
+        let service = self.service.clone();
+        let commands = self.service_commands.clone();
+        let buttons = button_state(service.state);
+        let busy = service.busy;
+        let enabled = |available: bool| available && !busy;
+
+        let status_dot = Self::service_state_color(service.state, theme);
+        let status_text = service.state.label().to_string();
+        let status_row = Self::service_row(
+            "Status",
+            if busy {
+                "Applying service command…"
+            } else {
+                "Refreshed every 3 s"
+            },
+            div()
+                .flex()
+                .items_center()
+                .gap(px(8.))
+                .child(div().size(px(8.)).rounded_full().bg(status_dot))
+                .child(
+                    div()
+                        .text_size(px(13.))
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(theme.text)
+                        .child(status_text),
+                ),
+            theme,
+        );
+
+        let install_row = Self::service_row(
+            "Install service",
+            "Registers PhotoPrivacy as a system service.",
+            Self::action_button(
+                "Install",
+                ServiceCommand::Install,
+                enabled(buttons.install),
+                ButtonKind::Primary,
+                theme,
+                commands.clone(),
+                cx,
+            ),
+            theme,
+        );
+
+        let start_stop_row = Self::service_row(
+            "Start / stop",
+            "Controls the installed service process.",
+            div()
+                .flex()
+                .items_center()
+                .gap(px(6.))
+                .child(Self::action_button(
+                    "Start",
+                    ServiceCommand::Start,
+                    enabled(buttons.start),
+                    ButtonKind::Ghost,
+                    theme,
+                    commands.clone(),
+                    cx,
+                ))
+                .child(Self::action_button(
+                    "Stop",
+                    ServiceCommand::Stop,
+                    enabled(buttons.stop),
+                    ButtonKind::Ghost,
+                    theme,
+                    commands.clone(),
+                    cx,
+                ))
+                .child(Self::action_button(
+                    "Refresh",
+                    ServiceCommand::Refresh,
+                    true,
+                    ButtonKind::Ghost,
+                    theme,
+                    commands.clone(),
+                    cx,
+                )),
+            theme,
+        );
+
+        let uninstall_row = Self::service_row(
+            "Uninstall service",
+            "Stops and removes the service registration.",
+            Self::action_button(
+                "Uninstall",
+                ServiceCommand::Uninstall,
+                enabled(buttons.uninstall),
+                ButtonKind::Danger,
+                theme,
+                commands,
+                cx,
+            ),
+            theme,
+        );
+
+        let card = div()
+            .flex()
+            .flex_col()
+            .px(px(16.))
+            .bg(theme.surface)
+            .border_1()
+            .border_color(theme.border)
+            .rounded(px(12.))
+            .child(status_row)
+            .child(Self::divider(theme))
+            .child(install_row)
+            .child(Self::divider(theme))
+            .child(start_stop_row)
+            .child(Self::divider(theme))
+            .child(uninstall_row);
+
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(10.))
+            .child(
+                div()
+                    .text_size(px(11.))
+                    .text_color(theme.text_faint)
+                    .child("SERVICE"),
+            )
+            .child(card)
+            .children(
+                service
+                    .feedback
+                    .as_ref()
+                    .map(|feedback| Self::feedback_banner(feedback, theme)),
+            )
+    }
 }
 
 fn field_value(config: &AppConfig, id: FieldId) -> &str {
@@ -1333,33 +2214,19 @@ fn or_dash(value: Option<String>) -> String {
 
 impl Render for AppView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme = Theme::resolve(self.theme_mode, theme::is_dark(window.appearance()));
-        let state = self.snapshot.state;
-        let dot = Self::state_color(state, &theme);
-
-        let endpoint = or_dash(self.snapshot.endpoint.clone());
-        let mode = or_dash(
-            self.snapshot
-                .worker_mode
-                .map(|mode| mode.label().to_string()),
-        );
-        let round_trip = match self.snapshot.last_round_trip {
-            Some(elapsed) => format!("last round trip {} ms", elapsed.as_millis()),
-            None => "no round trip yet".to_string(),
-        };
-
+        let theme = Theme::resolve(self.theme_mode.get(), theme::is_dark(window.appearance()));
         let header = div()
             .flex()
             .items_center()
-            .justify_between()
+            .gap(px(16.))
             .px(px(24.))
             .pt(px(20.))
-            .pb(px(8.))
+            .pb(px(10.))
             .child(
                 div()
                     .flex()
                     .flex_col()
-                    .gap(px(3.))
+                    .gap(px(2.))
                     .child(
                         div()
                             .text_size(px(18.))
@@ -1368,69 +2235,44 @@ impl Render for AppView {
                     )
                     .child(
                         div()
-                            .text_size(px(12.))
+                            .text_size(px(11.))
                             .text_color(theme.text_muted)
-                            .child("Metadata cleanup · configuration"),
+                            .child("Metadata cleanup"),
                     ),
             )
-            .child(Self::theme_switch(self.theme_mode, theme, cx));
-
-        let worker_details = format!(
-            "Protocol {} · ExifTool {} · {} round trips",
-            self.snapshot
-                .protocol_version
-                .map(|version| format!("v{version}"))
-                .unwrap_or_else(|| "—".to_string()),
-            or_dash(self.snapshot.exif_tool_version.clone()),
-            self.snapshot.round_trips,
-        );
-
-        let connection = div()
-            .flex()
-            .flex_col()
-            .gap(px(2.))
-            .px(px(24.))
-            .pb(px(8.))
             .child(
                 div()
                     .flex()
                     .items_center()
-                    .gap(px(8.))
-                    .child(div().size(px(8.)).rounded_full().bg(dot))
-                    .child(
-                        div()
-                            .text_size(px(13.))
-                            .font_weight(FontWeight::MEDIUM)
-                            .child(state.label()),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(12.))
-                            .text_color(theme.text_muted)
-                            .child(format!("· {endpoint} · {mode}")),
-                    )
-                    .child(div().flex_1())
-                    .child(
-                        div()
-                            .text_size(px(11.))
-                            .text_color(theme.text_faint)
-                            .child(round_trip),
+                    .gap(px(2.))
+                    .p(px(2.))
+                    .bg(theme.surface_raised)
+                    .border_1()
+                    .border_color(theme.border)
+                    .rounded(px(9.))
+                    .children(
+                        Page::all()
+                            .into_iter()
+                            .map(|page| Self::nav_tab(page, self.page, &theme, cx)),
                     ),
             )
-            .child(
-                div()
-                    .text_size(px(11.))
-                    .text_color(theme.text_faint)
-                    .child(worker_details),
-            )
-            .children(self.snapshot.last_error.clone().map(|error| {
-                div()
-                    .text_size(px(12.))
-                    .text_color(theme.danger)
-                    .child(error)
-            }));
+            .child(div().flex_1())
+            .child(Self::theme_switch(self.theme_mode.get(), &theme, cx));
 
-        let page = self.config_page(window, cx);
+        let content = match self.page {
+            Page::Overview => self.overview_body(&theme),
+            Page::Config => div()
+                .flex_1()
+                .min_h(px(0.))
+                .id("config-scroll")
+                .overflow_y_scroll()
+                .px(px(24.))
+                .pb(px(16.))
+                .child(self.config_page(window, cx))
+                .into_any_element(),
+            Page::Service => self.service_page(&theme, cx).into_any_element(),
+            Page::Logs => self.logs_body(&theme, cx),
+        };
 
         let footer = div()
             .flex()
@@ -1438,9 +2280,7 @@ impl Render for AppView {
             .justify_between()
             .gap(px(16.))
             .px(px(24.))
-            .py(px(10.))
-            .border_t_1()
-            .border_color(theme.border)
+            .py(px(14.))
             .child(
                 div()
                     .flex_1()
@@ -1464,17 +2304,7 @@ impl Render for AppView {
             .flex()
             .flex_col()
             .child(header)
-            .child(connection)
-            .child(
-                div()
-                    .flex_1()
-                    .min_h(px(0.))
-                    .id("config-scroll")
-                    .overflow_y_scroll()
-                    .px(px(24.))
-                    .pb(px(16.))
-                    .child(page),
-            )
+            .child(content)
             .child(footer)
     }
 }

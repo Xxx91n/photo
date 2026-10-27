@@ -1,6 +1,9 @@
 use crate::config::{THEME_VARIANTS, normalize_theme_variant};
 use gpui::{Rgba, WindowAppearance, rgb};
 
+/// 浅色主题强调色，也是托盘图标的取色出处（避免两处写死同一个十六进制值）。
+pub const ACCENT_RGB: u32 = 0x2F6FEB;
+
 /// 主题选择：默认跟随系统，允许强制 light/dark。`ui.theme_variant` 是持久化形态。
 #[repr(usize)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -58,6 +61,8 @@ pub struct Theme {
     pub text_muted: Rgba,
     pub text_faint: Rgba,
     pub accent: Rgba,
+    /// 实心强调色/危险色按钮上的前景色；深色主题的浅强调色用深底文字保对比度。
+    pub on_accent: Rgba,
     pub success: Rgba,
     pub warning: Rgba,
     pub danger: Rgba,
@@ -73,7 +78,8 @@ impl Theme {
             text: rgb(0x1A1A19),
             text_muted: rgb(0x6B6B66),
             text_faint: rgb(0x9A9A94),
-            accent: rgb(0x2F6FEB),
+            accent: rgb(ACCENT_RGB),
+            on_accent: rgb(0xFFFFFF),
             success: rgb(0x1F8A5F),
             warning: rgb(0xB7791F),
             danger: rgb(0xC0392B),
@@ -90,6 +96,7 @@ impl Theme {
             text_muted: rgb(0x9B9B95),
             text_faint: rgb(0x6E6E69),
             accent: rgb(0x6E9BFF),
+            on_accent: rgb(0x111110),
             success: rgb(0x4CC38A),
             warning: rgb(0xD8A657),
             danger: rgb(0xE5726A),

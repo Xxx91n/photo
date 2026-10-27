@@ -72,6 +72,15 @@ impl IpcClient {
         }
     }
 
+    /// 短连接预算客户端：服务端点 3s 可达性拍用它探测；服务未安装时不必每拍耗满 700ms 重试预算。
+    /// 只缩短连接预算，读仍走 3s `REQUEST_TIMEOUT`。
+    pub fn with_connect_timeout(connect_timeout: Duration) -> Self {
+        Self {
+            connect_timeout,
+            ..Self::new()
+        }
+    }
+
     pub async fn status(&self, endpoint: &Endpoint) -> Result<(Status, Option<i32>), IpcError> {
         let response = self.request(endpoint, methods::GET_STATUS).await?;
         let version = response.v;
@@ -85,6 +94,21 @@ impl IpcClient {
         Ok((status, version))
     }
 
+    /// 读取 ExifTool 版本；`GetExifToolVersion` 的 data 与 GetStatus 同形（完整 Status）。
+    pub async fn exif_tool_version(&self, endpoint: &Endpoint) -> Result<String, IpcError> {
+        let response = self
+            .request(endpoint, methods::GET_EXIF_TOOL_VERSION)
+            .await?;
+        let status = response.data.ok_or_else(|| {
+            IpcError::Rejected(
+                response
+                    .message
+                    .unwrap_or_else(|| "GetExifToolVersion 响应缺少 data".to_string()),
+            )
+        })?;
+        Ok(status.exif_tool_version)
+    }
+
     pub async fn is_alive(&self, endpoint: &Endpoint) -> bool {
         self.request(endpoint, methods::PING).await.is_ok()
     }
@@ -94,6 +118,14 @@ impl IpcClient {
     pub async fn reload_config(&self, endpoint: &Endpoint) -> Result<Response, IpcError> {
         self.request_with_timeout(endpoint, methods::RELOAD_CONFIG, RELOAD_CONFIG_TIMEOUT)
             .await
+    }
+
+    /// 拉取 Worker 侧今日审计尾部（旧 UI 的 IPC Log Pull / backfill 通道）。
+    ///
+    /// `Ok` 表示 Worker 可达；空数组是合法结果（今日还没有审计行），由调用方决定是否继续等待。
+    pub async fn recent_logs(&self, endpoint: &Endpoint) -> Result<Vec<String>, IpcError> {
+        let response = self.request(endpoint, methods::GET_RECENT_LOGS).await?;
+        Ok(response.logs.map(|logs| logs.lines).unwrap_or_default())
     }
 
     pub async fn request(&self, endpoint: &Endpoint, method: &str) -> Result<Response, IpcError> {
