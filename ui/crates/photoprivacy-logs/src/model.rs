@@ -1,4 +1,4 @@
-use chrono::{DateTime, Local};
+use chrono::{DateTime, FixedOffset, Local};
 use serde_json::Value;
 
 /// 审计事件级别，排序即过滤强度（Debug < Info < Warn < Error）。
@@ -81,7 +81,10 @@ pub enum EventTone {
 /// 一行审计 JSONL 的展示投影。解析失败或空白行不产生记录。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AuditRecord {
+    /// 本地时区展示时间（HH:MM:SS）。
     pub time_text: String,
+    /// 原始 `timestamp_utc`；缺失或不可解析时记为解析时刻，供跨批次排序使用。
+    pub timestamp_utc: DateTime<FixedOffset>,
     pub level: AuditLevel,
     pub event_type: String,
     pub display_event: String,
@@ -107,20 +110,19 @@ pub fn parse_line(line: &str) -> Option<AuditRecord> {
         .and_then(Value::as_str)
         .unwrap_or("unknown");
     let level = AuditLevel::parse(root.get("level").and_then(Value::as_str).unwrap_or("INFO"));
-    let time_text = root
+    let timestamp_utc = root
         .get("timestamp_utc")
         .and_then(Value::as_str)
         .and_then(|text| DateTime::parse_from_rfc3339(text).ok())
-        .map(|timestamp| {
-            timestamp
-                .with_timezone(&Local)
-                .format("%H:%M:%S")
-                .to_string()
-        })
-        .unwrap_or_else(|| Local::now().format("%H:%M:%S").to_string());
+        .unwrap_or_else(|| Local::now().fixed_offset());
+    let time_text = timestamp_utc
+        .with_timezone(&Local)
+        .format("%H:%M:%S")
+        .to_string();
 
     Some(AuditRecord {
         time_text,
+        timestamp_utc,
         level,
         event_type: event_type.to_string(),
         display_event: display_event(event_type),
@@ -181,6 +183,10 @@ mod tests {
         assert_eq!(record.message, "cleaned");
         assert_eq!(record.tone, EventTone::Neutral);
         assert_eq!(record.time_text.len(), 8);
+        assert_eq!(
+            record.timestamp_utc,
+            DateTime::parse_from_rfc3339("2026-10-27T01:02:03.0000000Z").expect("timestamp")
+        );
     }
 
     #[test]

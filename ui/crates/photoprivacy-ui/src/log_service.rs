@@ -61,8 +61,8 @@ async fn run_coordinator(
     let mut feed = AuditFeed::new(directory);
     feed.start();
 
-    // Design(#57): 本地 tail 只走 1s 轮询（对齐旧 UI LoopAsync 的兜底节拍），不引入平台 FSW 依赖；
-    // FSW 盲区由 IPC backfill 补齐。
+    // Design(#49): 本地 tail 只走 1s 轮询（对齐旧 UI LoopAsync 的兜底节拍），不引入平台 FSW 依赖；
+    // FSW 盲区由 IPC backfill 补齐（#57）。
     let mut ticker = tokio::time::interval(TAIL_POLL_INTERVAL);
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     let mut generation = 0;

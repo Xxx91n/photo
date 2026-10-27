@@ -15,11 +15,18 @@ impl LogBuffer {
         Self::default()
     }
 
-    /// 批量追加。批次须按时间升序（尾读与 backfill 合并都保证这一点），
-    /// 逐条插入队首后最新条目落在索引 0，与旧 UI 的新鲜度顺序一致。
+    /// 批量追加，按 `timestamp_utc` 降序插入（最新在索引 0）。
+    ///
+    /// 尾读与 backfill 各自批次内升序；跨批次按时间插入，晚到的 backfill 历史行
+    /// 不会压到已显示的 tail 新事件上方。
     pub fn push_batch(&mut self, batch: impl IntoIterator<Item = AuditRecord>) {
         for entry in batch {
-            self.entries.push_front(entry);
+            let index = self
+                .entries
+                .iter()
+                .position(|existing| existing.timestamp_utc < entry.timestamp_utc)
+                .unwrap_or(self.entries.len());
+            self.entries.insert(index, entry);
         }
         while self.entries.len() > MAX_LOG_ENTRIES {
             self.entries.pop_back();
@@ -62,10 +69,14 @@ mod tests {
     use super::*;
     use crate::EventTone;
     use crate::model::AuditLevel;
+    use chrono::DateTime;
 
-    fn record(level: AuditLevel, message: &str) -> AuditRecord {
+    fn record_at(sequence: i64, level: AuditLevel, message: &str) -> AuditRecord {
         AuditRecord {
             time_text: "00:00:00".to_string(),
+            timestamp_utc: DateTime::from_timestamp(1_790_000_000 + sequence, 0)
+                .expect("timestamp")
+                .fixed_offset(),
             level,
             event_type: "file_detected".to_string(),
             display_event: "File detected".to_string(),
@@ -75,16 +86,34 @@ mod tests {
         }
     }
 
+    fn record(level: AuditLevel, message: &str) -> AuditRecord {
+        record_at(0, level, message)
+    }
+
     #[test]
     fn newest_batch_entry_lands_at_the_front() {
         // 防：升序批次被原序塞进列表，日志页最新事件排到最旧位置（#57）。
         let mut buffer = LogBuffer::new();
         buffer.push_batch(vec![
-            record(AuditLevel::Info, "old"),
-            record(AuditLevel::Info, "new"),
+            record_at(1, AuditLevel::Info, "old"),
+            record_at(2, AuditLevel::Info, "new"),
         ]);
         assert_eq!(buffer.get(0).unwrap().message, "new");
         assert_eq!(buffer.get(1).unwrap().message, "old");
+    }
+
+    #[test]
+    fn late_backfill_lands_below_newer_tail_entries() {
+        // 防：Worker 晚于本地 tail 恢复时，backfill 的历史行被插到新事件上方，时间线倒挂（#57）。
+        let mut buffer = LogBuffer::new();
+        buffer.push_batch(vec![record_at(10, AuditLevel::Info, "tail-new")]);
+        buffer.push_batch(vec![
+            record_at(5, AuditLevel::Info, "backfill-old"),
+            record_at(8, AuditLevel::Info, "backfill-mid"),
+        ]);
+        assert_eq!(buffer.get(0).unwrap().message, "tail-new");
+        assert_eq!(buffer.get(1).unwrap().message, "backfill-mid");
+        assert_eq!(buffer.get(2).unwrap().message, "backfill-old");
     }
 
     #[test]
@@ -92,7 +121,7 @@ mod tests {
         // 防：长时间运行后日志列表无上限增长，UI 内存与滚动开销持续上升（#57）。
         let mut buffer = LogBuffer::new();
         let batch = (0..MAX_LOG_ENTRIES + 25)
-            .map(|index| record(AuditLevel::Info, &index.to_string()))
+            .map(|index| record_at(index as i64, AuditLevel::Info, &index.to_string()))
             .collect::<Vec<_>>();
         buffer.push_batch(batch);
         assert_eq!(buffer.len(), MAX_LOG_ENTRIES);
@@ -105,12 +134,12 @@ mod tests {
         // 防：级别过滤只影响新条目或索引错位，切档后列表内容与徽章不一致（#57）。
         let mut buffer = LogBuffer::new();
         buffer.push_batch(vec![
-            record(AuditLevel::Debug, "debug"),
-            record(AuditLevel::Info, "info"),
-            record(AuditLevel::Warn, "warn"),
-            record(AuditLevel::Error, "error"),
+            record_at(1, AuditLevel::Debug, "debug"),
+            record_at(2, AuditLevel::Info, "info"),
+            record_at(3, AuditLevel::Warn, "warn"),
+            record_at(4, AuditLevel::Error, "error"),
         ]);
-        // 批次升序插入队首后，索引 0 是 error，3 是 debug。
+        // 按时间降序插入后，索引 0 是 error，3 是 debug。
         assert_eq!(buffer.visible_indices(LevelFilter::All), vec![0, 1, 2, 3]);
         assert_eq!(buffer.visible_indices(LevelFilter::Debug), vec![0, 1, 2, 3]);
         assert_eq!(buffer.visible_indices(LevelFilter::Info), vec![0, 1, 2]);

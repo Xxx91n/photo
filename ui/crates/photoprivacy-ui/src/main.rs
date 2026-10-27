@@ -76,8 +76,8 @@ fn application() -> gpui::Application {
 fn audit_fallback_directory() -> PathBuf {
     std::env::current_exe()
         .ok()
-        .and_then(|exe| exe.parent().map(|dir| dir.join("_audit")))
-        .unwrap_or_else(|| PathBuf::from("_audit"))
+        .and_then(|exe| exe.parent().map(|dir| dir.join("hot").join("_audit")))
+        .unwrap_or_else(|| PathBuf::from("hot").join("_audit"))
 }
 
 fn main() -> anyhow::Result<()> {
@@ -97,8 +97,8 @@ fn main() -> anyhow::Result<()> {
     }
 
     let options = ConnectOptions::discover().with_overrides(args.config_path, args.worker_path);
-    // 日志页读取与 Worker 相同的 config.json 切片；缺失/为空时回落到 UI 同目录 `_audit`
-    // （旧 UI 的 AppContext.BaseDirectory 回退口径）。
+    // 日志页读取与 Worker 相同的 config.json 切片；缺失/为空时回落到 `<base>/hot/_audit`
+    // （旧 UI 经 AppConfigLoader 把空串补成 DefaultPaths.DefaultAuditLogDirectory）。
     let audit_config = photoprivacy_logs::resolve_audit_config(
         options.config_path.as_deref(),
         &audit_fallback_directory(),
@@ -119,7 +119,7 @@ fn main() -> anyhow::Result<()> {
         })
         .detach();
 
-        let bounds = Bounds::centered(None, size(px(960.), px(640.)), cx);
+        let bounds = Bounds::centered(None, size(px(820.), px(580.)), cx);
         cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
@@ -129,7 +129,7 @@ fn main() -> anyhow::Result<()> {
                     traffic_light_position: None,
                 }),
                 window_background: WindowBackgroundAppearance::Opaque,
-                window_min_size: Some(size(px(720.), px(520.))),
+                window_min_size: Some(size(px(680.), px(520.))),
                 ..Default::default()
             },
             move |window, cx| {

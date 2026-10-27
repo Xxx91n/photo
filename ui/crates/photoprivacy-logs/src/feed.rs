@@ -59,9 +59,10 @@ pub struct AuditFeed {
     current_path: PathBuf,
     position: u64,
     delivered: DeliveredLines,
+    /// 上次轮询时文件的总长度，用于识别未换行尾段是否仍在增长。
     stall_length: u64,
+    /// 上次轮询时水位之后的未换行字节；长度与内容都不再变化时一次性交付。
     stall_partial: Vec<u8>,
-    suppress_next_backfill: bool,
 }
 
 impl AuditFeed {
@@ -75,7 +76,6 @@ impl AuditFeed {
             delivered: DeliveredLines::new(),
             stall_length: 0,
             stall_partial: Vec::new(),
-            suppress_next_backfill: false,
         }
     }
 
@@ -127,19 +127,14 @@ impl AuditFeed {
 
     /// 接受 Worker 的最近 N 行：稳定按时间升序、去重，再与 tail 已交付行合并。
     ///
-    /// 清空视图之后到达的第一次 backfill 只登记去重记忆、不交付——否则用户刚清空的历史会立刻回流。
-    /// 清空后新追加的行仍由 tail 从新水位读取，不会丢。
+    /// 清空视图只推进水位并保留去重记忆：清空前尚未交付的行仍可由 backfill 补齐，
+    /// 已交付过的历史行则被去重记忆挡住，不会回流。
     pub fn accept_backfill(&mut self, lines: &[String]) -> Vec<String> {
         let mut accepted = Vec::new();
         for line in merge_backfill_lines(lines) {
             if self.delivered.claim(&line) {
                 accepted.push(line);
             }
-        }
-
-        if self.suppress_next_backfill {
-            self.suppress_next_backfill = false;
-            return Vec::new();
         }
         accepted
     }
@@ -148,7 +143,6 @@ impl AuditFeed {
     pub fn clear_view(&mut self) {
         self.position = file_length(&self.current_path);
         self.reset_stall();
-        self.suppress_next_backfill = true;
     }
 
     pub fn current_path(&self) -> &Path {
@@ -416,8 +410,8 @@ mod tests {
     }
 
     #[test]
-    fn backfill_after_clear_is_suppressed_but_still_claimed() {
-        // 防：用户还没等到首次 backfill 就清空视图时，50 行历史立刻回流；同时 tail 不能重复交付它们（#57）。
+    fn backfill_after_clear_delivers_lines_never_shown() {
+        // 防：用户清空后，清空前已写入但尚未显示的审计行被 IPC backfill 永久吞掉（#57）。
         let temp = tempfile::tempdir().expect("temp dir");
         let day = Local::now().date_naive();
         let path = audit_path(temp.path(), day);
@@ -428,11 +422,9 @@ mod tests {
         append(&path, &format!("{history}\n"));
         feed.clear_view();
 
-        assert!(
-            feed.accept_backfill(std::slice::from_ref(&history))
-                .is_empty()
-        );
-        // 水位在清空时已推到文件末尾，因此 tail 也不会重读历史。
+        let delivered = feed.accept_backfill(std::slice::from_ref(&history));
+        assert_eq!(delivered, vec![history]);
+        // 水位在清空时已推到文件末尾，因此 tail 不会重复交付同一行。
         assert!(feed.poll_tail_on(day).is_empty());
     }
 
