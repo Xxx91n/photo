@@ -1,3 +1,5 @@
+use crate::process::CommandOutput;
+
 /// 与旧 UI `ServiceCommandStatus` 相同的四态：成功 / 跳过 / 提权取消 / 失败。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ServiceCommandStatus {
@@ -78,6 +80,51 @@ pub fn translate_exit_code(code: Option<i32>) -> String {
         Some(code) => format!("Unknown error (code {code})"),
         None => "Unknown error".to_string(),
     }
+}
+
+/// 三平台共用的子进程结果映射：spawn 失败 / 超时 / 成功 / 取消 / 失败五路分流。
+pub(crate) fn result_from_output(
+    program: &str,
+    output: CommandOutput,
+    success_message: &str,
+    cancel_message: &str,
+    is_cancelled: impl Fn(&CommandOutput) -> bool,
+    failure_message: impl Fn(&CommandOutput) -> String,
+) -> ServiceCommandResult {
+    if let Some(error) = output.spawn_error {
+        return ServiceCommandResult::failed(format!("Failed to start {program}: {error}"), None);
+    }
+    if output.timed_out {
+        return ServiceCommandResult::failed(
+            format!("{program} did not exit within 60 seconds"),
+            None,
+        );
+    }
+
+    match output.exit_code {
+        Some(0) => ServiceCommandResult::success(Some(0), success_message),
+        Some(_) if is_cancelled(&output) => {
+            ServiceCommandResult::elevation_cancelled(cancel_message)
+        }
+        Some(code) => ServiceCommandResult::failed(failure_message(&output), Some(code)),
+        None => ServiceCommandResult::failed(failure_message(&output), None),
+    }
+}
+
+#[cfg(any(unix, test))]
+pub(crate) fn output_message(output: &CommandOutput, program: &str) -> String {
+    let stderr = output.stderr.trim();
+    if !stderr.is_empty() {
+        return stderr.to_string();
+    }
+    let stdout = output.stdout.trim();
+    if !stdout.is_empty() {
+        return stdout.to_string();
+    }
+    format!(
+        "{program} exited with code {}",
+        output.exit_code.unwrap_or(-1)
+    )
 }
 
 #[cfg(test)]

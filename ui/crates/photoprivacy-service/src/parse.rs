@@ -163,14 +163,14 @@ mod tests {
     #[test]
     fn sc_query_maps_numeric_state_even_when_words_are_localized() {
         // 防：只认英文状态词；本地化 Windows 的 sc 输出把 RUNNING 翻译后状态行永久 Unknown（#58）。
-        let output = "SERVICE_NAME: PhotoPrivacyCleaner\n        STATE              : 4  \u{8fd0}\u{884c}\u{4e2d}\n";
+        let output = "SERVICE_NAME: PhotoPrivacyCleaner\n        STATE              : 4  运行中\n";
         assert_eq!(parse_sc_query(0, output), ServiceRuntimeState::Running);
     }
 
     #[test]
     fn sc_query_maps_state_even_when_labels_are_localized() {
         // 防：中文/其它语言版 sc.exe 把 STATE 标签也翻译后，服务态永久 Unknown（#58）。
-        let output = "SERVICE_NAME: PhotoPrivacyCleaner\n        \u{72b6}\u{6001}              : 4  \u{8fd0}\u{884c}\u{4e2d}\n        \u{7c7b}\u{578b}              : 16  WIN32_OWN_PROCESS\n";
+        let output = "SERVICE_NAME: PhotoPrivacyCleaner\n        状态              : 4  运行中\n        类型              : 16  WIN32_OWN_PROCESS\n";
         assert_eq!(parse_sc_query(0, output), ServiceRuntimeState::Running);
     }
 

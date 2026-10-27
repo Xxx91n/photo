@@ -22,7 +22,7 @@ mod unix;
 #[cfg(windows)]
 mod windows;
 
-pub use command::{ServiceCommandResult, ServiceCommandStatus, translate_exit_code};
+pub use command::{ServiceCommandResult, ServiceCommandStatus};
 pub use manager::{ServiceManager, ServiceOps, ServiceProbe, platform_manager};
 pub use process::{CommandOutput, ProcessRunner, SystemProcessRunner};
 pub use state::{ServiceButtonState, ServiceRuntimeState, button_state};

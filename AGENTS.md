@@ -8,7 +8,7 @@ PhotoPrivacy：批量清理照片/视频/文档隐私元数据的 C#/.NET 10 跨
 
 - 构建（dotnet 侧 CI-only，见 `tests/TEST-CONVENTIONS.md` §3）：`dotnet build PhotoPrivacy.sln`（CI 口径 `--configuration Release`）。
 - 测试：CI 跑 `dotnet test PhotoPrivacy.sln --configuration Release --filter "Category!=Smoke&Category!=ExifTool"`；dotnet 侧本机只做静态门禁（`git diff --check` 等），CI-only 纪律见 `tests/TEST-CONVENTIONS.md` §3。
-- 新 UI（Rust，`ui/`）：Windows 实机构建用 `cd ui && cargo build -p photoprivacy-ui --target x86_64-pc-windows-gnu`（需 `rustup target add x86_64-pc-windows-gnu` 与 MinGW；`windres` 须在 PATH 或由 `WINDRES` 指定，否则清单嵌入失败）；`cargo fmt --all -- --check`、`cargo clippy -p photoprivacy-ipc --all-targets -- -D warnings`、`cargo test -p photoprivacy-ipc` 本机也要过（CI 跑同口径）。勿引入 `gpui-pre-platform`（原因见 `ui/Cargo.toml` 注释）。
+- 新 UI（Rust，`ui/`）：Windows 实机构建用 `cd ui && cargo build -p photoprivacy-ui --target x86_64-pc-windows-gnu`（需 `rustup target add x86_64-pc-windows-gnu` 与 MinGW；`windres` 须在 PATH 或由 `WINDRES` 指定，否则清单嵌入失败）；`cargo fmt --all -- --check`、`cargo clippy -p photoprivacy-ipc -p photoprivacy-service --all-targets -- -D warnings`、`cargo test -p photoprivacy-ipc -p photoprivacy-service`、`cargo check -p photoprivacy-ui` 本机也要过（CI 跑同口径）。勿引入 `gpui-pre-platform`（原因见 `ui/Cargo.toml` 注释）。
 - 发布（发版机专用，agent 不主动触发，由人执行）：`scripts/publish-app.ps1` 或 `scripts/publish.sh`（内含 `dotnet publish`，写 `release/`）；发布属性只经脚本 `/p:` 传入，禁写回 csproj。
 - 安装：`scripts/install-service.ps1`、`scripts/install-systemd-service.sh`、`scripts/install-launchd-service.sh`。
 - 发版门禁（发版机专用，agent 不主动触发，由人执行）：`scripts/release-readiness.ps1`（内含 test+smoke+publish）。

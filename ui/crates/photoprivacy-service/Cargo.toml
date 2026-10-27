@@ -7,6 +7,8 @@ description = "PhotoPrivacy 三平台服务状态探测与提权操作（sc/syst
 
 [dependencies]
 
+# 提权走 ShellExecuteExW（等价旧 UI 的 ProcessStartInfo + runas）；SHELLEXECUTEINFOW 在
+# windows-sys 0.61 里被 Win32_System_Registry 门控（其 HKEY 字段），不是多余特性。
 [target.'cfg(windows)'.dependencies]
 windows-sys = { workspace = true, features = [
     "Win32_Foundation",

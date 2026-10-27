@@ -280,20 +280,15 @@ impl AppView {
             return button;
         }
 
+        let on_click = cx.listener(move |_, _, _, _| {
+            let _ = commands.send(command);
+        });
+        let button = button.cursor_pointer().on_click(on_click);
         if matches!(kind, ButtonKind::Ghost) {
-            button
-                .cursor_pointer()
-                .hover(|element| element.bg(theme.surface))
-                .on_click(cx.listener(move |_, _, _, _| {
-                    let _ = commands.send(command);
-                }))
+            button.hover(|element| element.bg(theme.surface))
         } else {
             // 实心主按钮/危险按钮的 hover 改成 surface 会让 on_accent 前景失去对比度，只保留点击。
             button
-                .cursor_pointer()
-                .on_click(cx.listener(move |_, _, _, _| {
-                    let _ = commands.send(command);
-                }))
         }
     }
 

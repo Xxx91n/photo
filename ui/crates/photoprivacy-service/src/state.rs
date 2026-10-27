@@ -54,15 +54,6 @@ pub struct ServiceButtonState {
     pub stop: bool,
 }
 
-impl ServiceButtonState {
-    pub const ALL_DISABLED: Self = Self {
-        install: false,
-        uninstall: false,
-        start: false,
-        stop: false,
-    };
-}
-
 /// 与旧 UI `ServiceUiPolicy.BuildButtonState` 的四分支逐项一致。
 pub fn button_state(state: ServiceRuntimeState) -> ServiceButtonState {
     if !state.is_installed() {

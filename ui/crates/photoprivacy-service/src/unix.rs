@@ -1,4 +1,4 @@
-use crate::command::ServiceCommandResult;
+use crate::command::{ServiceCommandResult, output_message, result_from_output};
 use crate::manager::{ServiceOps, ServiceProbe};
 use crate::process::{CommandOutput, ProcessRunner};
 use crate::state::ServiceRuntimeState;
@@ -61,7 +61,7 @@ mod linux {
     }
 
     impl ServiceOps for LinuxOps {
-        fn install(&self, _: &Path, _: &Path) -> ServiceCommandResult {
+        fn install(&self, _: Option<&Path>, _: Option<&Path>) -> ServiceCommandResult {
             // 旧 UI 的 SystemdCommandExecutor 忽略调用方路径，统一走发布包内的安装脚本。
             if !self.script_path.is_file() {
                 return ServiceCommandResult::failed(
@@ -77,7 +77,7 @@ mod linux {
             self.run_pkexec(args, "systemd service installed")
         }
 
-        fn start(&self, _: &Path, _: Option<&Path>) -> ServiceCommandResult {
+        fn start(&self, _: Option<&Path>, _: Option<&Path>) -> ServiceCommandResult {
             let args = vec![
                 "systemctl".to_string(),
                 "start".to_string(),
@@ -108,39 +108,19 @@ mod linux {
     }
 
     fn elevated_result(output: CommandOutput, success_message: &str) -> ServiceCommandResult {
-        if let Some(error) = output.spawn_error {
-            return ServiceCommandResult::failed(format!("pkexec is not available: {error}"), None);
-        }
-        if output.timed_out {
-            return ServiceCommandResult::failed("pkexec did not exit within 60 seconds", None);
-        }
-
-        match output.exit_code {
-            Some(0) => ServiceCommandResult::success(Some(0), success_message),
+        result_from_output(
+            "pkexec",
+            output,
+            success_message,
+            "Elevation was cancelled or not authorized",
             // pkexec 的 127 也可能是“程序不存在”；只有授权失败/取消才算提权取消。
-            Some(127) if !output.stderr.to_ascii_lowercase().contains("not found") => {
-                ServiceCommandResult::elevation_cancelled(
-                    "Elevation was cancelled or not authorized",
-                )
-            }
-            Some(126) => ServiceCommandResult::elevation_cancelled(
-                "Elevation was cancelled or not authorized",
-            ),
-            Some(code) => ServiceCommandResult::failed(command_message(&output), Some(code)),
-            None => ServiceCommandResult::failed(command_message(&output), None),
-        }
-    }
-
-    fn command_message(output: &CommandOutput) -> String {
-        let stderr = output.stderr.trim();
-        if !stderr.is_empty() {
-            return stderr.to_string();
-        }
-        let stdout = output.stdout.trim();
-        if !stdout.is_empty() {
-            return stdout.to_string();
-        }
-        format!("pkexec exited with code {}", output.exit_code.unwrap_or(-1))
+            |output| match output.exit_code {
+                Some(126) => true,
+                Some(127) => !output.stderr.to_ascii_lowercase().contains("not found"),
+                _ => false,
+            },
+            |output| output_message(output, "pkexec"),
+        )
     }
 }
 
@@ -198,7 +178,7 @@ mod macos {
     }
 
     impl ServiceOps for MacOps {
-        fn install(&self, _: &Path, _: &Path) -> ServiceCommandResult {
+        fn install(&self, _: Option<&Path>, _: Option<&Path>) -> ServiceCommandResult {
             if !self.script_path.is_file() {
                 return ServiceCommandResult::failed(
                     format!("install script not found: {}", self.script_path.display()),
@@ -210,7 +190,7 @@ mod macos {
             self.run_admin_shell(&command, "launchd service installed")
         }
 
-        fn start(&self, _: &Path, _: Option<&Path>) -> ServiceCommandResult {
+        fn start(&self, _: Option<&Path>, _: Option<&Path>) -> ServiceCommandResult {
             self.run_admin_shell(
                 &format!("launchctl load -w {LAUNCHD_PLIST}"),
                 "launchd service started",
@@ -233,24 +213,14 @@ mod macos {
     }
 
     fn macos_result(output: CommandOutput, success_message: &str) -> ServiceCommandResult {
-        if let Some(error) = output.spawn_error {
-            return ServiceCommandResult::failed(
-                format!("osascript is not available: {error}"),
-                None,
-            );
-        }
-        if output.timed_out {
-            return ServiceCommandResult::failed("osascript did not exit within 60 seconds", None);
-        }
-
-        match output.exit_code {
-            Some(0) => ServiceCommandResult::success(Some(0), success_message),
-            Some(_) if is_cancelled(&output) => {
-                ServiceCommandResult::elevation_cancelled("Elevation was cancelled")
-            }
-            Some(code) => ServiceCommandResult::failed(command_message(&output), Some(code)),
-            None => ServiceCommandResult::failed(command_message(&output), None),
-        }
+        result_from_output(
+            "osascript",
+            output,
+            success_message,
+            "Elevation was cancelled",
+            is_cancelled,
+            |output| output_message(output, "osascript"),
+        )
     }
 
     fn is_cancelled(output: &CommandOutput) -> bool {
@@ -259,21 +229,6 @@ mod macos {
             || text.contains("user cancelled")
             || text.contains("(-128)")
             || text.contains("-128")
-    }
-
-    fn command_message(output: &CommandOutput) -> String {
-        let stderr = output.stderr.trim();
-        if !stderr.is_empty() {
-            return stderr.to_string();
-        }
-        let stdout = output.stdout.trim();
-        if !stdout.is_empty() {
-            return stdout.to_string();
-        }
-        format!(
-            "osascript exited with code {}",
-            output.exit_code.unwrap_or(-1)
-        )
     }
 
     pub(super) fn admin_shell_script(command: &str) -> String {
@@ -425,7 +380,7 @@ mod tests {
         let script = temp_script("install");
         let ops = linux::LinuxOps::new(runner.clone(), script.clone());
 
-        let result = ops.install(Path::new("unused"), Path::new("unused"));
+        let result = ops.install(None, None);
 
         assert_eq!(result.status, ServiceCommandStatus::Success);
         assert_eq!(
@@ -441,10 +396,7 @@ mod tests {
         let runner = Arc::new(QueueRunner::new("pkexec", vec![ok(), ok(), ok()]));
         let ops = linux::LinuxOps::new(runner.clone(), PathBuf::from("/missing/script.sh"));
 
-        assert_eq!(
-            ops.start(Path::new("w"), None).status,
-            ServiceCommandStatus::Success
-        );
+        assert_eq!(ops.start(None, None).status, ServiceCommandStatus::Success);
         assert_eq!(ops.stop().status, ServiceCommandStatus::Success);
         assert_eq!(ops.uninstall().status, ServiceCommandStatus::Success);
 
@@ -486,7 +438,7 @@ mod tests {
         let runner = Arc::new(QueueRunner::new("pkexec", Vec::new()));
         let ops = linux::LinuxOps::new(runner.clone(), PathBuf::from("/missing/script.sh"));
 
-        let result = ops.install(Path::new("w"), Path::new("c"));
+        let result = ops.install(None, None);
 
         assert_eq!(result.status, ServiceCommandStatus::Failed);
         assert!(result.message.contains("install script not found"));
@@ -500,7 +452,7 @@ mod tests {
         let script = temp_script("install");
         let ops = macos::MacOps::new(runner.clone(), script.clone());
 
-        let result = ops.install(Path::new("unused"), Path::new("unused"));
+        let result = ops.install(None, None);
 
         assert_eq!(result.status, ServiceCommandStatus::Success);
         let calls = runner.calls();
@@ -535,10 +487,7 @@ mod tests {
         let runner = Arc::new(QueueRunner::new("osascript", vec![ok(), ok()]));
         let ops = macos::MacOps::new(runner.clone(), PathBuf::from("/missing/script.sh"));
 
-        assert_eq!(
-            ops.start(Path::new("w"), None).status,
-            ServiceCommandStatus::Success
-        );
+        assert_eq!(ops.start(None, None).status, ServiceCommandStatus::Success);
         assert_eq!(ops.stop().status, ServiceCommandStatus::Success);
 
         let calls = runner.calls();

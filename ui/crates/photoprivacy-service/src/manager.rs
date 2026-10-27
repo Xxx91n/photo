@@ -1,5 +1,5 @@
 use crate::command::ServiceCommandResult;
-use crate::state::{ServiceButtonState, ServiceRuntimeState, button_state};
+use crate::state::ServiceRuntimeState;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -8,9 +8,12 @@ pub trait ServiceProbe: Send + Sync {
 }
 
 /// 平台操作面：Windows 的 sc.exe、Linux 的 pkexec、macOS 的 osascript 都实现这一组语义动作。
+///
+/// worker/config 是 UI 侧上下文：Windows 需要它们拼 `sc create/config`；Linux/macOS 的安装脚本
+/// 与 unit 自带安装路径，所以允许为 `None`，由平台实现决定是否必需。
 pub trait ServiceOps: Send + Sync {
-    fn install(&self, worker: &Path, config: &Path) -> ServiceCommandResult;
-    fn start(&self, worker: &Path, config: Option<&Path>) -> ServiceCommandResult;
+    fn install(&self, worker: Option<&Path>, config: Option<&Path>) -> ServiceCommandResult;
+    fn start(&self, worker: Option<&Path>, config: Option<&Path>) -> ServiceCommandResult;
     fn stop(&self) -> ServiceCommandResult;
     fn uninstall(&self) -> ServiceCommandResult;
 }
@@ -42,31 +45,14 @@ impl ServiceManager {
         self.probe.state()
     }
 
-    pub fn buttons(&self) -> ServiceButtonState {
-        button_state(self.state())
-    }
-
     pub fn install(&self) -> ServiceCommandResult {
-        let (Some(worker), Some(config)) = (
-            self.worker.as_deref().filter(|path| path.is_file()),
-            self.config.as_deref(),
-        ) else {
-            return ServiceCommandResult::failed(
-                "PhotoPrivacyWorker and config.json must be next to the UI to install the service",
-                None,
-            );
-        };
-        self.ops.install(worker, config)
+        self.ops
+            .install(self.worker.as_deref(), self.config.as_deref())
     }
 
     pub fn start(&self) -> ServiceCommandResult {
-        let Some(worker) = self.worker.as_deref().filter(|path| path.is_file()) else {
-            return ServiceCommandResult::failed(
-                "PhotoPrivacyWorker must be next to the UI to start the service",
-                None,
-            );
-        };
-        self.ops.start(worker, self.config.as_deref())
+        self.ops
+            .start(self.worker.as_deref(), self.config.as_deref())
     }
 
     pub fn stop(&self) -> ServiceCommandResult {
@@ -141,6 +127,8 @@ fn platform_manager_unavailable(
     worker: Option<PathBuf>,
     config: Option<PathBuf>,
 ) -> ServiceManager {
+    const UNSUPPORTED: &str = "Service management is not supported on this platform";
+
     struct UnavailableProbe;
     impl ServiceProbe for UnavailableProbe {
         fn state(&self) -> ServiceRuntimeState {
@@ -150,17 +138,17 @@ fn platform_manager_unavailable(
 
     struct UnavailableOps;
     impl ServiceOps for UnavailableOps {
-        fn install(&self, _: &Path, _: &Path) -> ServiceCommandResult {
-            ServiceCommandResult::skipped("Service management is not supported on this platform")
+        fn install(&self, _: Option<&Path>, _: Option<&Path>) -> ServiceCommandResult {
+            ServiceCommandResult::skipped(UNSUPPORTED)
         }
-        fn start(&self, _: &Path, _: Option<&Path>) -> ServiceCommandResult {
-            ServiceCommandResult::skipped("Service management is not supported on this platform")
+        fn start(&self, _: Option<&Path>, _: Option<&Path>) -> ServiceCommandResult {
+            ServiceCommandResult::skipped(UNSUPPORTED)
         }
         fn stop(&self) -> ServiceCommandResult {
-            ServiceCommandResult::skipped("Service management is not supported on this platform")
+            ServiceCommandResult::skipped(UNSUPPORTED)
         }
         fn uninstall(&self) -> ServiceCommandResult {
-            ServiceCommandResult::skipped("Service management is not supported on this platform")
+            ServiceCommandResult::skipped(UNSUPPORTED)
         }
     }
 
@@ -190,21 +178,26 @@ mod tests {
         calls: Mutex<Vec<String>>,
     }
 
+    fn display_opt(path: Option<&Path>) -> String {
+        path.map(|path| path.display().to_string())
+            .unwrap_or_default()
+    }
+
     impl ServiceOps for RecordingOps {
-        fn install(&self, worker: &Path, config: &Path) -> ServiceCommandResult {
+        fn install(&self, worker: Option<&Path>, config: Option<&Path>) -> ServiceCommandResult {
             self.calls.lock().unwrap().push(format!(
                 "install {} {}",
-                worker.display(),
-                config.display()
+                display_opt(worker),
+                display_opt(config)
             ));
             ServiceCommandResult::success(Some(0), "ok")
         }
 
-        fn start(&self, worker: &Path, config: Option<&Path>) -> ServiceCommandResult {
+        fn start(&self, worker: Option<&Path>, config: Option<&Path>) -> ServiceCommandResult {
             self.calls.lock().unwrap().push(format!(
                 "start {} {}",
-                worker.display(),
-                config.map(|p| p.display().to_string()).unwrap_or_default()
+                display_opt(worker),
+                display_opt(config)
             ));
             ServiceCommandResult::success(Some(0), "ok")
         }
@@ -238,41 +231,30 @@ mod tests {
     }
 
     #[test]
-    fn install_requires_worker_and_config() {
-        // 防：缺失 Worker 时仍拉起提权进程，用户只看到一条平台错误而不是可操作的提示（#58）。
+    fn install_forwards_optional_paths() {
+        // 防：门面把路径吞掉或顺序写反，Windows 侧拿不到 Worker/config 拼 sc create（#58）。
         let ops = Arc::new(RecordingOps::default());
+        let worker = temp_worker();
         let manager = ServiceManager::new(
             Arc::new(FixedProbe(ServiceRuntimeState::NotInstalled)),
             ops.clone(),
-            None,
+            Some(worker.clone()),
             Some(PathBuf::from("config.json")),
         );
 
-        let result = manager.install();
-
-        assert_eq!(result.status, crate::ServiceCommandStatus::Failed);
-        assert!(ops.calls.lock().unwrap().is_empty());
-    }
-
-    #[test]
-    fn install_requires_an_existing_worker_file() {
-        // 防：显式传入的 --worker 路径不存在时仍 create 服务，服务永远起不来且用户只看到平台错误（#58）。
-        let ops = Arc::new(RecordingOps::default());
-        let manager = ServiceManager::new(
-            Arc::new(FixedProbe(ServiceRuntimeState::NotInstalled)),
-            ops.clone(),
-            Some(PathBuf::from("definitely-missing-PhotoPrivacyWorker")),
-            Some(PathBuf::from("config.json")),
+        assert_eq!(
+            manager.install().status,
+            crate::ServiceCommandStatus::Success
         );
-
-        let result = manager.install();
-
-        assert_eq!(result.status, crate::ServiceCommandStatus::Failed);
-        assert!(ops.calls.lock().unwrap().is_empty());
+        assert_eq!(
+            ops.calls.lock().unwrap().as_slice(),
+            [format!("install {} config.json", worker.display())].as_slice()
+        );
+        let _ = std::fs::remove_file(worker);
     }
 
     #[test]
-    fn start_skips_reconfig_when_config_is_absent() {
+    fn start_forwards_none_config() {
         // 防：没有 config 时仍把空路径拼进 sc config，Worker 启动后读到空配置（#58）。
         let ops = Arc::new(RecordingOps::default());
         let worker = temp_worker();
@@ -292,16 +274,24 @@ mod tests {
     }
 
     #[test]
-    fn buttons_follow_probe_state() {
-        // 防：门面绕过状态策略直接给出按钮，页面状态与可用性脱节（#58）。
+    fn stop_and_uninstall_delegate_without_paths() {
+        // 防：卸载/停止被误加上 Worker 路径前置条件，Linux/macOS 无本地 Worker 时操作不可用（#58）。
+        let ops = Arc::new(RecordingOps::default());
         let manager = ServiceManager::new(
             Arc::new(FixedProbe(ServiceRuntimeState::Running)),
-            Arc::new(RecordingOps::default()),
+            ops.clone(),
             None,
             None,
         );
 
-        assert!(manager.buttons().stop);
-        assert!(!manager.buttons().start);
+        assert_eq!(manager.stop().status, crate::ServiceCommandStatus::Success);
+        assert_eq!(
+            manager.uninstall().status,
+            crate::ServiceCommandStatus::Success
+        );
+        assert_eq!(
+            ops.calls.lock().unwrap().as_slice(),
+            ["stop".to_string(), "uninstall".to_string()].as_slice()
+        );
     }
 }

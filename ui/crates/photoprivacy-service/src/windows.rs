@@ -1,4 +1,6 @@
-use crate::command::{ServiceCommandResult, ServiceCommandStatus, translate_exit_code};
+use crate::command::{
+    ServiceCommandResult, ServiceCommandStatus, result_from_output, translate_exit_code,
+};
 use crate::manager::{ServiceOps, ServiceProbe};
 use crate::parse::parse_sc_query;
 use crate::process::{CommandOutput, ProcessRunner};
@@ -208,7 +210,19 @@ impl WindowsOps {
 }
 
 impl ServiceOps for WindowsOps {
-    fn install(&self, worker: &Path, config: &Path) -> ServiceCommandResult {
+    fn install(&self, worker: Option<&Path>, config: Option<&Path>) -> ServiceCommandResult {
+        let (Some(worker), Some(config)) = (worker, config) else {
+            return ServiceCommandResult::failed(
+                "PhotoPrivacyWorker and config.json must be next to the UI to install the service",
+                None,
+            );
+        };
+        if !worker.is_file() {
+            return ServiceCommandResult::failed(
+                "PhotoPrivacyWorker must exist next to the UI to install the service",
+                None,
+            );
+        }
         if !is_worker_executable(worker) {
             return ServiceCommandResult::failed(
                 "The service must be installed from PhotoPrivacyWorker.exe",
@@ -239,16 +253,28 @@ impl ServiceOps for WindowsOps {
         create.with_friendly_message()
     }
 
-    fn start(&self, worker: &Path, config: Option<&Path>) -> ServiceCommandResult {
-        if !self.probe.state().is_installed() {
-            return ServiceCommandResult::failed(translate_exit_code(Some(1060)), Some(1060));
+    fn start(&self, worker: Option<&Path>, config: Option<&Path>) -> ServiceCommandResult {
+        let Some(worker) = worker else {
+            return ServiceCommandResult::failed(
+                "PhotoPrivacyWorker must be next to the UI to start the service",
+                None,
+            );
+        };
+        if !worker.is_file() {
+            return ServiceCommandResult::failed(
+                "PhotoPrivacyWorker must exist next to the UI to start the service",
+                None,
+            );
         }
-
         if !is_worker_executable(worker) {
             return ServiceCommandResult::failed(
                 "The service must target PhotoPrivacyWorker.exe",
                 None,
             );
+        }
+
+        if !self.probe.state().is_installed() {
+            return ServiceCommandResult::failed(translate_exit_code(Some(1060)), Some(1060));
         }
 
         if let Some(config) = config.filter(|path| !path.as_os_str().is_empty()) {
@@ -287,26 +313,14 @@ impl ServiceOps for WindowsOps {
 }
 
 fn command_result(output: CommandOutput) -> ServiceCommandResult {
-    if let Some(error) = output.spawn_error {
-        return ServiceCommandResult::failed(format!("Failed to start sc.exe: {error}"), None);
-    }
-    if output.timed_out {
-        return ServiceCommandResult::failed("sc.exe did not exit within 60 seconds", None);
-    }
-
-    let exit_code = output.exit_code;
-    if exit_code == Some(0) {
-        return ServiceCommandResult::success(Some(0), translate_exit_code(Some(0)));
-    }
-
-    let message = if !output.stderr.trim().is_empty() {
-        output.stderr.trim().to_string()
-    } else if !output.stdout.trim().is_empty() {
-        output.stdout.trim().to_string()
-    } else {
-        format!("sc.exe exited with code {}", exit_code.unwrap_or(-1))
-    };
-    ServiceCommandResult::failed(message, exit_code)
+    result_from_output(
+        "sc.exe",
+        output,
+        &translate_exit_code(Some(0)),
+        "Elevation was cancelled",
+        |_| false,
+        |output| translate_exit_code(output.exit_code),
+    )
 }
 
 fn sc_stop() -> Vec<String> {
@@ -547,6 +561,24 @@ mod tests {
         }
     }
 
+    fn temp_worker() -> std::path::PathBuf {
+        static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let seq = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let dir =
+            std::env::temp_dir().join(format!("photoprivacy-windows-{}-{seq}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("PhotoPrivacyWorker.exe");
+        std::fs::write(&path, b"").unwrap();
+        path
+    }
+
+    fn cleanup_worker(worker: &Path) {
+        let _ = std::fs::remove_file(worker);
+        if let Some(dir) = worker.parent() {
+            let _ = std::fs::remove_dir(dir);
+        }
+    }
+
     fn ops(
         state: ServiceRuntimeState,
         outputs: Vec<CommandOutput>,
@@ -627,10 +659,9 @@ mod tests {
             RecordingElevated::default(),
         );
 
-        let result = ops.install(
-            Path::new(r"C:\app\PhotoPrivacyWorker.exe"),
-            Path::new(r"C:\cfg\config.json"),
-        );
+        let worker = temp_worker();
+        let config = std::path::PathBuf::from(r"C:\cfg\config.json");
+        let result = ops.install(Some(worker.as_path()), Some(config.as_path()));
 
         assert_eq!(result.status, ServiceCommandStatus::Success);
         let calls = runner.calls();
@@ -638,6 +669,29 @@ mod tests {
         assert_eq!(calls[0], ["stop", "PhotoPrivacyCleaner"]);
         assert_eq!(calls[1], ["delete", "PhotoPrivacyCleaner"]);
         assert_eq!(calls[2][0], "create");
+        cleanup_worker(&worker);
+    }
+
+    #[test]
+    fn install_requires_worker_and_config_options() {
+        // 防：缺少 Worker/config 上下文时仍拉起提权进程，用户只看到平台错误（#58）。
+        let (ops, runner, _) = ops(
+            ServiceRuntimeState::NotInstalled,
+            Vec::new(),
+            true,
+            RecordingElevated::default(),
+        );
+
+        assert_eq!(ops.install(None, None).status, ServiceCommandStatus::Failed);
+        assert_eq!(
+            ops.install(
+                Some(Path::new(r"C:\definitely-missing\PhotoPrivacyWorker.exe")),
+                Some(Path::new(r"C:\cfg\config.json"))
+            )
+            .status,
+            ServiceCommandStatus::Failed
+        );
+        assert!(runner.calls().is_empty());
     }
 
     #[test]
@@ -650,13 +704,13 @@ mod tests {
             RecordingElevated::default(),
         );
 
-        let result = ops.install(
-            Path::new(r"C:\app\PhotoPrivacyWorker.exe"),
-            Path::new(r"C:\cfg\config.json"),
-        );
+        let worker = temp_worker();
+        let config = std::path::PathBuf::from(r"C:\cfg\config.json");
+        let result = ops.install(Some(worker.as_path()), Some(config.as_path()));
 
         assert_eq!(result.status, ServiceCommandStatus::Success);
         assert_eq!(runner.calls().len(), 6);
+        cleanup_worker(&worker);
     }
 
     #[test]
@@ -669,10 +723,26 @@ mod tests {
             RecordingElevated::default(),
         );
 
-        let result = ops.start(Path::new(r"C:\app\PhotoPrivacyWorker.exe"), None);
+        let worker = temp_worker();
+        let result = ops.start(Some(worker.as_path()), None);
 
         assert_eq!(result.status, ServiceCommandStatus::Failed);
         assert_eq!(result.exit_code, Some(1060));
+        assert!(runner.calls().is_empty());
+        cleanup_worker(&worker);
+    }
+
+    #[test]
+    fn start_requires_worker_option() {
+        // 防：没有 Worker 上下文时仍尝试 sc config/start，启动结果无法解释（#58）。
+        let (ops, runner, _) = ops(
+            ServiceRuntimeState::Stopped,
+            Vec::new(),
+            true,
+            RecordingElevated::default(),
+        );
+
+        assert_eq!(ops.start(None, None).status, ServiceCommandStatus::Failed);
         assert!(runner.calls().is_empty());
     }
 
@@ -686,16 +756,16 @@ mod tests {
             RecordingElevated::default(),
         );
 
-        let result = ops.start(
-            Path::new(r"C:\app\PhotoPrivacyWorker.exe"),
-            Some(Path::new(r"C:\cfg\config.json")),
-        );
+        let worker = temp_worker();
+        let config = std::path::PathBuf::from(r"C:\cfg\config.json");
+        let result = ops.start(Some(worker.as_path()), Some(config.as_path()));
 
         assert_eq!(result.status, ServiceCommandStatus::Success);
         let calls = runner.calls();
         assert_eq!(calls.len(), 2);
         assert_eq!(calls[0][0], "config");
         assert_eq!(calls[1], ["start", "PhotoPrivacyCleaner"]);
+        cleanup_worker(&worker);
     }
 
     #[test]
@@ -750,7 +820,8 @@ mod tests {
             RecordingElevated::new(ElevatedOutcome::Exited(0)),
         );
 
-        let result = ops.start(Path::new(r"C:\app\PhotoPrivacyWorker.exe"), None);
+        let worker = temp_worker();
+        let result = ops.start(Some(worker.as_path()), None);
 
         assert_eq!(result.status, ServiceCommandStatus::Success);
         assert!(runner.calls().is_empty());
@@ -759,6 +830,7 @@ mod tests {
             elevated.calls()[0],
             vec!["start".to_string(), "PhotoPrivacyCleaner".to_string()]
         );
+        cleanup_worker(&worker);
     }
 
     #[test]
