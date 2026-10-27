@@ -225,10 +225,7 @@ mod macos {
 
     fn is_cancelled(output: &CommandOutput) -> bool {
         let text = format!("{} {}", output.stdout, output.stderr).to_ascii_lowercase();
-        text.contains("user canceled")
-            || text.contains("user cancelled")
-            || text.contains("(-128)")
-            || text.contains("-128")
+        text.contains("user canceled") || text.contains("user cancelled") || text.contains("-128")
     }
 
     pub(super) fn admin_shell_script(command: &str) -> String {
@@ -248,9 +245,9 @@ mod macos {
 }
 
 #[cfg(target_os = "linux")]
-pub use linux::{LinuxOps, LinuxProbe, SYSTEMD_SERVICE, SYSTEMD_UNIT_PATH};
+pub use linux::{LinuxOps, LinuxProbe};
 #[cfg(target_os = "macos")]
-pub use macos::{LAUNCHD_LABEL, LAUNCHD_PLIST, MacOps, MacProbe};
+pub use macos::{MacOps, MacProbe};
 
 #[cfg(test)]
 mod tests {

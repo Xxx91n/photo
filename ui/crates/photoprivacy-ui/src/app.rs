@@ -124,8 +124,9 @@ impl AppView {
             ServiceRuntimeState::StartPending | ServiceRuntimeState::ContinuePending => {
                 theme.accent
             }
-            ServiceRuntimeState::Paused | ServiceRuntimeState::PausePending => theme.warning,
-            ServiceRuntimeState::StopPending => theme.warning,
+            ServiceRuntimeState::Paused
+            | ServiceRuntimeState::PausePending
+            | ServiceRuntimeState::StopPending => theme.warning,
             ServiceRuntimeState::Stopped => theme.text_muted,
             ServiceRuntimeState::NotInstalled => theme.text_faint,
             ServiceRuntimeState::Unknown => theme.warning,

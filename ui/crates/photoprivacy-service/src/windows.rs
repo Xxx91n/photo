@@ -236,7 +236,10 @@ impl ServiceOps for WindowsOps {
         };
 
         let precheck = self.ensure_removed_before_install();
-        if precheck.status == ServiceCommandStatus::Failed {
+        if matches!(
+            precheck.status,
+            ServiceCommandStatus::Failed | ServiceCommandStatus::ElevationCancelled
+        ) {
             return precheck;
         }
 
@@ -244,7 +247,10 @@ impl ServiceOps for WindowsOps {
         if create.exit_code == Some(1073) {
             // 旧 UI 的竞态兜底：清理窗口里服务又被安装回来时，再删一次再 create。
             let retry = self.ensure_removed_before_install();
-            if retry.status == ServiceCommandStatus::Failed {
+            if matches!(
+                retry.status,
+                ServiceCommandStatus::Failed | ServiceCommandStatus::ElevationCancelled
+            ) {
                 return retry;
             }
             create = self.run_sc(args, true);
@@ -710,6 +716,26 @@ mod tests {
 
         assert_eq!(result.status, ServiceCommandStatus::Success);
         assert_eq!(runner.calls().len(), 6);
+        cleanup_worker(&worker);
+    }
+
+    #[test]
+    fn install_does_not_reprompt_after_cancelled_precheck() {
+        // 防：用户取消预清理的 UAC 后再次弹 create 提权框，四态反馈丢失（#58）。
+        let (ops, runner, elevated) = ops(
+            ServiceRuntimeState::Running,
+            Vec::new(),
+            false,
+            RecordingElevated::new(ElevatedOutcome::Cancelled),
+        );
+        let worker = temp_worker();
+        let config = std::path::PathBuf::from(r"C:\cfg\config.json");
+
+        let result = ops.install(Some(worker.as_path()), Some(config.as_path()));
+
+        assert_eq!(result.status, ServiceCommandStatus::ElevationCancelled);
+        assert_eq!(elevated.calls().len(), 1);
+        assert!(runner.calls().is_empty());
         cleanup_worker(&worker);
     }
 
