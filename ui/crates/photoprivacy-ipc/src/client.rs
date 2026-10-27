@@ -16,6 +16,11 @@ const CONNECT_TIMEOUT: Duration = Duration::from_millis(700);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(3);
 const CONNECT_RETRY_INTERVAL: Duration = Duration::from_millis(25);
 
+/// ReloadConfig 会停 watcher → 重建 bridge → 重启 watcher；旧 UI 的 3s 读超时覆盖不了，
+/// 会把「正在重载」误判成 Worker 掉线。契约要求 ≥6s，这里取 10s 留余量。
+// Design(#55): ReloadConfig 的读超时独立于普通请求（10s），避免热重载被 3s 超时误杀。
+pub const RELOAD_CONFIG_TIMEOUT: Duration = Duration::from_secs(10);
+
 #[derive(Debug)]
 pub enum IpcError {
     Timeout,
@@ -84,7 +89,24 @@ impl IpcClient {
         self.request(endpoint, methods::PING).await.is_ok()
     }
 
+    /// 让 Worker 重新读取当前 config.json。服务模式与后台（托盘）模式走同一端点/同一方法，
+    /// 差异只由调用方连接的是哪个端点决定，重载链路本身不分支。
+    pub async fn reload_config(&self, endpoint: &Endpoint) -> Result<Response, IpcError> {
+        self.request_with_timeout(endpoint, methods::RELOAD_CONFIG, RELOAD_CONFIG_TIMEOUT)
+            .await
+    }
+
     pub async fn request(&self, endpoint: &Endpoint, method: &str) -> Result<Response, IpcError> {
+        self.request_with_timeout(endpoint, method, self.request_timeout)
+            .await
+    }
+
+    async fn request_with_timeout(
+        &self,
+        endpoint: &Endpoint,
+        method: &str,
+        request_timeout: Duration,
+    ) -> Result<Response, IpcError> {
         let _gate = self.gate.lock().await;
         let id = format!("ui-{}", self.next_id.fetch_add(1, Ordering::Relaxed));
 
@@ -93,7 +115,7 @@ impl IpcClient {
             .expect("请求序列化不应失败");
         payload.push(b'\n');
 
-        let line = timeout(self.request_timeout, async {
+        let line = timeout(request_timeout, async {
             stream.write_all(&payload).await?;
             stream.flush().await?;
             protocol::read_bounded_line(&mut stream, MAX_RESPONSE_BYTES).await
@@ -211,5 +233,12 @@ mod tests {
                 io::ErrorKind::PermissionDenied
             )));
         }
+    }
+
+    #[test]
+    fn reload_config_gets_a_longer_timeout_than_regular_requests() {
+        // 防：配置热重载沿用 3s 读超时，Worker 重建 watcher 期间 UI 把成功重载误报成掉线（#55）。
+        assert!(RELOAD_CONFIG_TIMEOUT >= Duration::from_secs(6));
+        assert!(RELOAD_CONFIG_TIMEOUT > Duration::from_secs(3));
     }
 }

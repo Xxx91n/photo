@@ -43,10 +43,14 @@ pub enum UiEvent {
 }
 
 /// 启动 IPC 侧的全部后台任务：唤起管道服务、连接编排、心跳监控。
+///
+/// `endpoints` 把「当前实际连上的端点」发给配置服务：服务模式与后台模式都只是这里的
+/// 不同端点值，ReloadConfig 走同一条链路。
 pub fn start(
     runtime: &tokio::runtime::Handle,
     options: ConnectOptions,
     snapshots: watch::Sender<ConnectionSnapshot>,
+    endpoints: watch::Sender<Option<Endpoint>>,
     events: mpsc::UnboundedSender<UiEvent>,
 ) {
     let events_for_server = events.clone();
@@ -65,6 +69,7 @@ pub fn start(
                     snapshot.endpoint = Some(endpoint.display());
                     snapshot.worker_mode = Some(mode);
                 });
+                let _ = endpoints.send(Some(endpoint.clone()));
                 spawn_monitor(client, endpoint, snapshots);
             }
             None => {
