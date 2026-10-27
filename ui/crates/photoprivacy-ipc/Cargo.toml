@@ -15,3 +15,7 @@ windows-sys.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 libc.workspace = true
+
+[dev-dependencies]
+# 3s 服务态节拍的 paused-time 测试需要 time::advance。
+tokio = { workspace = true, features = ["test-util"] }

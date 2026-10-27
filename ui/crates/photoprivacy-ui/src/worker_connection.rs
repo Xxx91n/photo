@@ -1,7 +1,7 @@
 use photoprivacy_ipc::{
     ConnectionSnapshot, ConnectionState, Endpoint, IpcClient, WorkerMode, current_home,
     current_platform, resolve_endpoint, spawn_monitor, spawn_show_window_server,
-    watch_service_state,
+    watch_service_reachability,
 };
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -65,7 +65,7 @@ pub fn start(
         current_home().as_deref(),
     ) {
         let probe = Arc::new(IpcClient::with_connect_timeout(Duration::from_millis(250)));
-        runtime.spawn(watch_service_state(
+        runtime.spawn(watch_service_reachability(
             move || {
                 let probe = probe.clone();
                 let endpoint = endpoint.clone();

@@ -32,9 +32,10 @@ pub struct TrayHandle {
 /// 托盘创建失败时返回 `None`：窗口保持常显、关窗即退出，绝不出现「窗口藏了但托盘没建起来」
 /// 的无入口状态（旧 UI 用 `trayReady` 表达同一约束）。
 ///
-/// 旧 UI 的 `TrayPolicy` 只在「后台模式且服务未安装」时显示托盘；安装态探测与服务模式切换归 #58，
-/// 本版按配置常驻（服务模式也显示托盘），#58 补齐探测后收敛。
-// Design(#58): 托盘可见性暂按配置常驻；服务安装态探测与模式切换归 #58。
+/// 旧 UI 的 `TrayPolicy` 只在「后台模式且服务未安装」时显示托盘；安装态探测由 #58 提供，
+/// 但托盘可见性/启动隐藏的模式门控不在 #58 的 AC 内。本版按配置常驻（服务模式也显示托盘），
+/// 该偏离作为未收口项登记，功能对等核销归 #61。
+// Design(#49): 托盘可见性暂按配置常驻；服务模式的 TrayPolicy 门控未实现（#58 出探测、#61 核销对等）。
 pub fn install(hide_tray_icon: bool) -> Option<TrayHandle> {
     if hide_tray_icon {
         return None;
@@ -53,14 +54,17 @@ pub fn install(hide_tray_icon: bool) -> Option<TrayHandle> {
 /// 且托盘真的可用时才不建窗口（`UseTrayIcon && !HideTrayIcon && trayIconReady`）。
 ///
 /// 旧 UI 还要求运行模式为 tray（服务模式从不隐藏窗口）；服务壳与安装态探测归 #58，
-/// 本版在托盘可用时即允许隐藏，因此服务模式下也会隐藏——#58 收敛。
+/// 本版在托盘可用时即允许隐藏，因此服务模式下也会隐藏——该偏离与托盘可见性同一笔未收口项，
+/// 对等核销归 #61。
 pub fn should_start_hidden(hide_main_window_on_startup: bool, tray_available: bool) -> bool {
     hide_main_window_on_startup && tray_available
 }
 
 impl TrayHandle {
+    // Design(#60): 托盘菜单与工具提示暂为英文，10 语言接入归 #60。
     fn build() -> anyhow::Result<Self> {
-        // 旧菜单还有 Pause/Resume；本票 AC 只要求显示/退出，Worker 暂停/恢复控制不在本票范围。
+        // 旧菜单还有 Pause/Resume；本票 AC 只要求显示/退出，Worker 暂停/恢复控制不在本票范围，
+        // 对等核销时需在 #61 的清单里显式处置。
         let open_window = MenuItem::new("Open Window", true, None);
         let exit = MenuItem::new("Exit", true, None);
         let menu = Menu::new();

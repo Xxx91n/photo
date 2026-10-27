@@ -1,7 +1,7 @@
 use crate::theme::{self, Theme, ThemeMode};
 use gpui::prelude::*;
 use gpui::{Context, FontWeight, IntoElement, Render, Rgba, Subscription, Window, div, px};
-use photoprivacy_ipc::{ConnectionSnapshot, ConnectionState, ServiceState};
+use photoprivacy_ipc::{ConnectionSnapshot, ConnectionState, ServiceReachability};
 use std::cell::Cell;
 use std::rc::Rc;
 use std::time::Duration;
@@ -127,11 +127,11 @@ fn or_dash(value: Option<String>) -> String {
         .unwrap_or_else(|| "—".to_string())
 }
 
-fn service_label(state: ServiceState) -> &'static str {
+fn service_label(state: ServiceReachability) -> &'static str {
     match state {
-        ServiceState::Unknown => "—",
-        ServiceState::Reachable => "reachable",
-        ServiceState::Unreachable => "unreachable",
+        ServiceReachability::Unknown => "—",
+        ServiceReachability::Reachable => "reachable",
+        ServiceReachability::Unreachable => "unreachable",
     }
 }
 
@@ -226,7 +226,7 @@ impl Render for AppView {
             ("Reported mode", or_dash(self.snapshot.status_mode.clone())),
             (
                 "Service IPC",
-                service_label(self.snapshot.service_state).to_string(),
+                service_label(self.snapshot.service_reachability).to_string(),
             ),
             (
                 "Protocol",

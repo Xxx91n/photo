@@ -27,9 +27,9 @@
 | 重试 | `ERROR_PIPE_BUSY`(231) 与 `ERROR_FILE_NOT_FOUND`(2，属主重建实例的空窗)；Unix 为瞬时错误 | `NamedPipeClientStream.Connect` |
 | 一连接一请求 | 不复用连接，不帧化 | `WorkerIpcServerLoop.cs` |
 
-UI 侧并发探测（#59）：新 UI 另起一条短预算客户端（连接 250 ms，`IpcClient::with_connect_timeout`）
-每 3 s 探测服务端点。服务端单飞契约不变；客户端侧两个 `IpcClient` 各自串行，争用同一管道实例时
-仍靠 `ERROR_PIPE_BUSY` 重试兜底。
+UI 侧并发探测（#59）：新 UI 另起一条短连接预算客户端（连接 250 ms，读仍为 3 s，
+`IpcClient::with_connect_timeout`）每 3 s 探测服务端点。服务端单飞契约不变；客户端侧两个
+`IpcClient` 各自串行，争用同一管道实例时仍靠 `ERROR_PIPE_BUSY` 重试兜底。
 
 ## 方法
 

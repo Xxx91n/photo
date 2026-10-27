@@ -16,8 +16,8 @@ pub use endpoints::{
     Endpoint, HostPlatform, WorkerMode, current_home, current_platform, resolve_endpoint,
 };
 pub use monitor::{
-    ConnectionSnapshot, ConnectionState, HEARTBEAT_INTERVAL, SERVICE_POLL_INTERVAL, ServiceState,
-    next_backoff, spawn_monitor, watch_service_state,
+    ConnectionSnapshot, ConnectionState, HEARTBEAT_INTERVAL, SERVICE_POLL_INTERVAL,
+    ServiceReachability, next_backoff, spawn_monitor, watch_service_reachability,
 };
 pub use protocol::{PROTOCOL_VERSION, Request, Response, Status};
 pub use single_instance::{

@@ -32,12 +32,13 @@ impl ConnectionState {
     }
 }
 
-/// 服务态：本版只区分「服务端点此刻能否连上」。
+/// 服务端点可达性：本版只区分「服务端点此刻能否连上」。
 ///
-/// 旧 UI 读 SCM/launchd/systemd 的安装态（NotInstalled/Stopped/Running）；完整探测归 #58，
-/// 本票先保证 3s 拍与消费点在位，#58 只替换 `watch_service_state` 的探针实现。
+/// 与 GLOSSARY 的 `Service State Probe`（三平台安装态枚举：NotInstalled/Stopped/Running）不是同一概念：
+/// 旧 UI 读 SCM/launchd/systemd 的安装态，完整探测归 #58；本票先保证 3s 拍与消费点在位，
+/// #58 接入安装态后再决定是本类型扩展还是另立类型。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum ServiceState {
+pub enum ServiceReachability {
     #[default]
     Unknown,
     Reachable,
@@ -52,7 +53,7 @@ pub struct ConnectionSnapshot {
     pub protocol_version: Option<i32>,
     pub exif_tool_version: Option<String>,
     pub status_mode: Option<String>,
-    pub service_state: ServiceState,
+    pub service_reachability: ServiceReachability,
     pub round_trips: u64,
     pub last_round_trip: Option<Duration>,
     pub last_error: Option<String>,
@@ -67,7 +68,7 @@ impl ConnectionSnapshot {
             protocol_version: None,
             exif_tool_version: None,
             status_mode: None,
-            service_state: ServiceState::Unknown,
+            service_reachability: ServiceReachability::Unknown,
             round_trips: 0,
             last_round_trip: None,
             last_error: None,
@@ -130,31 +131,31 @@ pub fn spawn_monitor(
 /// 探针由调用方注入：生产用服务端点的连通性（短连接预算），#58 接入 SCM/launchd/systemd 安装态后
 /// 只换探针，不改节拍与快照字段。
 // Design(#58): 服务安装态探测未落地，本票用端点可达性代位；3s 节拍与消费点已固定。
-pub async fn watch_service_state<F, Fut>(probe: F, tx: watch::Sender<ConnectionSnapshot>)
+pub async fn watch_service_reachability<F, Fut>(probe: F, tx: watch::Sender<ConnectionSnapshot>)
 where
     F: Fn() -> Fut,
     Fut: Future<Output = bool>,
 {
     loop {
         tokio::time::sleep(SERVICE_POLL_INTERVAL).await;
-        let state = service_state(probe().await);
+        let state = service_reachability(probe().await);
         // 状态没变就不触发 UI 重绘（3s 一拍不应制造稳定的 3s 重绘）。
         tx.send_if_modified(|snapshot| {
-            if snapshot.service_state == state {
+            if snapshot.service_reachability == state {
                 false
             } else {
-                snapshot.service_state = state;
+                snapshot.service_reachability = state;
                 true
             }
         });
     }
 }
 
-fn service_state(reachable: bool) -> ServiceState {
+fn service_reachability(reachable: bool) -> ServiceReachability {
     if reachable {
-        ServiceState::Reachable
+        ServiceReachability::Reachable
     } else {
-        ServiceState::Unreachable
+        ServiceReachability::Unreachable
     }
 }
 
@@ -196,21 +197,24 @@ mod tests {
     }
 
     #[test]
-    fn service_state_maps_probe_result() {
+    fn service_reachability_maps_probe_result() {
         // 防：探测结果被写成 Unknown，界面分不清「还没探」与「探过不可达」（#59）。
-        assert_eq!(service_state(true), ServiceState::Reachable);
-        assert_eq!(service_state(false), ServiceState::Unreachable);
+        assert_eq!(service_reachability(true), ServiceReachability::Reachable);
         assert_eq!(
-            ConnectionSnapshot::connecting().service_state,
-            ServiceState::Unknown
+            service_reachability(false),
+            ServiceReachability::Unreachable
+        );
+        assert_eq!(
+            ConnectionSnapshot::connecting().service_reachability,
+            ServiceReachability::Unknown
         );
     }
 
     #[test]
-    fn heartbeat_updates_leave_service_state_alone() {
+    fn heartbeat_updates_leave_service_reachability_alone() {
         // 防：心跳成功/失败顺手清掉服务态，3s 拍的结果被 1s 心跳覆盖（#59）。
         let mut snapshot = ConnectionSnapshot::connecting();
-        snapshot.service_state = ServiceState::Reachable;
+        snapshot.service_reachability = ServiceReachability::Reachable;
 
         apply_success(
             &mut snapshot,
@@ -222,10 +226,50 @@ mod tests {
             Some(1),
             Duration::from_millis(3),
         );
-        assert_eq!(snapshot.service_state, ServiceState::Reachable);
+        assert_eq!(
+            snapshot.service_reachability,
+            ServiceReachability::Reachable
+        );
 
         apply_failure(&mut snapshot, &IpcError::Timeout);
-        assert_eq!(snapshot.service_state, ServiceState::Reachable);
+        assert_eq!(
+            snapshot.service_reachability,
+            ServiceReachability::Reachable
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn service_watch_polls_on_three_second_beat() {
+        // 防：服务态首拍立即探测或节拍漂移（旧 UI 先等 3s 再探，#59）。
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let calls_for_probe = calls.clone();
+        let (tx, mut rx) = watch::channel(ConnectionSnapshot::connecting());
+        let handle = tokio::spawn(watch_service_reachability(
+            move || {
+                calls_for_probe.fetch_add(1, Ordering::SeqCst);
+                std::future::ready(true)
+            },
+            tx,
+        ));
+
+        tokio::task::yield_now().await;
+        assert_eq!(calls.load(Ordering::SeqCst), 0, "首拍必须等满 3s");
+
+        tokio::time::advance(SERVICE_POLL_INTERVAL).await;
+        tokio::task::yield_now().await;
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            rx.borrow_and_update().service_reachability,
+            ServiceReachability::Reachable
+        );
+
+        tokio::time::advance(SERVICE_POLL_INTERVAL).await;
+        tokio::task::yield_now().await;
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+
+        handle.abort();
     }
 
     #[test]

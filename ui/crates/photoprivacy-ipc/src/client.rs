@@ -67,7 +67,8 @@ impl IpcClient {
         }
     }
 
-    /// 短预算客户端：服务态 3s 拍用它探测服务端点；服务未安装时不必每拍耗满 700ms 重试预算。
+    /// 短连接预算客户端：服务端点 3s 可达性拍用它探测；服务未安装时不必每拍耗满 700ms 重试预算。
+    /// 只缩短连接预算，读仍走 3s `REQUEST_TIMEOUT`。
     pub fn with_connect_timeout(connect_timeout: Duration) -> Self {
         Self {
             connect_timeout,
