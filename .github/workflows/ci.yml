@@ -60,16 +60,15 @@ jobs:
         shell: pwsh
         run: |
           $windres = Get-Command windres -ErrorAction SilentlyContinue
-          if ($windres) {
-            "WINDRES=$($windres.Source)" | Out-File -FilePath $env:GITHUB_ENV -Append
-          } else {
+          if (-not $windres) {
             foreach ($candidate in @("C:\msys64\mingw64\bin\windres.exe", "C:\ProgramData\mingw64\mingw64\bin\windres.exe")) {
-              if (Test-Path $candidate) {
-                "WINDRES=$candidate" | Out-File -FilePath $env:GITHUB_ENV -Append
-                break
-              }
+              if (Test-Path $candidate) { $windres = $candidate; break }
             }
           }
+          if (-not $windres) {
+            throw "windres not found in PATH or known MinGW locations（候选列表须与 scripts/publish-app.ps1 保持同步）"
+          }
+          "WINDRES=$windres" | Out-File -FilePath $env:GITHUB_ENV -Append
       - uses: actions/cache@v4
         with:
           path: |

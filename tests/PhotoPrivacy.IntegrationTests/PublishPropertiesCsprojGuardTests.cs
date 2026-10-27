@@ -85,14 +85,17 @@ public sealed class PublishPropertiesCsprojGuardTests
     internal static List<string> ClassifyCargoUiEntry(string script, string label)
     {
         // 入口接法守卫：两个发布脚本都必须以 cargo 构建 photoprivacy-ui 并复制为 PhotoPrivacy 入口。
+        // 出现次数 ≥2（cargo -p 构建行 + 产物复制引用各自独立一处）：只出现在注释/文案里的单次
+        // 引用不足以骗绿（code-review 判定性意见的处置）。
         var violations = new List<string>();
         if (!script.Contains("cargo build --release --locked", StringComparison.Ordinal))
         {
             violations.Add(label + " 缺少 cargo build --release --locked（GUI 入口构建）");
         }
-        if (!script.Contains("photoprivacy-ui", StringComparison.Ordinal))
+        var uiRefs = CountOccurrences(script, "photoprivacy-ui");
+        if (uiRefs < 2)
         {
-            violations.Add(label + " 缺少 photoprivacy-ui 产物引用（GUI 入口丢失）");
+            violations.Add(label + " photoprivacy-ui 产物引用不足 2 处（构建行 + 复制引用），实测 " + uiRefs);
         }
         if (!script.Contains("PhotoPrivacy.exe", StringComparison.Ordinal) &&
             !script.Contains("APP_EXE=\"PhotoPrivacy\"", StringComparison.Ordinal))
@@ -100,6 +103,18 @@ public sealed class PublishPropertiesCsprojGuardTests
             violations.Add(label + " 缺少 PhotoPrivacy 入口命名（默认入口必须保持 PhotoPrivacy(.exe)）");
         }
         return violations;
+    }
+
+    private static int CountOccurrences(string haystack, string needle)
+    {
+        var count = 0;
+        var idx = 0;
+        while ((idx = haystack.IndexOf(needle, idx, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            idx += needle.Length;
+        }
+        return count;
     }
 
     [Fact]
