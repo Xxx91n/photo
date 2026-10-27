@@ -12,14 +12,15 @@ usage() {
 Usage: $0 [options]
 
 Options:
-  --version <ver>       Version string (default: $VERSION)
+  --version <ver>       Version string (default: $VERSION; 仅写入包名，Rust UI 产物不带版本元数据)
   --runtime <rid>       Runtime identifier (default: $RUNTIME)
-  --framework <fw>      Target framework (default: $FRAMEWORK)
+  --framework <fw>      Target framework (default: $FRAMEWORK; 仅作用于 Worker)
   --self-contained <b>  Self-contained (default: $SELF_CONTAINED)
   --zip <b>             Create archive (default: $ZIP)
   -h, --help            Show this help
 
-Valid runtimes: win-x64, win-x86, win-arm64, linux-x64, linux-arm64, osx-x64, osx-arm64
+Valid runtimes: linux-x64, linux-arm64, osx-x64, osx-arm64 (须在本机对应平台执行；
+GUI 入口为 gpui 新 UI，不支持交叉编译。win-x64 走 Windows 机的 publish-app.ps1)
 EOF
 }
 
@@ -39,13 +40,14 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 RELEASE_ROOT="${REPO_ROOT}/release"
 TARGET_DIR="${RELEASE_ROOT}/${RUNTIME}"
 
-VALID_RIDS="win-x64 win-x86 win-arm64 linux-x64 linux-arm64 osx-x64 osx-arm64"
+VALID_RIDS="linux-x64 linux-arm64 osx-x64 osx-arm64"
 rid_valid=false
 for rid in $VALID_RIDS; do
   if [[ "$RUNTIME" == "$rid" ]]; then rid_valid=true; break; fi
 done
 if [[ "$rid_valid" == false ]]; then
   echo "Invalid runtime '$RUNTIME'. Valid: $VALID_RIDS" >&2
+  echo "win-x64 releases are produced on Windows via scripts/publish-app.ps1 (gpui 新 UI 不支持交叉编译)" >&2
   exit 1
 fi
 
@@ -59,35 +61,37 @@ case "$ZIP" in
   *) DO_ZIP=false ;;
 esac
 
-IS_UNIX=false
-case "$RUNTIME" in
-  linux-*|osx-*) IS_UNIX=true ;;
-esac
-
 if [[ "$FRAMEWORK" != "net10.0" ]]; then
   echo "Framework must be net10.0, got: $FRAMEWORK" >&2
   exit 1
 fi
 
-echo "Publishing PhotoPrivacy.Ui + PhotoPrivacy.Worker ..."
+# gpui 新 UI 不支持交叉编译：RID 必须与构建主机一致。
+HOST_OS="$(uname -s)"
+HOST_ARCH="$(uname -m)"
+case "$RUNTIME" in
+  linux-x64)
+    [[ "$HOST_OS" == "Linux" && "$HOST_ARCH" == "x86_64" ]] || { echo "Runtime linux-x64 requires a Linux x86_64 build host (got $HOST_OS $HOST_ARCH)" >&2; exit 1; } ;;
+  linux-arm64)
+    [[ "$HOST_OS" == "Linux" && "$HOST_ARCH" == "aarch64" ]] || { echo "Runtime linux-arm64 requires a Linux arm64 build host (got $HOST_OS $HOST_ARCH)" >&2; exit 1; } ;;
+  osx-x64)
+    [[ "$HOST_OS" == "Darwin" && "$HOST_ARCH" == "x86_64" ]] || { echo "Runtime osx-x64 requires a macOS x86_64 build host (got $HOST_OS $HOST_ARCH)" >&2; exit 1; } ;;
+  osx-arm64)
+    [[ "$HOST_OS" == "Darwin" && "$HOST_ARCH" == "arm64" ]] || { echo "Runtime osx-arm64 requires a macOS arm64 build host (got $HOST_OS $HOST_ARCH)" >&2; exit 1; } ;;
+esac
+
+command -v cargo >/dev/null 2>&1 || { echo "cargo not found in PATH; 新 UI 入口需要 Rust 工具链（rust-version 见 ui/Cargo.toml）" >&2; exit 1; }
+
+echo "Publishing new UI (cargo) + PhotoPrivacy.Worker ..."
 echo "Runtime: ${RUNTIME} | Framework: ${FRAMEWORK}"
 
-UI_PUB_DIR="${TARGET_DIR}/ui"
 WORKER_PUB_DIR="${TARGET_DIR}/worker"
 rm -rf "$TARGET_DIR"
-mkdir -p "$UI_PUB_DIR" "$WORKER_PUB_DIR"
+mkdir -p "$WORKER_PUB_DIR"
 
-dotnet publish "${REPO_ROOT}/src/PhotoPrivacy.Ui/PhotoPrivacy.Ui.csproj" \
-  -c Release \
-  -f "$FRAMEWORK" \
-  -r "$RUNTIME" \
-  --self-contained "$SC" \
-  /p:PublishSingleFile=true \
-  /p:IncludeNativeLibrariesForSelfExtract=true \
-  /p:PublishTrimmed=false \
-  /p:Version="$VERSION" \
-  /p:UseAppHost=true \
-  -o "$UI_PUB_DIR"
+# Design(#61): 默认入口切换为新 UI——cargo 产物 photoprivacy-ui 复制为 PhotoPrivacy 作为发布入口；
+# MSVC 清单问题仅存在于 Windows（见 ui/crates/photoprivacy-ui/build.rs），Unix 主机用宿主默认 target。
+cargo build --release --locked --manifest-path "${REPO_ROOT}/ui/Cargo.toml" -p photoprivacy-ui
 
 dotnet publish "${REPO_ROOT}/src/PhotoPrivacy.Worker/PhotoPrivacy.Worker.csproj" \
   -c Release \
@@ -101,31 +105,24 @@ dotnet publish "${REPO_ROOT}/src/PhotoPrivacy.Worker/PhotoPrivacy.Worker.csproj"
   /p:UseAppHost=true \
   -o "$WORKER_PUB_DIR"
 
-UI_EXE="PhotoPrivacy.Ui"
 APP_EXE="PhotoPrivacy"
 WORKER_EXE="PhotoPrivacyWorker"
-if [[ "$IS_UNIX" == false ]]; then
-  UI_EXE="PhotoPrivacy.Ui.exe"
-  APP_EXE="PhotoPrivacy.exe"
-  WORKER_EXE="PhotoPrivacyWorker.exe"
-fi
+UI_BIN="${REPO_ROOT}/ui/target/release/photoprivacy-ui"
 
-[[ -f "${UI_PUB_DIR}/${UI_EXE}" ]] || { echo "UI executable not found: ${UI_PUB_DIR}/${UI_EXE}" >&2; exit 1; }
+[[ -f "$UI_BIN" ]] || { echo "UI executable not found: $UI_BIN" >&2; exit 1; }
 [[ -f "${WORKER_PUB_DIR}/${WORKER_EXE}" ]] || { echo "Worker executable not found: ${WORKER_PUB_DIR}/${WORKER_EXE}" >&2; exit 1; }
+
 # Copy install scripts to release/<rid>/scripts/
 SCRIPTS_DIR="${TARGET_DIR}/scripts"
 mkdir -p "$SCRIPTS_DIR"
 case "$RUNTIME" in
   linux-*) cp "${REPO_ROOT}/scripts/install-systemd-service.sh" "$SCRIPTS_DIR/" ;;
   osx-*) cp "${REPO_ROOT}/scripts/install-launchd-service.sh" "$SCRIPTS_DIR/" ;;
-  *) cp "${REPO_ROOT}/scripts/install-service.ps1" "$SCRIPTS_DIR/" ;;
 esac
 
-
-cp "${UI_PUB_DIR}/${UI_EXE}" "${TARGET_DIR}/${APP_EXE}"
+cp "$UI_BIN" "${TARGET_DIR}/${APP_EXE}"
 cp "${WORKER_PUB_DIR}/${WORKER_EXE}" "${TARGET_DIR}/${WORKER_EXE}"
-
-[[ -d "${UI_PUB_DIR}/Assets" ]] && cp -r "${UI_PUB_DIR}/Assets" "${TARGET_DIR}/Assets"
+chmod +x "${TARGET_DIR}/${APP_EXE}" "${TARGET_DIR}/${WORKER_EXE}"
 
 mkdir -p "${TARGET_DIR}/config"
 cp "${REPO_ROOT}/config/config.sample.json" "${TARGET_DIR}/config/config.sample.json"
@@ -133,17 +130,13 @@ cp "${REPO_ROOT}/config/config.sample.json" "${TARGET_DIR}/config/config.sample.
 cp "${REPO_ROOT}/config/config.sample.json" "${TARGET_DIR}/config/config.json"
 cp "${REPO_ROOT}/README.md" "${TARGET_DIR}/README.md"
 
-rm -rf "$UI_PUB_DIR" "$WORKER_PUB_DIR"
+rm -rf "$WORKER_PUB_DIR"
 
 if [[ "$DO_ZIP" == true ]]; then
-  if [[ "$IS_UNIX" == true ]]; then
-    TARBALL="${RELEASE_ROOT}/PhotoPrivacy-${VERSION}-${RUNTIME}.tar.gz"
-    rm -f "$TARBALL"
-    tar -czf "$TARBALL" -C "$TARGET_DIR" .
-    echo "Package created: $TARBALL"
-  else
-    echo "ZIP packaging on Windows runtime from Bash, skipping (use publish.ps1 on Windows for ZIP)" >&2
-  fi
+  TARBALL="${RELEASE_ROOT}/PhotoPrivacy-${VERSION}-${RUNTIME}.tar.gz"
+  rm -f "$TARBALL"
+  tar -czf "$TARBALL" -C "$TARGET_DIR" .
+  echo "Package created: $TARBALL"
 fi
 
 echo "Publish done: $TARGET_DIR"

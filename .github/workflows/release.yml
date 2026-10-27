@@ -31,13 +31,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # gpui 新 UI（#49 T4）：Windows 仅 x86_64，win-x86/win-arm64 随旧栈退役（#61）；
+          # GUI 入口不支持交叉编译，矩阵全部按 runner 原生架构取 RID。
           - rid: win-x64
-            os: windows-latest
-            archive: zip
-          - rid: win-x86
-            os: windows-latest
-            archive: zip
-          - rid: win-arm64
             os: windows-latest
             archive: zip
           - rid: linux-x64
@@ -58,6 +54,10 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0.201"
+      # GUI 入口为 cargo 构建的 photoprivacy-ui（默认入口 PhotoPrivacy(.exe)），
+      # 工具链随 runner 预装 rustup 就绪；Windows 的 windres 解析在 publish-app.ps1 内完成。
+      - name: Ensure Rust toolchain
+        run: rustup default stable
 
       - name: Publish (Windows)
         if: runner.os == 'Windows'
@@ -75,8 +75,8 @@ jobs:
       - name: Verify structure
         shell: bash
         run: |
-          test -f release/${{ matrix.rid }}/PhotoPrivacy${{ (matrix.rid == 'win-x64' || matrix.rid == 'win-x86' || matrix.rid == 'win-arm64') && '.exe' || '' }}
-          test -f release/${{ matrix.rid }}/PhotoPrivacyWorker${{ (matrix.rid == 'win-x64' || matrix.rid == 'win-x86' || matrix.rid == 'win-arm64') && '.exe' || '' }}
+          test -f release/${{ matrix.rid }}/PhotoPrivacy${{ matrix.rid == 'win-x64' && '.exe' || '' }}
+          test -f release/${{ matrix.rid }}/PhotoPrivacyWorker${{ matrix.rid == 'win-x64' && '.exe' || '' }}
           test -f release/${{ matrix.rid }}/config/config.sample.json
 
       - name: Build .deb (linux-x64)
@@ -91,7 +91,7 @@ jobs:
           Architecture: amd64
           Maintainer: PhotoPrivacy <hello@tonpro.fu>
           Description: Batch EXIF metadata and privacy cleaner
-          Depends: libx11-6, libice6, libsm6, libfontconfig1, ca-certificates, tzdata, libc6, libgcc-s1, libstdc++6, zlib1g, libssl3, libicu74
+          Depends: libx11-6, libice6, libsm6, libfontconfig1, ca-certificates, tzdata, libc6, libgcc-s1, libstdc++6, zlib1g, libssl3, libicu74, libxkbcommon0, libwayland-client0, libvulkan1
           CTRL
           dpkg-deb --build deb-pkg photoprivacy-${{ inputs.version }}-amd64.deb
 
@@ -107,7 +107,7 @@ jobs:
           Architecture: arm64
           Maintainer: PhotoPrivacy <hello@tonpro.fu>
           Description: Batch EXIF metadata and privacy cleaner
-          Depends: libx11-6, libice6, libsm6, libfontconfig1, ca-certificates, tzdata, libc6, libgcc-s1, libstdc++6, zlib1g, libssl3, libicu74
+          Depends: libx11-6, libice6, libsm6, libfontconfig1, ca-certificates, tzdata, libc6, libgcc-s1, libstdc++6, zlib1g, libssl3, libicu74, libxkbcommon0, libwayland-client0, libvulkan1
           CTRL
           dpkg-deb --build deb-pkg photoprivacy-${{ inputs.version }}-arm64.deb
 

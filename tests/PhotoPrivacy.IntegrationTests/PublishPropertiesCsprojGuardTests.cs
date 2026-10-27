@@ -1,11 +1,13 @@
 namespace PhotoPrivacy.IntegrationTests;
 
 /// <summary>
-/// （correctness-round 顺带发现收口）：
+/// （correctness-round 顺带发现收口；#61 切换日对账）：
 /// 发布属性单一来源守卫——生产 csproj 不得直接持有 SelfContained / PublishSingleFile /
 /// IncludeNativeLibrariesForSelfExtract / PublishTrimmed；publish-app.ps1 与 publish.sh 的
-/// UI 与 Worker 两条 dotnet publish 调用都必须带齐三枚 /p: 标志（UI 侧原由 csproj 直接持有，
-/// 本票上提至脚本后，「csproj 不持有发布属性」口径在 UI 侧亦成立）。
+/// Worker 一条 dotnet publish 调用必须带齐三枚 /p: 标志。
+/// 旧 Ui 工程退役（#61）后 UI 侧 dotnet publish 消失：GUI 入口改为 cargo 构建的
+/// photoprivacy-ui（Windows 走 windows-gnu target + windres，见 ui/crates/photoprivacy-ui/build.rs），
+/// 复制为 PhotoPrivacy(.exe) 作为发布入口——本守卫同时钉住这条接法不被回退。
 /// </summary>
 public sealed class PublishPropertiesCsprojGuardTests
 {
@@ -41,14 +43,14 @@ public sealed class PublishPropertiesCsprojGuardTests
 
     internal static List<string> ClassifyPublishScript(string script, string label)
     {
-        // 每条 dotnet publish 调用段都必须带齐三枚 /p: 标志（UI 与 Worker 两条调用全覆盖）。
+        // Worker 的 dotnet publish 调用段必须带齐三枚 /p: 标志；UI 侧走 cargo（见 ClassifyCargoUiEntry）。
         var violations = new List<string>();
         var indices = new List<int>();
         var pos = 0;
         const string marker = "dotnet publish";
         while ((pos = script.IndexOf(marker, pos, StringComparison.Ordinal)) >= 0)
         {
-            // 只认行首调用（允许前导空白）——排除 throw "dotnet publish (ui) failed" 一类字符串。
+            // 只认行首调用（允许前导空白）——排除 throw "dotnet publish (worker) failed" 一类字符串。
             var lineStart = script.LastIndexOf('\n', pos) + 1;
             if (script[lineStart..pos].Trim().Length == 0)
             {
@@ -71,11 +73,32 @@ public sealed class PublishPropertiesCsprojGuardTests
             }
         }
 
-        if (indices.Count != 2)
+        if (indices.Count != 1)
         {
-            violations.Add(label + " dotnet publish 调用数应为 2（UI + Worker），实测 " + indices.Count);
+            violations.Add(label + " dotnet publish 调用数应为 1（Worker；GUI 入口走 cargo 构建的 photoprivacy-ui），实测 " + indices.Count);
         }
 
+        violations.AddRange(ClassifyCargoUiEntry(script, label));
+        return violations;
+    }
+
+    internal static List<string> ClassifyCargoUiEntry(string script, string label)
+    {
+        // 入口接法守卫：两个发布脚本都必须以 cargo 构建 photoprivacy-ui 并复制为 PhotoPrivacy 入口。
+        var violations = new List<string>();
+        if (!script.Contains("cargo build --release --locked", StringComparison.Ordinal))
+        {
+            violations.Add(label + " 缺少 cargo build --release --locked（GUI 入口构建）");
+        }
+        if (!script.Contains("photoprivacy-ui", StringComparison.Ordinal))
+        {
+            violations.Add(label + " 缺少 photoprivacy-ui 产物引用（GUI 入口丢失）");
+        }
+        if (!script.Contains("PhotoPrivacy.exe", StringComparison.Ordinal) &&
+            !script.Contains("APP_EXE=\"PhotoPrivacy\"", StringComparison.Ordinal))
+        {
+            violations.Add(label + " 缺少 PhotoPrivacy 入口命名（默认入口必须保持 PhotoPrivacy(.exe)）");
+        }
         return violations;
     }
 
@@ -94,7 +117,7 @@ public sealed class PublishPropertiesCsprojGuardTests
     }
 
     [Fact]
-    public void Publish_Scripts_Should_Pass_SingleFile_Flags_For_Both_Projects()
+    public void Publish_Scripts_Should_Pass_SingleFile_Flags_And_Wire_Cargo_Ui_Entry()
     {
         var violations = new List<string>();
         violations.AddRange(ClassifyPublishScript(
@@ -107,7 +130,7 @@ public sealed class PublishPropertiesCsprojGuardTests
     [Fact]
     public void Publish_Properties_Guard_Negative_Self_Proof()
     {
-        // 失效即红自证：csproj 回潮 / 脚本掉标志两类篡改必须报红，基线必须绿。
+        // 失效即红自证：csproj 回潮 / 脚本掉标志 / 入口接法回退三类篡改必须报红，基线必须绿。
         var failures = new List<string>();
 
         const string cleanCsproj = "<Project><PropertyGroup><OutputType>Exe</OutputType></PropertyGroup></Project>";
@@ -140,8 +163,14 @@ public sealed class PublishPropertiesCsprojGuardTests
             var tampered = greenScript[..idx] + greenScript[(idx + "/p:PublishSingleFile=true".Length)..];
             if (ClassifyPublishScript(tampered, "publish-app.ps1").Count == 0)
             {
-                failures.Add("MISSED: UI publish 调用掉标志未红");
+                failures.Add("MISSED: Worker publish 调用掉标志未红");
             }
+        }
+
+        var entryDrift = greenScript.Replace("photoprivacy-ui", "old-ui", StringComparison.Ordinal);
+        if (ClassifyCargoUiEntry(entryDrift, "publish-app.ps1").Count == 0)
+        {
+            failures.Add("MISSED: GUI 入口产物被改写未红");
         }
 
         Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
