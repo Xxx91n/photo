@@ -6,7 +6,7 @@ use crate::parse::parse_sc_query;
 use crate::process::{CommandOutput, ProcessRunner};
 use crate::state::ServiceRuntimeState;
 use std::ffi::c_void;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use windows_sys::Win32::Foundation::{
@@ -15,6 +15,7 @@ use windows_sys::Win32::Foundation::{
 use windows_sys::Win32::Security::{
     GetTokenInformation, TOKEN_ELEVATION, TOKEN_QUERY, TokenElevation,
 };
+use windows_sys::Win32::System::SystemInformation::GetSystemDirectoryW;
 use windows_sys::Win32::System::Threading::{
     GetCurrentProcess, GetExitCodeProcess, OpenProcessToken, TerminateProcess, WaitForSingleObject,
 };
@@ -24,6 +25,18 @@ use windows_sys::Win32::UI::WindowsAndMessaging::SW_HIDE;
 pub const SERVICE_NAME: &str = "PhotoPrivacyCleaner";
 const PROBE_TIMEOUT: Duration = Duration::from_secs(3);
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// `ShellExecuteExW` 与 `CreateProcess` 都会在当前目录搜索裸程序名；发布目录可写时，
+/// 用户批准 UAC 后可能执行同目录的恶意 `sc.exe`（CWE-427）。这里用系统 API 取绝对路径。
+fn sc_exe_path() -> Option<PathBuf> {
+    let mut buffer = [0u16; 260];
+    let len = unsafe { GetSystemDirectoryW(buffer.as_mut_ptr(), buffer.len() as u32) };
+    if len == 0 || len as usize >= buffer.len() {
+        return None;
+    }
+    let directory = String::from_utf16_lossy(&buffer[..len as usize]);
+    Some(PathBuf::from(directory).join("sc.exe"))
+}
 
 pub struct WindowsProbe {
     runner: Arc<dyn ProcessRunner>,
@@ -37,8 +50,11 @@ impl WindowsProbe {
 
 impl ServiceProbe for WindowsProbe {
     fn state(&self) -> ServiceRuntimeState {
+        let Some(sc_exe) = sc_exe_path() else {
+            return ServiceRuntimeState::Unknown;
+        };
         let output = self.runner.run(
-            "sc.exe",
+            &sc_exe.to_string_lossy(),
             &["query".to_string(), SERVICE_NAME.to_string()],
             PROBE_TIMEOUT,
         );
@@ -161,8 +177,16 @@ impl WindowsOps {
     }
 
     fn run_sc(&self, args: Vec<String>, require_admin: bool) -> ServiceCommandResult {
+        let Some(sc_exe) = sc_exe_path() else {
+            return ServiceCommandResult::failed(
+                "Unable to resolve System32\\sc.exe for the service command",
+                None,
+            );
+        };
+        let sc_exe = sc_exe.to_string_lossy();
+
         if require_admin && !self.admin.is_admin() {
-            return match self.elevated.run("sc.exe", &args, COMMAND_TIMEOUT) {
+            return match self.elevated.run(&sc_exe, &args, COMMAND_TIMEOUT) {
                 ElevatedOutcome::Exited(0) => {
                     ServiceCommandResult::success(Some(0), "Operation succeeded")
                 }
@@ -176,7 +200,7 @@ impl WindowsOps {
             };
         }
 
-        command_result(self.runner.run("sc.exe", &args, COMMAND_TIMEOUT))
+        command_result(self.runner.run(&sc_exe, &args, COMMAND_TIMEOUT))
     }
 
     fn ensure_removed_before_install(&self) -> ServiceCommandResult {
@@ -475,6 +499,7 @@ mod tests {
     struct QueueRunner {
         outputs: Mutex<VecDeque<CommandOutput>>,
         calls: Mutex<Vec<Vec<String>>>,
+        programs: Mutex<Vec<String>>,
     }
 
     impl QueueRunner {
@@ -482,16 +507,22 @@ mod tests {
             Self {
                 outputs: Mutex::new(outputs.into()),
                 calls: Mutex::new(Vec::new()),
+                programs: Mutex::new(Vec::new()),
             }
         }
 
         fn calls(&self) -> Vec<Vec<String>> {
             self.calls.lock().unwrap().clone()
         }
+
+        fn programs(&self) -> Vec<String> {
+            self.programs.lock().unwrap().clone()
+        }
     }
 
     impl ProcessRunner for QueueRunner {
-        fn run(&self, _: &str, args: &[String], _: Duration) -> CommandOutput {
+        fn run(&self, program: &str, args: &[String], _: Duration) -> CommandOutput {
+            self.programs.lock().unwrap().push(program.to_string());
             self.calls.lock().unwrap().push(args.to_vec());
             self.outputs
                 .lock()
@@ -520,6 +551,7 @@ mod tests {
     #[derive(Default)]
     struct RecordingElevated {
         calls: Mutex<Vec<Vec<String>>>,
+        programs: Mutex<Vec<String>>,
         outcome: Mutex<Option<ElevatedOutcome>>,
     }
 
@@ -527,6 +559,7 @@ mod tests {
         fn new(outcome: ElevatedOutcome) -> Self {
             Self {
                 calls: Mutex::new(Vec::new()),
+                programs: Mutex::new(Vec::new()),
                 outcome: Mutex::new(Some(outcome)),
             }
         }
@@ -534,10 +567,15 @@ mod tests {
         fn calls(&self) -> Vec<Vec<String>> {
             self.calls.lock().unwrap().clone()
         }
+
+        fn programs(&self) -> Vec<String> {
+            self.programs.lock().unwrap().clone()
+        }
     }
 
     impl ElevatedRunner for RecordingElevated {
-        fn run(&self, _: &str, args: &[String], _: Duration) -> ElevatedOutcome {
+        fn run(&self, program: &str, args: &[String], _: Duration) -> ElevatedOutcome {
+            self.programs.lock().unwrap().push(program.to_string());
             self.calls.lock().unwrap().push(args.to_vec());
             self.outcome
                 .lock()
@@ -647,6 +685,64 @@ mod tests {
             r"C:\app\photoprivacyworker.EXE"
         )));
         assert!(!is_worker_executable(Path::new(r"C:\app\PhotoPrivacy.exe")));
+    }
+
+    #[test]
+    fn sc_exe_resolves_to_absolute_system32_path() {
+        // 防：裸名 sc.exe 在当前目录可写时被同名二进制劫持（CWE-427，#58 CodeRabbit）。
+        let path = sc_exe_path().expect("System32 should resolve");
+        assert!(path.is_absolute());
+        assert!(
+            path.to_string_lossy()
+                .to_ascii_lowercase()
+                .ends_with("\\system32\\sc.exe")
+        );
+    }
+
+    #[test]
+    fn probe_and_ops_use_absolute_sc_path() {
+        // 防：探测或普通/提权操作回退到裸名 sc.exe，重新引入当前目录劫持面（#58）。
+        let runner = Arc::new(QueueRunner::new(vec![CommandOutput {
+            exit_code: Some(0),
+            stdout: "        STATE              : 4  RUNNING\n".to_string(),
+            ..CommandOutput::default()
+        }]));
+        let probe = WindowsProbe::new(runner.clone());
+        assert_eq!(probe.state(), ServiceRuntimeState::Running);
+        assert!(
+            runner.programs()[0]
+                .to_ascii_lowercase()
+                .ends_with("\\system32\\sc.exe")
+        );
+
+        let (ops_elevated, runner, elevated) = ops(
+            ServiceRuntimeState::Running,
+            vec![ok(), ok()],
+            false,
+            RecordingElevated::new(ElevatedOutcome::Exited(0)),
+        );
+        let _ = ops_elevated.uninstall();
+        assert!(runner.programs().is_empty(), "非管理员时卸装应走提权路径");
+        assert!(
+            elevated
+                .programs()
+                .iter()
+                .all(|program| program.to_ascii_lowercase().ends_with("\\system32\\sc.exe"))
+        );
+
+        let (ops_direct, runner, _) = ops(
+            ServiceRuntimeState::Running,
+            vec![ok(), ok()],
+            true,
+            RecordingElevated::default(),
+        );
+        let _ = ops_direct.uninstall();
+        assert!(
+            runner
+                .programs()
+                .iter()
+                .all(|program| program.to_ascii_lowercase().ends_with("\\system32\\sc.exe"))
+        );
     }
 
     #[test]

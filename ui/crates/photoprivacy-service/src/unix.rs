@@ -112,13 +112,9 @@ mod linux {
             "pkexec",
             output,
             success_message,
-            "Elevation was cancelled or not authorized",
-            // pkexec 的 127 也可能是“程序不存在”；只有授权失败/取消才算提权取消。
-            |output| match output.exit_code {
-                Some(126) => true,
-                Some(127) => !output.stderr.to_ascii_lowercase().contains("not found"),
-                _ => false,
-            },
+            "Elevation was cancelled",
+            // pkexec 只有 126 是用户取消认证；127（未授权/程序不存在）与其它错误都按失败处理。
+            |output| matches!(output.exit_code, Some(126)),
             |output| output_message(output, "pkexec"),
         )
     }
@@ -362,6 +358,18 @@ mod tests {
                 ..CommandOutput::default()
             }],
         ));
+        let ops = linux::LinuxOps::new(runner, PathBuf::from("/missing/script.sh"));
+
+        let result = ops.stop();
+
+        assert_eq!(result.status, ServiceCommandStatus::Failed);
+        assert_eq!(result.exit_code, Some(127));
+    }
+
+    #[test]
+    fn linux_pkexec_not_authorized_is_a_failure() {
+        // 防：pkexec 的 127（未授权/其它错误）被归为“用户取消”，界面给出错误的四态（#58）。
+        let runner = Arc::new(QueueRunner::new("pkexec", vec![code(127)]));
         let ops = linux::LinuxOps::new(runner, PathBuf::from("/missing/script.sh"));
 
         let result = ops.stop();

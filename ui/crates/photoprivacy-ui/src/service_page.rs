@@ -1,5 +1,5 @@
 use photoprivacy_service::{
-    ServiceCommandResult, ServiceCommandStatus, ServiceRuntimeState, platform_manager,
+    ServiceCommandResult, ServiceCommandStatus, ServiceRuntimeState, button_state, platform_manager,
 };
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -76,6 +76,17 @@ pub fn start(
                 continue;
             }
 
+            // UI 的 busy 快照每 200ms 才同步；双击可能在窗口内把同一变更命令入队两次。
+            // 执行前按当前探测态重新校验，第二次命令在状态已变化时直接跳过。
+            let probe_manager = Arc::clone(&manager);
+            let current = tokio::task::spawn_blocking(move || probe_manager.state())
+                .await
+                .unwrap_or(ServiceRuntimeState::Unknown);
+            if !command_allowed(command, current) {
+                snapshot_tx.send_modify(|snapshot| snapshot.state = current);
+                continue;
+            }
+
             snapshot_tx.send_modify(|snapshot| {
                 snapshot.busy = true;
                 snapshot.feedback = None;
@@ -111,4 +122,62 @@ pub fn start(
     });
 
     (snapshot_rx, command_tx)
+}
+
+fn command_allowed(command: ServiceCommand, state: ServiceRuntimeState) -> bool {
+    let buttons = button_state(state);
+    match command {
+        ServiceCommand::Install => buttons.install,
+        ServiceCommand::Start => buttons.start,
+        ServiceCommand::Stop => buttons.stop,
+        ServiceCommand::Uninstall => buttons.uninstall,
+        ServiceCommand::Refresh => true,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mutating_commands_are_gated_by_the_current_state() {
+        // 防：双击在同一 busy 快照窗口入队两次，第二次仍触发提权/重复操作（#58 CodeRabbit）。
+        assert!(command_allowed(
+            ServiceCommand::Install,
+            ServiceRuntimeState::NotInstalled
+        ));
+        assert!(!command_allowed(
+            ServiceCommand::Install,
+            ServiceRuntimeState::Stopped
+        ));
+        assert!(!command_allowed(
+            ServiceCommand::Stop,
+            ServiceRuntimeState::Stopped
+        ));
+        assert!(command_allowed(
+            ServiceCommand::Stop,
+            ServiceRuntimeState::Running
+        ));
+        assert!(!command_allowed(
+            ServiceCommand::Uninstall,
+            ServiceRuntimeState::Running
+        ));
+        assert!(command_allowed(
+            ServiceCommand::Uninstall,
+            ServiceRuntimeState::Stopped
+        ));
+    }
+
+    #[test]
+    fn refresh_is_always_allowed() {
+        // 防：刷新被状态门挡住，用户无法强制重探（#58）。
+        for state in [
+            ServiceRuntimeState::NotInstalled,
+            ServiceRuntimeState::Running,
+            ServiceRuntimeState::Stopped,
+            ServiceRuntimeState::Unknown,
+        ] {
+            assert!(command_allowed(ServiceCommand::Refresh, state));
+        }
+    }
 }
