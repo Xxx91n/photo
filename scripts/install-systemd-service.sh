@@ -137,7 +137,7 @@ RestartSec=3
 NoNewPrivileges=true
 RuntimeDirectory=photoprivacy
 RuntimeDirectoryMode=0750
-ExecReload=/bin/kill -HUP $MAINPID
+ExecReload=/bin/kill -HUP \$MAINPID
 
 [Install]
 WantedBy=multi-user.target
