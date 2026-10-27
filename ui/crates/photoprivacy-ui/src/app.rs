@@ -17,19 +17,75 @@ use gpui::{
 use photoprivacy_ipc::{ConnectionSnapshot, ConnectionState};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, watch};
 
 const CONTROL_WIDTH: f32 = 430.0;
+/// 旧 UI 的 SaveStatus 3 秒后自动清空（MainWindow.ScheduleSaveStatusClear）。
+const SAVE_STATUS_TTL: Duration = Duration::from_secs(3);
 
+#[repr(usize)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum FieldId {
-    ExifToolPath,
-    HotFolder,
-    BackupDirectory,
-    QuarantineDirectory,
-    AuditLogDirectory,
+    ExifToolPath = 0,
+    HotFolder = 1,
+    BackupDirectory = 2,
+    QuarantineDirectory = 3,
+    AuditLogDirectory = 4,
 }
+
+/// 一个可编辑路径字段的静态元数据。加字段只改这张表与 `FieldId`，不再散落五处 match。
+struct FieldSpec {
+    element_id: &'static str,
+    browse_id: &'static str,
+    placeholder: &'static str,
+    files: bool,
+    value: fn(&AppConfig) -> &str,
+    value_mut: fn(&mut AppConfig) -> &mut String,
+}
+
+static FIELD_SPECS: [FieldSpec; 5] = [
+    FieldSpec {
+        element_id: "config-exiftool-path",
+        browse_id: "browse-exiftool-path",
+        placeholder: r"C:\Program Files\ExifTool\exiftool.exe",
+        files: true,
+        value: exiftool_path,
+        value_mut: exiftool_path_mut,
+    },
+    FieldSpec {
+        element_id: "config-hot-folder",
+        browse_id: "browse-hot-folder",
+        placeholder: "Folder the worker watches",
+        files: false,
+        value: hot_folder,
+        value_mut: hot_folder_mut,
+    },
+    FieldSpec {
+        element_id: "config-backup-directory",
+        browse_id: "browse-backup-directory",
+        placeholder: "Default: <hot folder>/bak",
+        files: false,
+        value: backup_directory,
+        value_mut: backup_directory_mut,
+    },
+    FieldSpec {
+        element_id: "config-quarantine-directory",
+        browse_id: "browse-quarantine-directory",
+        placeholder: "Default: <hot folder>/_quarantine",
+        files: false,
+        value: quarantine_directory,
+        value_mut: quarantine_directory_mut,
+    },
+    FieldSpec {
+        element_id: "config-audit-log-directory",
+        browse_id: "browse-audit-log-directory",
+        placeholder: "Default: <hot folder>/_audit",
+        files: false,
+        value: audit_log_directory,
+        value_mut: audit_log_directory_mut,
+    },
+];
 
 impl FieldId {
     const ALL: [FieldId; 5] = [
@@ -40,35 +96,65 @@ impl FieldId {
         FieldId::AuditLogDirectory,
     ];
 
+    fn spec(self) -> &'static FieldSpec {
+        &FIELD_SPECS[self as usize]
+    }
+
     fn element_id(self) -> &'static str {
-        match self {
-            FieldId::ExifToolPath => "config-exiftool-path",
-            FieldId::HotFolder => "config-hot-folder",
-            FieldId::BackupDirectory => "config-backup-directory",
-            FieldId::QuarantineDirectory => "config-quarantine-directory",
-            FieldId::AuditLogDirectory => "config-audit-log-directory",
-        }
+        self.spec().element_id
     }
 
     fn browse_id(self) -> &'static str {
-        match self {
-            FieldId::ExifToolPath => "browse-exiftool-path",
-            FieldId::HotFolder => "browse-hot-folder",
-            FieldId::BackupDirectory => "browse-backup-directory",
-            FieldId::QuarantineDirectory => "browse-quarantine-directory",
-            FieldId::AuditLogDirectory => "browse-audit-log-directory",
-        }
+        self.spec().browse_id
     }
 
     fn placeholder(self) -> &'static str {
-        match self {
-            FieldId::ExifToolPath => r"C:\Program Files\ExifTool\exiftool.exe",
-            FieldId::HotFolder => "Folder the worker watches",
-            FieldId::BackupDirectory => "Default: <hot folder>/bak",
-            FieldId::QuarantineDirectory => "Default: <hot folder>/_quarantine",
-            FieldId::AuditLogDirectory => "Default: <hot folder>/_audit",
-        }
+        self.spec().placeholder
     }
+
+    fn files(self) -> bool {
+        self.spec().files
+    }
+}
+
+fn exiftool_path(config: &AppConfig) -> &str {
+    &config.exiftool.path
+}
+
+fn exiftool_path_mut(config: &mut AppConfig) -> &mut String {
+    &mut config.exiftool.path
+}
+
+fn hot_folder(config: &AppConfig) -> &str {
+    &config.watch.hot_folder
+}
+
+fn hot_folder_mut(config: &mut AppConfig) -> &mut String {
+    &mut config.watch.hot_folder
+}
+
+fn backup_directory(config: &AppConfig) -> &str {
+    &config.backup.directory
+}
+
+fn backup_directory_mut(config: &mut AppConfig) -> &mut String {
+    &mut config.backup.directory
+}
+
+fn quarantine_directory(config: &AppConfig) -> &str {
+    &config.quarantine.directory
+}
+
+fn quarantine_directory_mut(config: &mut AppConfig) -> &mut String {
+    &mut config.quarantine.directory
+}
+
+fn audit_log_directory(config: &AppConfig) -> &str {
+    &config.audit.log_directory
+}
+
+fn audit_log_directory_mut(config: &mut AppConfig) -> &mut String {
+    &mut config.audit.log_directory
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -86,6 +172,15 @@ struct FieldState {
     cursor: usize,
 }
 
+/// 单个字段渲染所需的快照，避免把 focused/cursor/focus 三个值一路作为散参数传递。
+struct FieldView {
+    value: String,
+    focused: bool,
+    cursor: usize,
+    focus: FocusHandle,
+}
+
+// Design(#55): 新 UI 尚未建立 DesignTokens 层（#61）；本页尺寸/字号沿用骨架 px 字面量，旧 UI 的 token 规则只约束冻结的 Avalonia UI。
 pub struct AppView {
     snapshot: ConnectionSnapshot,
     snapshots: watch::Receiver<ConnectionSnapshot>,
@@ -96,6 +191,8 @@ pub struct AppView {
     config_events: mpsc::UnboundedReceiver<ConfigEvent>,
     config_commands: mpsc::UnboundedSender<ConfigCommand>,
     save_state: SaveState,
+    save_status_deadline: Option<Instant>,
+    exiftool_hint: Option<String>,
     fields: HashMap<FieldId, FieldState>,
     config_path: PathBuf,
 }
@@ -134,6 +231,8 @@ impl AppView {
             config_events,
             config_commands,
             save_state: SaveState::Idle,
+            save_status_deadline: None,
+            exiftool_hint: None,
             fields,
             config_path,
         };
@@ -167,6 +266,13 @@ impl AppView {
                             this.apply_config_event(event);
                             changed = true;
                         }
+                        if let Some(deadline) = this.save_status_deadline
+                            && Instant::now() >= deadline
+                        {
+                            this.save_state = SaveState::Idle;
+                            this.save_status_deadline = None;
+                            changed = true;
+                        }
                         if changed {
                             cx.notify();
                         }
@@ -187,22 +293,22 @@ impl AppView {
             ConfigEvent::Loaded(config) | ConfigEvent::ExternalReload(config) => {
                 self.set_config(config);
                 self.save_state = SaveState::Idle;
+                self.save_status_deadline = None;
             }
             ConfigEvent::ExternalLoadFailed(error) => {
                 self.save_state = SaveState::ExternalLoadFailed(error);
+                self.save_status_deadline = None;
             }
-            ConfigEvent::Saved {
-                worker_reloaded,
-                error,
-            } => {
-                self.save_state = if worker_reloaded {
-                    SaveState::Saved
-                } else {
-                    SaveState::SavedWorkerDown(error.unwrap_or_default())
+            ConfigEvent::Saved { worker_error } => {
+                self.save_state = match worker_error {
+                    Some(error) => SaveState::SavedWorkerDown(error),
+                    None => SaveState::Saved,
                 };
+                self.save_status_deadline = Some(Instant::now() + SAVE_STATUS_TTL);
             }
             ConfigEvent::SaveFailed(error) => {
                 self.save_state = SaveState::Failed(error);
+                self.save_status_deadline = Some(Instant::now() + SAVE_STATUS_TTL);
             }
         }
     }
@@ -210,6 +316,13 @@ impl AppView {
     fn set_config(&mut self, mut config: AppConfig) {
         config.ui.theme_variant = normalize_theme_variant(&config.ui.theme_variant).to_string();
         self.theme_mode = ThemeMode::from_variant(&config.ui.theme_variant);
+        // 旧 UI 的 ResolveExifToolPath：当前路径不存在时探测常见安装位置并显示提示。
+        if let Some(detected) = crate::config::detect_exiftool_path(&config.exiftool.path) {
+            config.exiftool.path = detected.clone();
+            self.exiftool_hint = Some(detected);
+        } else {
+            self.exiftool_hint = None;
+        }
         self.config = config;
 
         let lengths: Vec<(FieldId, usize)> = FieldId::ALL
@@ -249,6 +362,7 @@ impl AppView {
             .config_commands
             .send(ConfigCommand::Edit(Box::new(self.config.clone())));
         self.save_state = SaveState::Pending;
+        self.save_status_deadline = None;
         cx.notify();
     }
 
@@ -376,31 +490,33 @@ impl AppView {
         }
     }
 
-    fn field_state(&self, id: FieldId, window: &Window) -> (bool, usize, FocusHandle) {
+    fn field_view(&self, id: FieldId, window: &Window) -> FieldView {
         let state = self
             .fields
             .get(&id)
             .expect("配置页字段的焦点句柄在构造时已建立");
-        (
-            state.focus.is_focused(window),
-            state.cursor,
-            state.focus.clone(),
-        )
+        FieldView {
+            value: field_value(&self.config, id).to_string(),
+            focused: state.focus.is_focused(window),
+            cursor: state.cursor,
+            focus: state.focus.clone(),
+        }
     }
 
-    fn pick_path(&mut self, id: FieldId, files: bool, window: &mut Window, cx: &mut Context<Self>) {
+    /// 打开系统路径选择器并回填单个路径；两个调用点只在「选中后做什么」上不同。
+    fn prompt_single_path(
+        &mut self,
+        files: bool,
+        prompt: &'static str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        on_pick: impl FnOnce(&mut Self, String, &mut Context<Self>) + 'static,
+    ) {
         let receiver = cx.prompt_for_paths(PathPromptOptions {
             files,
             directories: !files,
             multiple: false,
-            prompt: Some(
-                if files {
-                    "Select ExifTool"
-                } else {
-                    "Select folder"
-                }
-                .into(),
-            ),
+            prompt: Some(prompt.into()),
         });
         cx.spawn_in(window, async move |this, cx| {
             let selected = receiver
@@ -413,42 +529,36 @@ impl AppView {
                 return;
             };
             let text = path.to_string_lossy().into_owned();
-            this.update(cx, |this, cx| {
-                let length = text.len();
-                *field_value_mut(&mut this.config, id) = text;
-                this.set_cursor(id, length);
-                this.mark_dirty(cx);
-            })
-            .ok();
+            this.update(cx, |this, cx| on_pick(this, text, cx)).ok();
         })
         .detach();
     }
 
-    fn add_excluded_directory(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let receiver = cx.prompt_for_paths(PathPromptOptions {
-            files: false,
-            directories: true,
-            multiple: false,
-            prompt: Some("Select folder to exclude".into()),
+    fn pick_path(&mut self, id: FieldId, window: &mut Window, cx: &mut Context<Self>) {
+        let prompt = if id.files() {
+            "Select ExifTool"
+        } else {
+            "Select folder"
+        };
+        self.prompt_single_path(id.files(), prompt, window, cx, move |this, text, cx| {
+            let length = text.len();
+            *field_value_mut(&mut this.config, id) = text;
+            this.set_cursor(id, length);
+            this.mark_dirty(cx);
         });
-        cx.spawn_in(window, async move |this, cx| {
-            let selected = receiver
-                .await
-                .ok()
-                .and_then(|result| result.ok())
-                .flatten()
-                .and_then(|paths| paths.into_iter().next());
-            let Some(path) = selected else {
-                return;
-            };
-            let text = path.to_string_lossy().into_owned();
-            this.update(cx, |this, cx| {
+    }
+
+    fn add_excluded_directory(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.prompt_single_path(
+            false,
+            "Select folder to exclude",
+            window,
+            cx,
+            |this, text, cx| {
                 this.config.watch.auto_excluded_directories.push(text);
                 this.mark_dirty(cx);
-            })
-            .ok();
-        })
-        .detach();
+            },
+        );
     }
 
     fn state_color(state: ConnectionState, theme: &Theme) -> Rgba {
@@ -601,13 +711,16 @@ impl AppView {
 
     fn text_field(
         id: FieldId,
-        value: String,
-        focused: bool,
-        cursor: usize,
-        focus: FocusHandle,
+        view: FieldView,
         theme: Theme,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        let FieldView {
+            value,
+            focused,
+            cursor,
+            focus,
+        } = view;
         let focus_for_click = focus.clone();
         let cursor_for_click = cursor;
         let content = if value.is_empty() && !focused {
@@ -674,7 +787,7 @@ impl AppView {
             .into_any_element()
     }
 
-    fn browse_button(id: FieldId, files: bool, theme: Theme, cx: &mut Context<Self>) -> AnyElement {
+    fn browse_button(id: FieldId, theme: Theme, cx: &mut Context<Self>) -> AnyElement {
         div()
             .id(id.browse_id())
             .px(px(10.))
@@ -687,20 +800,15 @@ impl AppView {
             .hover(|element| element.bg(theme.surface_raised))
             .cursor_pointer()
             .on_click(cx.listener(move |this, _, window, cx| {
-                this.pick_path(id, files, window, cx);
+                this.pick_path(id, window, cx);
             }))
             .child("Browse")
             .into_any_element()
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn path_control(
         id: FieldId,
-        value: String,
-        focused: bool,
-        cursor: usize,
-        focus: FocusHandle,
-        files: bool,
+        view: FieldView,
         theme: Theme,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -709,10 +817,8 @@ impl AppView {
             .items_center()
             .gap(px(8.))
             .w(px(CONTROL_WIDTH))
-            .child(Self::text_field(
-                id, value, focused, cursor, focus, theme, cx,
-            ))
-            .child(Self::browse_button(id, files, theme, cx))
+            .child(Self::text_field(id, view, theme, cx))
+            .child(Self::browse_button(id, theme, cx))
             .into_any_element()
     }
 
@@ -780,37 +886,39 @@ impl AppView {
 
         // 路径组
         let mut path_rows = Vec::new();
-        let (exif_focused, exif_cursor, exif_focus) =
-            self.field_state(FieldId::ExifToolPath, window);
+        let exiftool_view = self.field_view(FieldId::ExifToolPath, window);
+        let exiftool_control = {
+            let control = Self::path_control(FieldId::ExifToolPath, exiftool_view, theme, cx);
+            if let Some(hint) = &self.exiftool_hint {
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(2.))
+                    .w(px(CONTROL_WIDTH))
+                    .child(control)
+                    .child(
+                        div()
+                            .text_size(px(11.))
+                            .text_color(theme.text_faint)
+                            .truncate()
+                            .child(format!("Auto-detected: {hint}")),
+                    )
+                    .into_any_element()
+            } else {
+                control
+            }
+        };
         path_rows.push(Self::settings_row(
             "ExifTool path",
             "Executable used for every cleanup run",
-            Self::path_control(
-                FieldId::ExifToolPath,
-                self.config.exiftool.path.clone(),
-                exif_focused,
-                exif_cursor,
-                exif_focus,
-                true,
-                theme,
-                cx,
-            ),
+            exiftool_control,
             theme,
         ));
-        let (hot_focused, hot_cursor, hot_focus) = self.field_state(FieldId::HotFolder, window);
+        let hot_view = self.field_view(FieldId::HotFolder, window);
         path_rows.push(Self::settings_row(
             "Hot folder",
             "Directory the Worker watches for new media",
-            Self::path_control(
-                FieldId::HotFolder,
-                self.config.watch.hot_folder.clone(),
-                hot_focused,
-                hot_cursor,
-                hot_focus,
-                false,
-                theme,
-                cx,
-            ),
+            Self::path_control(FieldId::HotFolder, hot_view, theme, cx),
             theme,
         ));
         groups.push(Self::group("PATHS", path_rows, theme));
@@ -830,20 +938,11 @@ impl AppView {
             },
         ));
         if self.config.backup.enabled {
-            let (focused, cursor, focus) = self.field_state(FieldId::BackupDirectory, window);
+            let view = self.field_view(FieldId::BackupDirectory, window);
             behavior_rows.push(Self::settings_row(
                 "Backup directory",
                 "Empty means <hot folder>/bak",
-                Self::path_control(
-                    FieldId::BackupDirectory,
-                    self.config.backup.directory.clone(),
-                    focused,
-                    cursor,
-                    focus,
-                    false,
-                    theme,
-                    cx,
-                ),
+                Self::path_control(FieldId::BackupDirectory, view, theme, cx),
                 theme,
             ));
         }
@@ -860,20 +959,11 @@ impl AppView {
             },
         ));
         if self.config.quarantine.enabled {
-            let (focused, cursor, focus) = self.field_state(FieldId::QuarantineDirectory, window);
+            let view = self.field_view(FieldId::QuarantineDirectory, window);
             behavior_rows.push(Self::settings_row(
                 "Quarantine directory",
                 "Empty means <hot folder>/_quarantine",
-                Self::path_control(
-                    FieldId::QuarantineDirectory,
-                    self.config.quarantine.directory.clone(),
-                    focused,
-                    cursor,
-                    focus,
-                    false,
-                    theme,
-                    cx,
-                ),
+                Self::path_control(FieldId::QuarantineDirectory, view, theme, cx),
                 theme,
             ));
         }
@@ -1116,21 +1206,11 @@ impl AppView {
                 .into_any_element(),
             theme,
         ));
-        let (audit_focused, audit_cursor, audit_focus) =
-            self.field_state(FieldId::AuditLogDirectory, window);
+        let audit_view = self.field_view(FieldId::AuditLogDirectory, window);
         log_rows.push(Self::settings_row(
             "Audit log directory",
             "Empty means <hot folder>/_audit",
-            Self::path_control(
-                FieldId::AuditLogDirectory,
-                self.config.audit.log_directory.clone(),
-                audit_focused,
-                audit_cursor,
-                audit_focus,
-                false,
-                theme,
-                cx,
-            ),
+            Self::path_control(FieldId::AuditLogDirectory, audit_view, theme, cx),
             theme,
         ));
         groups.push(Self::group("LOGS", log_rows, theme));
@@ -1167,23 +1247,11 @@ impl AppView {
 }
 
 fn field_value(config: &AppConfig, id: FieldId) -> &str {
-    match id {
-        FieldId::ExifToolPath => &config.exiftool.path,
-        FieldId::HotFolder => &config.watch.hot_folder,
-        FieldId::BackupDirectory => &config.backup.directory,
-        FieldId::QuarantineDirectory => &config.quarantine.directory,
-        FieldId::AuditLogDirectory => &config.audit.log_directory,
-    }
+    (id.spec().value)(config)
 }
 
 fn field_value_mut(config: &mut AppConfig, id: FieldId) -> &mut String {
-    match id {
-        FieldId::ExifToolPath => &mut config.exiftool.path,
-        FieldId::HotFolder => &mut config.watch.hot_folder,
-        FieldId::BackupDirectory => &mut config.backup.directory,
-        FieldId::QuarantineDirectory => &mut config.quarantine.directory,
-        FieldId::AuditLogDirectory => &mut config.audit.log_directory,
-    }
+    (id.spec().value_mut)(config)
 }
 
 fn floor_char_boundary(text: &str, mut index: usize) -> usize {
@@ -1260,6 +1328,16 @@ impl Render for AppView {
             )
             .child(Self::theme_switch(self.theme_mode, theme, cx));
 
+        let worker_details = format!(
+            "Protocol {} · ExifTool {} · {} round trips",
+            self.snapshot
+                .protocol_version
+                .map(|version| format!("v{version}"))
+                .unwrap_or_else(|| "—".to_string()),
+            or_dash(self.snapshot.exif_tool_version.clone()),
+            self.snapshot.round_trips,
+        );
+
         let connection = div()
             .flex()
             .flex_col()
@@ -1291,6 +1369,12 @@ impl Render for AppView {
                             .text_color(theme.text_faint)
                             .child(round_trip),
                     ),
+            )
+            .child(
+                div()
+                    .text_size(px(11.))
+                    .text_color(theme.text_faint)
+                    .child(worker_details),
             )
             .children(self.snapshot.last_error.clone().map(|error| {
                 div()

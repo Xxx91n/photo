@@ -100,9 +100,12 @@ fn main() -> anyhow::Result<()> {
     let (snapshot_tx, snapshot_rx) = tokio::sync::watch::channel(ConnectionSnapshot::connecting());
     let (endpoint_tx, endpoint_rx) = tokio::sync::watch::channel::<Option<Endpoint>>(None);
     let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
+    // 心跳与配置重载共用同一个 IpcClient：单飞锁在同一实例内生效（docs/agents/ipc-contract.md）。
+    let ipc_client = std::sync::Arc::new(photoprivacy_ipc::IpcClient::new());
     worker_connection::start(
         runtime.handle(),
         options,
+        ipc_client.clone(),
         snapshot_tx,
         endpoint_tx,
         event_tx,
@@ -113,6 +116,7 @@ fn main() -> anyhow::Result<()> {
     config_service::spawn(
         runtime.handle(),
         config_path.clone(),
+        ipc_client,
         endpoint_rx,
         config_command_rx,
         config_event_tx,

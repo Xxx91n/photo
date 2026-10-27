@@ -1,12 +1,13 @@
-use crate::config::normalize_theme_variant;
+use crate::config::{THEME_VARIANTS, normalize_theme_variant};
 use gpui::{Rgba, WindowAppearance, rgb};
 
 /// 主题选择：默认跟随系统，允许强制 light/dark。`ui.theme_variant` 是持久化形态。
+#[repr(usize)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ThemeMode {
-    System,
-    Light,
-    Dark,
+    System = 0,
+    Light = 1,
+    Dark = 2,
 }
 
 impl ThemeMode {
@@ -20,18 +21,17 @@ impl ThemeMode {
 
     /// 写回 config.json 的 `ui.theme_variant` 值（旧 UI 的取值域）。
     pub fn variant(self) -> &'static str {
-        match self {
-            ThemeMode::System => "system",
-            ThemeMode::Light => "light",
-            ThemeMode::Dark => "dark",
-        }
+        THEME_VARIANTS[self as usize]
     }
 
     pub fn from_variant(value: &str) -> Self {
-        match normalize_theme_variant(value) {
-            "light" => ThemeMode::Light,
-            "dark" => ThemeMode::Dark,
-            _ => ThemeMode::System,
+        let normalized = normalize_theme_variant(value);
+        if normalized == THEME_VARIANTS[1] {
+            ThemeMode::Light
+        } else if normalized == THEME_VARIANTS[2] {
+            ThemeMode::Dark
+        } else {
+            ThemeMode::System
         }
     }
 

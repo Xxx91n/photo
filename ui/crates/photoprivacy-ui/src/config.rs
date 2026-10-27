@@ -399,13 +399,30 @@ fn normalize_path(path: &str) -> String {
     text
 }
 
+/// 与旧 UI 的 `ui.theme_variant` 取值域一致；`ThemeMode` 的字符串形态只从这里取。
+pub const THEME_VARIANTS: [&str; 3] = ["system", "light", "dark"];
+
 pub fn normalize_theme_variant(value: &str) -> &'static str {
-    if value.eq_ignore_ascii_case("light") {
-        "light"
-    } else if value.eq_ignore_ascii_case("dark") {
-        "dark"
+    if value.eq_ignore_ascii_case(THEME_VARIANTS[1]) {
+        THEME_VARIANTS[1]
+    } else if value.eq_ignore_ascii_case(THEME_VARIANTS[2]) {
+        THEME_VARIANTS[2]
     } else {
-        "system"
+        THEME_VARIANTS[0]
+    }
+}
+
+/// 旧 UI `ResolveExifToolPath`：当前路径真实存在就不动；否则探测常见安装位置与 PATH，
+/// 返回可用的新路径。返回 `None` 表示保持原值（也是刷新提示的边界）。
+pub fn detect_exiftool_path(current: &str) -> Option<String> {
+    if !current.trim().is_empty() && Path::new(current).is_file() {
+        return None;
+    }
+    let detected = resolve_default_exiftool_path();
+    if detected != current && Path::new(&detected).is_file() {
+        Some(detected)
+    } else {
+        None
     }
 }
 
@@ -550,25 +567,36 @@ fn resolve_default_exiftool_path() -> String {
             PathBuf::from(r"C:\Program Files (x86)\ExifTool\exiftool.exe"),
             PathBuf::from(r"C:\Windows\exiftool.exe"),
         ]);
-        for candidate in &candidates {
-            if candidate.is_file() {
-                return candidate.to_string_lossy().into_owned();
-            }
-        }
-        r"C:\Program Files\ExifTool\exiftool.exe".to_string()
     } else {
         candidates.extend([
             PathBuf::from("/usr/bin/exiftool"),
             PathBuf::from("/usr/local/bin/exiftool"),
             PathBuf::from("/opt/homebrew/bin/exiftool"),
         ]);
-        for candidate in &candidates {
-            if candidate.is_file() {
-                return candidate.to_string_lossy().into_owned();
-            }
+    }
+
+    for candidate in &candidates {
+        if candidate.is_file() {
+            return candidate.to_string_lossy().into_owned();
         }
+    }
+    if let Some(found) = resolve_exiftool_from_path() {
+        return found.to_string_lossy().into_owned();
+    }
+    if cfg!(windows) {
+        r"C:\Program Files\ExifTool\exiftool.exe".to_string()
+    } else {
         "exiftool".to_string()
     }
+}
+
+fn resolve_exiftool_from_path() -> Option<PathBuf> {
+    let name = exiftool_file_name();
+    std::env::var_os("PATH").and_then(|paths| {
+        std::env::split_paths(&paths)
+            .map(|dir| dir.join(name))
+            .find(|candidate| candidate.is_file())
+    })
 }
 
 fn exiftool_file_name() -> &'static str {

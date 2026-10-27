@@ -35,11 +35,8 @@ pub enum ConfigEvent {
     ExternalReload(AppConfig),
     /// 外部文件存在但解析失败；UI 保留当前值并显示错误。
     ExternalLoadFailed(String),
-    /// 写盘成功。`worker_reloaded=false` 时 `error` 说明 Worker 侧失败原因。
-    Saved {
-        worker_reloaded: bool,
-        error: Option<String>,
-    },
+    /// 写盘成功。`worker_error=None` 表示 Worker 已重载；`Some` 说明配置已落盘但未热重载。
+    Saved { worker_error: Option<String> },
     /// 写盘本身失败。
     SaveFailed(String),
 }
@@ -48,13 +45,14 @@ pub enum ConfigEvent {
 pub fn spawn(
     runtime: &tokio::runtime::Handle,
     config_path: std::path::PathBuf,
+    client: Arc<IpcClient>,
     endpoints: watch::Receiver<Option<Endpoint>>,
     commands: mpsc::UnboundedReceiver<ConfigCommand>,
     events: mpsc::UnboundedSender<ConfigEvent>,
 ) -> tokio::task::JoinHandle<()> {
     runtime.spawn(run(
         ConfigFile::new(config_path),
-        Arc::new(IpcClient::new()),
+        client,
         endpoints,
         commands,
         events,
@@ -108,26 +106,35 @@ pub async fn run(
             }
             () = debounce_elapsed => {
                 deadline = None;
-                let Some(config) = pending.take() else { continue };
-                match file.save(&config) {
+                let Some(draft) = pending.take() else { continue };
+                // 与旧 UI ConfigEditor.UpdateConfig 一致：写前重新读盘。文件坏了就拒绝覆盖，
+                // 而不是用内存默认值把用户手改坏的配置抹掉。
+                let disk = match file.load_or_default() {
+                    Ok(disk) => disk,
+                    Err(err) => {
+                        let _ = events.send(ConfigEvent::SaveFailed(format!(
+                            "config.json 当前内容无法解析，已拒绝覆盖: {err}"
+                        )));
+                        continue;
+                    }
+                };
+                // 只覆盖配置页编辑的字段；rules/retry/exiftool 扩展参数等外部改动保留。
+                let merged = merge_editable_fields(disk, &draft);
+                match file.save(&merged) {
                     Ok(()) => {
                         // 先记下自身写入的指纹，轮询不会把这次写盘当成外部变更再回灌一次。
                         fingerprint = file.fingerprint();
+                        // 先取出端点再 await：watch 的 Ref 不能跨 await（future 必须 Send）。
                         let endpoint = endpoints.borrow().clone();
-                        let event = match endpoint {
-                            Some(endpoint) => match client.reload_config(&endpoint).await {
-                                Ok(_) => ConfigEvent::Saved { worker_reloaded: true, error: None },
-                                Err(err) => ConfigEvent::Saved {
-                                    worker_reloaded: false,
-                                    error: Some(err.to_string()),
-                                },
-                            },
-                            None => ConfigEvent::Saved {
-                                worker_reloaded: false,
-                                error: Some("Worker 未连接，配置已保存但未热重载".to_string()),
-                            },
+                        let worker_error = match endpoint {
+                            Some(endpoint) => client
+                                .reload_config(&endpoint)
+                                .await
+                                .err()
+                                .map(|err| err.to_string()),
+                            None => Some("Worker 未连接，配置已保存但未热重载".to_string()),
                         };
-                        let _ = events.send(event);
+                        let _ = events.send(ConfigEvent::Saved { worker_error });
                     }
                     Err(err) => {
                         let _ = events.send(ConfigEvent::SaveFailed(err.to_string()));
@@ -154,6 +161,29 @@ pub async fn run(
             }
         }
     }
+}
+
+/// 把配置页编辑的字段覆盖到磁盘上的最新配置上，其余字段（rules/retry/ExifTool 扩展参数、
+/// watch 内部参数、backup 保留策略等）保持磁盘值。旧 UI 的 `ConfigEditor.UpdateConfig` 是
+/// 同样的 read-modify-write 形态，避免整份快照写回时丢掉外部改动。
+fn merge_editable_fields(mut disk: AppConfig, draft: &AppConfig) -> AppConfig {
+    disk.exiftool.path = draft.exiftool.path.clone();
+    disk.watch.hot_folder = draft.watch.hot_folder.clone();
+    disk.watch.auto_excluded_directories = draft.watch.auto_excluded_directories.clone();
+    disk.backup.enabled = draft.backup.enabled;
+    disk.backup.directory = draft.backup.directory.clone();
+    disk.quarantine.enabled = draft.quarantine.enabled;
+    disk.quarantine.directory = draft.quarantine.directory.clone();
+    disk.audit.log_directory = draft.audit.log_directory.clone();
+    disk.audit.log_level = draft.audit.log_level.clone();
+    disk.audit.diagnostic_mode = draft.audit.diagnostic_mode;
+    disk.ui.hide_main_window_on_startup = draft.ui.hide_main_window_on_startup;
+    disk.ui.hide_tray_icon = draft.ui.hide_tray_icon;
+    disk.ui.theme_variant = draft.ui.theme_variant.clone();
+    disk.ui.theme_id = draft.ui.theme_id.clone();
+    disk.ui.locale = draft.ui.locale.clone();
+    disk.ui.sidebar_width = draft.ui.sidebar_width;
+    disk
 }
 
 #[cfg(test)]
@@ -255,8 +285,7 @@ mod tests {
         assert_eq!(
             event,
             ConfigEvent::Saved {
-                worker_reloaded: false,
-                error: Some("Worker 未连接，配置已保存但未热重载".to_string()),
+                worker_error: Some("Worker 未连接，配置已保存但未热重载".to_string()),
             }
         );
 
@@ -364,5 +393,89 @@ mod tests {
             }
         }
         assert!(saw_failure, "写盘失败必须回报 SaveFailed");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn save_keeps_external_changes_outside_the_config_page() {
+        // 防：新 UI 把启动时的整份快照写回，覆盖掉外部对 rules/retry 等非配置页字段的修改（#55）。
+        let dir = TempDir::new("merge-external");
+        let config_file = ConfigFile::new(dir.config_path());
+        let mut initial = AppConfig::default();
+        initial.rules.allowed_extensions.push(".webp".to_string());
+        config_file.save(&initial).unwrap();
+
+        let mut harness = start(&dir);
+        assert!(matches!(
+            next_event(&mut harness).await,
+            ConfigEvent::Loaded(_)
+        ));
+
+        // 外部写入新增 .gif；UI 草稿仍是启动时的旧 rules。
+        let mut external = initial.clone();
+        external.rules.allowed_extensions.push(".gif".to_string());
+        config_file.save(&external).unwrap();
+
+        let mut draft = initial.clone();
+        draft.ui.theme_variant = "dark".to_string();
+        harness
+            .commands
+            .send(ConfigCommand::Edit(Box::new(draft)))
+            .unwrap();
+        tokio::time::advance(Duration::from_millis(150)).await;
+        tokio::task::yield_now().await;
+        loop {
+            match next_event(&mut harness).await {
+                ConfigEvent::Saved { .. } => break,
+                ConfigEvent::ExternalReload(_) | ConfigEvent::ExternalLoadFailed(_) => continue,
+                other => panic!("保存应成功，实际 {other:?}"),
+            }
+        }
+
+        let saved = AppConfig::from_json(&fs::read_to_string(dir.config_path()).unwrap()).unwrap();
+        assert_eq!(saved.ui.theme_variant, "dark");
+        assert!(
+            saved
+                .rules
+                .allowed_extensions
+                .iter()
+                .any(|ext| ext == ".gif"),
+            "外部新增的 .gif 不能被整份快照覆盖掉：{:?}",
+            saved.rules.allowed_extensions
+        );
+        assert!(
+            saved
+                .rules
+                .allowed_extensions
+                .iter()
+                .any(|ext| ext == ".webp")
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn invalid_disk_config_is_never_overwritten() {
+        // 防：用户手改坏 config.json 后，新 UI 用默认值整份覆盖（旧 UI 写前加载失败会保留原文件，#55）。
+        let dir = TempDir::new("invalid-disk-save");
+        fs::write(dir.config_path(), "{broken").unwrap();
+        let mut harness = start(&dir);
+        assert!(matches!(
+            next_event(&mut harness).await,
+            ConfigEvent::ExternalLoadFailed(_)
+        ));
+
+        let mut draft = AppConfig::default();
+        draft.ui.theme_variant = "dark".to_string();
+        harness
+            .commands
+            .send(ConfigCommand::Edit(Box::new(draft)))
+            .unwrap();
+        tokio::time::advance(Duration::from_millis(150)).await;
+        tokio::task::yield_now().await;
+
+        let event = next_event(&mut harness).await;
+        assert!(
+            matches!(event, ConfigEvent::SaveFailed(_)),
+            "坏文件必须拒绝覆盖，实际 {event:?}"
+        );
+        assert_eq!(fs::read_to_string(dir.config_path()).unwrap(), "{broken");
     }
 }

@@ -49,6 +49,7 @@ pub enum UiEvent {
 pub fn start(
     runtime: &tokio::runtime::Handle,
     options: ConnectOptions,
+    client: Arc<IpcClient>,
     snapshots: watch::Sender<ConnectionSnapshot>,
     endpoints: watch::Sender<Option<Endpoint>>,
     events: mpsc::UnboundedSender<UiEvent>,
@@ -61,7 +62,6 @@ pub fn start(
     });
 
     runtime.spawn(async move {
-        let client = Arc::new(IpcClient::new());
         match connect_worker(&client, &options).await {
             Some((endpoint, mode)) => {
                 snapshots.send_modify(|snapshot| {
