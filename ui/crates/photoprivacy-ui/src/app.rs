@@ -1,16 +1,17 @@
 use crate::theme::{self, Theme, ThemeMode};
-use crate::worker_connection::UiEvent;
 use gpui::prelude::*;
 use gpui::{Context, FontWeight, IntoElement, Render, Rgba, Subscription, Window, div, px};
 use photoprivacy_ipc::{ConnectionSnapshot, ConnectionState};
+use std::cell::Cell;
+use std::rc::Rc;
 use std::time::Duration;
-use tokio::sync::{mpsc, watch};
+use tokio::sync::watch;
 
 pub struct AppView {
     snapshot: ConnectionSnapshot,
     snapshots: watch::Receiver<ConnectionSnapshot>,
-    events: mpsc::UnboundedReceiver<UiEvent>,
-    theme_mode: ThemeMode,
+    /// 主题是窗口重建后唯一需要延续的视图状态（关窗驻守后托盘会重建窗口）。
+    theme_mode: Rc<Cell<ThemeMode>>,
     _appearance_subscription: Subscription,
 }
 
@@ -19,22 +20,22 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
         snapshots: watch::Receiver<ConnectionSnapshot>,
-        events: mpsc::UnboundedReceiver<UiEvent>,
+        theme_mode: Rc<Cell<ThemeMode>>,
     ) -> Self {
         let appearance_subscription = cx.observe_window_appearance(window, |_, _, cx| cx.notify());
         let snapshot = snapshots.borrow().clone();
         let view = Self {
             snapshot,
             snapshots,
-            events,
-            theme_mode: ThemeMode::System,
+            theme_mode,
             _appearance_subscription: appearance_subscription,
         };
         view.spawn_updates(window, cx);
         view
     }
 
-    /// 后台快照与「唤起窗口」事件都从 tokio 线程来；这里在 UI 线程轮询，避免跨线程触碰 gpui 状态。
+    /// Worker 快照从 tokio 线程来；这里在 UI 线程轮询，避免跨线程触碰 gpui 状态。
+    /// 托盘与唤起事件由 main 的 app 级事件泵处理（窗口不存在时也要能响应）。
     fn spawn_updates(&self, window: &Window, cx: &mut Context<Self>) {
         cx.spawn_in(window, async move |this, cx| {
             loop {
@@ -42,24 +43,18 @@ impl AppView {
                     .timer(Duration::from_millis(200))
                     .await;
 
-                let show_window = this
+                // 关窗驻守后本视图实体会被释放；此时必须退出循环，否则每次重建窗口都会留下一个
+                // 永远 upgrade 失败的空转任务。
+                let alive = this
                     .update(cx, |this, cx| {
-                        let mut show_window = false;
                         if this.snapshots.has_changed().unwrap_or(false) {
                             this.snapshot = this.snapshots.borrow_and_update().clone();
                             cx.notify();
                         }
-                        while let Ok(event) = this.events.try_recv() {
-                            if matches!(event, UiEvent::ShowWindow) {
-                                show_window = true;
-                            }
-                        }
-                        show_window
                     })
-                    .unwrap_or(false);
-
-                if show_window {
-                    let _ = cx.update(|window, _| window.activate_window());
+                    .is_ok();
+                if !alive {
+                    break;
                 }
             }
         })
@@ -103,7 +98,7 @@ impl AppView {
                     .hover(|element| element.bg(theme.surface))
                     .cursor_pointer()
                     .on_click(cx.listener(move |this, _, _, cx| {
-                        this.theme_mode = candidate;
+                        this.theme_mode.set(candidate);
                         cx.notify();
                     }))
                     .child(candidate.label())
@@ -134,7 +129,7 @@ fn or_dash(value: Option<String>) -> String {
 
 impl Render for AppView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme = Theme::resolve(self.theme_mode, theme::is_dark(window.appearance()));
+        let theme = Theme::resolve(self.theme_mode.get(), theme::is_dark(window.appearance()));
         let state = self.snapshot.state;
         let dot = Self::state_color(state, &theme);
 
@@ -174,7 +169,7 @@ impl Render for AppView {
                             .child("Metadata cleanup · new UI skeleton"),
                     ),
             )
-            .child(Self::theme_switch(self.theme_mode, &theme, cx));
+            .child(Self::theme_switch(self.theme_mode.get(), &theme, cx));
 
         let status_card = div()
             .flex()
@@ -221,6 +216,10 @@ impl Render for AppView {
         let rows = [
             ("Worker mode", mode.clone()),
             ("Reported mode", or_dash(self.snapshot.status_mode.clone())),
+            (
+                "Service IPC",
+                self.snapshot.service_state.label().to_string(),
+            ),
             (
                 "Protocol",
                 or_dash(

@@ -13,13 +13,19 @@ path = "src/main.rs"
 photoprivacy-ipc = { path = "../photoprivacy-ipc" }
 gpui.workspace = true
 tokio.workspace = true
+serde_json.workspace = true
 anyhow.workspace = true
 
 [target.'cfg(target_os = "windows")'.dependencies]
 gpui_windows = { package = "gpui-pre-windows", version = "=0.3.10", default-features = false }
+# gpui 无内建托盘（#49 T4 已接受自建/第三方）；tray-icon 是 Tauri 的独立托盘库。
+# 锁补丁版本：上游 breaking 不进构建。Linux 走 ksni（D-Bus），避免引入 GTK3/libxdo 系统依赖。
+tray-icon = { version = "=0.25.1", default-features = false }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 gpui_macos = { package = "gpui-pre-macos", version = "=0.3.10", default-features = false, features = ["font-kit"] }
+tray-icon = { version = "=0.25.1", default-features = false }
 
 [target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies]
 gpui_linux = { package = "gpui-pre-linux", version = "=0.3.10", default-features = false, features = ["wayland", "x11"] }
+tray-icon = { version = "=0.25.1", default-features = false, features = ["ksni"] }

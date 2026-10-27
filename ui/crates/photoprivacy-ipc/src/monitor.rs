@@ -1,9 +1,15 @@
 use crate::client::{IpcClient, IpcError};
 use crate::endpoints::{Endpoint, WorkerMode};
 use crate::protocol::Status;
+use std::future::Future;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::watch;
+
+/// 心跳节拍：成功时每 1s 一次 GetStatus，顺带刷新协议版本与 ExifTool 版本（版本 1s 节奏）。
+pub const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(1);
+/// 服务态节拍：与旧 UI `ServiceModeController.PollServiceModeTransitionAsync` 同为 3s。
+pub const SERVICE_POLL_INTERVAL: Duration = Duration::from_secs(3);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ConnectionState {
@@ -24,6 +30,28 @@ impl ConnectionState {
     }
 }
 
+/// 服务态：本版只区分「服务端点此刻能否连上」。
+///
+/// 旧 UI 读 SCM/launchd/systemd 的安装态（NotInstalled/Stopped/Running）；完整探测归 #58，
+/// 本票先保证 3s 拍与消费点在位，#58 只替换 `watch_service_state` 的探针实现。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ServiceState {
+    #[default]
+    Unknown,
+    Reachable,
+    Unreachable,
+}
+
+impl ServiceState {
+    pub fn label(self) -> &'static str {
+        match self {
+            ServiceState::Unknown => "—",
+            ServiceState::Reachable => "reachable",
+            ServiceState::Unreachable => "unreachable",
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct ConnectionSnapshot {
     pub state: ConnectionState,
@@ -32,6 +60,7 @@ pub struct ConnectionSnapshot {
     pub protocol_version: Option<i32>,
     pub exif_tool_version: Option<String>,
     pub status_mode: Option<String>,
+    pub service_state: ServiceState,
     pub round_trips: u64,
     pub last_round_trip: Option<Duration>,
     pub last_error: Option<String>,
@@ -46,6 +75,7 @@ impl ConnectionSnapshot {
             protocol_version: None,
             exif_tool_version: None,
             status_mode: None,
+            service_state: ServiceState::Unknown,
             round_trips: 0,
             last_round_trip: None,
             last_error: None,
@@ -79,7 +109,7 @@ pub fn spawn_monitor(
     tx: watch::Sender<ConnectionSnapshot>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        let mut backoff = Duration::from_secs(1);
+        let mut backoff = HEARTBEAT_INTERVAL;
         loop {
             let started = Instant::now();
             let result = client.status(&endpoint).await;
@@ -87,11 +117,11 @@ pub fn spawn_monitor(
 
             match result {
                 Ok((status, protocol_version)) => {
-                    backoff = Duration::from_secs(1);
+                    backoff = HEARTBEAT_INTERVAL;
                     tx.send_modify(|snapshot| {
                         apply_success(snapshot, &status, protocol_version, elapsed)
                     });
-                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    tokio::time::sleep(HEARTBEAT_INTERVAL).await;
                 }
                 Err(err) => {
                     backoff = next_backoff(backoff);
@@ -101,6 +131,39 @@ pub fn spawn_monitor(
             }
         }
     })
+}
+
+/// 服务态轮询：3s 一拍（旧 UI 的服务模式轮询同节奏），先等一拍再探，避免启动瞬间与连接编排抢管道。
+///
+/// 探针由调用方注入：生产用服务端点的连通性（短连接预算），#58 接入 SCM/launchd/systemd 安装态后
+/// 只换探针，不改节拍与快照字段。
+// Design(#58): 服务安装态探测未落地，本票用端点可达性代位；3s 节拍与消费点已固定。
+pub async fn watch_service_state<F, Fut>(probe: F, tx: watch::Sender<ConnectionSnapshot>)
+where
+    F: Fn() -> Fut,
+    Fut: Future<Output = bool>,
+{
+    loop {
+        tokio::time::sleep(SERVICE_POLL_INTERVAL).await;
+        let state = service_state(probe().await);
+        // 状态没变就不触发 UI 重绘（3s 一拍不应制造稳定的 3s 重绘）。
+        tx.send_if_modified(|snapshot| {
+            if snapshot.service_state == state {
+                false
+            } else {
+                snapshot.service_state = state;
+                true
+            }
+        });
+    }
+}
+
+fn service_state(reachable: bool) -> ServiceState {
+    if reachable {
+        ServiceState::Reachable
+    } else {
+        ServiceState::Unreachable
+    }
 }
 
 fn apply_success(
@@ -131,6 +194,47 @@ fn apply_failure(snapshot: &mut ConnectionSnapshot, err: &IpcError) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn poll_rhythms_match_old_ui() {
+        // 防：心跳 1s / 服务态 3s 的节奏漂移（旧 UI ConnectionStateService 1s 心跳、
+        // ServiceModeController 3s 服务态轮询，#59）。
+        assert_eq!(HEARTBEAT_INTERVAL, Duration::from_secs(1));
+        assert_eq!(SERVICE_POLL_INTERVAL, Duration::from_secs(3));
+    }
+
+    #[test]
+    fn service_state_maps_probe_result() {
+        // 防：探测结果被写成 Unknown，界面分不清「还没探」与「探过不可达」（#59）。
+        assert_eq!(service_state(true), ServiceState::Reachable);
+        assert_eq!(service_state(false), ServiceState::Unreachable);
+        assert_eq!(
+            ConnectionSnapshot::connecting().service_state,
+            ServiceState::Unknown
+        );
+    }
+
+    #[test]
+    fn heartbeat_updates_leave_service_state_alone() {
+        // 防：心跳成功/失败顺手清掉服务态，3s 拍的结果被 1s 心跳覆盖（#59）。
+        let mut snapshot = ConnectionSnapshot::connecting();
+        snapshot.service_state = ServiceState::Reachable;
+
+        apply_success(
+            &mut snapshot,
+            &Status {
+                exif_tool_version: "13.20".into(),
+                mode: "background".into(),
+                ..Status::default()
+            },
+            Some(1),
+            Duration::from_millis(3),
+        );
+        assert_eq!(snapshot.service_state, ServiceState::Reachable);
+
+        apply_failure(&mut snapshot, &IpcError::Timeout);
+        assert_eq!(snapshot.service_state, ServiceState::Reachable);
+    }
 
     #[test]
     fn backoff_steps_match_connection_state_service() {

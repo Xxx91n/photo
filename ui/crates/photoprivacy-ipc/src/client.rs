@@ -67,6 +67,14 @@ impl IpcClient {
         }
     }
 
+    /// 短预算客户端：服务态 3s 拍用它探测服务端点；服务未安装时不必每拍耗满 700ms 重试预算。
+    pub fn with_connect_timeout(connect_timeout: Duration) -> Self {
+        Self {
+            connect_timeout,
+            ..Self::new()
+        }
+    }
+
     pub async fn status(&self, endpoint: &Endpoint) -> Result<(Status, Option<i32>), IpcError> {
         let response = self.request(endpoint, methods::GET_STATUS).await?;
         let version = response.v;

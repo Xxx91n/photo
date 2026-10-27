@@ -1,6 +1,7 @@
 use photoprivacy_ipc::{
     ConnectionSnapshot, ConnectionState, Endpoint, IpcClient, WorkerMode, current_home,
     current_platform, resolve_endpoint, spawn_monitor, spawn_show_window_server,
+    watch_service_state,
 };
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -55,6 +56,24 @@ pub fn start(
             let _ = events_for_server.send(UiEvent::ShowWindow);
         });
     });
+
+    // 服务态 3s 拍：与连接编排并行起跑（旧 UI 的服务模式轮询同样独立于心跳）。
+    // 短连接预算：服务未安装时不值得每拍耗满 700ms 的重试预算。
+    if let Some(endpoint) = resolve_endpoint(
+        current_platform(),
+        WorkerMode::Service,
+        current_home().as_deref(),
+    ) {
+        let probe = Arc::new(IpcClient::with_connect_timeout(Duration::from_millis(250)));
+        runtime.spawn(watch_service_state(
+            move || {
+                let probe = probe.clone();
+                let endpoint = endpoint.clone();
+                async move { probe.is_alive(&endpoint).await }
+            },
+            snapshots.clone(),
+        ));
+    }
 
     runtime.spawn(async move {
         let client = Arc::new(IpcClient::new());

@@ -1,17 +1,23 @@
 mod app;
 mod theme;
+// Design(#49): gpui 无内建托盘（T4 已接受自建/第三方），托盘用 tray-icon 原生菜单实现。
+mod tray;
+mod ui_options;
 mod worker_connection;
 
 use gpui::{
-    App, AppContext, Bounds, TitlebarOptions, WindowBackgroundAppearance, WindowBounds,
-    WindowOptions, px, size,
+    App, AppContext, AsyncApp, Bounds, Pixels, QuitMode, TitlebarOptions,
+    WindowBackgroundAppearance, WindowBounds, WindowOptions, px, size,
 };
 use photoprivacy_ipc::{
     ConnectionSnapshot, SingleInstanceGuard, UI_INSTANCE_NAME, notify_existing_instance,
 };
+use std::cell::Cell;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::time::Duration;
-use worker_connection::ConnectOptions;
+use tokio::sync::{mpsc, watch};
+use worker_connection::{ConnectOptions, UiEvent};
 
 const USAGE: &str = "\
 PhotoPrivacy 新 UI（gpui 骨架竖切）
@@ -21,6 +27,9 @@ PhotoPrivacy 新 UI（gpui 骨架竖切）
   --config  启动后台 Worker 时传入的配置路径（默认同目录 config/config.json，与旧 UI 一致始终传入）
   --worker  后台 Worker 可执行文件路径（默认同目录 PhotoPrivacyWorker[.exe]，存在才用）
 ";
+
+/// 托盘/唤起事件的轮询间隔：事件来自托盘库的线程或 tokio 侧，统一切回 UI 线程处理。
+const EVENT_POLL_INTERVAL: Duration = Duration::from_millis(200);
 
 struct Args {
     config_path: Option<PathBuf>,
@@ -89,40 +98,154 @@ fn main() -> anyhow::Result<()> {
     }
 
     let options = ConnectOptions::discover().with_overrides(args.config_path, args.worker_path);
-    let (snapshot_tx, snapshot_rx) = tokio::sync::watch::channel(ConnectionSnapshot::connecting());
-    let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
+    let ui_options = ui_options::load(options.config_path.as_deref());
+    let (snapshot_tx, snapshot_rx) = watch::channel(ConnectionSnapshot::connecting());
+    let (event_tx, event_rx) = mpsc::unbounded_channel();
     worker_connection::start(runtime.handle(), options, snapshot_tx, event_tx);
 
+    // 主题在关窗驻守/重建之间延续；窗口本身不保留（gpui 没有隐藏窗口的 API）。
+    let theme_mode = Rc::new(Cell::new(theme::ThemeMode::System));
+
     application().run(move |cx: &mut App| {
-        cx.on_window_closed(|cx, _| {
-            if cx.windows().is_empty() {
+        // 托盘必须在主线程、平台就绪后创建（tray-icon 要求同线程有消息循环）。
+        let window_tray = tray::install(ui_options.hide_tray_icon);
+        let has_tray = window_tray.is_some();
+        let start_hidden =
+            tray::should_start_hidden(ui_options.hide_main_window_on_startup, has_tray);
+
+        spawn_event_pump(
+            cx,
+            window_tray,
+            event_rx,
+            snapshot_rx.clone(),
+            theme_mode.clone(),
+        );
+
+        // 关窗语义：托盘在 → 窗口销毁、进程与托盘继续驻守；托盘唤起会重建窗口。
+        // 没有托盘 → 关窗即退出（与旧 UI 的 UseTrayIcon == false 分支一致）。
+        // 必须显式关掉 gpui 的「最后一个窗口关闭即退出」默认——QuitMode::Default 在非 macOS 上
+        // 会无条件退出，驻守时窗口一关进程就没了。
+        cx.set_quit_mode(QuitMode::Explicit);
+        cx.on_window_closed(move |cx, _| {
+            if cx.windows().is_empty() && !has_tray {
                 cx.quit();
             }
         })
         .detach();
 
-        let bounds = Bounds::centered(None, size(px(820.), px(580.)), cx);
-        cx.open_window(
-            WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(bounds)),
-                titlebar: Some(TitlebarOptions {
-                    title: Some("PhotoPrivacy".into()),
-                    appears_transparent: false,
-                    traffic_light_position: None,
-                }),
-                window_background: WindowBackgroundAppearance::Opaque,
-                window_min_size: Some(size(px(680.), px(520.))),
-                ..Default::default()
-            },
-            move |window, cx| {
-                cx.activate(false);
-                cx.new(|cx| app::AppView::new(window, cx, snapshot_rx, event_rx))
-            },
-        )
-        .expect("创建主窗口失败");
+        if !start_hidden {
+            open_main_window(cx, snapshot_rx.clone(), theme_mode.clone());
+        }
     });
 
     drop(guard);
     runtime.shutdown_timeout(Duration::from_millis(300));
     Ok(())
+}
+
+fn spawn_event_pump(
+    cx: &mut App,
+    tray: Option<tray::TrayHandle>,
+    mut events: mpsc::UnboundedReceiver<UiEvent>,
+    snapshots: watch::Receiver<ConnectionSnapshot>,
+    theme_mode: Rc<Cell<theme::ThemeMode>>,
+) {
+    cx.spawn(async move |cx| {
+        loop {
+            cx.background_executor().timer(EVENT_POLL_INTERVAL).await;
+
+            let mut show_window = false;
+            let mut exit = false;
+
+            while let Ok(event) = events.try_recv() {
+                if matches!(event, UiEvent::ShowWindow) {
+                    show_window = true;
+                }
+            }
+
+            if let Some(tray) = &tray {
+                while let Some(command) = tray.poll() {
+                    match command {
+                        tray::TrayCommand::ShowWindow => show_window = true,
+                        tray::TrayCommand::Exit => exit = true,
+                    }
+                }
+            }
+
+            if exit {
+                // 旧 UI 退出前会向后台 Worker 发 Shutdown，但 Worker 只在 CLI 模式接受该请求
+                //（`WorkerIpcRequestHandler`），后台/服务模式必被拒；这里直接退进程，效果一致。
+                if let Some(tray) = &tray {
+                    tray.hide();
+                }
+                cx.update(|cx| cx.quit());
+                break;
+            }
+
+            if show_window {
+                show_main_window(cx, snapshots.clone(), theme_mode.clone());
+            }
+        }
+    })
+    .detach();
+}
+
+// Design(#49): gpui 无窗口隐藏 API——关窗驻守销毁窗口，托盘唤起时重建；主题状态跨重建保留。
+fn show_main_window(
+    cx: &mut AsyncApp,
+    snapshots: watch::Receiver<ConnectionSnapshot>,
+    theme_mode: Rc<Cell<theme::ThemeMode>>,
+) {
+    let windows = cx.update(|cx| cx.windows());
+    if let Some(handle) = windows.into_iter().next() {
+        let _ = handle.update(cx, |_, window, _| window.activate_window());
+    } else {
+        open_main_window_async(cx, snapshots, theme_mode);
+    }
+    cx.update(|cx| cx.activate(true));
+}
+
+fn open_main_window(
+    cx: &mut App,
+    snapshots: watch::Receiver<ConnectionSnapshot>,
+    theme_mode: Rc<Cell<theme::ThemeMode>>,
+) {
+    let bounds = Bounds::centered(None, size(px(820.), px(580.)), cx);
+    cx.open_window(window_options(bounds), move |window, cx| {
+        cx.activate(false);
+        cx.new(|cx| app::AppView::new(window, cx, snapshots, theme_mode))
+    })
+    .expect("创建主窗口失败");
+}
+
+fn open_main_window_async(
+    cx: &mut AsyncApp,
+    snapshots: watch::Receiver<ConnectionSnapshot>,
+    theme_mode: Rc<Cell<theme::ThemeMode>>,
+) {
+    let bounds = cx.update(|cx| Bounds::centered(None, size(px(820.), px(580.)), cx));
+    // 退出过程中仍可能收到最后一次唤起（应用已在 quit 状态时 open_window 会返回 Err）；
+    // 这里不 panic，避免把正常退出变成崩溃。
+    if let Err(err) = cx.open_window(window_options(bounds), move |window, cx| {
+        cx.activate(false);
+        cx.new(|cx| app::AppView::new(window, cx, snapshots, theme_mode))
+    }) {
+        eprintln!("[photoprivacy-ui] 重建主窗口失败: {err}");
+    }
+}
+
+fn window_options(bounds: Bounds<Pixels>) -> WindowOptions {
+    WindowOptions {
+        window_bounds: Some(WindowBounds::Windowed(bounds)),
+        titlebar: Some(TitlebarOptions {
+            title: Some("PhotoPrivacy".into()),
+            appears_transparent: false,
+            traffic_light_position: None,
+        }),
+        window_background: WindowBackgroundAppearance::Opaque,
+        window_min_size: Some(size(px(680.), px(520.))),
+        show: true,
+        focus: true,
+        ..Default::default()
+    }
 }
