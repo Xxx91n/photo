@@ -338,7 +338,8 @@
       "video": "Vídeo",
       "pdf": "PDF",
       "eps": "EPS/PS"
-    }
+    },
+    "load_warning": "Aviso de regras: {0}"
   },
   "titlebar": {
     "minimize": "Minimizar",

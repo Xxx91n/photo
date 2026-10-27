@@ -338,7 +338,8 @@
       "video": "فيديو",
       "pdf": "PDF",
       "eps": "EPS/PS"
-    }
+    },
+    "load_warning": "تحذير القواعد: {0}"
   },
   "titlebar": {
     "minimize": "تصغير",

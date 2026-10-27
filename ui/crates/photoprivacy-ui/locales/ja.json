@@ -338,7 +338,8 @@
       "video": "動画",
       "pdf": "PDF",
       "eps": "EPS/PS"
-    }
+    },
+    "load_warning": "ルールの警告: {0}"
   },
   "titlebar": {
     "minimize": "最小化",

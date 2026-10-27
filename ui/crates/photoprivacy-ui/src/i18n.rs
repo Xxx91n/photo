@@ -147,18 +147,26 @@ impl Catalog {
             .extend(flatten(json));
     }
 
+    /// 按语言名取目录；先精确匹配，再大小写不敏感匹配（config 手写 "AR"/"EN" 也能命中）。
+    fn locale_strings(&self, locale: &str) -> Option<&BTreeMap<String, String>> {
+        self.locales.get(locale).or_else(|| {
+            self.locales
+                .iter()
+                .find(|(name, _)| name.eq_ignore_ascii_case(locale))
+                .map(|(_, strings)| strings)
+        })
+    }
+
     /// 缺键兜底链：当前语言 → zh-CN → 键名本身（旧 UI `Get` 的语义）。
     pub fn get(&self, locale: &str, key: &str) -> String {
         if let Some(value) = self
-            .locales
-            .get(locale)
+            .locale_strings(locale)
             .and_then(|strings| strings.get(key))
         {
             return value.clone();
         }
         if let Some(value) = self
-            .locales
-            .get(FALLBACK_LOCALE)
+            .locale_strings(FALLBACK_LOCALE)
             .and_then(|strings| strings.get(key))
         {
             return value.clone();
@@ -173,8 +181,7 @@ impl Catalog {
 
     /// 当前语言是否含该键（用于「有翻译才替换」的调用点，如服务退出码）。
     pub fn contains(&self, locale: &str, key: &str) -> bool {
-        self.locales
-            .get(locale)
+        self.locale_strings(locale)
             .is_some_and(|strings| strings.contains_key(key))
     }
 }
@@ -327,6 +334,7 @@ pub mod keys {
     pub const RULES_CAUTION: &str = "rules.caution";
     pub const RULES_SAVE_FAILED: &str = "rules.save_failed";
     pub const RULES_RESET_FAILED: &str = "rules.reset_failed";
+    pub const RULES_LOAD_WARNING: &str = "rules.load_warning";
     pub const RULES_BTN_SAVE: &str = "rules.btn.save";
     pub const RULES_BTN_RESET: &str = "rules.btn.reset";
     pub const TOAST_RULES_SAVED: &str = "toast.rules_saved";
@@ -400,6 +408,21 @@ mod tests {
     #[test]
     fn malformed_json_yields_empty_layer_instead_of_panic() {
         assert!(flatten("{ not json").is_empty());
+    }
+
+    #[test]
+    fn locale_codes_match_case_insensitively() {
+        // 防：config 手写 "AR"/"EN" 时 is_rtl 已镜像但目录查找落空，整页落到 zh-CN 兜底。
+        let catalog = Catalog::embedded();
+        assert_eq!(
+            catalog.get("AR", "nav.overview"),
+            catalog.get("ar", "nav.overview")
+        );
+        assert_eq!(
+            catalog.get("EN", "nav.overview"),
+            catalog.get("en", "nav.overview")
+        );
+        assert!(catalog.contains("Ar", "nav.overview"));
     }
 
     #[test]
@@ -590,6 +613,7 @@ mod tests {
             keys::RULES_CAUTION,
             keys::RULES_SAVE_FAILED,
             keys::RULES_RESET_FAILED,
+            keys::RULES_LOAD_WARNING,
             keys::RULES_BTN_SAVE,
             keys::RULES_BTN_RESET,
             keys::TOAST_RULES_SAVED,

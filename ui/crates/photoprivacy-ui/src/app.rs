@@ -1001,7 +1001,7 @@ impl AppView {
         active: bool,
         theme: Theme,
         cx: &mut Context<Self>,
-        select: impl Fn(&mut Self, &mut Context<Self>) + 'static,
+        select: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
     ) -> AnyElement {
         div()
             .id(id)
@@ -1022,7 +1022,7 @@ impl AppView {
             })
             .hover(|element| element.text_color(theme.text))
             .cursor_pointer()
-            .on_click(cx.listener(move |this, _, _, cx| select(this, cx)))
+            .on_click(cx.listener(move |this, _, window, cx| select(this, window, cx)))
             .child(label)
             .into_any_element()
     }
@@ -1321,7 +1321,7 @@ impl AppView {
                 self.theme_mode.get() == candidate,
                 theme,
                 cx,
-                move |this, cx| this.set_theme_mode(candidate, cx),
+                move |this, _, cx| this.set_theme_mode(candidate, cx),
             ));
         }
         behavior_rows.push(
@@ -1350,9 +1350,11 @@ impl AppView {
                 active,
                 theme,
                 cx,
-                move |this, cx| {
+                move |this, window, cx| {
                     this.config.ui.locale = code.clone();
                     this.mark_dirty(cx);
+                    // 窗口标题取词于 app.title；仅当 exe/用户目录覆盖层使各语言标题不同时可见差异。
+                    window.set_window_title(&this.t(k::APP_TITLE));
                 },
             ));
         }
@@ -1525,7 +1527,7 @@ impl AppView {
                 active,
                 theme,
                 cx,
-                move |this, cx| {
+                move |this, _, cx| {
                     this.config.audit.log_level = level_for_config.clone();
                     this.mark_dirty(cx);
                 },
@@ -2161,11 +2163,17 @@ impl AppView {
 
         // 服务 crate 返回英文消息；带退出码的失败用 service.exitcode.* 键翻译（#60），
         // 无退出码的失败（spawn/超时/提权）或无对应键的未知退出码保留 crate 的具体原因。
-        let exit_code = match feedback.status {
-            photoprivacy_service::ServiceCommandStatus::Failed => {
-                feedback.exit_code.filter(|&code| code != 0)
+        // service.exitcode.* 是 Windows 退出码语义；Linux/macOS 的 systemctl/launchctl/pkexec
+        // 退出码域不同，保留 crate 的平台适配消息，不做跨域误译。
+        let exit_code = if cfg!(windows) {
+            match feedback.status {
+                photoprivacy_service::ServiceCommandStatus::Failed => {
+                    feedback.exit_code.filter(|&code| code != 0)
+                }
+                _ => None,
             }
-            _ => None,
+        } else {
+            None
         };
         let exit_code_key = exit_code.map(|code| format!("service.exitcode.{code}"));
         let message = match &exit_code_key {

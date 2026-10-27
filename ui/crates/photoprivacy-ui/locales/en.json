@@ -343,7 +343,8 @@
       "video": "Video",
       "pdf": "PDF",
       "eps": "EPS/PS"
-    }
+    },
+    "load_warning": "Rules warning: {0}"
   },
   "toast": {
     "config_saved": "Auto-saved",

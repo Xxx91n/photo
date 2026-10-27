@@ -338,7 +338,8 @@
       "video": "Видео",
       "pdf": "PDF",
       "eps": "EPS/PS"
-    }
+    },
+    "load_warning": "Предупреждение правил: {0}"
   },
   "titlebar": {
     "minimize": "Свернуть",

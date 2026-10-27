@@ -343,7 +343,8 @@
       "video": "视频",
       "pdf": "PDF",
       "eps": "EPS/PS"
-    }
+    },
+    "load_warning": "规则警告：{0}"
   },
   "toast": {
     "config_saved": "已自动保存",

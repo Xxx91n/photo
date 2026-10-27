@@ -338,7 +338,8 @@
       "video": "동영상",
       "pdf": "PDF",
       "eps": "EPS/PS"
-    }
+    },
+    "load_warning": "규칙 경고: {0}"
   },
   "titlebar": {
     "minimize": "최소화",
