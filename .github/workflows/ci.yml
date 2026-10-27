@@ -14,3 +14,55 @@ jobs:
           dotnet-version: "10.0.201"
       - name: Run tests (exclude Smoke/ExifTool)
         run: dotnet test PhotoPrivacy.sln --configuration Release --filter "Category!=Smoke&Category!=ExifTool"
+
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ensure rustfmt + clippy
+        run: rustup component add rustfmt clippy
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ui/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('ui/Cargo.lock') }}
+      - name: Rust format
+        working-directory: ui
+        run: cargo fmt --all -- --check
+      - name: Rust clippy (photoprivacy-ipc)
+        working-directory: ui
+        run: cargo clippy -p photoprivacy-ipc --all-targets -- -D warnings
+      - name: Rust tests (photoprivacy-ipc)
+        working-directory: ui
+        run: cargo test -p photoprivacy-ipc --locked
+
+  # UI crate 只做 check：build.rs 在 MSVC 目标上跳过 comctl32 清单（见 ui/crates/photoprivacy-ui/build.rs），
+  # link 仍需 MinGW windres，发版链归 #61。
+  ui-check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ensure Rust toolchain components
+        run: rustup component add rustfmt clippy
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ui/target
+          key: ${{ runner.os }}-cargo-msvc-${{ hashFiles('ui/Cargo.lock') }}
+      - name: Rust check (photoprivacy-ui)
+        working-directory: ui
+        run: cargo check -p photoprivacy-ui --locked
+
+  markers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Design markers must point to open issues
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: bash scripts/check-design-markers.sh
