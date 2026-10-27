@@ -113,6 +113,10 @@ fn main() -> anyhow::Result<()> {
 
     let (config_command_tx, config_command_rx) = tokio::sync::mpsc::unbounded_channel();
     let (config_event_tx, config_event_rx) = tokio::sync::mpsc::unbounded_channel();
+    // 窗口出现前同步读一次，避免 Loaded 到达前的编辑拿默认值覆盖盘上字段。
+    let initial_config = config_file::ConfigFile::new(config_path.clone())
+        .load_or_default()
+        .ok();
     config_service::spawn(
         runtime.handle(),
         config_path.clone(),
@@ -153,7 +157,10 @@ fn main() -> anyhow::Result<()> {
                         event_rx,
                         config_event_rx,
                         config_command_tx,
-                        config_path,
+                        app::ConfigBootstrap {
+                            path: config_path,
+                            initial: initial_config,
+                        },
                     )
                 })
             },

@@ -197,6 +197,12 @@ pub struct AppView {
     config_path: PathBuf,
 }
 
+/// 窗口创建时带入的配置起点：先同步读一次盘，避免 Loaded 到达前的编辑用默认值覆盖。
+pub struct ConfigBootstrap {
+    pub path: PathBuf,
+    pub initial: Option<AppConfig>,
+}
+
 impl AppView {
     pub fn new(
         window: &mut Window,
@@ -205,11 +211,15 @@ impl AppView {
         events: mpsc::UnboundedReceiver<UiEvent>,
         config_events: mpsc::UnboundedReceiver<ConfigEvent>,
         config_commands: mpsc::UnboundedSender<ConfigCommand>,
-        config_path: PathBuf,
+        bootstrap: ConfigBootstrap,
     ) -> Self {
+        let ConfigBootstrap {
+            path: config_path,
+            initial: initial_config,
+        } = bootstrap;
         let appearance_subscription = cx.observe_window_appearance(window, |_, _, cx| cx.notify());
         let snapshot = snapshots.borrow().clone();
-        let config = AppConfig::default();
+        let config = initial_config.unwrap_or_default();
         let mut fields = HashMap::new();
         for id in FieldId::ALL {
             fields.insert(
@@ -290,8 +300,14 @@ impl AppView {
 
     fn apply_config_event(&mut self, event: ConfigEvent) {
         match event {
-            ConfigEvent::Loaded(config) | ConfigEvent::ExternalReload(config) => {
-                self.set_config(config);
+            ConfigEvent::Loaded(config) => {
+                self.set_config(config, true);
+                self.save_state = SaveState::Idle;
+                self.save_status_deadline = None;
+            }
+            ConfigEvent::ExternalReload(config) => {
+                // 外部回灌不再探测 ExifTool：否则会把手改但暂时不存在的路径替换掉。
+                self.set_config(config, false);
                 self.save_state = SaveState::Idle;
                 self.save_status_deadline = None;
             }
@@ -313,11 +329,13 @@ impl AppView {
         }
     }
 
-    fn set_config(&mut self, mut config: AppConfig) {
+    fn set_config(&mut self, mut config: AppConfig, auto_detect_exiftool: bool) {
         config.ui.theme_variant = normalize_theme_variant(&config.ui.theme_variant).to_string();
         self.theme_mode = ThemeMode::from_variant(&config.ui.theme_variant);
         // 旧 UI 的 ResolveExifToolPath：当前路径不存在时探测常见安装位置并显示提示。
-        if let Some(detected) = crate::config::detect_exiftool_path(&config.exiftool.path) {
+        if auto_detect_exiftool
+            && let Some(detected) = crate::config::detect_exiftool_path(&config.exiftool.path)
+        {
             config.exiftool.path = detected.clone();
             self.exiftool_hint = Some(detected);
         } else {
