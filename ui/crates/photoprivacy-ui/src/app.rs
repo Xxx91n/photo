@@ -1,17 +1,51 @@
 use crate::log_service::{LogBatch, LogService};
 use crate::service_page::{ServiceCommand, ServiceFeedback, ServiceSnapshot};
 use crate::theme::{self, Theme, ThemeMode};
-use crate::worker_connection::UiEvent;
 use gpui::prelude::*;
 use gpui::{
     AnyElement, Context, Div, FontWeight, IntoElement, Render, Rgba, Stateful, Subscription,
     UniformListScrollHandle, Window, div, px, uniform_list,
 };
-use photoprivacy_ipc::{ConnectionSnapshot, ConnectionState};
+use photoprivacy_ipc::{ConnectionSnapshot, ConnectionState, ServiceReachability};
 use photoprivacy_logs::{AuditRecord, EventTone, LevelFilter, LogBuffer};
 use photoprivacy_service::{ServiceRuntimeState, button_state};
+use std::cell::{Cell, RefCell};
+use std::rc::Rc;
 use std::time::Duration;
 use tokio::sync::{mpsc, watch};
+
+const SNAPSHOT_POLL_INTERVAL: Duration = Duration::from_millis(200);
+
+/// 日志页跨窗口重建保留的状态：托盘驻守时窗口会销毁/重建，日志缓冲不能随视图一起丢。
+pub struct LogState {
+    logs: LogBuffer,
+    visible_indices: Vec<usize>,
+    level_filter: LevelFilter,
+    generation: u64,
+}
+
+impl LogState {
+    /// 用初始级别创建空的共享日志状态。
+    pub fn new(level_filter: LevelFilter) -> Self {
+        Self {
+            logs: LogBuffer::new(),
+            visible_indices: Vec::new(),
+            level_filter,
+            generation: 0,
+        }
+    }
+
+    /// 应用一个日志批次（代际校验通过时），返回状态是否变化。
+    /// 由 app 级事件泵调用，窗口关闭期间也持续排空通道，避免无界队列堆积。
+    pub fn apply_batch(&mut self, batch: LogBatch) -> bool {
+        if batch.generation < self.generation {
+            return false;
+        }
+        self.logs.push_batch(batch.records);
+        self.visible_indices = self.logs.visible_indices(self.level_filter);
+        true
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Page {
@@ -34,6 +68,18 @@ impl Page {
     }
 }
 
+/// 视图跨窗口重建需要沿用的依赖：Worker/服务快照、主题、日志状态与后台控制面。
+/// 打包成一个类型，避免同一组参数在事件泵/开窗/视图构造之间反复穿行。
+#[derive(Clone)]
+pub struct AppDeps {
+    pub snapshots: watch::Receiver<ConnectionSnapshot>,
+    pub theme_mode: Rc<Cell<ThemeMode>>,
+    pub log_state: Rc<RefCell<LogState>>,
+    pub log_service: LogService,
+    pub service_snapshots: watch::Receiver<ServiceSnapshot>,
+    pub service_commands: mpsc::UnboundedSender<ServiceCommand>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ButtonKind {
     Primary,
@@ -45,43 +91,28 @@ pub struct AppView {
     page: Page,
     snapshot: ConnectionSnapshot,
     snapshots: watch::Receiver<ConnectionSnapshot>,
-    events: mpsc::UnboundedReceiver<UiEvent>,
+    /// 主题、日志与服务快照都跨窗口重建保留（关窗驻守后托盘会重建窗口）。
+    theme_mode: Rc<Cell<ThemeMode>>,
+    log_state: Rc<RefCell<LogState>>,
     service: ServiceSnapshot,
     service_snapshots: watch::Receiver<ServiceSnapshot>,
     service_commands: mpsc::UnboundedSender<ServiceCommand>,
-    theme_mode: ThemeMode,
-    logs: LogBuffer,
-    visible_indices: Vec<usize>,
-    level_filter: LevelFilter,
-    log_batches: mpsc::UnboundedReceiver<LogBatch>,
     log_service: LogService,
-    log_generation: u64,
     log_scroll: UniformListScrollHandle,
     _appearance_subscription: Subscription,
 }
 
-/// 组合根一次性注入的 UI 依赖面，避免构造函数参数继续膨胀。
-pub struct AppViewInit {
-    pub snapshots: watch::Receiver<ConnectionSnapshot>,
-    pub events: mpsc::UnboundedReceiver<UiEvent>,
-    pub log_batches: mpsc::UnboundedReceiver<LogBatch>,
-    pub log_service: LogService,
-    pub initial_level: LevelFilter,
-    pub service_snapshots: watch::Receiver<ServiceSnapshot>,
-    pub service_commands: mpsc::UnboundedSender<ServiceCommand>,
-}
-
 impl AppView {
-    pub fn new(window: &mut Window, cx: &mut Context<Self>, init: AppViewInit) -> Self {
-        let AppViewInit {
+    /// 构造视图：Worker/服务快照、主题与日志状态都从 `AppDeps` 取，跨窗口重建复用。
+    pub fn new(window: &mut Window, cx: &mut Context<Self>, deps: AppDeps) -> Self {
+        let AppDeps {
             snapshots,
-            events,
-            log_batches,
+            theme_mode,
+            log_state,
             log_service,
-            initial_level,
             service_snapshots,
             service_commands,
-        } = init;
+        } = deps;
         let appearance_subscription = cx.observe_window_appearance(window, |_, _, cx| cx.notify());
         let snapshot = snapshots.borrow().clone();
         let service = service_snapshots.borrow().clone();
@@ -89,17 +120,12 @@ impl AppView {
             page: Page::Overview,
             snapshot,
             snapshots,
-            events,
+            theme_mode,
+            log_state,
             service,
             service_snapshots,
             service_commands,
-            theme_mode: ThemeMode::System,
-            logs: LogBuffer::new(),
-            visible_indices: Vec::new(),
-            level_filter: initial_level,
-            log_batches,
             log_service,
-            log_generation: 0,
             log_scroll: UniformListScrollHandle::new(),
             _appearance_subscription: appearance_subscription,
         };
@@ -107,20 +133,17 @@ impl AppView {
         view
     }
 
-    /// 后台快照、日志批次与「唤起窗口」事件都从 tokio 线程来；这里在 UI 线程轮询，
-    /// 避免跨线程触碰 gpui 状态。
+    /// Worker 快照从 tokio 线程来；这里在 UI 线程轮询，避免跨线程触碰 gpui 状态。
+    /// 托盘、唤起与日志批次由 main 的 app 级事件泵处理（窗口不存在时也要能响应）。
     fn spawn_updates(&self, window: &Window, cx: &mut Context<Self>) {
         cx.spawn_in(window, async move |this, cx| {
             loop {
-                cx.background_executor()
-                    .timer(Duration::from_millis(200))
-                    .await;
+                cx.background_executor().timer(SNAPSHOT_POLL_INTERVAL).await;
 
-                let show_window = this
+                // 关窗驻守后本视图实体会被释放；此时必须退出循环，否则每次重建窗口都会留下一个
+                // 永远 upgrade 失败的空转任务。
+                let alive = this
                     .update(cx, |this, cx| {
-                        let mut show_window = false;
-                        let mut logs_changed = false;
-
                         if this.snapshots.has_changed().unwrap_or(false) {
                             this.snapshot = this.snapshots.borrow_and_update().clone();
                             cx.notify();
@@ -129,45 +152,33 @@ impl AppView {
                             this.service = this.service_snapshots.borrow_and_update().clone();
                             cx.notify();
                         }
-                        while let Ok(event) = this.events.try_recv() {
-                            if matches!(event, UiEvent::ShowWindow) {
-                                show_window = true;
-                            }
-                        }
-                        while let Ok(batch) = this.log_batches.try_recv() {
-                            if batch.generation >= this.log_generation {
-                                this.logs.push_batch(batch.records);
-                                logs_changed = true;
-                            }
-                        }
-                        if logs_changed {
-                            this.rebuild_visible();
-                            cx.notify();
-                        }
-                        show_window
                     })
-                    .unwrap_or(false);
-
-                if show_window {
-                    let _ = cx.update(|window, _| window.activate_window());
+                    .is_ok();
+                if !alive {
+                    break;
                 }
             }
         })
         .detach();
     }
 
-    fn rebuild_visible(&mut self) {
-        self.visible_indices = self.logs.visible_indices(self.level_filter);
+    /// 按当前级别过滤共享日志并刷新可见索引。
+    fn rebuild_visible(&self) {
+        let mut state = self.log_state.borrow_mut();
+        let visible = state.logs.visible_indices(state.level_filter);
+        state.visible_indices = visible;
     }
 
+    /// 清空共享日志缓冲并推进代际；旧代际批次由 app 级事件泵在应用时丢弃。
     fn clear_logs(&mut self) {
-        self.log_generation = self.log_generation.wrapping_add(1);
-        // 清空命令发出前已进入通道的批次属于旧代际，UI 侧一并丢弃。
-        while self.log_batches.try_recv().is_ok() {}
-        self.logs.clear();
-        self.visible_indices.clear();
+        let mut state = self.log_state.borrow_mut();
+        state.generation = state.generation.wrapping_add(1);
+        state.logs.clear();
+        state.visible_indices.clear();
+        let generation = state.generation;
+        drop(state);
         self.log_scroll = UniformListScrollHandle::new();
-        self.log_service.clear(self.log_generation);
+        self.log_service.clear(generation);
     }
 
     fn state_color(state: ConnectionState, theme: &Theme) -> Rgba {
@@ -218,7 +229,7 @@ impl AppView {
                     .hover(|element| element.bg(theme.surface))
                     .cursor_pointer()
                     .on_click(cx.listener(move |this, _, _, cx| {
-                        this.theme_mode = candidate;
+                        this.theme_mode.set(candidate);
                         cx.notify();
                     }))
                     .child(candidate.label())
@@ -281,7 +292,7 @@ impl AppView {
                     .hover(|element| element.bg(theme.surface))
                     .cursor_pointer()
                     .on_click(cx.listener(move |this, _, _, cx| {
-                        this.level_filter = candidate;
+                        this.log_state.borrow_mut().level_filter = candidate;
                         this.rebuild_visible();
                         cx.notify();
                     }))
@@ -304,6 +315,16 @@ impl AppView {
             .child(div().text_size(px(12.)).text_color(theme.text).child(value))
     }
 
+    /// 服务可达性 → 展示文案。
+    fn service_label(state: ServiceReachability) -> &'static str {
+        match state {
+            ServiceReachability::Unknown => "—",
+            ServiceReachability::Reachable => "reachable",
+            ServiceReachability::Unreachable => "unreachable",
+        }
+    }
+
+    /// Overview 页：连接状态与 Worker 详情。
     fn overview_body(&self, theme: &Theme) -> AnyElement {
         let state = self.snapshot.state;
         let dot = Self::state_color(state, theme);
@@ -364,6 +385,10 @@ impl AppView {
             ("Worker mode", mode.clone()),
             ("Reported mode", or_dash(self.snapshot.status_mode.clone())),
             (
+                "Service IPC",
+                Self::service_label(self.snapshot.service_reachability).to_string(),
+            ),
+            (
                 "Protocol",
                 or_dash(
                     self.snapshot
@@ -407,9 +432,19 @@ impl AppView {
             .into_any_element()
     }
 
+    /// Logs 页：级别过滤、清空与审计尾部列表。
     fn logs_body(&mut self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
-        let filter_group = Self::level_filter_group(self.level_filter, theme, cx);
-        let count_label = format!("{} entries", self.visible_indices.len());
+        let (level_filter, visible_len, logs_empty, filtered_empty) = {
+            let state = self.log_state.borrow();
+            (
+                state.level_filter,
+                state.visible_indices.len(),
+                state.logs.is_empty(),
+                !state.logs.is_empty() && state.visible_indices.is_empty(),
+            )
+        };
+        let filter_group = Self::level_filter_group(level_filter, theme, cx);
+        let count_label = format!("{visible_len} entries");
         let toolbar = div()
             .flex()
             .items_center()
@@ -458,8 +493,7 @@ impl AppView {
                     .child("Audit tail from the daily JSONL — local tail plus IPC backfill."),
             );
 
-        let filtered_empty = !self.logs.is_empty() && self.visible_indices.is_empty();
-        let card = if self.logs.is_empty() {
+        let card = if logs_empty {
             Self::log_card(
                 theme,
                 Self::empty_state(
@@ -481,14 +515,15 @@ impl AppView {
             let row_theme = *theme;
             let list = uniform_list(
                 "audit-log",
-                self.visible_indices.len(),
+                visible_len,
                 cx.processor(move |this, range: std::ops::Range<usize>, _window, _cx| {
+                    let state = this.log_state.borrow();
                     let mut rows = Vec::with_capacity(range.len());
                     for index in range {
-                        let Some(entry_index) = this.visible_indices.get(index).copied() else {
+                        let Some(entry_index) = state.visible_indices.get(index).copied() else {
                             continue;
                         };
-                        let Some(entry) = this.logs.get(entry_index) else {
+                        let Some(entry) = state.logs.get(entry_index) else {
                             continue;
                         };
                         rows.push(Self::log_row(entry, &row_theme).into_any_element());
@@ -903,7 +938,7 @@ fn or_dash(value: Option<String>) -> String {
 
 impl Render for AppView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme = Theme::resolve(self.theme_mode, theme::is_dark(window.appearance()));
+        let theme = Theme::resolve(self.theme_mode.get(), theme::is_dark(window.appearance()));
         let header = div()
             .flex()
             .items_center()
@@ -946,7 +981,7 @@ impl Render for AppView {
                     ),
             )
             .child(div().flex_1())
-            .child(Self::theme_switch(self.theme_mode, &theme, cx));
+            .child(Self::theme_switch(self.theme_mode.get(), &theme, cx));
 
         let content = match self.page {
             Page::Overview => self.overview_body(&theme),
