@@ -1,4 +1,5 @@
 mod app;
+mod log_service;
 mod service_page;
 mod theme;
 mod worker_connection;
@@ -73,6 +74,13 @@ fn application() -> gpui::Application {
     gpui::Application::with_platform(gpui_linux::current_platform(false))
 }
 
+fn audit_fallback_directory() -> PathBuf {
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|dir| dir.join("hot").join("_audit")))
+        .unwrap_or_else(|| PathBuf::from("hot").join("_audit"))
+}
+
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
@@ -90,14 +98,24 @@ fn main() -> anyhow::Result<()> {
     }
 
     let options = ConnectOptions::discover().with_overrides(args.config_path, args.worker_path);
+    // 日志页读取与 Worker 相同的 config.json 切片；缺失/为空时回落到 `<base>/hot/_audit`
+    // （旧 UI 经 AppConfigLoader 把空串补成 DefaultPaths.DefaultAuditLogDirectory）。
+    let audit_config = photoprivacy_logs::resolve_audit_config(
+        options.config_path.as_deref(),
+        &audit_fallback_directory(),
+    );
+    let log_level = audit_config.log_level;
+
     let (snapshot_tx, snapshot_rx) = tokio::sync::watch::channel(ConnectionSnapshot::connecting());
     let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (log_tx, log_rx) = tokio::sync::mpsc::unbounded_channel();
     let (service_snapshots, service_commands) = service_page::start(
         runtime.handle(),
         options.worker_path.clone(),
         options.config_path.clone(),
     );
-    worker_connection::start(runtime.handle(), options, snapshot_tx, event_tx);
+    let link = worker_connection::start(runtime.handle(), options, snapshot_tx, event_tx);
+    let log_service = log_service::start(runtime.handle(), audit_config, link, log_tx);
 
     application().run(move |cx: &mut App| {
         cx.on_window_closed(|cx, _| {
@@ -126,10 +144,15 @@ fn main() -> anyhow::Result<()> {
                     app::AppView::new(
                         window,
                         cx,
-                        snapshot_rx,
-                        event_rx,
-                        service_snapshots,
-                        service_commands,
+                        app::AppViewInit {
+                            snapshots: snapshot_rx,
+                            events: event_rx,
+                            log_batches: log_rx,
+                            log_service,
+                            initial_level: log_level,
+                            service_snapshots,
+                            service_commands,
+                        },
                     )
                 })
             },

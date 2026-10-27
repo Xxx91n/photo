@@ -42,13 +42,21 @@ pub enum UiEvent {
     ShowWindow,
 }
 
+/// 日志 backfill 需要的 Worker 访问面：共享客户端 + 连接编排解析出的端点。
+///
+/// 端点可能在心跳之前就广播（连接探测成功后立刻可见），backfill 自行重试到 Worker 可达。
+pub struct WorkerLink {
+    pub client: Arc<IpcClient>,
+    pub endpoint: watch::Receiver<Option<Endpoint>>,
+}
+
 /// 启动 IPC 侧的全部后台任务：唤起管道服务、连接编排、心跳监控。
 pub fn start(
     runtime: &tokio::runtime::Handle,
     options: ConnectOptions,
     snapshots: watch::Sender<ConnectionSnapshot>,
     events: mpsc::UnboundedSender<UiEvent>,
-) {
+) -> WorkerLink {
     let events_for_server = events.clone();
     runtime.spawn(async move {
         spawn_show_window_server(move || {
@@ -56,10 +64,17 @@ pub fn start(
         });
     });
 
+    let client = Arc::new(IpcClient::new());
+    let (endpoint_tx, endpoint_rx) = watch::channel(None);
+    let link = WorkerLink {
+        client: client.clone(),
+        endpoint: endpoint_rx,
+    };
+
     runtime.spawn(async move {
-        let client = Arc::new(IpcClient::new());
         match connect_worker(&client, &options).await {
             Some((endpoint, mode)) => {
+                let _ = endpoint_tx.send(Some(endpoint.clone()));
                 snapshots.send_modify(|snapshot| {
                     snapshot.state = ConnectionState::Connecting;
                     snapshot.endpoint = Some(endpoint.display());
@@ -76,6 +91,8 @@ pub fn start(
             }
         }
     });
+
+    link
 }
 
 /// 连接顺序与旧 UI `WorkerProcessManager.ConnectOrLaunchAsync` 对齐：服务端点优先，其次后台端点，

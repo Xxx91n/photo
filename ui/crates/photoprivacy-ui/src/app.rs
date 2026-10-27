@@ -1,9 +1,14 @@
+use crate::log_service::{LogBatch, LogService};
 use crate::service_page::{ServiceCommand, ServiceFeedback, ServiceSnapshot};
 use crate::theme::{self, Theme, ThemeMode};
 use crate::worker_connection::UiEvent;
 use gpui::prelude::*;
-use gpui::{Context, Div, FontWeight, IntoElement, Render, Rgba, Subscription, Window, div, px};
+use gpui::{
+    AnyElement, Context, Div, FontWeight, IntoElement, Render, Rgba, Stateful, Subscription,
+    UniformListScrollHandle, Window, div, px, uniform_list,
+};
 use photoprivacy_ipc::{ConnectionSnapshot, ConnectionState};
+use photoprivacy_logs::{AuditRecord, EventTone, LevelFilter, LogBuffer};
 use photoprivacy_service::{ServiceRuntimeState, button_state};
 use std::time::Duration;
 use tokio::sync::{mpsc, watch};
@@ -12,18 +17,20 @@ use tokio::sync::{mpsc, watch};
 enum Page {
     Overview,
     Service,
+    Logs,
 }
 
 impl Page {
     fn label(self) -> &'static str {
         match self {
-            Page::Overview => "Overview",
-            Page::Service => "Service",
+            Self::Overview => "Overview",
+            Self::Service => "Service",
+            Self::Logs => "Logs",
         }
     }
 
-    fn all() -> [Page; 2] {
-        [Page::Overview, Page::Service]
+    fn all() -> [Self; 3] {
+        [Self::Overview, Self::Service, Self::Logs]
     }
 }
 
@@ -43,18 +50,38 @@ pub struct AppView {
     service_snapshots: watch::Receiver<ServiceSnapshot>,
     service_commands: mpsc::UnboundedSender<ServiceCommand>,
     theme_mode: ThemeMode,
+    logs: LogBuffer,
+    visible_indices: Vec<usize>,
+    level_filter: LevelFilter,
+    log_batches: mpsc::UnboundedReceiver<LogBatch>,
+    log_service: LogService,
+    log_generation: u64,
+    log_scroll: UniformListScrollHandle,
     _appearance_subscription: Subscription,
 }
 
+/// 组合根一次性注入的 UI 依赖面，避免构造函数参数继续膨胀。
+pub struct AppViewInit {
+    pub snapshots: watch::Receiver<ConnectionSnapshot>,
+    pub events: mpsc::UnboundedReceiver<UiEvent>,
+    pub log_batches: mpsc::UnboundedReceiver<LogBatch>,
+    pub log_service: LogService,
+    pub initial_level: LevelFilter,
+    pub service_snapshots: watch::Receiver<ServiceSnapshot>,
+    pub service_commands: mpsc::UnboundedSender<ServiceCommand>,
+}
+
 impl AppView {
-    pub fn new(
-        window: &mut Window,
-        cx: &mut Context<Self>,
-        snapshots: watch::Receiver<ConnectionSnapshot>,
-        events: mpsc::UnboundedReceiver<UiEvent>,
-        service_snapshots: watch::Receiver<ServiceSnapshot>,
-        service_commands: mpsc::UnboundedSender<ServiceCommand>,
-    ) -> Self {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>, init: AppViewInit) -> Self {
+        let AppViewInit {
+            snapshots,
+            events,
+            log_batches,
+            log_service,
+            initial_level,
+            service_snapshots,
+            service_commands,
+        } = init;
         let appearance_subscription = cx.observe_window_appearance(window, |_, _, cx| cx.notify());
         let snapshot = snapshots.borrow().clone();
         let service = service_snapshots.borrow().clone();
@@ -67,13 +94,21 @@ impl AppView {
             service_snapshots,
             service_commands,
             theme_mode: ThemeMode::System,
+            logs: LogBuffer::new(),
+            visible_indices: Vec::new(),
+            level_filter: initial_level,
+            log_batches,
+            log_service,
+            log_generation: 0,
+            log_scroll: UniformListScrollHandle::new(),
             _appearance_subscription: appearance_subscription,
         };
         view.spawn_updates(window, cx);
         view
     }
 
-    /// 后台快照与「唤起窗口」事件都从 tokio 线程来；这里在 UI 线程轮询，避免跨线程触碰 gpui 状态。
+    /// 后台快照、日志批次与「唤起窗口」事件都从 tokio 线程来；这里在 UI 线程轮询，
+    /// 避免跨线程触碰 gpui 状态。
     fn spawn_updates(&self, window: &Window, cx: &mut Context<Self>) {
         cx.spawn_in(window, async move |this, cx| {
             loop {
@@ -84,6 +119,8 @@ impl AppView {
                 let show_window = this
                     .update(cx, |this, cx| {
                         let mut show_window = false;
+                        let mut logs_changed = false;
+
                         if this.snapshots.has_changed().unwrap_or(false) {
                             this.snapshot = this.snapshots.borrow_and_update().clone();
                             cx.notify();
@@ -97,6 +134,16 @@ impl AppView {
                                 show_window = true;
                             }
                         }
+                        while let Ok(batch) = this.log_batches.try_recv() {
+                            if batch.generation >= this.log_generation {
+                                this.logs.push_batch(batch.records);
+                                logs_changed = true;
+                            }
+                        }
+                        if logs_changed {
+                            this.rebuild_visible();
+                            cx.notify();
+                        }
                         show_window
                     })
                     .unwrap_or(false);
@@ -109,6 +156,20 @@ impl AppView {
         .detach();
     }
 
+    fn rebuild_visible(&mut self) {
+        self.visible_indices = self.logs.visible_indices(self.level_filter);
+    }
+
+    fn clear_logs(&mut self) {
+        self.log_generation = self.log_generation.wrapping_add(1);
+        // 清空命令发出前已进入通道的批次属于旧代际，UI 侧一并丢弃。
+        while self.log_batches.try_recv().is_ok() {}
+        self.logs.clear();
+        self.visible_indices.clear();
+        self.log_scroll = UniformListScrollHandle::new();
+        self.log_service.clear(self.log_generation);
+    }
+
     fn state_color(state: ConnectionState, theme: &Theme) -> Rgba {
         match state {
             ConnectionState::Connected => theme.success,
@@ -118,22 +179,18 @@ impl AppView {
         }
     }
 
-    fn service_state_color(state: ServiceRuntimeState, theme: &Theme) -> Rgba {
-        match state {
-            ServiceRuntimeState::Running => theme.success,
-            ServiceRuntimeState::StartPending | ServiceRuntimeState::ContinuePending => {
-                theme.accent
-            }
-            ServiceRuntimeState::Paused
-            | ServiceRuntimeState::PausePending
-            | ServiceRuntimeState::StopPending
-            | ServiceRuntimeState::Unknown => theme.warning,
-            ServiceRuntimeState::Stopped => theme.text_muted,
-            ServiceRuntimeState::NotInstalled => theme.text_faint,
+    fn tone_color(tone: EventTone, theme: &Theme) -> Rgba {
+        match tone {
+            EventTone::Success => theme.success,
+            EventTone::Neutral => theme.text,
+            EventTone::Muted => theme.text_faint,
+            EventTone::Info => theme.text_muted,
+            EventTone::Warning => theme.warning,
+            EventTone::Danger => theme.danger,
         }
     }
 
-    fn theme_switch(mode: ThemeMode, theme: &Theme, cx: &mut Context<Self>) -> impl IntoElement {
+    fn theme_switch(mode: ThemeMode, theme: &Theme, cx: &mut Context<Self>) -> Div {
         div()
             .flex()
             .items_center()
@@ -168,7 +225,35 @@ impl AppView {
             }))
     }
 
-    fn page_switch(active: Page, theme: &Theme, cx: &mut Context<Self>) -> impl IntoElement {
+    fn nav_tab(page: Page, current: Page, theme: &Theme, cx: &mut Context<Self>) -> Stateful<Div> {
+        let active = page == current;
+        div()
+            .id(page.label())
+            .px(px(11.))
+            .py(px(4.))
+            .rounded(px(7.))
+            .text_size(px(12.))
+            .when(active, |element| {
+                element
+                    .bg(theme.surface)
+                    .text_color(theme.text)
+                    .font_weight(FontWeight::MEDIUM)
+            })
+            .when(!active, |element| element.text_color(theme.text_muted))
+            .hover(|element| element.bg(theme.surface))
+            .cursor_pointer()
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.page = page;
+                cx.notify();
+            }))
+            .child(page.label())
+    }
+
+    fn level_filter_group(
+        current_level: LevelFilter,
+        theme: &Theme,
+        cx: &mut Context<Self>,
+    ) -> Div {
         div()
             .flex()
             .items_center()
@@ -178,32 +263,33 @@ impl AppView {
             .border_1()
             .border_color(theme.border)
             .rounded(px(9.))
-            .children(Page::all().into_iter().map(move |candidate| {
-                let selected = candidate == active;
+            .children(LevelFilter::all().into_iter().map(move |candidate| {
+                let active = candidate == current_level;
                 div()
                     .id(candidate.label())
-                    .px(px(10.))
+                    .px(px(9.))
                     .py(px(4.))
                     .rounded(px(7.))
-                    .text_size(px(12.))
-                    .when(selected, |element| {
+                    .text_size(px(11.))
+                    .when(active, |element| {
                         element
                             .bg(theme.surface)
                             .text_color(theme.text)
                             .font_weight(FontWeight::MEDIUM)
                     })
-                    .when(!selected, |element| element.text_color(theme.text_muted))
+                    .when(!active, |element| element.text_color(theme.text_muted))
                     .hover(|element| element.bg(theme.surface))
                     .cursor_pointer()
                     .on_click(cx.listener(move |this, _, _, cx| {
-                        this.page = candidate;
+                        this.level_filter = candidate;
+                        this.rebuild_visible();
                         cx.notify();
                     }))
                     .child(candidate.label())
             }))
     }
 
-    fn detail_row(label: &'static str, value: String, theme: &Theme) -> impl IntoElement {
+    fn detail_row(label: &'static str, value: String, theme: &Theme) -> Div {
         div()
             .flex()
             .items_center()
@@ -216,6 +302,350 @@ impl AppView {
                     .child(label),
             )
             .child(div().text_size(px(12.)).text_color(theme.text).child(value))
+    }
+
+    fn overview_body(&self, theme: &Theme) -> AnyElement {
+        let state = self.snapshot.state;
+        let dot = Self::state_color(state, theme);
+        let endpoint = or_dash(self.snapshot.endpoint.clone());
+        let mode = or_dash(
+            self.snapshot
+                .worker_mode
+                .map(|mode| mode.label().to_string()),
+        );
+        let round_trip = match self.snapshot.last_round_trip {
+            Some(elapsed) => format!("last round trip {} ms", elapsed.as_millis()),
+            None => "no round trip yet".to_string(),
+        };
+
+        let status_card = div()
+            .flex()
+            .flex_col()
+            .gap(px(8.))
+            .p(px(16.))
+            .bg(theme.surface)
+            .border_1()
+            .border_color(theme.border)
+            .rounded(px(12.))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .child(div().size(px(8.)).rounded_full().bg(dot))
+                    .child(
+                        div()
+                            .text_size(px(14.))
+                            .font_weight(FontWeight::MEDIUM)
+                            .child(state.label()),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(12.))
+                            .text_color(theme.text_muted)
+                            .child(format!("· {endpoint} · {mode}")),
+                    )
+                    .child(div().flex_1())
+                    .child(
+                        div()
+                            .text_size(px(11.))
+                            .text_color(theme.text_faint)
+                            .child(round_trip),
+                    ),
+            )
+            .children(self.snapshot.last_error.clone().map(|error| {
+                div()
+                    .text_size(px(12.))
+                    .text_color(theme.danger)
+                    .child(error)
+            }));
+
+        let rows = [
+            ("Worker mode", mode.clone()),
+            ("Reported mode", or_dash(self.snapshot.status_mode.clone())),
+            (
+                "Protocol",
+                or_dash(
+                    self.snapshot
+                        .protocol_version
+                        .map(|version| format!("v{version}")),
+                ),
+            ),
+            ("ExifTool", or_dash(self.snapshot.exif_tool_version.clone())),
+            ("Round trips", self.snapshot.round_trips.to_string()),
+        ];
+
+        let details = div()
+            .flex()
+            .flex_col()
+            .gap(px(10.))
+            .p(px(16.))
+            .bg(theme.surface)
+            .border_1()
+            .border_color(theme.border)
+            .rounded(px(12.))
+            .child(
+                div()
+                    .text_size(px(11.))
+                    .text_color(theme.text_faint)
+                    .child("WORKER"),
+            )
+            .children(
+                rows.into_iter()
+                    .map(|(label, value)| Self::detail_row(label, value, theme)),
+            );
+
+        div()
+            .flex_1()
+            .flex()
+            .flex_col()
+            .gap(px(12.))
+            .px(px(24.))
+            .pb(px(12.))
+            .child(status_card)
+            .child(details)
+            .into_any_element()
+    }
+
+    fn logs_body(&mut self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
+        let filter_group = Self::level_filter_group(self.level_filter, theme, cx);
+        let count_label = format!("{} entries", self.visible_indices.len());
+        let toolbar = div()
+            .flex()
+            .items_center()
+            .gap(px(12.))
+            .child(filter_group)
+            .child(
+                div()
+                    .text_size(px(11.))
+                    .text_color(theme.text_faint)
+                    .child(count_label),
+            )
+            .child(div().flex_1())
+            .child(
+                div()
+                    .id("clear-logs")
+                    .px(px(12.))
+                    .py(px(6.))
+                    .rounded(px(8.))
+                    .border_1()
+                    .border_color(theme.border)
+                    .text_size(px(12.))
+                    .text_color(theme.text_muted)
+                    .hover(|element| element.bg(theme.surface_raised).text_color(theme.text))
+                    .cursor_pointer()
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.clear_logs();
+                        cx.notify();
+                    }))
+                    .child("Clear"),
+            );
+
+        let heading = div()
+            .flex()
+            .flex_col()
+            .gap(px(3.))
+            .child(
+                div()
+                    .text_size(px(18.))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .child("Logs"),
+            )
+            .child(
+                div()
+                    .text_size(px(12.))
+                    .text_color(theme.text_muted)
+                    .child("Audit tail from the daily JSONL — local tail plus IPC backfill."),
+            );
+
+        let filtered_empty = !self.logs.is_empty() && self.visible_indices.is_empty();
+        let card = if self.logs.is_empty() {
+            Self::log_card(
+                theme,
+                Self::empty_state(
+                    "No audit entries yet",
+                    "Audit events appear here as files are processed.",
+                    theme,
+                ),
+            )
+        } else if filtered_empty {
+            Self::log_card(
+                theme,
+                Self::empty_state(
+                    "No entries under the current level filter",
+                    "Lower the level or wait for matching events.",
+                    theme,
+                ),
+            )
+        } else {
+            let row_theme = *theme;
+            let list = uniform_list(
+                "audit-log",
+                self.visible_indices.len(),
+                cx.processor(move |this, range: std::ops::Range<usize>, _window, _cx| {
+                    let mut rows = Vec::with_capacity(range.len());
+                    for index in range {
+                        let Some(entry_index) = this.visible_indices.get(index).copied() else {
+                            continue;
+                        };
+                        let Some(entry) = this.logs.get(entry_index) else {
+                            continue;
+                        };
+                        rows.push(Self::log_row(entry, &row_theme).into_any_element());
+                    }
+                    rows
+                }),
+            )
+            .track_scroll(&self.log_scroll)
+            .size_full();
+
+            Self::log_card(
+                theme,
+                div()
+                    .flex_1()
+                    .flex()
+                    .flex_col()
+                    .overflow_hidden()
+                    .child(Self::log_header(theme))
+                    .child(div().flex_1().overflow_hidden().child(list)),
+            )
+        };
+
+        div()
+            .flex_1()
+            .flex()
+            .flex_col()
+            .gap(px(12.))
+            .px(px(24.))
+            .pb(px(12.))
+            .child(heading)
+            .child(toolbar)
+            .child(card)
+            .into_any_element()
+    }
+
+    fn log_card(theme: &Theme, content: impl IntoElement) -> Div {
+        div()
+            .flex_1()
+            .flex()
+            .flex_col()
+            .overflow_hidden()
+            .bg(theme.surface)
+            .border_1()
+            .border_color(theme.border)
+            .rounded(px(12.))
+            .child(content)
+    }
+
+    fn log_header(theme: &Theme) -> Div {
+        div()
+            .h(px(32.))
+            .flex_none()
+            .w_full()
+            .flex()
+            .items_center()
+            .gap(px(12.))
+            .px(px(12.))
+            .border_b_1()
+            .border_color(theme.border)
+            .text_size(px(11.))
+            .text_color(theme.text_faint)
+            .child(div().w(px(64.)).flex_none().child("TIME"))
+            .child(div().w(px(150.)).flex_none().child("EVENT"))
+            .child(div().w(px(250.)).flex_none().child("SOURCE"))
+            .child(div().flex_1().child("MESSAGE"))
+    }
+
+    fn log_row(entry: &AuditRecord, theme: &Theme) -> Div {
+        let tone = Self::tone_color(entry.tone, theme);
+        div()
+            .h(px(40.))
+            .w_full()
+            .flex()
+            .items_center()
+            .gap(px(12.))
+            .px(px(12.))
+            .border_b_1()
+            .border_color(theme.border)
+            .hover(|element| element.bg(theme.surface_raised))
+            .child(
+                div()
+                    .w(px(64.))
+                    .flex_none()
+                    .text_size(px(12.))
+                    .text_color(theme.text_muted)
+                    .child(entry.time_text.clone()),
+            )
+            .child(
+                div().w(px(150.)).flex_none().child(
+                    div()
+                        .px(px(8.))
+                        .py(px(2.))
+                        .rounded_full()
+                        .bg(theme.surface_raised)
+                        .text_size(px(11.))
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(tone)
+                        .truncate()
+                        .child(entry.display_event.clone()),
+                ),
+            )
+            .child(
+                div()
+                    .w(px(250.))
+                    .flex_none()
+                    .truncate()
+                    .text_size(px(12.))
+                    .text_color(theme.text_muted)
+                    .child(entry.source_path_masked.clone()),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .truncate()
+                    .text_size(px(12.))
+                    .text_color(theme.text)
+                    .child(entry.message.clone()),
+            )
+    }
+
+    fn empty_state(title: &'static str, description: &'static str, theme: &Theme) -> Div {
+        div()
+            .flex_1()
+            .flex()
+            .flex_col()
+            .items_center()
+            .justify_center()
+            .gap(px(6.))
+            .p(px(24.))
+            .child(
+                div()
+                    .text_size(px(15.))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(theme.text)
+                    .child(title),
+            )
+            .child(
+                div()
+                    .text_size(px(12.))
+                    .text_color(theme.text_muted)
+                    .child(description),
+            )
+    }
+
+    fn service_state_color(state: ServiceRuntimeState, theme: &Theme) -> Rgba {
+        match state {
+            ServiceRuntimeState::Running => theme.success,
+            ServiceRuntimeState::StartPending | ServiceRuntimeState::ContinuePending => {
+                theme.accent
+            }
+            ServiceRuntimeState::Paused
+            | ServiceRuntimeState::PausePending
+            | ServiceRuntimeState::StopPending
+            | ServiceRuntimeState::Unknown => theme.warning,
+            ServiceRuntimeState::Stopped => theme.text_muted,
+            ServiceRuntimeState::NotInstalled => theme.text_faint,
+        }
     }
 
     fn service_row(
@@ -474,150 +904,55 @@ fn or_dash(value: Option<String>) -> String {
 impl Render for AppView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = Theme::resolve(self.theme_mode, theme::is_dark(window.appearance()));
-        let state = self.snapshot.state;
-        let dot = Self::state_color(state, &theme);
-
-        let endpoint = or_dash(self.snapshot.endpoint.clone());
-        let mode = or_dash(
-            self.snapshot
-                .worker_mode
-                .map(|mode| mode.label().to_string()),
-        );
-        let round_trip = match self.snapshot.last_round_trip {
-            Some(elapsed) => format!("last round trip {} ms", elapsed.as_millis()),
-            None => "no round trip yet".to_string(),
-        };
-
         let header = div()
             .flex()
             .items_center()
-            .justify_between()
+            .gap(px(16.))
             .px(px(24.))
             .pt(px(20.))
             .pb(px(10.))
             .child(
                 div()
                     .flex()
-                    .items_center()
-                    .gap(px(16.))
+                    .flex_col()
+                    .gap(px(2.))
                     .child(
                         div()
-                            .flex()
-                            .flex_col()
-                            .gap(px(3.))
-                            .child(
-                                div()
-                                    .text_size(px(18.))
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .child("PhotoPrivacy"),
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(12.))
-                                    .text_color(theme.text_muted)
-                                    .child("Metadata cleanup · new UI"),
-                            ),
+                            .text_size(px(18.))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .child("PhotoPrivacy"),
                     )
-                    .child(Self::page_switch(self.page, &theme, cx)),
+                    .child(
+                        div()
+                            .text_size(px(11.))
+                            .text_color(theme.text_muted)
+                            .child("Metadata cleanup"),
+                    ),
             )
-            .child(Self::theme_switch(self.theme_mode, &theme, cx));
-
-        let status_card = div()
-            .flex()
-            .flex_col()
-            .gap(px(8.))
-            .p(px(16.))
-            .bg(theme.surface)
-            .border_1()
-            .border_color(theme.border)
-            .rounded(px(12.))
             .child(
                 div()
                     .flex()
                     .items_center()
-                    .gap(px(8.))
-                    .child(div().size(px(8.)).rounded_full().bg(dot))
-                    .child(
-                        div()
-                            .text_size(px(14.))
-                            .font_weight(FontWeight::MEDIUM)
-                            .child(state.label()),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(12.))
-                            .text_color(theme.text_muted)
-                            .child(format!("· {endpoint} · {mode}")),
-                    )
-                    .child(div().flex_1())
-                    .child(
-                        div()
-                            .text_size(px(11.))
-                            .text_color(theme.text_faint)
-                            .child(round_trip),
+                    .gap(px(2.))
+                    .p(px(2.))
+                    .bg(theme.surface_raised)
+                    .border_1()
+                    .border_color(theme.border)
+                    .rounded(px(9.))
+                    .children(
+                        Page::all()
+                            .into_iter()
+                            .map(|page| Self::nav_tab(page, self.page, &theme, cx)),
                     ),
             )
-            .children(self.snapshot.last_error.clone().map(|error| {
-                div()
-                    .text_size(px(12.))
-                    .text_color(theme.danger)
-                    .child(error)
-            }));
+            .child(div().flex_1())
+            .child(Self::theme_switch(self.theme_mode, &theme, cx));
 
-        let rows = [
-            ("Worker mode", mode.clone()),
-            ("Reported mode", or_dash(self.snapshot.status_mode.clone())),
-            (
-                "Protocol",
-                or_dash(
-                    self.snapshot
-                        .protocol_version
-                        .map(|version| format!("v{version}")),
-                ),
-            ),
-            ("ExifTool", or_dash(self.snapshot.exif_tool_version.clone())),
-            ("Round trips", self.snapshot.round_trips.to_string()),
-        ];
-
-        let details = div()
-            .flex()
-            .flex_col()
-            .gap(px(10.))
-            .p(px(16.))
-            .bg(theme.surface)
-            .border_1()
-            .border_color(theme.border)
-            .rounded(px(12.))
-            .child(
-                div()
-                    .text_size(px(11.))
-                    .text_color(theme.text_faint)
-                    .child("WORKER"),
-            )
-            .children(
-                rows.into_iter()
-                    .map(|(label, value)| Self::detail_row(label, value, &theme)),
-            );
-
-        let overview = div()
-            .flex()
-            .flex_col()
-            .gap(px(12.))
-            .child(status_card)
-            .child(details);
-        let service = self.service_page(&theme, cx);
-
-        let body = div()
-            .flex_1()
-            .flex()
-            .flex_col()
-            .gap(px(12.))
-            .px(px(24.))
-            .pb(px(12.))
-            .when(self.page == Page::Overview, |element| {
-                element.child(overview)
-            })
-            .when(self.page == Page::Service, |element| element.child(service));
+        let content = match self.page {
+            Page::Overview => self.overview_body(&theme),
+            Page::Service => self.service_page(&theme, cx).into_any_element(),
+            Page::Logs => self.logs_body(&theme, cx),
+        };
 
         let footer = div()
             .flex()
@@ -645,7 +980,7 @@ impl Render for AppView {
             .flex()
             .flex_col()
             .child(header)
-            .child(body)
+            .child(content)
             .child(footer)
     }
 }
