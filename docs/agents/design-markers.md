@@ -1,7 +1,11 @@
 # 决策标记（Design Marker）判据
 
-> 定位：写或改 `// Design(#<issue>): <决策>` 注释时的操作判据。术语定义在 `GLOSSARY.md`「治理」段；标记的**形态**由 `tests/PhotoPrivacy.IntegrationTests/DesignMarkerSourceTests.cs` 机械守住（本文件不复述正则），**票号是否存活**由 `scripts/check-design-markers.sh`（CI job `markers`）机械守住；这里只管机器判不了的**取舍**。
-> 生效：#52；形态守卫：#65；存活守卫：`scripts/check-design-markers.sh`（CI job `markers`）。
+> 定位：写或改 `// Design(#<issue>): <决策>` 注释时的操作判据。术语定义在 `GLOSSARY.md`「治理」段。
+> 两道机械守卫，覆盖范围不同：
+> - **形态**：`tests/PhotoPrivacy.IntegrationTests/DesignMarkerSourceTests.cs`，**只扫 `src/` 的 .cs**；`ui/` 的 Rust/TOML 标记不受形态检查。
+> - **存活**：`scripts/check-design-markers.sh`（CI job `markers`），扫 `src/` 与 `ui/`，断言 `Design(#N)` 的 N 是 open **issue**（指向 PR 或已关闭票即撞红）；它只认 `Design(#N)` / `Design (#N)` 形态，不校验其余格式。
+> 这里只管机器判不了的**取舍**。
+> 生效：#52；形态守卫：#65；存活守卫：本文件随 retro 引入。
 
 ## 选号：指向存续出处
 

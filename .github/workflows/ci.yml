@@ -17,8 +17,12 @@ jobs:
 
   rust:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Ensure rustfmt + clippy
         run: rustup component add rustfmt clippy
       - uses: actions/cache@v4
@@ -42,8 +46,12 @@ jobs:
   # link 仍需 MinGW windres，发版链归 #61。
   ui-check:
     runs-on: windows-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Ensure Rust toolchain components
         run: rustup component add rustfmt clippy
       - uses: actions/cache@v4
