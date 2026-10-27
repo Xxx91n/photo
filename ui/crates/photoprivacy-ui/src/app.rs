@@ -10,7 +10,7 @@ use photoprivacy_logs::{AuditRecord, EventTone, LevelFilter, LogBuffer};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::Duration;
-use tokio::sync::{mpsc, watch};
+use tokio::sync::watch;
 
 const SNAPSHOT_POLL_INTERVAL: Duration = Duration::from_millis(200);
 
@@ -31,6 +31,17 @@ impl LogState {
             level_filter,
             generation: 0,
         }
+    }
+
+    /// 应用一个日志批次（代际校验通过时），返回状态是否变化。
+    /// 由 app 级事件泵调用，窗口关闭期间也持续排空通道，避免无界队列堆积。
+    pub fn apply_batch(&mut self, batch: LogBatch) -> bool {
+        if batch.generation < self.generation {
+            return false;
+        }
+        self.logs.push_batch(batch.records);
+        self.visible_indices = self.logs.visible_indices(self.level_filter);
+        true
     }
 }
 
@@ -53,14 +64,13 @@ impl Page {
     }
 }
 
-/// 视图跨窗口重建需要沿用的依赖：Worker 快照、主题、日志状态与日志通道。
+/// 视图跨窗口重建需要沿用的依赖：Worker 快照、主题、日志状态与后台日志服务控制面。
 /// 打包成一个类型，避免同一组参数在事件泵/开窗/视图构造之间反复穿行。
 #[derive(Clone)]
 pub struct AppDeps {
     pub snapshots: watch::Receiver<ConnectionSnapshot>,
     pub theme_mode: Rc<Cell<ThemeMode>>,
     pub log_state: Rc<RefCell<LogState>>,
-    pub log_batches: Rc<RefCell<Option<mpsc::UnboundedReceiver<LogBatch>>>>,
     pub log_service: LogService,
 }
 
@@ -71,7 +81,6 @@ pub struct AppView {
     /// 主题与日志状态都跨窗口重建保留（关窗驻守后托盘会重建窗口）。
     theme_mode: Rc<Cell<ThemeMode>>,
     log_state: Rc<RefCell<LogState>>,
-    log_batches: Rc<RefCell<Option<mpsc::UnboundedReceiver<LogBatch>>>>,
     log_service: LogService,
     log_scroll: UniformListScrollHandle,
     _appearance_subscription: Subscription,
@@ -84,7 +93,6 @@ impl AppView {
             snapshots,
             theme_mode,
             log_state,
-            log_batches,
             log_service,
         } = deps;
         let appearance_subscription = cx.observe_window_appearance(window, |_, _, cx| cx.notify());
@@ -95,7 +103,6 @@ impl AppView {
             snapshots,
             theme_mode,
             log_state,
-            log_batches,
             log_service,
             log_scroll: UniformListScrollHandle::new(),
             _appearance_subscription: appearance_subscription,
@@ -104,8 +111,8 @@ impl AppView {
         view
     }
 
-    /// 后台快照与日志批次从 tokio 线程来；这里在 UI 线程轮询，避免跨线程触碰 gpui 状态。
-    /// 托盘与唤起事件由 main 的 app 级事件泵处理（窗口不存在时也要能响应）。
+    /// Worker 快照从 tokio 线程来；这里在 UI 线程轮询，避免跨线程触碰 gpui 状态。
+    /// 托盘、唤起与日志批次由 main 的 app 级事件泵处理（窗口不存在时也要能响应）。
     fn spawn_updates(&self, window: &Window, cx: &mut Context<Self>) {
         cx.spawn_in(window, async move |this, cx| {
             loop {
@@ -115,25 +122,8 @@ impl AppView {
                 // 永远 upgrade 失败的空转任务。
                 let alive = this
                     .update(cx, |this, cx| {
-                        let mut logs_changed = false;
-
                         if this.snapshots.has_changed().unwrap_or(false) {
                             this.snapshot = this.snapshots.borrow_and_update().clone();
-                            cx.notify();
-                        }
-                        if let Some(batches) = this.log_batches.borrow_mut().as_mut() {
-                            while let Ok(batch) = batches.try_recv() {
-                                let mut state = this.log_state.borrow_mut();
-                                if batch.generation >= state.generation {
-                                    state.logs.push_batch(batch.records);
-                                    logs_changed = true;
-                                }
-                            }
-                        }
-                        if logs_changed {
-                            let mut state = this.log_state.borrow_mut();
-                            let visible = state.logs.visible_indices(state.level_filter);
-                            state.visible_indices = visible;
                             cx.notify();
                         }
                     })
@@ -153,14 +143,10 @@ impl AppView {
         state.visible_indices = visible;
     }
 
-    /// 清空共享日志缓冲与队列中旧代际批次，并通知后台协调者。
+    /// 清空共享日志缓冲并推进代际；旧代际批次由 app 级事件泵在应用时丢弃。
     fn clear_logs(&mut self) {
         let mut state = self.log_state.borrow_mut();
         state.generation = state.generation.wrapping_add(1);
-        // 清空命令发出前已进入通道的批次属于旧代际，UI 侧一并丢弃。
-        if let Some(batches) = self.log_batches.borrow_mut().as_mut() {
-            while batches.try_recv().is_ok() {}
-        }
         state.logs.clear();
         state.visible_indices.clear();
         let generation = state.generation;

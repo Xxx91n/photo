@@ -1,7 +1,7 @@
 use photoprivacy_ipc::{
     ConnectionSnapshot, ConnectionState, Endpoint, IpcClient, WorkerMode, current_home,
     current_platform, resolve_endpoint, spawn_monitor, spawn_show_window_server,
-    watch_service_reachability,
+    watch_service_reachability, watch_version,
 };
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -99,7 +99,17 @@ pub fn start(
                     snapshot.endpoint = Some(endpoint.display());
                     snapshot.worker_mode = Some(mode);
                 });
-                spawn_monitor(client, endpoint, snapshots);
+                spawn_monitor(client, endpoint.clone(), snapshots.clone());
+                // 独立 1s 版本轮询：单独客户端避免与心跳的单飞锁互相拖慢；心跳退避不影响版本节拍。
+                let version_client = Arc::new(IpcClient::new());
+                tokio::spawn(watch_version(
+                    move || {
+                        let client = version_client.clone();
+                        let endpoint = endpoint.clone();
+                        async move { client.exif_tool_version(&endpoint).await.ok() }
+                    },
+                    snapshots,
+                ));
             }
             None => {
                 snapshots.send_modify(|snapshot| {

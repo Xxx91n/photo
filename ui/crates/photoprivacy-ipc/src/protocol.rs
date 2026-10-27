@@ -11,6 +11,7 @@ pub const MAX_RESPONSE_BYTES: usize = 64 * 1024;
 pub mod methods {
     pub const PING: &str = "Ping";
     pub const GET_STATUS: &str = "GetStatus";
+    pub const GET_EXIF_TOOL_VERSION: &str = "GetExifToolVersion";
     pub const GET_RECENT_LOGS: &str = "GetRecentLogs";
 }
 

@@ -6,10 +6,11 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::watch;
 
-/// 心跳节拍：成功时每 1s 一次 GetStatus，顺带刷新协议版本与 ExifTool 版本（版本 1s 节奏）。
-/// 断连退避期间版本随心跳停止刷新；旧 UI 的独立 1s 版本轮询此时也只会反复得到 unknown，
-/// 因此「版本 1s」只在连接稳态等效。
+/// 心跳节拍：成功时每 1s 一次 GetStatus，刷新协议版本与模式；ExifTool 版本由独立的
+/// `VERSION_POLL_INTERVAL` 轮询维护，心跳失败退避不影响版本节拍。
 pub const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(1);
+/// 版本节拍：每 1s 一次 GetExifToolVersion，与心跳退避解耦（旧 UI 的独立版本轮询）。
+pub const VERSION_POLL_INTERVAL: Duration = Duration::from_secs(1);
 /// 服务态节拍：与旧 UI `ServiceModeController.PollServiceModeTransitionAsync` 同为 3s。
 pub const SERVICE_POLL_INTERVAL: Duration = Duration::from_secs(3);
 
@@ -151,6 +152,29 @@ where
     }
 }
 
+/// 版本轮询：独立 1s 一拍（旧 UI `WindowPollingHostedService` 的版本轮询），先等一拍再探。
+///
+/// 与心跳退避解耦：心跳失败进入 60s 退避时，版本仍按 1s 刷新（不可读时写回 `None`）。
+/// 探针由调用方注入，便于 paused-time 测试。
+pub async fn watch_version<F, Fut>(probe: F, tx: watch::Sender<ConnectionSnapshot>)
+where
+    F: Fn() -> Fut,
+    Fut: Future<Output = Option<String>>,
+{
+    loop {
+        tokio::time::sleep(VERSION_POLL_INTERVAL).await;
+        let version = probe().await;
+        tx.send_if_modified(|snapshot| {
+            if snapshot.exif_tool_version == version {
+                false
+            } else {
+                snapshot.exif_tool_version = version;
+                true
+            }
+        });
+    }
+}
+
 /// 可达性探测结果 → 服务可达性枚举。
 fn service_reachability(reachable: bool) -> ServiceReachability {
     if reachable {
@@ -160,7 +184,7 @@ fn service_reachability(reachable: bool) -> ServiceReachability {
     }
 }
 
-/// 心跳成功后写入连接字段；服务可达性由独立的 3s 拍维护，不在这里覆盖。
+/// 心跳成功后写入连接字段；ExifTool 版本与服务可达性由各自的独立拍维护，不在这里覆盖。
 fn apply_success(
     snapshot: &mut ConnectionSnapshot,
     status: &Status,
@@ -169,7 +193,6 @@ fn apply_success(
 ) {
     snapshot.state = ConnectionState::Connected;
     snapshot.protocol_version = protocol_version;
-    snapshot.exif_tool_version = Some(status.exif_tool_version.clone());
     snapshot.status_mode = Some(status.mode.clone());
     snapshot.round_trips += 1;
     snapshot.last_round_trip = Some(elapsed);
@@ -178,11 +201,10 @@ fn apply_success(
 
 // 失败时清掉连接期字段：它们只代表上一次成功往返，留在界面上会被读成 Worker 的当前状态。
 // `last_round_trip` 保留——界面文案本身就是「上次往返」的历史语义。
-/// 心跳失败后清掉连接期字段；保留历史往返与服务可达性。
+/// 心跳失败后清掉连接期字段；保留历史往返、ExifTool 版本与服务可达性。
 fn apply_failure(snapshot: &mut ConnectionSnapshot, err: &IpcError) {
     snapshot.state = ConnectionState::Reconnecting;
     snapshot.protocol_version = None;
-    snapshot.exif_tool_version = None;
     snapshot.status_mode = None;
     snapshot.last_error = Some(err.to_string());
 }
@@ -193,9 +215,10 @@ mod tests {
 
     #[test]
     fn poll_rhythms_match_old_ui() {
-        // 防：心跳 1s / 服务态 3s 的节奏漂移（旧 UI ConnectionStateService 1s 心跳、
-        // ServiceModeController 3s 服务态轮询，#59）。
+        // 防：心跳 1s / 版本 1s / 服务态 3s 的节奏漂移（旧 UI ConnectionStateService 心跳、
+        // WindowPollingHostedService 版本轮询、ServiceModeController 服务态轮询，#59）。
         assert_eq!(HEARTBEAT_INTERVAL, Duration::from_secs(1));
+        assert_eq!(VERSION_POLL_INTERVAL, Duration::from_secs(1));
         assert_eq!(SERVICE_POLL_INTERVAL, Duration::from_secs(3));
     }
 
@@ -275,6 +298,39 @@ mod tests {
         handle.abort();
     }
 
+    #[tokio::test(start_paused = true)]
+    async fn version_poll_keeps_one_second_beat() {
+        // 防：版本刷新被绑在心跳上，心跳进入退避后版本停止刷新（#59 / CodeRabbit Linked Issues）。
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let calls_for_probe = calls.clone();
+        let (tx, mut rx) = watch::channel(ConnectionSnapshot::connecting());
+        let handle = tokio::spawn(watch_version(
+            move || {
+                calls_for_probe.fetch_add(1, Ordering::SeqCst);
+                std::future::ready(Some("13.20".to_string()))
+            },
+            tx,
+        ));
+
+        tokio::task::yield_now().await;
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+
+        // 连续三个 1s 拍；心跳任务完全不在场，证明版本节拍与退避解耦。
+        for expected in 1..=3 {
+            tokio::time::advance(VERSION_POLL_INTERVAL).await;
+            tokio::task::yield_now().await;
+            assert_eq!(calls.load(Ordering::SeqCst), expected);
+        }
+        assert_eq!(
+            rx.borrow_and_update().exif_tool_version.as_deref(),
+            Some("13.20")
+        );
+
+        handle.abort();
+    }
+
     #[test]
     fn backoff_steps_match_connection_state_service() {
         // 防：退避步进漂移（旧 UI 1→2→4→8→16→32→60，封顶 60），心跳过密或状态久不刷新（#54）。
@@ -298,12 +354,13 @@ mod tests {
 
     #[test]
     fn failure_clears_connection_scoped_details() {
-        // 防：Worker 掉线后界面仍显示上一次的协议版本/ExifTool/模式，把陈旧值当成当前状态（#54）。
+        // 防：Worker 掉线后界面仍显示上一次的协议版本/模式，把陈旧值当成当前状态（#54）；
+        // ExifTool 版本由独立 1s 轮询维护，不应被心跳失败连带清空（#59）。
         let mut snapshot = ConnectionSnapshot::connecting();
+        snapshot.exif_tool_version = Some("13.20".into());
         apply_success(
             &mut snapshot,
             &Status {
-                exif_tool_version: "13.20".into(),
                 mode: "background".into(),
                 ..Status::default()
             },
@@ -315,8 +372,8 @@ mod tests {
         apply_failure(&mut snapshot, &IpcError::Timeout);
         assert_eq!(snapshot.state, ConnectionState::Reconnecting);
         assert!(snapshot.protocol_version.is_none());
-        assert!(snapshot.exif_tool_version.is_none());
         assert!(snapshot.status_mode.is_none());
+        assert_eq!(snapshot.exif_tool_version.as_deref(), Some("13.20"));
         assert_eq!(snapshot.last_round_trip, Some(Duration::from_millis(3)));
         assert!(snapshot.last_error.is_some());
     }

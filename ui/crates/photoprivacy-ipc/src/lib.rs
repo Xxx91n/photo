@@ -17,7 +17,8 @@ pub use endpoints::{
 };
 pub use monitor::{
     ConnectionSnapshot, ConnectionState, HEARTBEAT_INTERVAL, SERVICE_POLL_INTERVAL,
-    ServiceReachability, next_backoff, spawn_monitor, watch_service_reachability,
+    ServiceReachability, VERSION_POLL_INTERVAL, next_backoff, spawn_monitor,
+    watch_service_reachability, watch_version,
 };
 pub use protocol::{PROTOCOL_VERSION, Request, Response, Status};
 pub use single_instance::{

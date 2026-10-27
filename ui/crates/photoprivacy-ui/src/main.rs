@@ -10,6 +10,7 @@ use gpui::{
     App, AppContext, AsyncApp, Bounds, Entity, Pixels, QuitMode, TitlebarOptions, Window,
     WindowBackgroundAppearance, WindowBounds, WindowOptions, px, size,
 };
+use log_service::LogBatch;
 use photoprivacy_ipc::{
     ConnectionSnapshot, SingleInstanceGuard, UI_INSTANCE_NAME, notify_existing_instance,
 };
@@ -126,7 +127,6 @@ fn main() -> anyhow::Result<()> {
         snapshots: snapshot_rx,
         theme_mode: Rc::new(Cell::new(theme::ThemeMode::System)),
         log_state: Rc::new(RefCell::new(app::LogState::new(log_level))),
-        log_batches: Rc::new(RefCell::new(Some(log_rx))),
         log_service,
     };
 
@@ -137,7 +137,7 @@ fn main() -> anyhow::Result<()> {
         let start_hidden =
             tray::should_start_hidden(ui_options.hide_main_window_on_startup, has_tray);
 
-        spawn_event_pump(cx, tray_handle, event_rx, deps.clone());
+        spawn_event_pump(cx, tray_handle, event_rx, log_rx, deps.clone());
 
         // 关窗语义：托盘在 → 窗口销毁、进程与托盘继续驻守；托盘唤起会重建窗口。
         // 没有托盘 → 关窗即退出（与旧 UI 的 UseTrayIcon == false 分支一致）。
@@ -161,16 +161,28 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// 事件泵：轮询托盘/唤起事件并在 UI 线程执行；窗口关闭后仍继续驻守。
+/// 事件泵：轮询托盘/唤起事件、排空日志批次，并在 UI 线程执行；窗口关闭后仍继续驻守。
 fn spawn_event_pump(
     cx: &mut App,
     tray: Option<tray::TrayHandle>,
     mut events: mpsc::UnboundedReceiver<UiEvent>,
+    mut log_batches: mpsc::UnboundedReceiver<LogBatch>,
     deps: app::AppDeps,
 ) {
     cx.spawn(async move |cx| {
         loop {
             cx.background_executor().timer(EVENT_POLL_INTERVAL).await;
+
+            // 日志批次必须由 app 级任务排空：窗口关闭期间视图任务已退出，通道不能无界堆积。
+            let mut logs_changed = false;
+            while let Ok(batch) = log_batches.try_recv() {
+                if deps.log_state.borrow_mut().apply_batch(batch) {
+                    logs_changed = true;
+                }
+            }
+            if logs_changed {
+                cx.refresh();
+            }
 
             let mut show_window = false;
             let mut exit = false;

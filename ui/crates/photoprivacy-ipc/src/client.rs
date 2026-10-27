@@ -89,6 +89,21 @@ impl IpcClient {
         Ok((status, version))
     }
 
+    /// 读取 ExifTool 版本；`GetExifToolVersion` 的 data 与 GetStatus 同形（完整 Status）。
+    pub async fn exif_tool_version(&self, endpoint: &Endpoint) -> Result<String, IpcError> {
+        let response = self
+            .request(endpoint, methods::GET_EXIF_TOOL_VERSION)
+            .await?;
+        let status = response.data.ok_or_else(|| {
+            IpcError::Rejected(
+                response
+                    .message
+                    .unwrap_or_else(|| "GetExifToolVersion 响应缺少 data".to_string()),
+            )
+        })?;
+        Ok(status.exif_tool_version)
+    }
+
     pub async fn is_alive(&self, endpoint: &Endpoint) -> bool {
         self.request(endpoint, methods::PING).await.is_ok()
     }
