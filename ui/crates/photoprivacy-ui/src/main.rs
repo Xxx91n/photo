@@ -1,5 +1,6 @@
 mod app;
 mod log_service;
+mod service_page;
 mod theme;
 // Design(#49): gpui 无内建托盘（T4 已接受自建/第三方），托盘用 tray-icon 原生菜单实现。
 mod tray;
@@ -22,7 +23,7 @@ use tokio::sync::{mpsc, watch};
 use worker_connection::{ConnectOptions, UiEvent};
 
 const USAGE: &str = "\
-PhotoPrivacy 新 UI（gpui 骨架竖切）
+PhotoPrivacy 新 UI（gpui）
 
 用法: photoprivacy-ui [--config <config.json>] [--worker <PhotoPrivacyWorker 路径>]
 
@@ -119,15 +120,22 @@ fn main() -> anyhow::Result<()> {
     let (snapshot_tx, snapshot_rx) = watch::channel(ConnectionSnapshot::connecting());
     let (event_tx, event_rx) = mpsc::unbounded_channel();
     let (log_tx, log_rx) = mpsc::unbounded_channel();
+    let (service_snapshots, service_commands) = service_page::start(
+        runtime.handle(),
+        options.worker_path.clone(),
+        options.config_path.clone(),
+    );
     let link = worker_connection::start(runtime.handle(), options, snapshot_tx, event_tx);
     let log_service = log_service::start(runtime.handle(), audit_config, link, log_tx);
 
-    // 主题与日志缓冲在关窗驻守/重建之间延续；窗口本身不保留（gpui 没有隐藏窗口的 API）。
+    // 主题、日志缓冲与服务快照在关窗驻守/重建之间延续；窗口本身不保留（gpui 没有隐藏窗口的 API）。
     let deps = app::AppDeps {
         snapshots: snapshot_rx,
         theme_mode: Rc::new(Cell::new(theme::ThemeMode::System)),
         log_state: Rc::new(RefCell::new(app::LogState::new(log_level))),
         log_service,
+        service_snapshots,
+        service_commands,
     };
 
     application().run(move |cx: &mut App| {

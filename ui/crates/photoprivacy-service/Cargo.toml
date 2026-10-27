@@ -1,0 +1,21 @@
+[package]
+name = "photoprivacy-service"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "PhotoPrivacy 三平台服务状态探测与提权操作（sc/systemctl/launchctl）"
+
+[dependencies]
+
+# 提权走 ShellExecuteExW（等价旧 UI 的 ProcessStartInfo + runas）；SHELLEXECUTEINFOW 在
+# windows-sys 0.61 里被 Win32_System_Registry 门控（其 HKEY 字段），不是多余特性。
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_Registry",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }

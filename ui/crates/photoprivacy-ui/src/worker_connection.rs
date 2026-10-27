@@ -126,8 +126,8 @@ pub fn start(
 
 /// 连接顺序与旧 UI `WorkerProcessManager.ConnectOrLaunchAsync` 对齐：服务端点优先，其次后台端点，
 /// 都不可用时启动后台 Worker 并轮询 5s。服务「已安装未运行」时本版会落到后台 Worker，而不是像旧 UI
-/// 停在服务壳——服务安装态探测属 #58，补齐后收敛。
-// Design(#58): 服务安装态探测延后到 #58，本版不做。
+/// 停在服务壳；服务态本身由服务页独立探测。
+// Design(#70): 服务管道 DACL 修复前，连接仍优先回落到后台 Worker。
 async fn connect_worker(
     client: &IpcClient,
     options: &ConnectOptions,
