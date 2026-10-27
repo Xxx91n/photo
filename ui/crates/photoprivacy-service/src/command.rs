@@ -50,7 +50,7 @@ impl ServiceCommandResult {
     }
 
     /// 与旧 UI `WithFriendlyMessage` 一致：Skipped / ElevationCancelled 保留原消息，
-    /// 其余结果统一替换成 exit code 的友好说明。
+    /// 有 exit code 的失败替换成友好说明；没有 exit code 的失败（spawn/超时/提权）保留具体原因。
     pub fn with_friendly_message(mut self) -> Self {
         if matches!(
             self.status,
@@ -59,7 +59,9 @@ impl ServiceCommandResult {
             return self;
         }
 
-        self.message = translate_exit_code(self.exit_code);
+        if self.exit_code.is_some() {
+            self.message = translate_exit_code(self.exit_code);
+        }
         self
     }
 }
@@ -145,6 +147,14 @@ mod tests {
             "The service already exists"
         );
         assert_eq!(translate_exit_code(Some(9999)), "Unknown error (code 9999)");
+    }
+
+    #[test]
+    fn failures_without_exit_code_keep_their_specific_message() {
+        // 防：spawn/超时/提权失败的具体原因被 "Unknown error" 覆盖（#58 CodeRabbit）。
+        let result = ServiceCommandResult::failed("elevated sc.exe could not be waited on", None)
+            .with_friendly_message();
+        assert_eq!(result.message, "elevated sc.exe could not be waited on");
     }
 
     #[test]

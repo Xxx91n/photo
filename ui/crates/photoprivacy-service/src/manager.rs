@@ -162,10 +162,30 @@ fn platform_manager_unavailable(
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 fn script_path(name: &str) -> PathBuf {
-    std::env::current_exe()
+    let exe_dir = std::env::current_exe()
         .ok()
-        .and_then(|exe| exe.parent().map(|dir| dir.join("scripts").join(name)))
-        .unwrap_or_else(|| PathBuf::from("scripts").join(name))
+        .and_then(|exe| exe.parent().map(|dir| dir.to_path_buf()));
+    match exe_dir {
+        Some(dir) => resolve_script_path(&dir, name, |path| path.is_file()),
+        None => PathBuf::from("scripts").join(name),
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos", test))]
+fn resolve_script_path(exe_dir: &Path, name: &str, exists: impl Fn(&Path) -> bool) -> PathBuf {
+    let packaged = exe_dir.join("scripts").join(name);
+    if exists(&packaged) {
+        return packaged;
+    }
+
+    // 开发构建从 ui/target/<profile> 启动时，脚本仍在仓库根的 scripts/ 下。
+    for ancestor in exe_dir.ancestors().skip(1).take(6) {
+        let candidate = ancestor.join("scripts").join(name);
+        if exists(&candidate) {
+            return candidate;
+        }
+    }
+    packaged
 }
 
 #[cfg(test)]
@@ -228,6 +248,29 @@ mod tests {
             std::env::temp_dir().join(format!("photoprivacy-manager-{}-{seq}", std::process::id()));
         std::fs::write(&path, b"").unwrap();
         path
+    }
+
+    #[test]
+    fn script_path_prefers_packaged_then_falls_back_to_repo_scripts() {
+        // 防：开发构建从 ui/target/debug 启动时只找 exe 同目录 scripts/，安装永远报脚本缺失（#58 CodeRabbit）。
+        let exe_dir = Path::new("/repo/ui/target/debug");
+        let packaged = exe_dir.join("scripts").join("install.sh");
+        let repo_script = Path::new("/repo/scripts/install.sh").to_path_buf();
+
+        assert_eq!(
+            resolve_script_path(exe_dir, "install.sh", |path| {
+                path == packaged.as_path() || path == repo_script.as_path()
+            }),
+            packaged
+        );
+        assert_eq!(
+            resolve_script_path(exe_dir, "install.sh", |path| path == repo_script.as_path()),
+            repo_script
+        );
+        assert_eq!(
+            resolve_script_path(exe_dir, "install.sh", |_| false),
+            packaged
+        );
     }
 
     #[test]

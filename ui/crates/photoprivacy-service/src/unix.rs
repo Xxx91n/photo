@@ -97,9 +97,9 @@ mod linux {
 
         fn uninstall(&self) -> ServiceCommandResult {
             let command = format!(
-                "systemctl stop {SYSTEMD_SERVICE} 2>/dev/null; \
-                 systemctl disable {SYSTEMD_SERVICE} 2>/dev/null; \
-                 rm -f {SYSTEMD_UNIT_PATH}; \
+                "systemctl stop {SYSTEMD_SERVICE} 2>/dev/null && \
+                 systemctl disable {SYSTEMD_SERVICE} 2>/dev/null && \
+                 rm -f {SYSTEMD_UNIT_PATH} && \
                  systemctl daemon-reload"
             );
             let args = vec!["sh".to_string(), "-c".to_string(), command];
@@ -148,7 +148,25 @@ mod macos {
             if output.spawn_error.is_some() || output.timed_out {
                 return ServiceRuntimeState::Unknown;
             }
-            parse_launchctl_list(output.exit_code.unwrap_or(-1), &output.stdout)
+            macos_state(
+                output.exit_code.unwrap_or(-1),
+                &output.stdout,
+                Path::new(LAUNCHD_PLIST).is_file(),
+            )
+        }
+    }
+
+    pub(super) fn macos_state(
+        exit_code: i32,
+        stdout: &str,
+        plist_exists: bool,
+    ) -> ServiceRuntimeState {
+        let state = parse_launchctl_list(exit_code, stdout);
+        // `launchctl unload` 后 plist 仍在：这是“已安装未运行”，不是未安装。
+        if state == ServiceRuntimeState::NotInstalled && plist_exists {
+            ServiceRuntimeState::Stopped
+        } else {
+            state
         }
     }
 
@@ -424,6 +442,7 @@ mod tests {
         assert_eq!(calls[2][1], "-c");
         assert!(calls[2][2].contains("systemctl stop photoprivacy"));
         assert!(calls[2][2].contains("rm -f /etc/systemd/system/photoprivacy.service"));
+        assert!(calls[2][2].contains("&&"), "任一步失败都应中止卸载");
     }
 
     #[test]
@@ -448,6 +467,23 @@ mod tests {
         assert_eq!(result.status, ServiceCommandStatus::Failed);
         assert!(result.message.contains("install script not found"));
         assert!(runner.calls().is_empty());
+    }
+
+    #[test]
+    fn macos_unloaded_plist_is_stopped_not_missing() {
+        // 防：launchctl unload 后 plist 仍在，探测却报未安装，UI 放出 Install 并覆盖默认路径（#58 CodeRabbit）。
+        assert_eq!(
+            macos::macos_state(113, "Could not find service", true),
+            ServiceRuntimeState::Stopped
+        );
+        assert_eq!(
+            macos::macos_state(113, "Could not find service", false),
+            ServiceRuntimeState::NotInstalled
+        );
+        assert_eq!(
+            macos::macos_state(0, "\"PID\" = 4321;", false),
+            ServiceRuntimeState::Running
+        );
     }
 
     #[test]
