@@ -42,7 +42,7 @@ mod platform {
 
     // 沿用旧 UI 的命名 Mutex 与名称，保证新旧入口互斥；CreateMutexW 返回 ERROR_ALREADY_EXISTS
     // 即视为「已有实例」，等价 .NET Mutex.createdNew == false。
-    // Design(#54): 单实例守卫与旧 UI 共用同一命名对象，第二实例只唤起不重开。
+    // Design(#49): 单实例守卫与旧 UI 共用同一命名对象，第二实例只唤起不重开。
     pub fn acquire(name: &str) -> (Guard, bool) {
         let wide: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
         unsafe {
@@ -92,7 +92,7 @@ mod platform {
 
     // POSIX 锁文件路径与 `SingleInstanceGuardFactory` 的规范化规则一致（temp 目录 +
     // `photoprivacy-<sanitized name>.lock`），新旧入口争同一把 flock。
-    // Design(#54): Unix 单实例锁路径与旧 UI 完全一致，避免迁移期双开。
+    // Design(#49): Unix 单实例锁路径与旧 UI 完全一致，避免迁移期双开。
     pub fn acquire(name: &str) -> (Guard, bool) {
         let path = lock_path(name);
         let file = match OpenOptions::new()
@@ -241,7 +241,7 @@ async fn serve_show_window_once(
     // tokio 未暴露 SECURITY_ATTRIBUTES，唤起管道使用进程默认 DACL（当前用户 + SYSTEM + 管理员），
     // 比旧 UI 的 PipeOptions.CurrentUserOnly（仅当前用户）宽松一档；同机其他普通用户仍连不上。
     // 双向访问是客户端可连的前提：旧 UI 客户端以 PipeDirection.Out（只写）打开。
-    // Design(#54): 唤起管道维持进程默认 DACL，不做 CurrentUserOnly 级别的 SDDL 收紧。
+    // Design(#49): 唤起管道维持进程默认 DACL，不做 CurrentUserOnly 级别的 SDDL 收紧。
     let mut server = tokio::net::windows::named_pipe::ServerOptions::new()
         .create(format!(r"\\.\pipe\{name}"))?;
     server.connect().await?;
