@@ -3589,6 +3589,8 @@ dependencies = [
  "gpui-pre-macos",
  "gpui-pre-windows",
  "photoprivacy-ipc",
+ "serde",
+ "serde_json",
  "tokio",
 ]
 
