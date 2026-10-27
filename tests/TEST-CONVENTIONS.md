@@ -63,7 +63,7 @@ public void Theme_Swatch_Count_Must_Be_Five() { ... }   // 无注释：不知道
 
 - **剥注释口径**：source-lint 读取源码一律走 `SourceLint.ReadStripped` 剥注释后再断言（教训——不剥会把注释里的示例字面量误判为违规）。
 - **单槽串行**：测试执行单槽串行（`test.runsettings` MaxCpuCount=1），多窗口不得并发跑 test（WORKFLOW §5 / §7.2）。
-- **CI-only（agent 窗口）**：agent 本机禁跑构建 / 测试，验收交云端 CI（.github/workflows/ci.yml）；窗口侧只做静态自证。例外：`scripts/release-readiness.ps1` 是发版机专用门禁，内含 test+smoke+publish，只在明确发版时由人执行，agent 不主动触发。
+- **CI-only（agent 窗口）**：agent 本机禁跑构建 / 测试，验收交云端 CI（.github/workflows/ci.yml）；窗口侧只做静态自证。例外：`scripts/release-readiness.ps1`（内含 test+smoke+publish）、`scripts/publish-app.ps1` / `scripts/publish.sh`（含 `dotnet publish`）均为发版机专用，只在明确发版时由人执行，agent 不主动触发。
 - **XAML Thickness 字面量**：Padding/Margin 仍用字面量字符串以触发 `ThicknessTypeConverter`，source-lint 不得断言「Thickness 必须走 DynamicResource」。
 
 ## 4. 变更记录
