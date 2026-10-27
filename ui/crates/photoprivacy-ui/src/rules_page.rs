@@ -1,8 +1,10 @@
 //! 规则页：五族 × 六开关（rules.json 的全部持久化面）。
 //! 旧 UI 的 Enabled 列不落盘、Worker 不消费；搜索与 effective-args 预览不在 #56 的 AC 内，
 //! 本页不复刻（预览若做必须由 C# WipeRuleEngine 出值，避免双真相源）。
+//! 文案经 `AppView::t` 按当前语言取词（#60），键常量集中在 `crate::i18n::keys`。
 
-use crate::app::AppView;
+use crate::app::{AppView, MirrorRow};
+use crate::i18n::keys as k;
 use crate::theme::Theme;
 use gpui::prelude::*;
 use gpui::{Context, Div, FontWeight, IntoElement, Rgba, div, px};
@@ -13,54 +15,89 @@ const EXTENSIONS_WIDTH: f32 = 170.;
 const TOGGLE_WIDTH: f32 = 54.;
 const ROW_HEIGHT: f32 = 44.;
 
+fn family_key(family: Family) -> &'static str {
+    match family {
+        Family::Jpeg => k::RULES_FAMILY_JPEG,
+        Family::Raw => k::RULES_FAMILY_RAW,
+        Family::Video => k::RULES_FAMILY_VIDEO,
+        Family::Pdf => k::RULES_FAMILY_PDF,
+        Family::Eps => k::RULES_FAMILY_EPS,
+    }
+}
+
+fn group_key(group: Group) -> &'static str {
+    match group {
+        Group::StripAll => k::RULES_COL_STRIP_ALL,
+        Group::PreserveIcc => k::RULES_COL_PRESERVE_ICC,
+        Group::StripExif => k::RULES_COL_STRIP_EXIF,
+        Group::StripXmp => k::RULES_COL_STRIP_XMP,
+        Group::StripIptc => k::RULES_COL_STRIP_IPTC,
+        Group::StripTime => k::RULES_COL_STRIP_TIME,
+    }
+}
+
+/// rules crate 的 Notice 只出英文；展示层按键翻译，LoadWarning 保留 crate 的具体原因。
+fn notice_text(app: &AppView, notice: &Notice) -> String {
+    match notice {
+        Notice::LoadWarning(message) => message.clone(),
+        Notice::Saved => app.t(k::TOAST_RULES_SAVED),
+        Notice::Reset => app.t(k::TOAST_RULES_RESET),
+        Notice::SaveFailed(error) => app.tr(k::RULES_SAVE_FAILED, &[error]),
+        Notice::ResetFailed(error) => app.tr(k::RULES_RESET_FAILED, &[error]),
+    }
+}
+
 pub(crate) fn render(app: &AppView, theme: &Theme, cx: &mut Context<AppView>) -> Div {
     let editor = app.rules.borrow();
 
-    let header =
-        div()
-            .flex()
-            .items_center()
-            .justify_between()
-            .gap(px(16.))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(3.))
-                    .child(
+    let header = div()
+        .flex()
+        .mirror_row(app.rtl())
+        .items_center()
+        .justify_between()
+        .gap(px(16.))
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(3.))
+                .child(
+                    div()
+                        .text_size(px(18.))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .child(app.t(k::NAV_RULES)),
+                )
+                .child(
+                    div()
+                        .text_size(px(12.))
+                        .text_color(theme.text_muted)
+                        .child(app.t(k::RULES_PANEL_SUBTITLE)),
+                ),
+        )
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(8.))
+                .when(editor.dirty(), |element| {
+                    element.child(
                         div()
-                            .text_size(px(18.))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .child("Rules"),
+                            .text_size(px(11.))
+                            .text_color(theme.warning)
+                            .child(app.t(k::RULES_UNSAVED)),
                     )
-                    .child(div().text_size(px(12.)).text_color(theme.text_muted).child(
-                        "Format families and six metadata toggles · shared config/rules.json",
-                    )),
-            )
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(8.))
-                    .when(editor.dirty(), |element| {
-                        element.child(
-                            div()
-                                .text_size(px(11.))
-                                .text_color(theme.warning)
-                                .child("Unsaved changes"),
-                        )
-                    })
-                    .when_some(editor.notice(), |element, notice| {
-                        element.child(
-                            div()
-                                .text_size(px(11.))
-                                .text_color(notice_color(notice, theme))
-                                .child(notice.text()),
-                        )
-                    })
-                    .child(save_button(cx, theme))
-                    .child(reset_button(cx, theme)),
-            );
+                })
+                .when_some(editor.notice(), |element, notice| {
+                    element.child(
+                        div()
+                            .text_size(px(11.))
+                            .text_color(notice_color(notice, theme))
+                            .child(notice_text(app, notice)),
+                    )
+                })
+                .child(save_button(app, cx, theme))
+                .child(reset_button(app, cx, theme)),
+        );
 
     let expert_card = div()
         .flex()
@@ -75,6 +112,7 @@ pub(crate) fn render(app: &AppView, theme: &Theme, cx: &mut Context<AppView>) ->
             div()
                 .id("rules-expert")
                 .flex()
+                .mirror_row(app.rtl())
                 .items_center()
                 .gap(px(8.))
                 .cursor_pointer()
@@ -88,13 +126,13 @@ pub(crate) fn render(app: &AppView, theme: &Theme, cx: &mut Context<AppView>) ->
                     div()
                         .text_size(px(12.))
                         .font_weight(FontWeight::MEDIUM)
-                        .child("Expert mode"),
+                        .child(app.t(k::RULES_EXPERT_MODE)),
                 )
                 .child(
                     div()
                         .text_size(px(11.))
                         .text_color(theme.text_muted)
-                        .child("· hides the safety note for Video / PDF / EPS"),
+                        .child(app.t(k::RULES_EXPERT_HIDES_NOTE)),
                 ),
         )
         .when(!editor.expert_mode(), |element| {
@@ -109,10 +147,7 @@ pub(crate) fn render(app: &AppView, theme: &Theme, cx: &mut Context<AppView>) ->
                     .bg(theme.surface_raised)
                     .text_size(px(11.))
                     .text_color(theme.warning)
-                    .child(
-                        "Video, PDF and EPS can lose data. PDF never truly deletes metadata; \
-                         EPS native tags cannot be removed. Review these rows before saving.",
-                    ),
+                    .child(app.t(k::RULES_EXPERT_INFOBAR)),
             )
         });
 
@@ -126,16 +161,19 @@ pub(crate) fn render(app: &AppView, theme: &Theme, cx: &mut Context<AppView>) ->
         .pt(px(4.))
         .child(header)
         .child(expert_card)
-        .child(table(&editor, theme, cx))
+        .child(table(app, &editor, theme, cx))
         .child(
             div()
                 .text_size(px(11.))
                 .text_color(theme.text_faint)
-                .child(format!("Stored in {}", editor.store_path().display())),
+                .child(app.tr(
+                    k::RULES_STORED_IN,
+                    &[&editor.store_path().display().to_string()],
+                )),
         )
 }
 
-fn table(editor: &RulesEditor, theme: &Theme, cx: &mut Context<AppView>) -> Div {
+fn table(app: &AppView, editor: &RulesEditor, theme: &Theme, cx: &mut Context<AppView>) -> Div {
     div()
         .flex()
         .flex_col()
@@ -144,17 +182,18 @@ fn table(editor: &RulesEditor, theme: &Theme, cx: &mut Context<AppView>) -> Div 
         .border_color(theme.border)
         .rounded(px(12.))
         .overflow_hidden()
-        .child(table_header(theme))
+        .child(table_header(app, theme))
         .children(
             Family::ALL
                 .into_iter()
-                .map(|family| family_row(family, editor, theme, cx)),
+                .map(|family| family_row(app, family, editor, theme, cx)),
         )
 }
 
-fn table_header(theme: &Theme) -> Div {
+fn table_header(app: &AppView, theme: &Theme) -> Div {
     div()
         .flex()
+        .mirror_row(app.rtl())
         .items_center()
         .px(px(12.))
         .h(px(30.))
@@ -163,19 +202,24 @@ fn table_header(theme: &Theme) -> Div {
         .border_color(theme.border)
         .text_size(px(10.))
         .text_color(theme.text_faint)
-        .child(div().w(px(FAMILY_WIDTH)).child("FAMILY"))
-        .child(div().w(px(EXTENSIONS_WIDTH)).child("EXTENSIONS"))
+        .child(div().w(px(FAMILY_WIDTH)).child(app.t(k::RULES_COL_FAMILY)))
+        .child(
+            div()
+                .w(px(EXTENSIONS_WIDTH))
+                .child(app.t(k::RULES_COL_EXTENSIONS)),
+        )
         .children(Group::ALL.into_iter().map(|group| {
             div()
                 .w(px(TOGGLE_WIDTH))
                 .flex()
                 .justify_center()
-                .child(group.short_label())
+                .child(app.t(group_key(group)))
         }))
-        .child(div().flex_1().child("WARNING"))
+        .child(div().flex_1().child(app.t(k::RULES_COL_WARNING)))
 }
 
 fn family_row(
+    app: &AppView,
     family: Family,
     editor: &RulesEditor,
     theme: &Theme,
@@ -183,6 +227,7 @@ fn family_row(
 ) -> Div {
     let mut row = div()
         .flex()
+        .mirror_row(app.rtl())
         .items_center()
         .px(px(12.))
         .h(px(ROW_HEIGHT))
@@ -193,7 +238,7 @@ fn family_row(
                 .w(px(FAMILY_WIDTH))
                 .text_size(px(12.))
                 .font_weight(FontWeight::MEDIUM)
-                .child(family.label()),
+                .child(app.t(family_key(family))),
         )
         .child(
             div()
@@ -221,10 +266,10 @@ fn family_row(
         );
     }
 
-    row.child(warning_cell(family, theme))
+    row.child(warning_cell(app, family, theme))
 }
 
-fn warning_cell(family: Family, theme: &Theme) -> Div {
+fn warning_cell(app: &AppView, family: Family, theme: &Theme) -> Div {
     div()
         .flex_1()
         .flex()
@@ -238,7 +283,7 @@ fn warning_cell(family: Family, theme: &Theme) -> Div {
                     .rounded(px(4.))
                     .bg(theme.surface_raised)
                     .text_color(theme.warning)
-                    .child("Caution"),
+                    .child(app.t(k::RULES_CAUTION)),
             )
         })
 }
@@ -258,7 +303,7 @@ fn checkbox(checked: bool, theme: &Theme) -> Div {
         .when(checked, |element| element.child("✓"))
 }
 
-fn save_button(cx: &mut Context<AppView>, theme: &Theme) -> impl IntoElement {
+fn save_button(app: &AppView, cx: &mut Context<AppView>, theme: &Theme) -> impl IntoElement {
     div()
         .id("rules-save")
         .px(px(12.))
@@ -274,10 +319,10 @@ fn save_button(cx: &mut Context<AppView>, theme: &Theme) -> impl IntoElement {
             this.rules.borrow_mut().save();
             cx.notify();
         }))
-        .child("Save")
+        .child(app.t(k::RULES_BTN_SAVE))
 }
 
-fn reset_button(cx: &mut Context<AppView>, theme: &Theme) -> impl IntoElement {
+fn reset_button(app: &AppView, cx: &mut Context<AppView>, theme: &Theme) -> impl IntoElement {
     div()
         .id("rules-reset")
         .px(px(12.))
@@ -292,7 +337,7 @@ fn reset_button(cx: &mut Context<AppView>, theme: &Theme) -> impl IntoElement {
             this.rules.borrow_mut().reset();
             cx.notify();
         }))
-        .child("Reset")
+        .child(app.t(k::RULES_BTN_RESET))
 }
 
 fn notice_color(notice: &Notice, theme: &Theme) -> Rgba {

@@ -2,6 +2,7 @@ mod app;
 mod config;
 mod config_file;
 mod config_service;
+mod i18n;
 mod log_service;
 mod rules_page;
 mod service_page;
@@ -12,8 +13,8 @@ mod ui_options;
 mod worker_connection;
 
 use gpui::{
-    App, AppContext, AsyncApp, Bounds, Entity, Pixels, QuitMode, TitlebarOptions, Window,
-    WindowBackgroundAppearance, WindowBounds, WindowOptions, px, size,
+    App, AppContext, AsyncApp, Bounds, Entity, Pixels, QuitMode, SharedString, TitlebarOptions,
+    Window, WindowBackgroundAppearance, WindowBounds, WindowOptions, px, size,
 };
 use log_service::LogBatch;
 use photoprivacy_ipc::{
@@ -155,6 +156,9 @@ fn main() -> anyhow::Result<()> {
 
     let log_service = log_service::start(runtime.handle(), audit_config, link, log_tx);
 
+    // 10 语言键值目录：启动时一次三层加载（内嵌 → exe 目录 → 用户目录），之后只读（#60）。
+    let i18n = Rc::new(i18n::Catalog::load());
+
     // 主题、日志缓冲、服务快照与配置草稿在关窗驻守/重建之间延续；窗口本身不保留。
     let deps = app::AppDeps {
         snapshots: snapshot_rx,
@@ -167,11 +171,18 @@ fn main() -> anyhow::Result<()> {
         config_commands: config_command_tx,
         config_path,
         rules: Rc::new(RefCell::new(RulesEditor::open_default())),
+        i18n,
     };
 
     application().run(move |cx: &mut App| {
+        // 启动语言取盘上 config 的 ui.locale（缺失/为空时 config.rs 已回落 zh-CN）。
+        let startup_locale = deps.config_state.borrow().config.ui.locale.clone();
         // 托盘必须在主线程、平台就绪后创建（tray-icon 要求同线程有消息循环）。
-        let tray_handle = tray::install(ui_options.hide_tray_icon);
+        let tray_handle = tray::install(
+            ui_options.hide_tray_icon,
+            deps.i18n.clone(),
+            &startup_locale,
+        );
         let has_tray = tray_handle.is_some();
         let start_hidden =
             tray::should_start_hidden(ui_options.hide_main_window_on_startup, has_tray);
@@ -210,7 +221,7 @@ fn main() -> anyhow::Result<()> {
 /// 事件泵：轮询托盘/唤起事件、排空日志批次与配置事件，并在 UI 线程执行；窗口关闭后仍继续驻守。
 fn spawn_event_pump(
     cx: &mut App,
-    tray: Option<tray::TrayHandle>,
+    mut tray: Option<tray::TrayHandle>,
     mut events: mpsc::UnboundedReceiver<UiEvent>,
     mut log_batches: mpsc::UnboundedReceiver<LogBatch>,
     mut config_events: mpsc::UnboundedReceiver<config_service::ConfigEvent>,
@@ -252,8 +263,9 @@ fn spawn_event_pump(
                 }
             }
 
-            if let Some(tray) = &tray {
-                while let Some(command) = tray.poll() {
+            if let Some(tray) = &mut tray {
+                let locale = deps.config_state.borrow().config.ui.locale.clone();
+                while let Some(command) = tray.poll(&locale) {
                     match command {
                         tray::TrayCommand::ShowWindow => show_window = true,
                         tray::TrayCommand::Exit => exit = true,
@@ -294,7 +306,8 @@ fn show_main_window(cx: &mut AsyncApp, deps: app::AppDeps) {
 
 /// 同步创建主窗口（启动路径）。
 fn open_main_window(cx: &mut App, deps: app::AppDeps) {
-    cx.open_window(centered_window_options(cx), move |window, cx| {
+    let title = window_title(&deps);
+    cx.open_window(centered_window_options(cx, title), move |window, cx| {
         build_main_view(window, cx, deps)
     })
     .expect("创建主窗口失败");
@@ -302,12 +315,19 @@ fn open_main_window(cx: &mut App, deps: app::AppDeps) {
 
 /// 异步重建主窗口（托盘/单实例唤起路径）；退出竞争中失败只记日志。
 fn open_main_window_async(cx: &mut AsyncApp, deps: app::AppDeps) {
-    let options = cx.update(|cx| centered_window_options(cx));
+    let title = window_title(&deps);
+    let options = cx.update(|cx| centered_window_options(cx, title));
     // 退出过程中仍可能收到最后一次唤起（应用已在 quit 状态时 open_window 会返回 Err）；
     // 这里不 panic，避免把正常退出变成崩溃。
     if let Err(err) = cx.open_window(options, move |window, cx| build_main_view(window, cx, deps)) {
         eprintln!("[photoprivacy-ui] 重建主窗口失败: {err}");
     }
+}
+
+/// 窗口标题按当前语言取词；窗口重建时刷新，驻守期间标题不热更（可接受粒度）。
+fn window_title(deps: &app::AppDeps) -> SharedString {
+    let locale = deps.config_state.borrow().config.ui.locale.clone();
+    deps.i18n.get(&locale, i18n::keys::APP_TITLE).into()
 }
 
 /// 构造 AppView；窗口级依赖统一从 `AppDeps` 取。
@@ -317,16 +337,16 @@ fn build_main_view(window: &mut Window, cx: &mut App, deps: app::AppDeps) -> Ent
 }
 
 /// 居中主窗口的尺寸与选项：配置页四组并排需要更宽的画布。
-fn centered_window_options(cx: &App) -> WindowOptions {
-    window_options(Bounds::centered(None, size(px(980.), px(720.)), cx))
+fn centered_window_options(cx: &App, title: SharedString) -> WindowOptions {
+    window_options(Bounds::centered(None, size(px(980.), px(720.)), cx), title)
 }
 
 /// 主窗口的固定选项（标题栏、背景、最小尺寸）。
-fn window_options(bounds: Bounds<Pixels>) -> WindowOptions {
+fn window_options(bounds: Bounds<Pixels>, title: SharedString) -> WindowOptions {
     WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(bounds)),
         titlebar: Some(TitlebarOptions {
-            title: Some("PhotoPrivacy".into()),
+            title: Some(title),
             appears_transparent: false,
             traffic_light_position: None,
         }),
