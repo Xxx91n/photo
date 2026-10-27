@@ -6,8 +6,9 @@ PhotoPrivacy：批量清理照片/视频/文档隐私元数据的 C#/.NET 10 跨
 
 ## 怎么跑
 
-- 构建（CI-only，见 `tests/TEST-CONVENTIONS.md` §3）：`dotnet build PhotoPrivacy.sln`（CI 口径 `--configuration Release`）。
-- 测试：CI 跑 `dotnet test PhotoPrivacy.sln --configuration Release --filter "Category!=Smoke&Category!=ExifTool"`；本机只做静态门禁（`git diff --check` 等），CI-only 纪律见 `tests/TEST-CONVENTIONS.md` §3。
+- 构建（dotnet 侧 CI-only，见 `tests/TEST-CONVENTIONS.md` §3）：`dotnet build PhotoPrivacy.sln`（CI 口径 `--configuration Release`）。
+- 测试：CI 跑 `dotnet test PhotoPrivacy.sln --configuration Release --filter "Category!=Smoke&Category!=ExifTool"`；dotnet 侧本机只做静态门禁（`git diff --check` 等），CI-only 纪律见 `tests/TEST-CONVENTIONS.md` §3。
+- 新 UI（Rust，`ui/`）：`cd ui && cargo build -p photoprivacy-ui`；`cargo fmt --all -- --check`、`cargo clippy -p photoprivacy-ipc --all-targets -- -D warnings`、`cargo test -p photoprivacy-ipc` 本机也要过（CI 跑同口径）。windows-gnu 需要 MinGW `windres`；勿引入 `gpui-pre-platform`（原因见 `ui/Cargo.toml` 注释）。
 - 发布（发版机专用，agent 不主动触发，由人执行）：`scripts/publish-app.ps1` 或 `scripts/publish.sh`（内含 `dotnet publish`，写 `release/`）；发布属性只经脚本 `/p:` 传入，禁写回 csproj。
 - 安装：`scripts/install-service.ps1`、`scripts/install-systemd-service.sh`、`scripts/install-launchd-service.sh`。
 - 发版门禁（发版机专用，agent 不主动触发，由人执行）：`scripts/release-readiness.ps1`（内含 test+smoke+publish）。
@@ -19,6 +20,7 @@ PhotoPrivacy：批量清理照片/视频/文档隐私元数据的 C#/.NET 10 跨
 ## 代码里看不出来的坑
 
 - ExifTool 必须 stay_open 长驻，禁每文件 spawn；备份镜像相对路径、同内容跳过、分歧写旁路版本、原子写；IPC 认证以 OS 身份为边界；UI 线程与后台线程禁 sync-over-async；未知格式立即跳过；视觉尺寸/字号只消费 DesignTokens token，按钮/nav 尺寸权威在 AppTheme.axaml。
+- 改 IPC 客户端或新 UI 连接代码前读 `docs/agents/ipc-contract.md`（帧、超时、端点、重试、认证边界的事实源指针）。
 
 ## Agent skills
 
