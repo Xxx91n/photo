@@ -1,4 +1,7 @@
 mod app;
+mod config;
+mod config_file;
+mod config_service;
 mod theme;
 mod worker_connection;
 
@@ -7,7 +10,7 @@ use gpui::{
     WindowOptions, px, size,
 };
 use photoprivacy_ipc::{
-    ConnectionSnapshot, SingleInstanceGuard, UI_INSTANCE_NAME, notify_existing_instance,
+    ConnectionSnapshot, Endpoint, SingleInstanceGuard, UI_INSTANCE_NAME, notify_existing_instance,
 };
 use std::path::PathBuf;
 use std::time::Duration;
@@ -89,9 +92,31 @@ fn main() -> anyhow::Result<()> {
     }
 
     let options = ConnectOptions::discover().with_overrides(args.config_path, args.worker_path);
+    let config_path = options
+        .config_path
+        .clone()
+        .unwrap_or_else(|| PathBuf::from("config").join("config.json"));
+
     let (snapshot_tx, snapshot_rx) = tokio::sync::watch::channel(ConnectionSnapshot::connecting());
+    let (endpoint_tx, endpoint_rx) = tokio::sync::watch::channel::<Option<Endpoint>>(None);
     let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
-    worker_connection::start(runtime.handle(), options, snapshot_tx, event_tx);
+    worker_connection::start(
+        runtime.handle(),
+        options,
+        snapshot_tx,
+        endpoint_tx,
+        event_tx,
+    );
+
+    let (config_command_tx, config_command_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (config_event_tx, config_event_rx) = tokio::sync::mpsc::unbounded_channel();
+    config_service::spawn(
+        runtime.handle(),
+        config_path.clone(),
+        endpoint_rx,
+        config_command_rx,
+        config_event_tx,
+    );
 
     application().run(move |cx: &mut App| {
         cx.on_window_closed(|cx, _| {
@@ -101,7 +126,7 @@ fn main() -> anyhow::Result<()> {
         })
         .detach();
 
-        let bounds = Bounds::centered(None, size(px(820.), px(580.)), cx);
+        let bounds = Bounds::centered(None, size(px(980.), px(720.)), cx);
         cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
@@ -111,12 +136,22 @@ fn main() -> anyhow::Result<()> {
                     traffic_light_position: None,
                 }),
                 window_background: WindowBackgroundAppearance::Opaque,
-                window_min_size: Some(size(px(680.), px(520.))),
+                window_min_size: Some(size(px(820.), px(600.))),
                 ..Default::default()
             },
             move |window, cx| {
                 cx.activate(false);
-                cx.new(|cx| app::AppView::new(window, cx, snapshot_rx, event_rx))
+                cx.new(|cx| {
+                    app::AppView::new(
+                        window,
+                        cx,
+                        snapshot_rx,
+                        event_rx,
+                        config_event_rx,
+                        config_command_tx,
+                        config_path,
+                    )
+                })
             },
         )
         .expect("创建主窗口失败");

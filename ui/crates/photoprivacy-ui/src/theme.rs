@@ -1,6 +1,7 @@
+use crate::config::normalize_theme_variant;
 use gpui::{Rgba, WindowAppearance, rgb};
 
-/// 主题选择：默认跟随系统，允许临时强制 light/dark（持久化随配置页票 #55 再做）。
+/// 主题选择：默认跟随系统，允许强制 light/dark。`ui.theme_variant` 是持久化形态。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ThemeMode {
     System,
@@ -14,6 +15,23 @@ impl ThemeMode {
             ThemeMode::System => "System",
             ThemeMode::Light => "Light",
             ThemeMode::Dark => "Dark",
+        }
+    }
+
+    /// 写回 config.json 的 `ui.theme_variant` 值（旧 UI 的取值域）。
+    pub fn variant(self) -> &'static str {
+        match self {
+            ThemeMode::System => "system",
+            ThemeMode::Light => "light",
+            ThemeMode::Dark => "dark",
+        }
+    }
+
+    pub fn from_variant(value: &str) -> Self {
+        match normalize_theme_variant(value) {
+            "light" => ThemeMode::Light,
+            "dark" => ThemeMode::Dark,
+            _ => ThemeMode::System,
         }
     }
 
@@ -113,5 +131,15 @@ mod tests {
             Theme::resolve(ThemeMode::System, false).bg,
             Theme::light().bg
         );
+    }
+
+    #[test]
+    fn theme_variant_round_trips_through_config_values() {
+        // 防：界面显示 Dark 但 config.json 写成 "Dark"/"default"，旧 UI 读回后回落到 system（#55）。
+        for mode in ThemeMode::all() {
+            assert_eq!(ThemeMode::from_variant(mode.variant()), mode);
+        }
+        assert_eq!(ThemeMode::from_variant("DARK"), ThemeMode::Dark);
+        assert_eq!(ThemeMode::from_variant("garbage"), ThemeMode::System);
     }
 }
