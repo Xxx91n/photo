@@ -68,7 +68,7 @@ impl ConfigFile {
         }
     }
 
-    // Design(#55): 写盘顺序沿用旧 UI（.bak → .write.tmp → rename），新旧 UI 对同一文件保持同一原子写契约。
+    // Design(#49): 写盘顺序沿用旧 UI（.bak → .write.tmp → rename），新旧 UI 对同一文件保持同一原子写契约。
     pub fn save(&self, config: &AppConfig) -> Result<(), ConfigFileError> {
         let json = config.to_json();
         if let Some(parent) = self.path.parent() {

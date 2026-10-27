@@ -21,7 +21,7 @@ pub fn load(path: Option<&Path>) -> UiOptions {
 }
 
 /// 解析 `ui.*` 两个布尔开关；坏 JSON 或非布尔值回落默认。
-// Design(#55): 这里只认驻守相关的两个开关，配置页的读写/热重载由 #55 接管。
+// Design(#49): 这里只认驻守相关的两个开关；配置页的读写/热重载由新 UI 配置页负责（#55 已关闭，实现见 config_service）。
 fn parse(text: &str) -> UiOptions {
     // Windows 编辑器/脚本常写 UTF-8 BOM；serde_json 不认 BOM，先剥掉再解析。
     let text = text.strip_prefix('\u{feff}').unwrap_or(text);
