@@ -195,7 +195,6 @@ fn main() -> anyhow::Result<()> {
         let start_hidden = tray::should_start_hidden(
             ui_options.hide_main_window_on_startup,
             show_tray_icon,
-            ui_options.hide_tray_icon,
             has_tray,
         );
 
