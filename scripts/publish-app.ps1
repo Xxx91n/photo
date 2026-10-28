@@ -26,8 +26,8 @@ $zipEnabled = $Zip -match '^(1|true|yes|on)$'
 # Linux/macOS 由对应平台的 publish.sh 产出（gpui 不支持交叉编译）。
 $validRuntimes = @("win-x64")
 if ($validRuntimes -notcontains $Runtime) {
-  throw "Invalid Runtime '$Runtime'. Valid: $($validRuntimes -join ', ') (win-x86/win-arm64 不受 gpui 支持；" +
-        "linux-*/osx-* 须在对应平台用 scripts/publish.sh 产出)"
+  throw "Invalid Runtime '$Runtime'. Valid: $($validRuntimes -join ', '). win-x86/win-arm64 are not supported by gpui; " +
+        "build linux-*/osx-* on the matching platform with scripts/publish.sh."
 }
 
 $defaultFramework = "net10.0"
@@ -53,7 +53,7 @@ if (-not $windres) {
   }
 }
 if (-not $windres) {
-  throw "windres not found in PATH or at known MinGW locations; windows-gnu 构建需要 MinGW windres（或设 WINDRES 环境变量）"
+  throw "windres not found in PATH or at known MinGW locations; the windows-gnu build needs MinGW windres (or set the WINDRES environment variable)"
 }
 
 rustup target add $uiTarget

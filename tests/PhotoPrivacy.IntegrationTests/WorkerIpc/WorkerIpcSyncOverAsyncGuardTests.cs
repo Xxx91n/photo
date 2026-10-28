@@ -95,10 +95,30 @@ public sealed class WorkerIpcSyncOverAsyncGuardTests
         // photoprivacy-ipc::protocol::read_bounded_line（语义对齐 IpcLineReader），
         // 此处只钉「客户端实现确为有界共享读」的存在性，字节级细节由 cargo test 守护。
         var loop = SourceLint.ReadStripped("src", "PhotoPrivacy.Worker", "WorkerIpcServerLoop.cs");
-        var rustProtocol = SourceLint.Read("ui", "crates", "photoprivacy-ipc", "src", "protocol.rs");
+        var rustProtocol = SourceLint.ReadStripped("ui", "crates", "photoprivacy-ipc", "src", "protocol.rs");
+        var rustClient = SourceLint.ReadStripped("ui", "crates", "photoprivacy-ipc", "src", "client.rs");
 
         Assert.DoesNotContain("new byte[1]", loop, StringComparison.Ordinal);
         Assert.Contains("pub async fn read_bounded_line", rustProtocol, StringComparison.Ordinal);
-        Assert.Contains("read_bounded_line", SourceLint.Read("ui", "crates", "photoprivacy-ipc", "src", "client.rs"), StringComparison.Ordinal);
+        Assert.Contains("read_bounded_line", rustClient, StringComparison.Ordinal);
+
+        // 失效自证（#61）：只在注释里出现的旧调用，剥注释后不得计入——守卫不会被注释骗绿。
+        var injected = rustProtocol + "\n// legacy: pub async fn read_bounded_line() {}\n";
+        var injectedStripped = string.Concat(injected.Split('\n').Select(SourceLint.StripLineComment));
+        Assert.Equal(
+            CountOccurrences(rustProtocol, "pub async fn read_bounded_line"),
+            CountOccurrences(injectedStripped, "pub async fn read_bounded_line"));
+    }
+
+    private static int CountOccurrences(string haystack, string needle)
+    {
+        var count = 0;
+        var idx = 0;
+        while ((idx = haystack.IndexOf(needle, idx, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            idx += needle.Length;
+        }
+        return count;
     }
 }

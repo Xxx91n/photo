@@ -44,6 +44,8 @@ public sealed class PublishPropertiesCsprojGuardTests
     internal static List<string> ClassifyPublishScript(string script, string label)
     {
         // Worker 的 dotnet publish 调用段必须带齐三枚 /p: 标志；UI 侧走 cargo（见 ClassifyCargoUiEntry）。
+        // 先剥脚本注释（PowerShell/shell 的 # 行注释）：注释里残留的 token 不得让守卫骗绿（#61）。
+        script = StripHashComments(script);
         var violations = new List<string>();
         var indices = new List<int>();
         var pos = 0;
@@ -84,9 +86,10 @@ public sealed class PublishPropertiesCsprojGuardTests
 
     internal static List<string> ClassifyCargoUiEntry(string script, string label)
     {
-        // 入口接法守卫：两个发布脚本都必须以 cargo 构建 photoprivacy-ui 并复制为 PhotoPrivacy 入口。
-        // 出现次数 ≥2（cargo -p 构建行 + 产物复制引用各自独立一处）：只出现在注释/文案里的单次
-        // 引用不足以骗绿（code-review 判定性意见的处置）。
+        // 入口接法守卫（#61）：两个发布脚本都必须以 cargo 构建 photoprivacy-ui 并复制为 PhotoPrivacy 入口。
+        // 剥 # 行注释后再判：退出条件 = 构建行 + 复制引用各一处代码级出现；只出现在注释/文案里的
+        // 单次引用不足以骗绿（code-review 判定性意见的处置）。
+        script = StripHashComments(script);
         var violations = new List<string>();
         if (!script.Contains("cargo build --release --locked", StringComparison.Ordinal))
         {
@@ -103,6 +106,17 @@ public sealed class PublishPropertiesCsprojGuardTests
             violations.Add(label + " 缺少 PhotoPrivacy 入口命名（默认入口必须保持 PhotoPrivacy(.exe)）");
         }
         return violations;
+    }
+
+    /// <summary>剥除 shell/PowerShell 的 # 行注释（脚本里没有含 # 的字符串字面量）。</summary>
+    internal static string StripHashComments(string script)
+    {
+        var lines = script.Replace("\r\n", "\n").Split('\n');
+        return string.Join("\n", lines.Select(line =>
+        {
+            var idx = line.IndexOf('#');
+            return idx >= 0 ? line[..idx] : line;
+        }));
     }
 
     private static int CountOccurrences(string haystack, string needle)
@@ -186,6 +200,14 @@ public sealed class PublishPropertiesCsprojGuardTests
         if (ClassifyCargoUiEntry(entryDrift, "publish-app.ps1").Count == 0)
         {
             failures.Add("MISSED: GUI 入口产物被改写未红");
+        }
+
+        // 注释骗绿自证：入口 token 只留在 # 注释里（代码行被删）时必须报红。
+        var commentOnly = "# cargo build --release --locked -p photoprivacy-ui\n" +
+                          "# cp ... photoprivacy-ui.exe ... PhotoPrivacy.exe\n";
+        if (ClassifyCargoUiEntry(commentOnly, "comment-only").Count == 0)
+        {
+            failures.Add("MISSED: 仅注释中的入口 token 未被剥除");
         }
 
         Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));

@@ -2,7 +2,6 @@
 set -euo pipefail
 
 VERSION="0.1.0-preview"
-RUNTIME="win-x64"
 FRAMEWORK="net10.0"
 SELF_CONTAINED="true"
 ZIP="true"
@@ -13,7 +12,7 @@ Usage: $0 [options]
 
 Options:
   --version <ver>       Version string (default: $VERSION; 仅写入包名，Rust UI 产物不带版本元数据)
-  --runtime <rid>       Runtime identifier (default: $RUNTIME)
+  --runtime <rid>       Runtime identifier (default: 构建主机对应 RID)
   --framework <fw>      Target framework (default: $FRAMEWORK; 仅作用于 Worker)
   --self-contained <b>  Self-contained (default: $SELF_CONTAINED)
   --zip <b>             Create archive (default: $ZIP)
@@ -23,6 +22,15 @@ Valid runtimes: linux-x64, linux-arm64, osx-x64, osx-arm64 (须在本机对应�
 GUI 入口为 gpui 新 UI，不支持交叉编译。win-x64 走 Windows 机的 publish-app.ps1)
 EOF
 }
+
+# 默认 RID 由构建主机推导（gpui 新 UI 不支持交叉编译，见下方 host-match 检查）。
+RUNTIME=""
+case "$(uname -s)-$(uname -m)" in
+  Linux-x86_64) RUNTIME="linux-x64" ;;
+  Linux-aarch64) RUNTIME="linux-arm64" ;;
+  Darwin-x86_64) RUNTIME="osx-x64" ;;
+  Darwin-arm64) RUNTIME="osx-arm64" ;;
+esac
 
 while [[ $# -gt 0 ]]; do
   case "$1" in

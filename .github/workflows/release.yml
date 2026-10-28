@@ -16,8 +16,12 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0.201"
@@ -43,14 +47,18 @@ jobs:
             os: ubuntu-24.04-arm
             archive: tar
           - rid: osx-x64
-            os: macos-13
+            os: macos-15-intel
             archive: tar
           - rid: osx-arm64
             os: macos-latest
             archive: tar
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0.201"
@@ -91,7 +99,7 @@ jobs:
           Architecture: amd64
           Maintainer: PhotoPrivacy <hello@tonpro.fu>
           Description: Batch EXIF metadata and privacy cleaner
-          Depends: libx11-6, libice6, libsm6, libfontconfig1, ca-certificates, tzdata, libc6, libgcc-s1, libstdc++6, zlib1g, libssl3, libicu74, libxkbcommon0, libwayland-client0, libvulkan1
+          Depends: libx11-6, libice6, libsm6, libfontconfig1, ca-certificates, tzdata, libc6, libgcc-s1, libstdc++6, zlib1g, libssl3, libicu74, libxkbcommon0, libxkbcommon-x11-0, libwayland-client0, libvulkan1
           CTRL
           dpkg-deb --build deb-pkg photoprivacy-${{ inputs.version }}-amd64.deb
 
@@ -107,7 +115,7 @@ jobs:
           Architecture: arm64
           Maintainer: PhotoPrivacy <hello@tonpro.fu>
           Description: Batch EXIF metadata and privacy cleaner
-          Depends: libx11-6, libice6, libsm6, libfontconfig1, ca-certificates, tzdata, libc6, libgcc-s1, libstdc++6, zlib1g, libssl3, libicu74, libxkbcommon0, libwayland-client0, libvulkan1
+          Depends: libx11-6, libice6, libsm6, libfontconfig1, ca-certificates, tzdata, libc6, libgcc-s1, libstdc++6, zlib1g, libssl3, libicu74, libxkbcommon0, libxkbcommon-x11-0, libwayland-client0, libvulkan1
           CTRL
           dpkg-deb --build deb-pkg photoprivacy-${{ inputs.version }}-arm64.deb
 
