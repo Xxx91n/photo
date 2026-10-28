@@ -5,6 +5,7 @@
 //! 菜单文案经 i18n 目录取词（#60），语言切换后在下一次事件轮询时原位改写菜单文本。
 
 use crate::i18n::{Catalog, keys as k};
+use photoprivacy_service::ServiceRuntimeState;
 use std::rc::Rc;
 use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
@@ -34,20 +35,21 @@ pub struct TrayHandle {
     locale: String,
 }
 
-/// 旧 UI `TrayPolicy.ShouldShowTrayIcon` 的逐字镜像：只有后台模式且服务未安装时才显示托盘。
+/// 旧 UI `TrayPolicy.ShouldShowTrayIcon(isBackgroundMode, isServiceInstalled)` 的对等实现：
+/// 只有后台模式且服务未安装时才显示托盘。
 ///
 /// 新 UI 没有独立的「后台模式」状态，由安装态反推：服务已安装（含探测失败归入的 `Unknown`）
-/// 即服务模式。这样服务已安装但未运行时也不会把托盘留在服务模式里。
-pub fn should_show_tray_icon(is_background_mode: bool, is_service_installed: bool) -> bool {
-    is_background_mode && !is_service_installed
+/// 即服务模式。这样服务已安装但未运行（Stopped/pending）时也不会把托盘留在服务模式里。
+// Design(#49): 托盘只在后台模式且服务未安装时显示；服务已安装（含 Unknown）不得留下托盘。
+pub fn should_show_tray_icon(state: ServiceRuntimeState) -> bool {
+    !state.is_installed()
 }
 
 /// 托盘创建失败时返回 `None`：窗口保持常显、关窗即退出，绝不出现「窗口藏了但托盘没建起来」
 /// 的无入口状态（旧 UI 用 `trayReady` 表达同一约束）。
 ///
-/// `show_tray_icon` 由 [`should_show_tray_icon`] 与 `ui.hide_tray_icon` 共同决定；
-/// 运行期安装/卸载服务不重建托盘（旧 UI `ServiceModeController` 的模式切换编排不迁移，对等核销见 #61）。
-// Design(#49): 托盘只在「后台模式且服务未安装」时显示；运行模式切换后的托盘重建属旧 ServiceModeController，不迁移。
+/// `show_tray_icon` 由 [`should_show_tray_icon`] 与 `ui.hide_tray_icon` 共同决定。
+// Design(#49): 运行期安装/卸载服务不重建托盘（旧 ServiceModeController 的模式切换编排不迁移，对等核销见 #61）。
 pub fn install(show_tray_icon: bool, i18n: Rc<Catalog>, locale: &str) -> Option<TrayHandle> {
     if !show_tray_icon {
         return None;
@@ -179,15 +181,13 @@ fn dot_rgba() -> (Vec<u8>, u32) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use photoprivacy_service::ServiceRuntimeState;
 
     #[test]
-    fn tray_needs_background_mode_without_an_installed_service() {
-        // 旧 UI `TrayPolicyTests` 的三条 + 全假一格：服务已安装（含未运行）时托盘必须消失（#58 承接项）。
-        assert!(!should_show_tray_icon(true, true));
-        assert!(should_show_tray_icon(true, false));
-        assert!(!should_show_tray_icon(false, false));
-        assert!(!should_show_tray_icon(false, true));
+    fn tray_shows_only_while_no_service_is_installed() {
+        // 旧 UI `TrayPolicyTests` 三条的真值表：没装服务才允许后台托盘（#58 承接项）。
+        assert!(should_show_tray_icon(ServiceRuntimeState::NotInstalled));
+        assert!(!should_show_tray_icon(ServiceRuntimeState::Running));
+        assert!(!should_show_tray_icon(ServiceRuntimeState::Stopped));
     }
 
     #[test]
@@ -205,15 +205,11 @@ mod tests {
             ServiceRuntimeState::Unknown,
         ] {
             assert!(state.is_installed(), "{state:?} 必须按已安装处理");
-            assert!(
-                !should_show_tray_icon(!state.is_installed(), state.is_installed()),
-                "{state:?} 不允许显示托盘"
-            );
+            assert!(!should_show_tray_icon(state), "{state:?} 不允许显示托盘");
         }
 
-        let not_installed = ServiceRuntimeState::NotInstalled;
-        assert!(!not_installed.is_installed());
-        assert!(should_show_tray_icon(true, not_installed.is_installed()));
+        assert!(!ServiceRuntimeState::NotInstalled.is_installed());
+        assert!(should_show_tray_icon(ServiceRuntimeState::NotInstalled));
     }
 
     #[test]
@@ -225,6 +221,27 @@ mod tests {
         assert!(!should_start_hidden(true, true, false, false));
         assert!(!should_start_hidden(true, true, true, true));
         assert!(!should_start_hidden(false, true, false, true));
+    }
+
+    #[test]
+    fn service_mode_never_hides_the_window() {
+        // 组合门控：安装态 → 托盘可见性 → 静默启动。服务模式下即使勾选静默启动也必须出窗（#58）。
+        for state in [
+            ServiceRuntimeState::Running,
+            ServiceRuntimeState::Stopped,
+            ServiceRuntimeState::Unknown,
+        ] {
+            assert!(
+                !should_start_hidden(true, should_show_tray_icon(state), false, true),
+                "{state:?} 不允许静默启动"
+            );
+        }
+        assert!(should_start_hidden(
+            true,
+            should_show_tray_icon(ServiceRuntimeState::NotInstalled),
+            false,
+            true
+        ));
     }
 
     #[test]
