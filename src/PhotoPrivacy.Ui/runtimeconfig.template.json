@@ -1,6 +1,0 @@
-{
-  "runtimeOptions": {
-    "gcServer": false,
-    "gcConcurrent": true
-  }
-}

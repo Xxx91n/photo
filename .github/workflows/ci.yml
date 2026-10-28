@@ -7,8 +7,12 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0.201"
@@ -42,8 +46,8 @@ jobs:
         working-directory: ui
         run: cargo test -p photoprivacy-ipc -p photoprivacy-logs -p photoprivacy-rules -p photoprivacy-service --locked
 
-  # UI crate 只做 check：build.rs 在 MSVC 目标上跳过 comctl32 清单（见 ui/crates/photoprivacy-ui/build.rs），
-  # link 仍需 MinGW windres，发版链归 #61。
+  # UI crate：MSVC 目标做 check（build.rs 不嵌清单），另以 windows-gnu 做一次 release 构建——
+  # 这是发布链的实际产出路径（publish-app.ps1 同口径，见 ui/crates/photoprivacy-ui/build.rs 与 #61）。
   ui-check:
     runs-on: windows-latest
     permissions:
@@ -53,17 +57,35 @@ jobs:
         with:
           persist-credentials: false
       - name: Ensure Rust toolchain components
-        run: rustup component add rustfmt clippy
+        run: |
+          rustup component add rustfmt clippy
+          rustup target add x86_64-pc-windows-gnu
+      - name: Locate windres (windows-gnu release build 前置)
+        shell: pwsh
+        run: |
+          $windres = Get-Command windres -ErrorAction SilentlyContinue
+          if (-not $windres) {
+            foreach ($candidate in @("C:\msys64\mingw64\bin\windres.exe", "C:\ProgramData\mingw64\mingw64\bin\windres.exe")) {
+              if (Test-Path $candidate) { $windres = $candidate; break }
+            }
+          }
+          if (-not $windres) {
+            throw "windres not found in PATH or known MinGW locations（候选列表须与 scripts/publish-app.ps1 保持同步）"
+          }
+          "WINDRES=$windres" | Out-File -FilePath $env:GITHUB_ENV -Append
       - uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             ui/target
-          key: ${{ runner.os }}-cargo-msvc-${{ hashFiles('ui/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('ui/Cargo.lock') }}
       - name: Rust check (photoprivacy-ui)
         working-directory: ui
         run: cargo check -p photoprivacy-ui --locked
+      - name: Rust release build (photoprivacy-ui, windows-gnu —— 发布链产出路径)
+        working-directory: ui
+        run: cargo build --release --locked --target x86_64-pc-windows-gnu -p photoprivacy-ui
       - name: Rust clippy (photoprivacy-service, Windows)
         working-directory: ui
         run: cargo clippy -p photoprivacy-service --all-targets -- -D warnings

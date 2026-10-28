@@ -90,12 +90,22 @@ public sealed class WorkerIpcSyncOverAsyncGuardTests
     [Fact]
     public void Ipc_Line_Reader_Should_Be_The_Single_Buffered_Implementation()
     {
-        // 回潮守卫：逐字节读循环（new byte[1]）不得重新出现在服务端/客户端。
+        // 回潮守卫：逐字节读循环（new byte[1]）不得重新出现在服务端；客户端侧
+        // 旧 Ui WorkerIpcClient 已随旧工程退役（#61），客户端等价物为 Rust 侧
+        // photoprivacy-ipc::protocol::read_bounded_line（语义对齐 IpcLineReader），
+        // 此处只钉「客户端实现确为有界共享读」的存在性，字节级细节由 cargo test 守护。
         var loop = SourceLint.ReadStripped("src", "PhotoPrivacy.Worker", "WorkerIpcServerLoop.cs");
-        var client = SourceLint.ReadStripped("src", "PhotoPrivacy.Ui", "Services", "WorkerIpcClient.cs");
+        var rustProtocol = SourceLint.ReadStripped("ui", "crates", "photoprivacy-ipc", "src", "protocol.rs");
+        var rustClient = SourceLint.ReadStripped("ui", "crates", "photoprivacy-ipc", "src", "client.rs");
 
         Assert.DoesNotContain("new byte[1]", loop, StringComparison.Ordinal);
-        Assert.DoesNotContain("new byte[1]", client, StringComparison.Ordinal);
-        Assert.Contains("IpcLineReader.ReadBoundedLineAsync", client, StringComparison.Ordinal);
+        Assert.Contains("pub async fn read_bounded_line", rustProtocol, StringComparison.Ordinal);
+        Assert.Contains("read_bounded_line", rustClient, StringComparison.Ordinal);
+
+        // 失效自证（#61）：ReadStripped 的剥注释实现就是 SourceLint.StripLineComment（逐行剥除后拼接），
+        // 这里对注释样本直测该实现——仅存在于 // 注释的 read_bounded_line 剥后不得满足 Assert.Contains。
+        var commentOnly = "// pub async fn read_bounded_line() {}\n";
+        var commentOnlyStripped = string.Concat(commentOnly.Split('\n').Select(SourceLint.StripLineComment));
+        Assert.DoesNotContain("pub async fn read_bounded_line", commentOnlyStripped, StringComparison.Ordinal);
     }
 }

@@ -1,13 +1,14 @@
-# rules.json 契约（新旧 UI 共用）
+# rules.json 契约（新 UI 与 Worker 共用）
 
 > 定位：规则页读写的 `rules.json` 速查，供新 UI（`ui/`）与任何规则存储改动前查阅。
 > 事实源分三处：`FormatRulesStore.cs`（键名与编码默认值）、
 > `RulesPanelViewModel.BackfillFromStore` 与 `WipeRuleEngine.cs`（缺键逐项回退、消费侧）。本文件是缓存。
+> 注：文中「旧 UI」语义出处已随旧 Ui 工程退役（#61），仅作历史参照；现役实现为新 UI（`ui/crates/photoprivacy-rules`）与 Worker。
 
 ## 位置
 
 UI 与 Worker 都按各自 `AppContext.BaseDirectory` / 可执行文件目录解析：`<app dir>/config/rules.json`。
-发布布局里两个进程同目录，因此写同一份文件；旧 UI 也直接写文件，不经过 IPC。
+发布布局里两个进程同目录，因此写同一份文件；UI 直接写文件，不经过 IPC。
 
 ## Schema
 

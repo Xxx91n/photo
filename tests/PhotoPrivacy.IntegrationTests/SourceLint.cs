@@ -4,17 +4,15 @@ namespace PhotoPrivacy.IntegrationTests;
 
 /// <summary>
 /// 架构恢复 — source-lint guard 共享 helper（唯一实现）。
-/// 仓库根定位、源码读取、行注释剥除与 Ui 源文件枚举的唯一出处；
-/// 各 source-lint guard（UiLauncherSourceTests / DesignSystemTests /
-/// WorkerProcessManagerTests / HardcodedChineseScanTests 等）统一改调本类，断言语义零变化。
+/// 仓库根定位、源码读取与行注释剥除的唯一出处；
+/// 各 source-lint guard（PublishPropertiesCsprojGuardTests / SmokeScriptDiagnosticsTests 等）
+/// 统一改调本类，断言语义零变化。
+/// 旧 Ui 工程退役（#61）后，Ui 源文件枚举与 ConfigPage 组合件读取随之移除。
 /// </summary>
 public static class SourceLint
 {
     /// <summary>仓库根目录（自测试运行目录向上查 .git 或 PhotoPrivacy.sln 定位）。</summary>
     public static string RepoRoot { get; } = FindRepoRoot();
-
-    /// <summary>src/PhotoPrivacy.Ui 源码根。</summary>
-    public static string UiSourceRoot { get; } = Path.Combine(RepoRoot, "src", "PhotoPrivacy.Ui");
 
     /// <summary>剥除一行内的 // 行注释（含 /// doc 行），返回代码部分。</summary>
     public static string StripLineComment(string line)
@@ -38,49 +36,7 @@ public static class SourceLint
     }
 
     /// <summary>
-    /// （ui-craft2）返工轮：ConfigPage 组合件文件清单 —— 页壳 + 4 分组子件。
-    /// 拆分为 Pages<=220 守卫消红（页面文件规约）；凡钉「ConfigPage 页面内容」的断言
-    /// 一律读组合件合并文本，断言语义与原单文件形态等价。
-    /// </summary>
-    public static readonly string[] ConfigPageCompositionFiles =
-    {
-        "ConfigPage.axaml",
-        "ConfigPathGroup.axaml",
-        "ConfigBehaviorGroup.axaml",
-        "ConfigLogsGroup.axaml",
-        "ConfigExcludedGroup.axaml",
-    };
-
-    /// <summary>读取 ConfigPage 组合件合并原文（不剥注释；XAML 注释剥除由调用方按 <!-- --> 自行处理）。</summary>
-    public static string ReadConfigPageComposition()
-    {
-        return string.Concat(ConfigPageCompositionFiles.Select(f =>
-            Read("src", "PhotoPrivacy.Ui", "Views", "Pages", f)));
-    }
-
-    /// <summary>枚举 src/PhotoPrivacy.Ui 全部手写 .cs（排除 bin/obj 与生成代码）。</summary>
-    public static List<string> UiCsFiles()
-    {
-        Assert.True(Directory.Exists(UiSourceRoot), $"Ui source root not found: {UiSourceRoot}");
-        return Directory.GetFiles(UiSourceRoot, "*.cs", SearchOption.AllDirectories)
-            .Where(f => !f.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar) &&
-                        !f.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar) &&
-                        !f.EndsWith(".g.cs") && !f.EndsWith(".GlobalUsings.g.cs"))
-            .ToList();
-    }
-
-    /// <summary>枚举 src/PhotoPrivacy.Ui 全部 .axaml（排除 bin/obj）。</summary>
-    public static List<string> UiAxamlFiles()
-    {
-        Assert.True(Directory.Exists(UiSourceRoot), $"Ui source root not found: {UiSourceRoot}");
-        return Directory.GetFiles(UiSourceRoot, "*.axaml", SearchOption.AllDirectories)
-            .Where(f => !f.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar) &&
-                        !f.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar))
-            .ToList();
-    }
-
-    /// <summary>
-    /// （#65）枚举 src/ 下全部手写 .cs（Core/Ipc/Ui/Worker 四工程），
+    /// （#65）枚举 src/ 下全部手写 .cs（Core/Ipc/Worker 三工程），
     /// 排除 bin/obj 与生成代码 —— 全仓级形态守卫的唯一枚举出处，不在各 guard 里重复。
     /// </summary>
     public static List<string> SrcCsFiles()

@@ -8,7 +8,7 @@ PhotoPrivacy 自动清除热文件夹中图片/视频/PDF 的隐私元数据（E
 
 | 进程 | 职责 |
 |------|------|
-| `PhotoPrivacy.exe` | GUI 入口（Avalonia 桌面应用） |
+| `PhotoPrivacy.exe` | GUI 入口（gpui 桌面应用，Rust，构建产物为 photoprivacy-ui，源码在 `ui/`） |
 | `PhotoPrivacyWorker.exe --mode background` | 后台 Worker（托盘/用户态） |
 | `PhotoPrivacyWorker.exe --mode service` | 服务 Worker（Windows Service / Linux systemd） |
 
@@ -106,10 +106,10 @@ sc.exe start PhotoPrivacyCleaner
 
 ## Linux 部署（systemd）
 
-1) 打包 Linux 发布物：
+1) 在 Linux x86_64 主机上打包 Linux 发布物（gpui 新 UI 不支持交叉编译，发布脚本须在目标平台本机执行）：
 
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/publish-app.ps1 -Version 0.1.0-preview -Runtime linux-x64 -SelfContained true -Zip true
+```bash
+./scripts/publish.sh --version 0.1.0-preview --runtime linux-x64 --zip true
 ```
 
 2) 上传并解压 `release/PhotoPrivacy-<version>-linux-x64.tar.gz` 到主机（推荐 `/opt/photoprivacy`）。
@@ -170,20 +170,20 @@ dotnet run --project src/PhotoPrivacy.Worker/PhotoPrivacy.Worker.csproj -- --mod
 
 ## Build EXE / Package
 
-> **发布前必须先测试**：`publish-app.ps1` 内部调用 `dotnet publish`（含编译）但跳过完整 test 验证。
+> **发布前必须先测试**：发布脚本内含 `dotnet publish`（Worker）与 `cargo build`（GUI 入口）但跳过完整 test 验证。
 > 推荐使用 `release-readiness.ps1`（含 test + smoke + publish 完整 gate）代替直接 publish。
 > 直接 publish 而不先 test 会导致 bug 已修但发布的二进制仍是旧版。
 
-Windows:
+Windows（GUI 入口走 cargo 的 windows-gnu target，需 MinGW `windres` 在 PATH 或 `WINDRES` 环境变量）：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/publish-app.ps1 -Version 0.1.0-preview -Runtime win-x64 -Framework net10.0 -SelfContained true -Zip true
 ```
 
-Linux:
+Linux/macOS（gpui 新 UI 不支持交叉编译，须在目标平台本机执行）：
 
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/publish-app.ps1 -Version 0.1.0-preview -Runtime linux-x64 -Framework net10.0 -SelfContained true -Zip true
+```bash
+./scripts/publish.sh --version 0.1.0-preview --runtime linux-x64 --zip true   # 亦支持 linux-arm64 / osx-x64 / osx-arm64
 ```
 
 发行前检查（测试 + smoke + 打包）：

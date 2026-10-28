@@ -9,8 +9,11 @@ namespace PhotoPrivacy.IntegrationTests;
 /// </summary>
 public sealed class DesignMarkerSourceTests
 {
-    /// <summary>#52 首批落地的标记处数；低于此数说明约定被整体回退。</summary>
-    private const int FirstBatchFloor = 5;
+    /// <summary>
+    /// src/ 标记数下限。#52 首批为 5 处，其中 2 处（AppComposition.cs / Program.cs）住在旧 Ui 工程，
+    /// 随 #61 切换日退役——下限相应调整为存活的 3 处；低于此数说明约定被整体回退。
+    /// </summary>
+    private const int MarkerFloor = 3;
 
     private static readonly Regex CanonicalMarker =
         new(@"^\s*//\s*Design\(#\d+\): \S", RegexOptions.Compiled, TimeSpan.FromSeconds(5));
@@ -80,7 +83,7 @@ public sealed class DesignMarkerSourceTests
         // 防的具体回潮形态：整批标记被手工删光或被格式化/重排脚本吃掉，GLOSSARY 词条还写着约定生效、守卫却一条都不红。
         // 关联 issue #65。
         var count = ScanMarkers().Count(m => CanonicalMarker.IsMatch(m.Text));
-        Assert.True(count >= FirstBatchFloor,
-            $"src/ 里的 Design 标记不得少于 #52 首批的 {FirstBatchFloor} 处（当前 {count} 处）");
+        Assert.True(count >= MarkerFloor,
+            $"src/ 里的 Design 标记不得少于 {MarkerFloor} 处（#52 首批 5 处中 2 处随旧 Ui 工程退役，#61；当前 {count} 处）");
     }
 }

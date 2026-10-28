@@ -2,7 +2,7 @@
 
 > AI agent 工作规范。所有交互使用中文。
 
-PhotoPrivacy：批量清理照片/视频/文档隐私元数据的 C#/.NET 10 跨平台桌面工具。Avalonia UI + 后台 Worker + 服务 Worker，IPC 走命名管道 / Unix socket。
+PhotoPrivacy：批量清理照片/视频/文档隐私元数据的跨平台桌面工具。GUI 入口为 Rust gpui 新 UI（`ui/`，发布名 `PhotoPrivacy.exe`）+ C#/.NET 10 后台 Worker + 服务 Worker，IPC 走命名管道 / Unix socket；旧 Avalonia Ui 工程已随 #61 切换退役。
 
 ## 怎么跑
 
