@@ -41,11 +41,22 @@ pub struct TrayHandle {
 /// 新 UI 没有独立的「后台模式」状态，由安装态反推：服务已安装（含探测失败归入的 `Unknown`）
 /// 即服务模式。这样服务已安装但未运行（Stopped/pending）时也不会把托盘留在服务模式里。
 ///
+/// `service_management_supported` 为 false 的平台（FreeBSD 等）探测恒为 `Unknown`，
+/// 不能当成「已安装」；否则托盘永不出现，关窗即退出。
+///
 /// 旧 UI 先看服务管道是否存活、再看安装态；启动前还没有连接态，这里只按安装态判定，
 /// 「管道存活但探测为未安装」的竞态不覆盖（对等核销见 #61）。
-// Design(#49): 托盘只在后台模式且服务未安装、且用户未关闭托盘时显示；服务已安装（含 Unknown）不得留下托盘。
-pub fn should_show_tray_icon(state: ServiceRuntimeState, hide_tray_icon: bool) -> bool {
-    !state.is_installed() && !hide_tray_icon
+// Design(#49): 托盘只在后台模式且服务未安装、且用户未关闭托盘时显示；服务已安装（含 Unknown）不得留下托盘，
+// 无服务管理实现的平台（FreeBSD）不按安装态抑制。
+pub fn should_show_tray_icon(
+    state: ServiceRuntimeState,
+    hide_tray_icon: bool,
+    service_management_supported: bool,
+) -> bool {
+    if hide_tray_icon {
+        return false;
+    }
+    !service_management_supported || !state.is_installed()
 }
 
 /// 托盘创建失败时返回 `None`：窗口保持常显、关窗即退出，绝不出现「窗口藏了但托盘没建起来」
@@ -191,13 +202,40 @@ mod tests {
         // 旧 UI 调用面是 `ShouldShowTrayIcon(...) && !HideTrayIcon`：策略允许时配置仍能整体关掉托盘（#58）。
         assert!(should_show_tray_icon(
             ServiceRuntimeState::NotInstalled,
-            false
+            false,
+            true
         ));
         assert!(!should_show_tray_icon(
             ServiceRuntimeState::NotInstalled,
+            true,
             true
         ));
-        assert!(!should_show_tray_icon(ServiceRuntimeState::Running, true));
+        assert!(!should_show_tray_icon(
+            ServiceRuntimeState::Running,
+            true,
+            true
+        ));
+    }
+
+    #[test]
+    fn unsupported_service_platform_keeps_the_tray() {
+        // FreeBSD 等无服务管理实现的平台探测恒为 Unknown；若按 Unknown=已安装处理，
+        // 托盘永不出现、关窗即退出（#58 CodeRabbit）。支持探测的平台仍对 Unknown fail-closed。
+        assert!(should_show_tray_icon(
+            ServiceRuntimeState::Unknown,
+            false,
+            false
+        ));
+        assert!(!should_show_tray_icon(
+            ServiceRuntimeState::Unknown,
+            true,
+            false
+        ));
+        assert!(!should_show_tray_icon(
+            ServiceRuntimeState::Unknown,
+            false,
+            true
+        ));
     }
 
     #[test]
@@ -216,13 +254,13 @@ mod tests {
         ] {
             assert!(state.is_installed(), "{state:?} 必须按已安装处理");
             assert!(
-                !should_show_tray_icon(state, false),
+                !should_show_tray_icon(state, false, true),
                 "{state:?} 不允许显示托盘"
             );
         }
 
         assert!(
-            should_show_tray_icon(ServiceRuntimeState::NotInstalled, false),
+            should_show_tray_icon(ServiceRuntimeState::NotInstalled, false, true),
             "未安装时必须回到后台托盘"
         );
     }
@@ -247,13 +285,22 @@ mod tests {
             ServiceRuntimeState::Unknown,
         ] {
             assert!(
-                !should_start_hidden(true, should_show_tray_icon(state, false), false, true),
+                !should_start_hidden(true, should_show_tray_icon(state, false, true), false, true),
                 "{state:?} 不允许静默启动"
+            );
+            assert!(
+                should_start_hidden(
+                    true,
+                    should_show_tray_icon(state, false, false),
+                    false,
+                    true
+                ),
+                "无服务管理实现的平台必须允许托盘驻守（{state:?}）"
             );
         }
         assert!(should_start_hidden(
             true,
-            should_show_tray_icon(ServiceRuntimeState::NotInstalled, false),
+            should_show_tray_icon(ServiceRuntimeState::NotInstalled, false, true),
             false,
             true
         ));

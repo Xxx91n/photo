@@ -26,3 +26,8 @@ pub use command::{ServiceCommandResult, ServiceCommandStatus};
 pub use manager::{ServiceManager, ServiceOps, ServiceProbe, platform_manager};
 pub use process::{CommandOutput, ProcessRunner, SystemProcessRunner};
 pub use state::{ServiceButtonState, ServiceRuntimeState, button_state};
+
+/// 该平台是否实现服务探测与操作。未实现的平台（如 FreeBSD）走 `platform_manager` 的兜底，
+/// 探测恒为 `Unknown`；调用方不能把它当成「服务已安装」（托盘门控需区分这两种情形）。
+pub const SERVICE_MANAGEMENT_SUPPORTED: bool =
+    cfg!(any(windows, target_os = "linux", target_os = "macos"));
