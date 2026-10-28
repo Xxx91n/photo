@@ -21,7 +21,7 @@ use photoprivacy_ipc::{
     ConnectionSnapshot, SingleInstanceGuard, UI_INSTANCE_NAME, notify_existing_instance,
 };
 use photoprivacy_rules::RulesEditor;
-use photoprivacy_service::platform_manager;
+use photoprivacy_service::{SERVICE_MANAGEMENT_SUPPORTED, platform_manager};
 use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -184,8 +184,11 @@ fn main() -> anyhow::Result<()> {
     application().run(move |cx: &mut App| {
         // 启动语言取盘上 config 的 ui.locale（缺失/为空时 config.rs 已回落 zh-CN）。
         let startup_locale = deps.config_state.borrow().config.ui.locale.clone();
-        let show_tray_icon =
-            tray::should_show_tray_icon(initial_service_state, ui_options.hide_tray_icon);
+        let show_tray_icon = tray::should_show_tray_icon(
+            initial_service_state,
+            ui_options.hide_tray_icon,
+            SERVICE_MANAGEMENT_SUPPORTED,
+        );
         // 托盘必须在主线程、平台就绪后创建（tray-icon 要求同线程有消息循环）。
         let tray_handle = tray::install(show_tray_icon, deps.i18n.clone(), &startup_locale);
         let has_tray = tray_handle.is_some();
