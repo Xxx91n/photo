@@ -1,7 +1,6 @@
 use photoprivacy_service::{
-    ServiceCommandResult, ServiceCommandStatus, ServiceRuntimeState, button_state, platform_manager,
+    ServiceCommandResult, ServiceCommandStatus, ServiceManager, ServiceRuntimeState, button_state,
 };
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, watch};
@@ -45,17 +44,22 @@ pub enum ServiceCommand {
 
 /// 启动服务页的后台循环：每 3s 探测一次；操作与刷新经同一通道串行执行，
 /// 避免两个提权进程同时操作同一个服务。
+///
+/// `initial_state` 由调用方同步探测：托盘/静默启动的门控必须在建窗前拿到安装态，
+/// 轮询首拍是异步的赶不上；同一结果也作为快照初值，避免首屏闪 `Unknown`。
 // Design(#49): 服务探测走平台辅助进程（sc/systemctl/launchctl），不扩 IPC 协议。
 pub fn start(
     runtime: &tokio::runtime::Handle,
-    worker: Option<PathBuf>,
-    config: Option<PathBuf>,
+    manager: Arc<ServiceManager>,
+    initial_state: ServiceRuntimeState,
 ) -> (
     watch::Receiver<ServiceSnapshot>,
     mpsc::UnboundedSender<ServiceCommand>,
 ) {
-    let manager = Arc::new(platform_manager(worker, config));
-    let (snapshot_tx, snapshot_rx) = watch::channel(ServiceSnapshot::default());
+    let (snapshot_tx, snapshot_rx) = watch::channel(ServiceSnapshot {
+        state: initial_state,
+        ..ServiceSnapshot::default()
+    });
     let (command_tx, mut command_rx) = mpsc::unbounded_channel();
 
     runtime.spawn(async move {

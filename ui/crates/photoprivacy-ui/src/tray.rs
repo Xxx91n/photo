@@ -5,6 +5,7 @@
 //! 菜单文案经 i18n 目录取词（#60），语言切换后在下一次事件轮询时原位改写菜单文本。
 
 use crate::i18n::{Catalog, keys as k};
+use photoprivacy_service::ServiceRuntimeState;
 use std::rc::Rc;
 use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
@@ -34,15 +35,37 @@ pub struct TrayHandle {
     locale: String,
 }
 
+/// 旧 UI `TrayPolicy.ShouldShowTrayIcon(isBackgroundMode, isServiceInstalled)` 的对等实现：
+/// 只有后台模式且服务未安装时才显示托盘，`ui.hide_tray_icon` 可再整体关掉。
+///
+/// 新 UI 没有独立的「后台模式」状态，由安装态反推：服务已安装（含探测失败归入的 `Unknown`）
+/// 即服务模式。这样服务已安装但未运行（Stopped/pending）时也不会把托盘留在服务模式里。
+///
+/// `service_management_supported` 为 false 的平台（FreeBSD 等）探测恒为 `Unknown`，
+/// 不能当成「已安装」；否则托盘永不出现，关窗即退出。
+///
+/// 旧 UI 先看服务管道是否存活、再看安装态；启动前还没有连接态，这里只按安装态判定，
+/// 「管道存活但探测为未安装」的竞态不覆盖（对等核销见 #61）。
+// Design(#49): 托盘只在后台模式且服务未安装、且用户未关闭托盘时显示；服务已安装（含 Unknown）不得留下托盘，
+// 无服务管理实现的平台（FreeBSD）不按安装态抑制。
+pub fn should_show_tray_icon(
+    state: ServiceRuntimeState,
+    hide_tray_icon: bool,
+    service_management_supported: bool,
+) -> bool {
+    if hide_tray_icon {
+        return false;
+    }
+    !service_management_supported || !state.is_installed()
+}
+
 /// 托盘创建失败时返回 `None`：窗口保持常显、关窗即退出，绝不出现「窗口藏了但托盘没建起来」
 /// 的无入口状态（旧 UI 用 `trayReady` 表达同一约束）。
 ///
-/// 旧 UI 的 `TrayPolicy` 只在「后台模式且服务未安装」时显示托盘；安装态探测由 #58 提供，
-/// 但托盘可见性/启动隐藏的模式门控不在 #58 的 AC 内。本版按配置常驻（服务模式也显示托盘），
-/// 该偏离作为未收口项登记，功能对等核销归 #61。
-// Design(#49): 托盘可见性暂按配置常驻；服务模式的 TrayPolicy 门控未实现（#58 出探测、#61 核销对等）。
-pub fn install(hide_tray_icon: bool, i18n: Rc<Catalog>, locale: &str) -> Option<TrayHandle> {
-    if hide_tray_icon {
+/// `show_tray_icon` 直接取 [`should_show_tray_icon`] 的结果（已含 `ui.hide_tray_icon`）。
+// Design(#49): 运行期安装/卸载服务不重建托盘（旧 ServiceModeController 的模式切换编排不迁移，对等核销见 #61）。
+pub fn install(show_tray_icon: bool, i18n: Rc<Catalog>, locale: &str) -> Option<TrayHandle> {
+    if !show_tray_icon {
         return None;
     }
 
@@ -55,14 +78,17 @@ pub fn install(hide_tray_icon: bool, i18n: Rc<Catalog>, locale: &str) -> Option<
     }
 }
 
-/// 与旧 UI `MainWindowRuntimePolicy.ShouldHideOnStartup` 的真值表对齐：只有勾选「启动时隐藏」
-/// 且托盘真的可用时才不建窗口（`UseTrayIcon && !HideTrayIcon && trayIconReady`）。
-///
-/// 旧 UI 还要求运行模式为 tray（服务模式从不隐藏窗口）；服务壳与安装态探测归 #58，
-/// 本版在托盘可用时即允许隐藏，因此服务模式下也会隐藏——该偏离与托盘可见性同一笔未收口项，
-/// 对等核销归 #61。
-pub fn should_start_hidden(hide_main_window_on_startup: bool, tray_available: bool) -> bool {
-    hide_main_window_on_startup && tray_available
+/// 与旧 UI `MainWindowRuntimePolicy.ShouldHideOnStartup` 等价：勾选「启动时隐藏」、
+/// 托盘可用（含配置开关与运行模式门控）、且托盘真的建起来时，才不建窗口。
+/// 旧签名的 `!HideTrayIcon` 已折叠进 `show_tray_icon`，这里只保留可达的三项。
+/// 服务模式下 `show_tray_icon` 为 false，窗口必须出现，否则用户没有任何入口。
+// Design(#49): 静默启动要求托盘实际可用且未被配置关闭；服务模式与托盘创建失败都必须显式出窗。
+pub fn should_start_hidden(
+    hide_main_window_on_startup: bool,
+    show_tray_icon: bool,
+    tray_icon_ready: bool,
+) -> bool {
+    hide_main_window_on_startup && show_tray_icon && tray_icon_ready
 }
 
 impl TrayHandle {
@@ -171,12 +197,111 @@ mod tests {
     use super::*;
 
     #[test]
-    fn silent_start_requires_a_tray() {
-        // 防：托盘没建起来（hide_tray_icon 或创建失败）仍隐藏窗口，用户失去唯一入口（#59）。
-        assert!(should_start_hidden(true, true));
-        assert!(!should_start_hidden(true, false));
-        assert!(!should_start_hidden(false, true));
-        assert!(!should_start_hidden(false, false));
+    fn background_tray_can_still_be_disabled_by_config() {
+        // 旧 UI 调用面是 `ShouldShowTrayIcon(...) && !HideTrayIcon`：策略允许时配置仍能整体关掉托盘（#58）。
+        assert!(should_show_tray_icon(
+            ServiceRuntimeState::NotInstalled,
+            false,
+            true
+        ));
+        assert!(!should_show_tray_icon(
+            ServiceRuntimeState::NotInstalled,
+            true,
+            true
+        ));
+        assert!(!should_show_tray_icon(
+            ServiceRuntimeState::Running,
+            true,
+            true
+        ));
+    }
+
+    #[test]
+    fn unsupported_service_platform_keeps_the_tray() {
+        // FreeBSD 等无服务管理实现的平台探测恒为 Unknown；若按 Unknown=已安装处理，
+        // 托盘永不出现、关窗即退出（#58 CodeRabbit）。支持探测的平台仍对 Unknown fail-closed。
+        assert!(should_show_tray_icon(
+            ServiceRuntimeState::Unknown,
+            false,
+            false
+        ));
+        assert!(!should_show_tray_icon(
+            ServiceRuntimeState::Unknown,
+            true,
+            false
+        ));
+        assert!(!should_show_tray_icon(
+            ServiceRuntimeState::Unknown,
+            false,
+            true
+        ));
+    }
+
+    #[test]
+    fn every_installed_service_state_suppresses_the_tray() {
+        // 防：服务已安装但未运行（Stopped/pending）或探测失败（Unknown）时仍留托盘，
+        // 用户误以为 UI 与 Worker 同生共死（#58；与旧 UI `ServiceExists` 语义一致）。
+        for state in [
+            ServiceRuntimeState::Running,
+            ServiceRuntimeState::StartPending,
+            ServiceRuntimeState::PausePending,
+            ServiceRuntimeState::Paused,
+            ServiceRuntimeState::ContinuePending,
+            ServiceRuntimeState::Stopped,
+            ServiceRuntimeState::StopPending,
+            ServiceRuntimeState::Unknown,
+        ] {
+            assert!(state.is_installed(), "{state:?} 必须按已安装处理");
+            assert!(
+                !should_show_tray_icon(state, false, true),
+                "{state:?} 不允许显示托盘"
+            );
+        }
+
+        assert!(
+            should_show_tray_icon(ServiceRuntimeState::NotInstalled, false, true),
+            "未安装时必须回到后台托盘"
+        );
+    }
+
+    #[test]
+    fn silent_start_requires_a_ready_tray_in_background_mode() {
+        // 旧 `MainWindowRuntimePolicy` 真值表：服务模式、托盘未建、配置关闭托盘、未勾选静默启动，
+        // 任一不满足都必须出窗，否则用户失去唯一入口（#59/#58）。
+        assert!(should_start_hidden(true, true, true));
+        assert!(!should_start_hidden(true, false, true));
+        assert!(!should_start_hidden(true, true, false));
+        assert!(!should_start_hidden(false, true, true));
+        // 配置关掉托盘后 `show_tray_icon` 为 false，静默启动同样不成立。
+        assert!(!should_start_hidden(
+            true,
+            should_show_tray_icon(ServiceRuntimeState::NotInstalled, true, true),
+            true
+        ));
+    }
+
+    #[test]
+    fn service_mode_never_hides_the_window() {
+        // 组合门控：安装态 → 托盘可见性 → 静默启动。服务模式下即使勾选静默启动也必须出窗（#58）。
+        for state in [
+            ServiceRuntimeState::Running,
+            ServiceRuntimeState::Stopped,
+            ServiceRuntimeState::Unknown,
+        ] {
+            assert!(
+                !should_start_hidden(true, should_show_tray_icon(state, false, true), true),
+                "{state:?} 不允许静默启动"
+            );
+            assert!(
+                should_start_hidden(true, should_show_tray_icon(state, false, false), true),
+                "无服务管理实现的平台必须允许托盘驻守（{state:?}）"
+            );
+        }
+        assert!(should_start_hidden(
+            true,
+            should_show_tray_icon(ServiceRuntimeState::NotInstalled, false, true),
+            true
+        ));
     }
 
     #[test]

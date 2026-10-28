@@ -23,6 +23,8 @@ mod unix;
 mod windows;
 
 pub use command::{ServiceCommandResult, ServiceCommandStatus};
-pub use manager::{ServiceManager, ServiceOps, ServiceProbe, platform_manager};
+pub use manager::{
+    SERVICE_MANAGEMENT_SUPPORTED, ServiceManager, ServiceOps, ServiceProbe, platform_manager,
+};
 pub use process::{CommandOutput, ProcessRunner, SystemProcessRunner};
 pub use state::{ServiceButtonState, ServiceRuntimeState, button_state};

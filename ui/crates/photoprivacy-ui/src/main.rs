@@ -21,9 +21,11 @@ use photoprivacy_ipc::{
     ConnectionSnapshot, SingleInstanceGuard, UI_INSTANCE_NAME, notify_existing_instance,
 };
 use photoprivacy_rules::RulesEditor;
+use photoprivacy_service::{SERVICE_MANAGEMENT_SUPPORTED, platform_manager};
 use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, watch};
 use worker_connection::{ConnectOptions, UiEvent};
@@ -130,11 +132,16 @@ fn main() -> anyhow::Result<()> {
     let (snapshot_tx, snapshot_rx) = watch::channel(ConnectionSnapshot::connecting());
     let (event_tx, event_rx) = mpsc::unbounded_channel();
     let (log_tx, log_rx) = mpsc::unbounded_channel();
-    let (service_snapshots, service_commands) = service_page::start(
-        runtime.handle(),
+    // 托盘/静默启动门控必须先于建窗拿到安装态（旧 UI 在 Worker 连接编排里先探服务态）；
+    // 3s 轮询首拍是异步的赶不上启动决策，所以这里同步探一次，结果同时作为服务快照初值。
+    let service_manager = Arc::new(platform_manager(
         options.worker_path.clone(),
         options.config_path.clone(),
-    );
+    ));
+    // Design(#49): 启动路径在 main 线程同步首探安装态，上限 PROBE_TIMEOUT；托盘与静默启动据此在建窗前定档。
+    let initial_service_state = service_manager.state();
+    let (service_snapshots, service_commands) =
+        service_page::start(runtime.handle(), service_manager, initial_service_state);
     let link = worker_connection::start(runtime.handle(), options, snapshot_tx, event_tx);
 
     // 配置服务复用心跳的 IpcClient（单飞锁在同一实例内生效），并用连接编排发布的端点；
@@ -177,15 +184,19 @@ fn main() -> anyhow::Result<()> {
     application().run(move |cx: &mut App| {
         // 启动语言取盘上 config 的 ui.locale（缺失/为空时 config.rs 已回落 zh-CN）。
         let startup_locale = deps.config_state.borrow().config.ui.locale.clone();
-        // 托盘必须在主线程、平台就绪后创建（tray-icon 要求同线程有消息循环）。
-        let tray_handle = tray::install(
+        let show_tray_icon = tray::should_show_tray_icon(
+            initial_service_state,
             ui_options.hide_tray_icon,
-            deps.i18n.clone(),
-            &startup_locale,
+            SERVICE_MANAGEMENT_SUPPORTED,
         );
+        // 托盘必须在主线程、平台就绪后创建（tray-icon 要求同线程有消息循环）。
+        let tray_handle = tray::install(show_tray_icon, deps.i18n.clone(), &startup_locale);
         let has_tray = tray_handle.is_some();
-        let start_hidden =
-            tray::should_start_hidden(ui_options.hide_main_window_on_startup, has_tray);
+        let start_hidden = tray::should_start_hidden(
+            ui_options.hide_main_window_on_startup,
+            show_tray_icon,
+            has_tray,
+        );
 
         spawn_event_pump(
             cx,
