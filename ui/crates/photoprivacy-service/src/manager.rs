@@ -64,6 +64,12 @@ impl ServiceManager {
     }
 }
 
+/// 该平台是否实现服务探测与操作。未实现的平台（如 FreeBSD）走下方兜底分派，
+/// 探测恒为 `Unknown`；调用方不能把它当成「服务已安装」（托盘门控需区分这两种情形）。
+/// 与 `platform_manager` 分派的 `cfg` 谓词保持一致。
+pub const SERVICE_MANAGEMENT_SUPPORTED: bool =
+    cfg!(any(windows, target_os = "linux", target_os = "macos"));
+
 pub fn platform_manager(worker: Option<PathBuf>, config: Option<PathBuf>) -> ServiceManager {
     #[cfg(windows)]
     return platform_manager_windows(worker, config);

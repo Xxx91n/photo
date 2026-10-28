@@ -78,18 +78,17 @@ pub fn install(show_tray_icon: bool, i18n: Rc<Catalog>, locale: &str) -> Option<
     }
 }
 
-/// 与旧 UI `MainWindowRuntimePolicy.ShouldHideOnStartup` 逐字对齐：勾选「启动时隐藏」、
-/// 运行模式允许托盘、配置未关闭托盘、且托盘真的建起来时，才不建窗口。
-/// 服务模式下 `use_tray_icon` 为 false，窗口必须出现，否则用户没有任何入口。
-/// （`use_tray_icon` 已含 `!hide_tray_icon`，四项签名保留只为逐字对齐旧真值表。）
+/// 与旧 UI `MainWindowRuntimePolicy.ShouldHideOnStartup` 等价：勾选「启动时隐藏」、
+/// 托盘可用（含配置开关与运行模式门控）、且托盘真的建起来时，才不建窗口。
+/// 旧签名的 `!HideTrayIcon` 已折叠进 `show_tray_icon`，这里只保留可达的三项。
+/// 服务模式下 `show_tray_icon` 为 false，窗口必须出现，否则用户没有任何入口。
 // Design(#49): 静默启动要求托盘实际可用且未被配置关闭；服务模式与托盘创建失败都必须显式出窗。
 pub fn should_start_hidden(
     hide_main_window_on_startup: bool,
-    use_tray_icon: bool,
-    hide_tray_icon: bool,
+    show_tray_icon: bool,
     tray_icon_ready: bool,
 ) -> bool {
-    hide_main_window_on_startup && use_tray_icon && !hide_tray_icon && tray_icon_ready
+    hide_main_window_on_startup && show_tray_icon && tray_icon_ready
 }
 
 impl TrayHandle {
@@ -269,11 +268,16 @@ mod tests {
     fn silent_start_requires_a_ready_tray_in_background_mode() {
         // 旧 `MainWindowRuntimePolicy` 真值表：服务模式、托盘未建、配置关闭托盘、未勾选静默启动，
         // 任一不满足都必须出窗，否则用户失去唯一入口（#59/#58）。
-        assert!(should_start_hidden(true, true, false, true));
-        assert!(!should_start_hidden(true, false, false, true));
-        assert!(!should_start_hidden(true, true, false, false));
-        assert!(!should_start_hidden(true, true, true, true));
-        assert!(!should_start_hidden(false, true, false, true));
+        assert!(should_start_hidden(true, true, true));
+        assert!(!should_start_hidden(true, false, true));
+        assert!(!should_start_hidden(true, true, false));
+        assert!(!should_start_hidden(false, true, true));
+        // 配置关掉托盘后 `show_tray_icon` 为 false，静默启动同样不成立。
+        assert!(!should_start_hidden(
+            true,
+            should_show_tray_icon(ServiceRuntimeState::NotInstalled, true, true),
+            true
+        ));
     }
 
     #[test]
@@ -285,23 +289,17 @@ mod tests {
             ServiceRuntimeState::Unknown,
         ] {
             assert!(
-                !should_start_hidden(true, should_show_tray_icon(state, false, true), false, true),
+                !should_start_hidden(true, should_show_tray_icon(state, false, true), true),
                 "{state:?} 不允许静默启动"
             );
             assert!(
-                should_start_hidden(
-                    true,
-                    should_show_tray_icon(state, false, false),
-                    false,
-                    true
-                ),
+                should_start_hidden(true, should_show_tray_icon(state, false, false), true),
                 "无服务管理实现的平台必须允许托盘驻守（{state:?}）"
             );
         }
         assert!(should_start_hidden(
             true,
             should_show_tray_icon(ServiceRuntimeState::NotInstalled, false, true),
-            false,
             true
         ));
     }
