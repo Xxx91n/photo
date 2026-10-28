@@ -30,10 +30,6 @@ case "$(uname -s)-$(uname -m)" in
   Linux-aarch64) RUNTIME="linux-arm64" ;;
   Darwin-x86_64) RUNTIME="osx-x64" ;;
   Darwin-arm64) RUNTIME="osx-arm64" ;;
-  *)
-    echo "无法从构建主机推导发布 RID（$(uname -s)-$(uname -m)）：Windows 请用 scripts/publish-app.ps1，或显式传 --runtime <rid>" >&2
-    exit 1
-    ;;
 esac
 
 while [[ $# -gt 0 ]]; do
@@ -47,6 +43,12 @@ while [[ $# -gt 0 ]]; do
     *) echo "Unknown argument: $1" >&2; usage; exit 1 ;;
   esac
 done
+
+# 判定放在参数解析之后：-h 与显式 --runtime 必须在任何主机上可用。
+if [[ -z "$RUNTIME" ]]; then
+  echo "无法从构建主机推导发布 RID（$(uname -s)-$(uname -m)）：Windows 请用 scripts/publish-app.ps1，或显式传 --runtime <rid>" >&2
+  exit 1
+fi
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 RELEASE_ROOT="${REPO_ROOT}/release"

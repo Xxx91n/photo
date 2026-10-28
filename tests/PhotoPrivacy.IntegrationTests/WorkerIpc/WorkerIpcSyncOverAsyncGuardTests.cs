@@ -102,8 +102,8 @@ public sealed class WorkerIpcSyncOverAsyncGuardTests
         Assert.Contains("pub async fn read_bounded_line", rustProtocol, StringComparison.Ordinal);
         Assert.Contains("read_bounded_line", rustClient, StringComparison.Ordinal);
 
-        // 失效自证（#61）：只在 // 注释里出现的旧调用，剥注释后不得满足 Assert.Contains——
-        // 证明生产读取（ReadStripped）确实剥注释，而不是靠注释骗绿。
+        // 失效自证（#61）：ReadStripped 的剥注释实现就是 SourceLint.StripLineComment（逐行剥除后拼接），
+        // 这里对注释样本直测该实现——仅存在于 // 注释的 read_bounded_line 剥后不得满足 Assert.Contains。
         var commentOnly = "// pub async fn read_bounded_line() {}\n";
         var commentOnlyStripped = string.Concat(commentOnly.Split('\n').Select(SourceLint.StripLineComment));
         Assert.DoesNotContain("pub async fn read_bounded_line", commentOnlyStripped, StringComparison.Ordinal);
