@@ -103,7 +103,7 @@ WORKER_PUB_DIR="${TARGET_DIR}/worker"
 rm -rf "$TARGET_DIR"
 mkdir -p "$WORKER_PUB_DIR"
 
-# Design(#61): 默认入口切换为新 UI——cargo 产物 photoprivacy-ui 复制为 PhotoPrivacy 作为发布入口；
+# Design(#49): 默认入口为新 UI——cargo 产物 photoprivacy-ui 复制为 PhotoPrivacy 作为发布入口；
 # MSVC 清单问题仅存在于 Windows（见 ui/crates/photoprivacy-ui/build.rs），Unix 主机用宿主默认 target。
 cargo build --release --locked --manifest-path "${REPO_ROOT}/ui/Cargo.toml" -p photoprivacy-ui
 

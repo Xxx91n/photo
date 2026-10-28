@@ -37,7 +37,7 @@ if ($resolvedFramework -ne "net10.0") {
   throw "Runtime '$Runtime' must use framework 'net10.0'"
 }
 
-# Design(#61): 默认入口切换为新 UI——cargo（windows-gnu target）产物 photoprivacy-ui.exe
+# Design(#49): 默认入口为新 UI——cargo（windows-gnu target）产物 photoprivacy-ui.exe
 # 复制为 PhotoPrivacy.exe 作为发布入口。MSVC 目标不嵌应用清单（gpui 依赖 comctl32 v6，
 # 缺清单启动即失败），见 ui/crates/photoprivacy-ui/build.rs；发布链必须走 windows-gnu + windres。
 $uiTarget = "x86_64-pc-windows-gnu"
