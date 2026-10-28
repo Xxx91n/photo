@@ -138,7 +138,7 @@ fn main() -> anyhow::Result<()> {
         options.worker_path.clone(),
         options.config_path.clone(),
     ));
-    // Design(#49): 启动路径在 main 线程同步首探安装态（上限 PROBE_TIMEOUT），换取建窗前可决定托盘与静默启动。
+    // Design(#49): 启动路径在 main 线程同步首探安装态，上限 PROBE_TIMEOUT；托盘与静默启动据此在建窗前定档。
     let initial_service_state = service_manager.state();
     let (service_snapshots, service_commands) =
         service_page::start(runtime.handle(), service_manager, initial_service_state);
