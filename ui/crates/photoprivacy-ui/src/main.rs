@@ -138,7 +138,7 @@ fn main() -> anyhow::Result<()> {
         options.worker_path.clone(),
         options.config_path.clone(),
     ));
-    // Design(#49): 启动路径同步首探安装态（受平台 PROBE_TIMEOUT 上限约束），换取建窗前可决定托盘与静默启动。
+    // Design(#49): 启动路径在 main 线程同步首探安装态（上限 PROBE_TIMEOUT），换取建窗前可决定托盘与静默启动。
     let initial_service_state = service_manager.state();
     let (service_snapshots, service_commands) =
         service_page::start(runtime.handle(), service_manager, initial_service_state);
@@ -184,7 +184,6 @@ fn main() -> anyhow::Result<()> {
     application().run(move |cx: &mut App| {
         // 启动语言取盘上 config 的 ui.locale（缺失/为空时 config.rs 已回落 zh-CN）。
         let startup_locale = deps.config_state.borrow().config.ui.locale.clone();
-        // 安装态即服务模式（Unknown 也算），托盘只在后台模式出现。
         let show_tray_icon =
             tray::should_show_tray_icon(initial_service_state, ui_options.hide_tray_icon);
         // 托盘必须在主线程、平台就绪后创建（tray-icon 要求同线程有消息循环）。

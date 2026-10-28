@@ -40,6 +40,9 @@ pub struct TrayHandle {
 ///
 /// 新 UI 没有独立的「后台模式」状态，由安装态反推：服务已安装（含探测失败归入的 `Unknown`）
 /// 即服务模式。这样服务已安装但未运行（Stopped/pending）时也不会把托盘留在服务模式里。
+///
+/// 旧 UI 先看服务管道是否存活、再看安装态；启动前还没有连接态，这里只按安装态判定，
+/// 「管道存活但探测为未安装」的竞态不覆盖（对等核销见 #61）。
 // Design(#49): 托盘只在后台模式且服务未安装、且用户未关闭托盘时显示；服务已安装（含 Unknown）不得留下托盘。
 pub fn should_show_tray_icon(state: ServiceRuntimeState, hide_tray_icon: bool) -> bool {
     !state.is_installed() && !hide_tray_icon
@@ -48,7 +51,7 @@ pub fn should_show_tray_icon(state: ServiceRuntimeState, hide_tray_icon: bool) -
 /// 托盘创建失败时返回 `None`：窗口保持常显、关窗即退出，绝不出现「窗口藏了但托盘没建起来」
 /// 的无入口状态（旧 UI 用 `trayReady` 表达同一约束）。
 ///
-/// `show_tray_icon` 由 [`should_show_tray_icon`] 与 `ui.hide_tray_icon` 共同决定。
+/// `show_tray_icon` 直接取 [`should_show_tray_icon`] 的结果（已含 `ui.hide_tray_icon`）。
 // Design(#49): 运行期安装/卸载服务不重建托盘（旧 ServiceModeController 的模式切换编排不迁移，对等核销见 #61）。
 pub fn install(show_tray_icon: bool, i18n: Rc<Catalog>, locale: &str) -> Option<TrayHandle> {
     if !show_tray_icon {
