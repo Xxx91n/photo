@@ -134,11 +134,11 @@ fn main() -> anyhow::Result<()> {
     let (log_tx, log_rx) = mpsc::unbounded_channel();
     // 托盘/静默启动门控必须先于建窗拿到安装态（旧 UI 在 Worker 连接编排里先探服务态）；
     // 3s 轮询首拍是异步的赶不上启动决策，所以这里同步探一次，结果同时作为服务快照初值。
-    // Design(#49): 启动路径同步首探安装态（受平台 PROBE_TIMEOUT 上限约束），换取建窗前可决定托盘与静默启动。
     let service_manager = Arc::new(platform_manager(
         options.worker_path.clone(),
         options.config_path.clone(),
     ));
+    // Design(#49): 启动路径同步首探安装态（受平台 PROBE_TIMEOUT 上限约束），换取建窗前可决定托盘与静默启动。
     let initial_service_state = service_manager.state();
     let (service_snapshots, service_commands) =
         service_page::start(runtime.handle(), service_manager, initial_service_state);
@@ -184,9 +184,9 @@ fn main() -> anyhow::Result<()> {
     application().run(move |cx: &mut App| {
         // 启动语言取盘上 config 的 ui.locale（缺失/为空时 config.rs 已回落 zh-CN）。
         let startup_locale = deps.config_state.borrow().config.ui.locale.clone();
-        // 旧 UI `TrayPolicy`：托盘只在后台模式且服务未安装时出现；安装态即服务模式（Unknown 也算）。
+        // 安装态即服务模式（Unknown 也算），托盘只在后台模式出现。
         let show_tray_icon =
-            tray::should_show_tray_icon(initial_service_state) && !ui_options.hide_tray_icon;
+            tray::should_show_tray_icon(initial_service_state, ui_options.hide_tray_icon);
         // 托盘必须在主线程、平台就绪后创建（tray-icon 要求同线程有消息循环）。
         let tray_handle = tray::install(show_tray_icon, deps.i18n.clone(), &startup_locale);
         let has_tray = tray_handle.is_some();
