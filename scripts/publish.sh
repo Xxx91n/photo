@@ -30,6 +30,10 @@ case "$(uname -s)-$(uname -m)" in
   Linux-aarch64) RUNTIME="linux-arm64" ;;
   Darwin-x86_64) RUNTIME="osx-x64" ;;
   Darwin-arm64) RUNTIME="osx-arm64" ;;
+  *)
+    echo "无法从构建主机推导发布 RID（$(uname -s)-$(uname -m)）：Windows 请用 scripts/publish-app.ps1，或显式传 --runtime <rid>" >&2
+    exit 1
+    ;;
 esac
 
 while [[ $# -gt 0 ]]; do

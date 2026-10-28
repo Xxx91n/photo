@@ -102,23 +102,10 @@ public sealed class WorkerIpcSyncOverAsyncGuardTests
         Assert.Contains("pub async fn read_bounded_line", rustProtocol, StringComparison.Ordinal);
         Assert.Contains("read_bounded_line", rustClient, StringComparison.Ordinal);
 
-        // 失效自证（#61）：只在注释里出现的旧调用，剥注释后不得计入——守卫不会被注释骗绿。
-        var injected = rustProtocol + "\n// legacy: pub async fn read_bounded_line() {}\n";
-        var injectedStripped = string.Concat(injected.Split('\n').Select(SourceLint.StripLineComment));
-        Assert.Equal(
-            CountOccurrences(rustProtocol, "pub async fn read_bounded_line"),
-            CountOccurrences(injectedStripped, "pub async fn read_bounded_line"));
-    }
-
-    private static int CountOccurrences(string haystack, string needle)
-    {
-        var count = 0;
-        var idx = 0;
-        while ((idx = haystack.IndexOf(needle, idx, StringComparison.Ordinal)) >= 0)
-        {
-            count++;
-            idx += needle.Length;
-        }
-        return count;
+        // 失效自证（#61）：只在 // 注释里出现的旧调用，剥注释后不得满足 Assert.Contains——
+        // 证明生产读取（ReadStripped）确实剥注释，而不是靠注释骗绿。
+        var commentOnly = "// pub async fn read_bounded_line() {}\n";
+        var commentOnlyStripped = string.Concat(commentOnly.Split('\n').Select(SourceLint.StripLineComment));
+        Assert.DoesNotContain("pub async fn read_bounded_line", commentOnlyStripped, StringComparison.Ordinal);
     }
 }

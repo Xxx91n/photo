@@ -108,15 +108,15 @@ public sealed class PublishPropertiesCsprojGuardTests
         return violations;
     }
 
-    /// <summary>剥除 shell/PowerShell 的 # 行注释（脚本里没有含 # 的字符串字面量）。</summary>
+    /// <summary>
+    /// 剥除 shell/PowerShell 的整行 # 注释（首个非空白字符为 #）。
+    /// 只认整行注释：shell 的 <c>$#</c> 参数展开不是注释，按行内 # 截断会破坏脚本扫描面。
+    /// </summary>
     internal static string StripHashComments(string script)
     {
         var lines = script.Replace("\r\n", "\n").Split('\n');
         return string.Join("\n", lines.Select(line =>
-        {
-            var idx = line.IndexOf('#');
-            return idx >= 0 ? line[..idx] : line;
-        }));
+            line.TrimStart().StartsWith('#') ? string.Empty : line));
     }
 
     private static int CountOccurrences(string haystack, string needle)
