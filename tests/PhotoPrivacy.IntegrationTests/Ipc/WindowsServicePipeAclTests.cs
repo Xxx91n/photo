@@ -1,4 +1,3 @@
-using System.IO.Pipes;
 using System.Security.AccessControl;
 using System.Security.Principal;
 using PhotoPrivacy.Ipc;
@@ -111,40 +110,47 @@ public sealed class WindowsServicePipeAclTests
         var installerSid = WindowsIdentity.GetCurrent().User!.Value;
         var bytes = WindowsServicePipeAcl.BuildServicePipeSecurityDescriptor(new SecurityIdentifier(installerSid));
 
-        var security = new PipeSecurity();
-        security.SetSecurityDescriptorBinaryForm(bytes);
-        var rules = security.GetAccessRules(includeExplicit: true, includeInherited: false, targetType: typeof(SecurityIdentifier));
+        // 掩码与 WindowsServicePipeAcl 的常量同源：FILE_GENERIC_READ|WRITE、FILE_ALL_ACCESS。
+        const uint fileGenericReadWrite = 0x00120089u | 0x00120116u;
+        const uint fileAllAccess = 0x001F01FFu;
 
-        PipeAccessRule? installerRule = null;
-        var systemFullControl = false;
-        var administratorsFullControl = false;
-        foreach (var rule in rules)
+        var descriptor = new RawSecurityDescriptor(bytes, 0);
+        var dacl = descriptor.DiscretionaryAcl;
+        Assert.NotNull(dacl);
+
+        uint? installerMask = null;
+        uint? systemMask = null;
+        uint? administratorsMask = null;
+        var systemSid = new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null).Value;
+        var administratorsSid = new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null).Value;
+        foreach (var ace in dacl!)
         {
-            var pipeRule = (PipeAccessRule)rule;
-            if (pipeRule.AccessControlType != AccessControlType.Allow)
+            if (ace is not CommonAce common || common.AceType != AceType.AccessAllowed)
             {
                 continue;
             }
-            if (string.Equals(pipeRule.IdentityReference.Value, installerSid, StringComparison.OrdinalIgnoreCase))
+            var sidValue = common.SecurityIdentifier.Value;
+            if (string.Equals(sidValue, installerSid, StringComparison.OrdinalIgnoreCase))
             {
-                installerRule = pipeRule;
+                installerMask = common.AccessMask;
             }
-            else if (pipeRule.IdentityReference.Value == new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null).Value)
+            else if (sidValue == systemSid)
             {
-                systemFullControl = pipeRule.PipeAccessRights.HasFlag(PipeAccessRights.FullControl);
+                systemMask = common.AccessMask;
             }
-            else if (pipeRule.IdentityReference.Value == new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null).Value)
+            else if (sidValue == administratorsSid)
             {
-                administratorsFullControl = pipeRule.PipeAccessRights.HasFlag(PipeAccessRights.FullControl);
+                administratorsMask = common.AccessMask;
             }
         }
 
         Assert.Multiple(
-            () => Assert.NotNull(installerRule),
-            () => Assert.True(installerRule!.PipeAccessRights.HasFlag(PipeAccessRights.ReadWrite), "installer must get ReadWrite"),
-            () => Assert.True(installerRule!.PipeAccessRights.HasFlag(PipeAccessRights.ReadPermissions), "client opens with GENERIC_* which maps READ_CONTROL"),
-            () => Assert.True(installerRule!.PipeAccessRights.HasFlag(PipeAccessRights.Synchronize), "client opens with GENERIC_* which maps SYNCHRONIZE"),
-            () => Assert.True(systemFullControl, "LocalSystem must keep FullControl"),
-            () => Assert.True(administratorsFullControl, "Administrators must keep FullControl"));
+            () => Assert.True(installerMask.HasValue, "installer ACE must exist"),
+            // 客户端按 GENERIC_READ|GENERIC_WRITE 打开，AccessCheck 映射需要全部文件语义位。
+            () => Assert.Equal(fileGenericReadWrite, installerMask),
+            () => Assert.True(systemMask.HasValue, "LocalSystem ACE must exist"),
+            () => Assert.Equal(fileAllAccess, systemMask),
+            () => Assert.True(administratorsMask.HasValue, "Administrators ACE must exist"),
+            () => Assert.Equal(fileAllAccess, administratorsMask));
     }
 }
