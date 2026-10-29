@@ -133,13 +133,9 @@ public sealed class ServiceModeLoggingGuardTests
     }
 
     /// <summary>
-    /// <c>SourceLint.ReadStripped</c> 逐行剥注释后 <c>string.Concat</c>，产物不含换行——用于
-    /// 「存在性」断言足够，但本守卫要判**顺序**并对样本做增删，必须保留行结构，故在此按行拼接。
+    /// 守卫样本：走 <see cref="SourceLint.ReadStrippedPreservingLines"/>（共享读取 + 剥注释，
+    /// 保留行结构）——<c>ReadStripped</c> 不含换行，无法支撑顺序判定与行级增删样本。
     /// </summary>
     private static string ReadStrippedProgramWithLineBreaks()
-        => string.Join(
-            "\n",
-            SourceLint.Read("src", "PhotoPrivacy.Worker", "Program.cs")
-                .Split('\n')
-                .Select(line => SourceLint.StripLineComment(line.TrimEnd('\r'))));
+        => SourceLint.ReadStrippedPreservingLines("src", "PhotoPrivacy.Worker", "Program.cs");
 }

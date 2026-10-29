@@ -30,9 +30,23 @@ public static class SourceLint
     /// <summary>读取源码并整篇剥除 // 行注释（逐行剥除后拼接，与既有守卫语义一致）。</summary>
     public static string ReadStripped(params string[] segments)
     {
-        return string.Concat(
-            File.ReadAllLines(Path.Combine(new[] { RepoRoot }.Concat(segments).ToArray()), Encoding.UTF8)
-                .Select(StripLineComment));
+        return string.Concat(ReadStrippedLines(segments));
+    }
+
+    /// <summary>
+    /// （#85）同 <see cref="ReadStripped"/>，但保留换行——供需要判**顺序**或对样本做行级增删的
+    /// 守卫使用；读取与剥注释仍走本类单一实现，不在各 guard 里另起一套。
+    /// </summary>
+    public static string ReadStrippedPreservingLines(params string[] segments)
+    {
+        return string.Join("\n", ReadStrippedLines(segments));
+    }
+
+    private static string[] ReadStrippedLines(string[] segments)
+    {
+        return File.ReadAllLines(Path.Combine(new[] { RepoRoot }.Concat(segments).ToArray()), Encoding.UTF8)
+            .Select(StripLineComment)
+            .ToArray();
     }
 
     /// <summary>
