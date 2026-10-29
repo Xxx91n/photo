@@ -78,7 +78,8 @@ public sealed class NamedPipeIpcTransport : IIpcTransport
             serverName: ".",
             pipeName: _pipeName,
             direction: PipeDirection.InOut,
-            options: ClientOptions);        await client.ConnectAsync(cts.Token);
+            options: ClientOptions);
+        await client.ConnectAsync(cts.Token);
         return client;
     }
 

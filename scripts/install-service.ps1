@@ -63,10 +63,11 @@ switch ($Action.ToLower()) {
     Write-Host "Installed and started $ServiceName (service pipe ACL SID: $InstallerSid)"
   }
   "uninstall" {
+    # 注册表清理不依赖服务是否仍在：服务已被手工删除时也要清掉孤儿 SID 登记。
+    Remove-ItemProperty -Path $RegistryPath -Name $RegistryValueName -ErrorAction SilentlyContinue
     if (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
       Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
       Remove-ServiceCompat $ServiceName
-      Remove-ItemProperty -Path $RegistryPath -Name $RegistryValueName -ErrorAction SilentlyContinue
       Write-Host "Uninstalled $ServiceName"
     } else { Write-Host "Not found" }
   }
