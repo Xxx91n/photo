@@ -113,31 +113,79 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
                 return;
             }
 
-            // 验证 ExifTool 路径在使用点仍然有效（防止热重载引入恶意路径）。
-            ValidateExifToolPath(_config.ExifTool.Path);
+            await StartProcessLockedAsync(cancellationToken);
+        }
+        finally
+        {
+            _startLock.Release();
+        }
+    }
 
-            var startArgs = ExifToolCommandBuilder.BuildStartArguments(_config);
+    /// <summary>
+    /// 只启动进程（必要时先清掉已死进程的句柄），<b>不做健康检查</b>——状态查询路径专用。
+    ///
+    /// 调用方必须持 <see cref="_startLock"/>。健康检查留在文件处理路径：
+    /// 在忙进程上跑 500 ms 健康检查会超时并触发重启，那会打断在途擦除
+    /// （其 marker 失去归属 → 输出可能被新进程的 {ready} 顶成「无元数据」而静默跳过该文件）。
+    /// </summary>
+    private async Task StartProcessLockedAsync(CancellationToken cancellationToken)
+    {
+        if (_started)
+        {
+            // 上次启动过但进程已不在（崩溃/被杀）：ProcessExifToolProcess.StartAsync 对非 null
+            // 句柄是空操作，必须先 StopAsync 清句柄。
+            await _process.StopAsync(cancellationToken);
+            _started = false;
+        }
 
-            await _process.StartAsync(
-                _config.ExifTool.Path,
-                startArgs,
-                cancellationToken);
+        // 验证 ExifTool 路径在使用点仍然有效（防止热重载引入恶意路径）。
+        ValidateExifToolPath(_config.ExifTool.Path);
 
-            _started = true;
+        var startArgs = ExifToolCommandBuilder.BuildStartArguments(_config);
 
-            await EmitLifecycleEventAsync(
-                new ExifToolLifecycleEvent(
-                    EventType: "exiftool_started",
-                    SourcePath: _config.ExifTool.Path,
-                    Message: "ExifTool stay_open process started.",
-                    Data: new Dictionary<string, string>
-                    {
-                        ["exe_path"] = _config.ExifTool.Path,
-                        ["arguments"] = string.Join(" ", startArgs)
-                    }),
-                cancellationToken);
+        await _process.StartAsync(
+            _config.ExifTool.Path,
+            startArgs,
+            cancellationToken);
 
-            await ProbeVersionAndWarnIfNeededAsync(cancellationToken);
+        _started = true;
+
+        await EmitLifecycleEventAsync(
+            new ExifToolLifecycleEvent(
+                EventType: "exiftool_started",
+                SourcePath: _config.ExifTool.Path,
+                Message: "ExifTool stay_open process started.",
+                Data: new Dictionary<string, string>
+                {
+                    ["exe_path"] = _config.ExifTool.Path,
+                    ["arguments"] = string.Join(" ", startArgs)
+                }),
+            cancellationToken);
+
+        await ProbeVersionAndWarnIfNeededAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// 确保进程在跑，但绝不健康检查/重启（版本解析路径）。只在进程真的没了时启动它。
+    /// </summary>
+    // Design(#86): 状态查询只「拉起已死的进程」，不做健康检查——健康检查的副作用（重启）只属于文件路径。
+    private async Task EnsureStartedWithoutHealthCheckAsync(CancellationToken cancellationToken)
+    {
+        if (_retired || _process.IsRunning)
+        {
+            return;
+        }
+
+        await _startLock.WaitAsync(cancellationToken);
+        try
+        {
+            // 双重检查：等锁期间文件路径可能已经把进程拉起来了。
+            if (_retired || _process.IsRunning)
+            {
+                return;
+            }
+
+            await StartProcessLockedAsync(cancellationToken);
         }
         finally
         {
@@ -148,8 +196,8 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
     /// <summary>
     /// 版本解析入口（#86）——只由状态消费者（IPC 状态请求）调用，<b>不进文件处理热路径</b>。
     ///
-    /// 只有进程真的没了才走启动/重启（冷启动与重启各自自带版本探针）；进程还在时只补探，不做
-    /// 健康检查——见方法内注释。已解析出真实版本时全程零往返。
+    /// 只有进程真的没了才启动它（启动自带版本探针）；进程还在就只补探。这条路径**绝不做健康检查**
+    /// ——健康检查的副作用是重启，重启会打断在途擦除。已解析出真实版本时全程零往返。
     /// </summary>
     // Design(#86): 版本解析按需触发（IPC 状态请求驱动），既不做启动期 eager start，也不进每文件热路径。
     public async Task EnsureVersionAsync(CancellationToken cancellationToken)
@@ -162,10 +210,11 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
         // 进程还在就不在这里做健康检查/重启：一次状态轮询不该把一个正在处理大文件、只是错过
         // 500 ms 健康应答的进程判成不健康并杀掉——重启会让在途擦除的 marker 失去归属，
         // 其输出可能被新进程的 {ready} 顶成「无元数据」而静默跳过该文件。
-        // 进程真的没了（崩溃/被杀）时，这里负责把它拉回来。
+        // 进程真的没了（崩溃/被杀）时只把它拉起来，同样不健康检查：等锁期间擦除可能已把进程
+        // 拉起并正在处理文件，走 EnsureStartedAsync 会在这里补一次健康检查。
         if (!_process.IsRunning)
         {
-            await EnsureStartedAsync(cancellationToken);
+            await EnsureStartedWithoutHealthCheckAsync(cancellationToken);
             return;
         }
 

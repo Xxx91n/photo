@@ -430,6 +430,28 @@ public sealed class ExifToolBridgeTests
     }
 
     [Fact]
+    public async Task EnsureVersionAsync_Concurrent_With_File_Path_Should_Start_Once_And_Never_Restart()
+    {
+        // CodeRabbit 第三轮（#86）：版本路径观察到「进程已停」后等锁，其间文件路径可能已经启动
+        // 进程并开始处理文件。此时若走健康检查，忙进程会超时 → 重启 → 打断在途擦除。
+        // 这里并发驱动两条路径：只允许启动一次、零重启。
+        var process = new ProtocolLevelFakeExifToolProcess
+        {
+            StartDelayMs = 60
+        };
+        var bridge = new ExifToolBridge(process, Config, healthTimeout: TimeSpan.FromMilliseconds(80));
+
+        var filePath = Task.Run(() => bridge.EnsureStartedAsync(CancellationToken.None));
+        var versionPath = Task.Run(() => bridge.EnsureVersionAsync(CancellationToken.None));
+
+        await Task.WhenAll(filePath, versionPath).WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(1, process.StartCalls);
+        Assert.Equal(0, process.StopCalls);
+        Assert.Equal("13.20", bridge.VersionText);
+    }
+
+    [Fact]
     public async Task EnsureVersionAsync_Should_Start_Process_When_Not_Started()
     {
         // 状态查询驱动的版本解析：桥还没启动时不得只返回 unknown，必须冷启动并拿到真实版本。
