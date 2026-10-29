@@ -20,10 +20,17 @@ public sealed class WorkerIpcRequestHandler
 {
     private const int ProtocolVersion = 1;
 
+    /// <summary>
+    /// 版本补探的最小间隔（#86）。ExifTool 不可用时 UI 的 1 s 轮询会退化成每秒一次启动尝试
+    /// 与一行告警；限流后同一降级态最多每 5 s 重试一次。
+    /// </summary>
+    private const int VersionProbeMinIntervalSeconds = 5;
+
     private readonly IWorkerIpcRuntime _runtime;
     private readonly ILogger<WorkerIpcRequestHandler> _logger;
 
     private int _versionProbeInFlight;
+    private long _nextVersionProbeAtTicks;
 
     public WorkerIpcRequestHandler(IWorkerIpcRuntime runtime, ILogger<WorkerIpcRequestHandler> logger)
     {
@@ -132,12 +139,12 @@ public sealed class WorkerIpcRequestHandler
 
     /// <summary>
     /// 版本补探（#86）：状态快照仍为 <see cref="ExifToolVersionText.Unknown"/> 时，
-    /// 在后台驱动一次桥启动 + 版本探针（暖路径会重探冷启动时超时的那次）。
+    /// 在后台驱动一次版本解析（未启动则冷启动、已启动则重探冷启动时超时的那次）。
     ///
-    /// in-flight 门闩保证 1s/3s 的轮询节奏不会叠加多路启动尝试；失败只记降级告警，
-    /// 版本继续上报 unknown，下一轮轮询自然重试。
+    /// 两道闸：in-flight 门闩保证轮询不叠加启动尝试；最小间隔保证降级态不演变成每秒重试。
+    /// 失败只记降级告警，版本继续上报 unknown，下一次到点重试。
     /// </summary>
-    // Design(#86): 版本解析由状态消费者驱动（惰性桥 + 暖路径补探），状态响应内容与字段语义不变。
+    // Design(#86): 版本解析由状态消费者驱动（按需冷启动 + 补探），状态响应内容与字段语义不变。
     private void TriggerExifToolVersionProbe()
     {
         if (Interlocked.CompareExchange(ref _versionProbeInFlight, 1, 0) != 0)
@@ -145,6 +152,15 @@ public sealed class WorkerIpcRequestHandler
             return;
         }
 
+        var now = Environment.TickCount64;
+        var dueAt = Volatile.Read(ref _nextVersionProbeAtTicks);
+        if (now < dueAt)
+        {
+            Interlocked.Exchange(ref _versionProbeInFlight, 0);
+            return;
+        }
+
+        Volatile.Write(ref _nextVersionProbeAtTicks, now + (VersionProbeMinIntervalSeconds * 1000L));
         _ = RunExifToolVersionProbeAsync();
     }
 
@@ -153,7 +169,12 @@ public sealed class WorkerIpcRequestHandler
         try
         {
             // 不随单次 IPC 请求取消：补探是 worker 级动作，连接断开不应中断它。
+            // worker 自己的停机信号由 runtime 侧链接，停机后不会再把桥拉起来。
             await _runtime.EnsureExifToolVersionAsync(CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // 停机取消——不是降级，不告警。
         }
         catch (Exception ex)
         {

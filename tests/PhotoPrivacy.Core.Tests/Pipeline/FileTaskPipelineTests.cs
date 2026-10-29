@@ -220,6 +220,8 @@ public sealed class FileTaskPipelineTests
     {
         public string VersionText => "test";
 
+        public Task EnsureVersionAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
         public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
         public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
@@ -235,6 +237,8 @@ public sealed class FileTaskPipelineTests
         public string VersionText => "test";
 
         public string LastTargetPath { get; private set; } = string.Empty;
+
+        public Task EnsureVersionAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
         public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
@@ -252,6 +256,8 @@ public sealed class FileTaskPipelineTests
         public string VersionText => "test";
 
         public int Calls { get; private set; }
+
+        public Task EnsureVersionAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
         public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 

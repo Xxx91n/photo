@@ -73,6 +73,21 @@ public sealed class PooledExifToolBridgeTests
     }
 
     [Fact]
+    public async Task EnsureVersionAsync_Should_Only_Start_The_First_Bridge()
+    {
+        // #86：一次状态查询没有理由把整个池的 stay_open 进程全部拉起——
+        // 版本对同一 ExifTool 二进制是同一值，只解析第一个子桥。
+        var bridgeA = new FakeBridge(ExifToolVersionText.Unknown);
+        var bridgeB = new FakeBridge(ExifToolVersionText.Unknown);
+        var pooled = new PooledExifToolBridge([bridgeA, bridgeB]);
+
+        await pooled.EnsureVersionAsync(CancellationToken.None);
+
+        Assert.Equal(1, bridgeA.EnsureVersionCalls);
+        Assert.Equal(0, bridgeB.EnsureVersionCalls);
+    }
+
+    [Fact]
     public async Task BuildFromConfig_Should_Create_Single_Bridge_When_Pool_Size_Is_One()
     {
         var config = AppConfig.Default with
@@ -104,9 +119,17 @@ public sealed class PooledExifToolBridgeTests
 
         public int StartCalls { get; private set; }
 
+        public int EnsureVersionCalls { get; private set; }
+
         public int StopCalls { get; private set; }
 
         public int WipeCalls { get; private set; }
+
+        public Task EnsureVersionAsync(CancellationToken cancellationToken)
+        {
+            EnsureVersionCalls++;
+            return Task.CompletedTask;
+        }
 
         public Task StartAsync(CancellationToken cancellationToken)
         {
@@ -141,6 +164,8 @@ public sealed class PooledExifToolBridgeTests
         public string VersionText => "blocking";
 
         private static int _inflight;
+
+        public Task EnsureVersionAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
         public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 

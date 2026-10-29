@@ -16,6 +16,7 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
     private readonly Func<ExifToolLifecycleEvent, CancellationToken, ValueTask>? _lifecycleSink;
     private readonly ConcurrentDictionary<string, TaskCompletionSource<bool>> _pending = new();
     private readonly SemaphoreSlim _startLock = new(1, 1);
+    private readonly SemaphoreSlim _stdinGate = new(1, 1);
     private readonly TimeSpan _startupTimeout;
     private static readonly TimeSpan RunningHealthTimeout = TimeSpan.FromMilliseconds(500);
 
@@ -81,17 +82,7 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
             if (!health.IsHealthy)
             {
                 await RestartAsync(cancellationToken, health);
-                return;
             }
-
-            // 冷启动那次探针一旦超时（_startupTimeout），该桥实例在整个生命周期里永远上报
-            // unknown——即使 ExifTool 随后处理文件一切正常。探针成功后再无额外往返。
-            // Design(#86): 版本探针只在进程启动时执行；暖路径在 VersionText 仍为 unknown 时补探一次。
-            if (ExifToolVersionText.IsUnknown(_versionText))
-            {
-                await ProbeVersionAndWarnIfNeededAsync(cancellationToken);
-            }
-
             return;
         }
 
@@ -133,6 +124,50 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
         finally
         {
             _startLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// 版本解析入口（#86）——只由状态消费者（IPC 状态请求）调用，<b>不进文件处理热路径</b>。
+    ///
+    /// 三种情形：未启动 → 冷启动（启动流程自带版本探针）；已启动但版本仍未知（冷启动那次探针
+    /// 超时或失败）→ 补探；已解析出真实版本 → 直接返回。
+    /// </summary>
+    // Design(#86): 版本解析按需触发（IPC 状态请求驱动），既不做启动期 eager start，也不进每文件热路径。
+    public async Task EnsureVersionAsync(CancellationToken cancellationToken)
+    {
+        if (!ExifToolVersionText.IsUnknown(_versionText))
+        {
+            return;
+        }
+
+        if (!_started)
+        {
+            await EnsureStartedAsync(cancellationToken);
+            return;
+        }
+
+        // 补探与在途擦除任务共享 stdout：读侧靠 IsProtocolNoiseLine 排除对方的协议 marker/JSON 行，
+        // 写侧靠 WriteBlockAsync 保证命令块不被拆散。
+        await ProbeVersionAndWarnIfNeededAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// 整块写 stdin。stay_open 协议里一个命令块（含 <c>-execute</c> 收尾）必须连续写入：
+    /// 四类写入（擦除探测块、擦除任务块、健康探针、版本探针）并发时会让一个块的行插进另一个块，
+    /// 被对方的行处理器误读（例如把版本号拼进 JSON 探测输出 → 该文件被静默判为无元数据）。
+    /// 块级串行化把这条前提钉住，代价是每次写多一次信号量往返。
+    /// </summary>
+    private async Task WriteBlockAsync(string block, CancellationToken cancellationToken)
+    {
+        await _stdinGate.WaitAsync(cancellationToken);
+        try
+        {
+            await _process.WriteStdinAsync(block, cancellationToken);
+        }
+        finally
+        {
+            _stdinGate.Release();
         }
     }
 
@@ -201,7 +236,7 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
         try
         {
             var probeBlock = ExifToolCommandBuilder.BuildProbeTaskBlock(targetPath, id);
-            await _process.WriteStdinAsync(probeBlock, cancellationToken);
+            await WriteBlockAsync(probeBlock, cancellationToken);
             await probeTcs.Task.WaitAsync(cancellationToken);
         }
         finally
@@ -261,7 +296,7 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
         try
         {
             var wipeBlock = ExifToolCommandBuilder.BuildWipeTaskBlock(targetPath, id, _wipeRules);
-            await _process.WriteStdinAsync(wipeBlock, cancellationToken);
+            await WriteBlockAsync(wipeBlock, cancellationToken);
             await wipeTcs.Task.WaitAsync(cancellationToken);
         }
         finally
@@ -409,7 +444,7 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
             // 于是每处理一个文件就整进程重启一次，摧毁 stay_open 常驻收益（不变量④）。
             var cmd = $"-fast\n-echo1\n{marker}\n-execute\n";
 
-            await _process.WriteStdinAsync(cmd, cancellationToken);
+            await WriteBlockAsync(cmd, cancellationToken);
             await tcs.Task.WaitAsync(timeoutCts.Token);
             return HealthCheckResult.Success;
         }
@@ -491,7 +526,7 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
             timeoutCts.CancelAfter(_startupTimeout);
 
             var cmd = $"-ver\n-echo1\n{marker}\n-execute\n";
-            await _process.WriteStdinAsync(cmd, cancellationToken);
+            await WriteBlockAsync(cmd, cancellationToken);
 
             var versionRaw = await tcs.Task.WaitAsync(timeoutCts.Token);
             if (string.IsNullOrWhiteSpace(versionRaw))
@@ -644,6 +679,7 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
     public void Dispose()
     {
         _startLock.Dispose();
+        _stdinGate.Dispose();
     }
 
 }

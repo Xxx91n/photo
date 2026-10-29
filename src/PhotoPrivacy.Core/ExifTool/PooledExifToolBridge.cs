@@ -41,6 +41,14 @@ public sealed class PooledExifToolBridge : IExifToolBridge, IDisposable
         }
     }
 
+    /// <summary>
+    /// 版本解析只拉起池里的第一个子桥（#86）——版本对同一 ExifTool 二进制是同一值，
+    /// 没有必要为一次状态查询把整个池的 stay_open 进程全部启动。
+    /// </summary>
+    // Design(#86): 版本解析只启动 _bridges[0]，不为一次状态查询拉起整池。
+    public Task EnsureVersionAsync(CancellationToken cancellationToken)
+        => _bridges[0].EnsureVersionAsync(cancellationToken);
+
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         foreach (var bridge in _bridges)

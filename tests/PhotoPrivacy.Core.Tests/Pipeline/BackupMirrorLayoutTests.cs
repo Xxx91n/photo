@@ -266,6 +266,8 @@ public sealed class BackupMirrorLayoutTests : IDisposable
     {
         public string VersionText => "fake-12.00";
 
+        public Task EnsureVersionAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
         public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
         public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
