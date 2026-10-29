@@ -9,6 +9,9 @@ namespace PhotoPrivacy.IntegrationTests.WorkerIpc;
 /// 摘除手段是「<c>AddWindowsService</c> 之后紧跟 <c>builder.Logging.ClearProviders()</c>」，
 /// 因此断言必须校验**顺序**：MEL 的 <c>AddFilter(string, …)</c> 首参是类别前缀而非 provider 名
 /// （net10 参考程序集无 provider-name 重载），靠类别过滤摘不掉这个 provider。
+///
+/// 同一失败面还有第二段：EventLog 摘掉后，Serilog 文件是服务模式的唯一诊断落点，落点必须是
+/// 可写绝对路径（服务进程 CWD 是 <c>%WINDIR%\System32</c>），由 <c>ClassifyServiceLogPath</c> 守。
 /// </summary>
 public sealed class ServiceModeLoggingGuardTests
 {
@@ -45,6 +48,28 @@ public sealed class ServiceModeLoggingGuardTests
         return violations;
     }
 
+    internal static List<string> ClassifyServiceLogPath(string strippedProgramWithLineBreaks)
+    {
+        var violations = new List<string>();
+
+        if (!strippedProgramWithLineBreaks.Contains("CommonApplicationData", StringComparison.Ordinal))
+        {
+            violations.Add(
+                "服务日志落点不再是 ProgramData 绝对路径：服务进程 CWD 是 %WINDIR%\\System32，受限服务账户写不进去（#85）");
+        }
+
+        // 变更探测器（非契约）：解析出绝对路径但 Serilog 仍写相对字面量，等于修复被旁路。
+        // 计数口径 = 声明一处 + 文件 sink 消费一处（ResolveLogFilePath 是大小写不同的标识符，不计入）。
+        var logFilePathOccurrences = strippedProgramWithLineBreaks
+            .Split("logFilePath", StringSplitOptions.None).Length - 1;
+        if (logFilePathOccurrences < 2)
+        {
+            violations.Add("Serilog 文件 sink 未消费 logFilePath（仍写相对 logs/worker-.log）：绝对路径解析形同虚设（#85）");
+        }
+
+        return violations;
+    }
+
     [Fact]
     public void Service_Mode_Should_Drop_EventLog_Provider_After_Registering_WindowsService()
     {
@@ -54,6 +79,36 @@ public sealed class ServiceModeLoggingGuardTests
         // ClearProviders 已缺失。①–④ 都会被本断言判红，自证只对 ①②③ 造样本（④ 与 ① 同因：缺 ClearProviders）。关联 issue #85。
         var violations = ClassifyServiceLogging(ReadStrippedProgramWithLineBreaks());
         Assert.True(violations.Count == 0, string.Join("；", violations));
+    }
+
+    [Fact]
+    public void Service_Mode_Should_Log_To_A_Writable_Absolute_Path()
+    {
+        // 防的具体回潮形态：把服务日志退回相对 "logs/worker-.log" —— 服务进程 CWD 是
+        // %WINDIR%\System32，受限服务账户写不进去；而 EventLog 已被本票摘除，文件日志是
+        // 服务模式的唯一诊断落点，写不进去等于服务静默失明。关联 issue #85。
+        var violations = ClassifyServiceLogPath(ReadStrippedProgramWithLineBreaks());
+        Assert.True(violations.Count == 0, string.Join("；", violations));
+    }
+
+    [Fact]
+    public void Service_Log_Path_Guard_Negative_Self_Proof()
+    {
+        // 失效即红自证：绿态零违规；① 删掉 ProgramData 解析、② 保留解析但把 sink 换回相对字面量
+        // （死代码绕道），两种回潮形态都必须报红。关联 issue #85。
+        var green = ReadStrippedProgramWithLineBreaks();
+        Assert.Empty(ClassifyServiceLogPath(green));
+
+        var withoutProgramData = string.Join(
+            "\n",
+            green.Split('\n').Where(line => !line.Contains("CommonApplicationData", StringComparison.Ordinal)));
+        Assert.NotEmpty(ClassifyServiceLogPath(withoutProgramData));
+
+        var sinkRevertedToLiteral = green.Replace(
+            "    logFilePath,",
+            "    \"logs/worker-.log\",",
+            StringComparison.Ordinal);
+        Assert.NotEmpty(ClassifyServiceLogPath(sinkRevertedToLiteral));
     }
 
     [Fact]
