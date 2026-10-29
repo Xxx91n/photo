@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Hosting.WindowsServices;
 using Microsoft.Extensions.Logging;
 using PhotoPrivacy.Core.Configuration;
 using PhotoPrivacy.Core.Runtime;
@@ -222,34 +223,51 @@ static void RegisterBestEffortShutdown(
 }
 
 // 服务进程的 CWD 是 %WINDIR%\System32：相对日志路径不可发现、受限服务账户也写不进去。
-// 仅「非交互会话（SCM 拉起）的服务进程」才改落点——控制台 --mode service 与真实服务并存时不争同一文件。
-// 会话判定用 Environment.UserInteractive（仓库既有信号，见文件头的 WorkerEntryGuard 调用），
-// 不用 WindowsServiceHelpers：net10 下该类型在 Worker 项目上下文不可见（CI 编译已实证）。
+// 判定用 WindowsServiceHelpers.IsWindowsService()（父进程为 services，即真由 SCM 拉起）：
+// Environment.UserInteractive 会把「计划任务里跑 --mode service」也算进来，与真实服务争同一文件。
+// 该类型在 Microsoft.Extensions.Hosting.WindowsServices 命名空间（不是 Microsoft.Extensions.Hosting）。
 static string ResolveLogFilePath(RuntimeMode runtimeMode)
 {
     if (runtimeMode == RuntimeMode.Service
         && OperatingSystem.IsWindows()
-        && !Environment.UserInteractive)
+        && WindowsServiceHelpers.IsWindowsService())
     {
         var programData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
         if (!string.IsNullOrWhiteSpace(programData))
         {
             var logDirectory = Path.Combine(programData, "PhotoPrivacy", "logs");
-            try
+            if (TryPrepareWritableDirectory(logDirectory))
             {
-                Directory.CreateDirectory(logDirectory);
                 return Path.Combine(logDirectory, "worker-.log");
-            }
-            catch
-            {
-                // ProgramData 不可写：回落到安装目录的绝对路径，绝不回退到 CWD 相对路径。
             }
         }
 
+        // ProgramData 不可写：回落到安装目录的绝对路径，绝不回退到 CWD 相对路径。
         return Path.Combine(AppContext.BaseDirectory, "logs", "worker-.log");
     }
 
     return "logs/worker-.log";
+}
+
+// 「目录存在」不等于「当前账户可写」：建目录 + 真实写一个探针文件（DeleteOnClose）才算过。
+static bool TryPrepareWritableDirectory(string directory)
+{
+    try
+    {
+        Directory.CreateDirectory(directory);
+        using var probe = new FileStream(
+            Path.Combine(directory, ".write-probe"),
+            FileMode.Create,
+            FileAccess.Write,
+            FileShare.None,
+            bufferSize: 1,
+            FileOptions.DeleteOnClose);
+        return true;
+    }
+    catch
+    {
+        return false;
+    }
 }
 
 static void UnregisterBestEffortShutdown(
