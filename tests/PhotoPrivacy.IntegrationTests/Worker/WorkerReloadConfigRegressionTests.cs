@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
+using PhotoPrivacy.Core.Configuration;
 using PhotoPrivacy.Core.Runtime;
 using PhotoPrivacy.Core.Worker;
 
@@ -33,6 +34,12 @@ public sealed class WorkerReloadConfigRegressionTests
 
         Directory.CreateDirectory(hot);
         await File.WriteAllTextAsync(configPath, BuildConfigJson(hot, audit));
+
+        // 夹具自检：worker 的启动路径对配置校验失败会直接 Environment.Exit(1)（杀死整个测试进程），
+        // 所以先在测试侧校验一遍——配置夹具漂移要以断言失败暴露，而不是让 CI 只看到进程消失。
+        var parsed = AppConfigLoader.Load(configPath);
+        AppConfigValidator.Validate(parsed);
+        Assert.True(parsed.ExifTool.DryRun, "夹具必须是 dry-run：否则会去 spawn ExifTool");
 
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> { ["config"] = configPath })
