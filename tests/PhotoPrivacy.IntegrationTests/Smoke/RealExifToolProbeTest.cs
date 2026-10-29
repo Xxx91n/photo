@@ -55,7 +55,10 @@ public sealed class RealExifToolProbeTest : IntegrationTestBase
     /// #86 可重复探针（AC3）：真实 ExifTool 上版本必须解析成功并上报。
     ///
     /// 刻意不依赖 <c>D:\hot\1.png</c>（该环境依赖登记在 #19）——只走状态查询驱动的版本解析路径，
-    /// 任何装了 ExifTool 的机器都能跑；Category=ExifTool 由发版门禁执行，不进常规 CI。
+    /// 任何装了 ExifTool 的机器都能跑。
+    /// 注意：`Category=ExifTool` 被 ci.yml 与 release.yml 的默认过滤排除，本用例不会自动执行；
+    /// 需要人工在装有 ExifTool 的机器上显式跑：
+    /// <c>dotnet test PhotoPrivacy.sln --filter "Category=ExifTool"</c>。
     /// </summary>
     [Fact]
     public async Task EnsureVersionAsync_WithRealExifTool_Should_Report_Parsed_Version()
