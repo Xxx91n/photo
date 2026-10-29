@@ -56,15 +56,6 @@ public sealed class WorkerIpcServerHostedService : BackgroundService
         {
             transport = IpcTransportFactory.CreateServer(endpoint, _runtime.Mode == RuntimeMode.Service);
             await transport.ListenAsync(stoppingToken);
-            // 服务模式 DACL 应用失败的可观测性（#70）：管道仍可用但回退 SYSTEM 默认 DACL，
-            // 桌面用户会被拒——记 warning 指向复测口径，避免 S4 只剩一句 ACCESS_DENIED 无从下手。
-            if (transport is NamedPipeIpcTransport pipeTransport
-                && pipeTransport.ServicePipeAclApplied == false)
-            {
-                SafeLog.Try(() => _logger.LogWarning(
-                    "Service pipe DACL could not be applied (SetNamedSecurityInfoW failed); pipe keeps the " +
-                    "SYSTEM default DACL and non-elevated desktop UI will be denied (#70)."));
-            }
         }
         catch (Exception ex)
         {

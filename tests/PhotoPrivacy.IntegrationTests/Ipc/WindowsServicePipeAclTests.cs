@@ -100,7 +100,7 @@ public sealed class WindowsServicePipeAclTests
     }
 
     [Fact]
-    public void ServicePipeDacl_Grants_Installer_ReadWrite_And_System_Admin_FullControl()
+    public void SecurityDescriptor_Grants_Installer_ReadWrite_And_System_Admin_FullControl()
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -108,20 +108,22 @@ public sealed class WindowsServicePipeAclTests
         }
 
         var installerSid = WindowsIdentity.GetCurrent().User!.Value;
-        var bytes = WindowsServicePipeAcl.BuildServicePipeDacl(new SecurityIdentifier(installerSid));
+        var bytes = WindowsServicePipeAcl.BuildServicePipeSecurityDescriptor(new SecurityIdentifier(installerSid));
 
         // 掩码与 WindowsServicePipeAcl 的常量同源：FILE_GENERIC_READ|WRITE、FILE_ALL_ACCESS。
         const uint fileGenericReadWrite = 0x00120089u | 0x00120116u;
         const uint fileAllAccess = 0x001F01FFu;
 
-        var dacl = new RawAcl(bytes, 0);
+        var descriptor = new RawSecurityDescriptor(bytes, 0);
+        var dacl = descriptor.DiscretionaryAcl;
+        Assert.NotNull(dacl);
 
         uint? installerMask = null;
         uint? systemMask = null;
         uint? administratorsMask = null;
         var systemSid = new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null).Value;
         var administratorsSid = new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null).Value;
-        foreach (var ace in dacl)
+        foreach (var ace in dacl!)
         {
             if (ace is not CommonAce common || common.AceType != AceType.AccessAllowed)
             {

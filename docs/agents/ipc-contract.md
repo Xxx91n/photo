@@ -72,14 +72,15 @@ UI 侧并发探测（#59）：新 UI 另起短连接预算客户端（连接 250
 - Windows：后台管道 `PipeOptions.CurrentUserOnly`；Unix：0600/0660 + 对端 uid 白名单（fail-closed）。
 - Windows 服务管道（#70，决策 #82 D3）：显式 DACL 取代 `CurrentUserOnly`——安装脚本
   （`scripts/install-service.ps1`）把安装者 SID 写入 `HKLM\SOFTWARE\PhotoPrivacy\ServicePipeInstallerSid`，
-  服务端建管道（服务模式不带 `CurrentUserOnly`）后经 `SetNamedSecurityInfoW` 把安装者 SID DACL
-  应用到管道对象（创建→应用间隙管道带 SYSTEM 令牌默认 DACL，窗口 fail-closed）。不走 managed
-  ACL API 与原生建管道（前者单文件发布上下文曾抛 UnauthorizedAccessException 并按 accept 泄漏
-  管道实例直到 254 上限 38142f9b；后者与 `CreateFromPipe` 在 Linux net10 编译面缺失，CI 实证——
-  CI test job 只跑 ubuntu，全部代码必须跨平台可编译）。DACL 授予安装者 SID
-  FILE_GENERIC_READ|WRITE + SYSTEM/Administrators 完全控制。
-  SID 缺失/无效 fail-closed 回退 `CurrentUserOnly` 并记 warning；DACL 应用失败回退 SYSTEM 默认
-  DACL 并记 warning；重装/升级覆盖登记值，ACL 随最新安装者。
+  服务端经原生 `CreateNamedPipeW` 以 `SECURITY_ATTRIBUTES` 建例（正典的建例时 DACL，无「建好
+  未应用」间隙；`PIPE_REJECT_REMOTE_CLIENTS` 拒绝远程连接），授予安装者 SID
+  FILE_GENERIC_READ|WRITE + SYSTEM/Administrators 完全控制。不走 managed ACL API——
+  `NamedPipeServerStreamAcl.Create` 在本仓单文件发布上下文曾抛 UnauthorizedAccessException 并
+  按 accept 逐次泄漏管道实例直到 254 上限（38142f9b）；事后改 DACL 的 `SetNamedSecurityInfoW`
+  （不支持按名操作管道）与 `SetKernelObjectSecurity`（managed 句柄无 WRITE_DAC）均不可行。
+  原生路径按 `PP_WINDOWS_HOST`（csproj 按 `'$(OS)'=='Windows_NT'` 注入）编译：CI test job 只跑
+  ubuntu，Windows 编译覆盖由 release.yml win-x64 构建与发版机承担。
+  SID 缺失/无效 fail-closed 回退 `CurrentUserOnly` 并记 warning；重装/升级覆盖登记值，ACL 随最新安装者。
   安装者账户的非提权 UI 可完成服务端点往返；其他账户仍被拒（多用户/跨账户归 #1）。
   C# 传输层 `ConnectAsync` 客户端与所连模式同界：后台模式带 `CurrentUserOnly`（不变），
   服务模式不带（与服务端 DACL 同界，否则会在客户端把对 SYSTEM 服务的合法连接整体拒绝）；
