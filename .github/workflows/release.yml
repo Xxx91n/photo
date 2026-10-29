@@ -67,6 +67,13 @@ jobs:
       - name: Ensure Rust toolchain
         run: rustup default stable
 
+      # Linux 侧补系统依赖（#84）：yeslogic-fontconfig-sys build.rs 探测 fontconfig.pc
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo DEBIAN_FRONTEND=noninteractive apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libfontconfig1-dev pkg-config
+
       - name: Publish (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
