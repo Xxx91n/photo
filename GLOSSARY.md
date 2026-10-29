@@ -37,7 +37,7 @@
 **Service State Probe**：三平台服务状态探测，统一为枚举。
 **Service Command Executor**：三平台服务操作，经提权辅助进程调用安装脚本。
 **Flock Single Instance**：Unix 用锁文件实现单实例；Windows 用命名 Mutex。
-**Heartbeat Service**：UI 后台心跳 ping Worker，指数退避至 60s。
+**Heartbeat Service**：UI 后台心跳通过 `GetStatus` 探测 Worker，指数退避至 60s。
 **Stale Socket Cleanup**：bind 前删除残留 socket。
 **Endpoint Ownership**：仅端点属主在释放时删除 socket，客户端不删共享端点。
 **SIGHUP Reload**：SIGHUP 触发配置热载，异常只记日志、不阻塞信号线程。
