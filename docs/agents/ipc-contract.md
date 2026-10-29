@@ -70,7 +70,24 @@ UI 侧并发探测（#59）：新 UI 另起短连接预算客户端（连接 250
 ## 认证边界与已知缺陷
 
 - Windows：后台管道 `PipeOptions.CurrentUserOnly`；Unix：0600/0660 + 对端 uid 白名单（fail-closed）。
-- 服务模式既有缺陷：服务以 `LocalSystem` 运行，服务管道仍是 `CurrentUserOnly`，桌面用户会被拒绝——另见 #70；新 UI 因此会回落到后台 Worker。
+- Windows 服务管道（#70，决策 #82 D3）：显式 DACL 取代 `CurrentUserOnly`——安装脚本
+  （`scripts/install-service.ps1`）把安装者 SID 写入 `HKLM\SOFTWARE\PhotoPrivacy\ServicePipeInstallerSid`，
+  服务端经 managed 正典 `NamedPipeServerStreamAcl.Create` 建例（传 `PipeSecurity`，不传
+  `CurrentUserOnly`——它会给创建者专属 DACL 并忽略传入值），授予安装者 SID
+  FILE_GENERIC_READ|WRITE + SYSTEM/Administrators 完全控制。DACL 必须给创建者保留
+  FILE_CREATE_PIPE_INSTANCE（0x4）：服务建第 2..N 个实例时内核按 DACL 对创建者令牌做该项检查
+  ——38142f9b 的「单文件 UnauthorizedAccessException + 254 实例泄漏」实为旧 WorldSid-ReadWrite
+  DACL 缺此位（`PipeAccessRights.Write` 刻意不含它），非单文件问题。
+  ACL 代码按 `PP_WINDOWS_HOST`（csproj 按 `'$(OS)'=='Windows_NT'` 注入，Ipc 与测试工程同口径）
+  编译：CI test job 只跑 ubuntu，Windows 编译覆盖由 release.yml win-x64 构建与发版机承担；
+  交叉发布（非 Windows 宿主产出 win-x64）时解析与建例均被编译排除，fail-closed 回退
+  `CurrentUserOnly`。SID 缺失/无效 fail-closed 回退 `CurrentUserOnly` 并记 warning；
+  重装/升级覆盖登记值，ACL 随最新安装者。
+  安装者账户的非提权 UI 可完成服务端点往返；其他账户仍被拒（多用户/跨账户归 #1）。
+  C# 传输层 `ConnectAsync` 客户端与所连模式同界：后台模式带 `CurrentUserOnly`（不变），
+  服务模式不带（与服务端 DACL 同界，否则会在客户端把对 SYSTEM 服务的合法连接整体拒绝）；
+  服务端点的产品客户端只有 Rust UI（本就不做属主校验）。
+- Unix 服务模式不变（0660 + 组白名单）；Linux/macOS 的服务管道访问按各自机制另行核对（#70 AC）。
 - 客户端**不做**旧 UI 的 `PipeOptions.CurrentUserOnly` 属主校验（服务模式下自相矛盾）；理由见 `ui/crates/photoprivacy-ipc/src/client.rs` 注释。
 
 ## UI 单实例唤起通道（非 Worker 协议）

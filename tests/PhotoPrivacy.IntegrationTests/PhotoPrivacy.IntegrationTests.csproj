@@ -2,6 +2,9 @@
 
   <PropertyGroup>
     <IsPackable>false</IsPackable>
+    <!-- 与 PhotoPrivacy.Ipc 同口径：Windows 宿主才编译 PP_WINDOWS_HOST 分区的测试
+         （WindowsPipeNative 等 Windows 编译面 API，CI test job 为 ubuntu，不覆盖）。 -->
+    <DefineConstants Condition="'$(OS)' == 'Windows_NT'">$(DefineConstants);PP_WINDOWS_HOST</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>

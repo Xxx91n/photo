@@ -1,5 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup />
+  <PropertyGroup>
+    <!-- Windows 原生 ACL 路径只在 Windows 宿主编译（PP_WINDOWS_HOST）：CreateNamedPipeW 的
+         SECURITY_ATTRIBUTES 与 NamedPipeServerStream.CreateFromPipe 仅在 Windows 编译面存在
+         （ubuntu CI 实证 CS0117/CS0246）。本仓 CI test job 只跑 ubuntu，故按构建机 OS 分区；
+         Windows 编译覆盖由 release.yml 的 win-x64 构建与发版机 release-readiness 承担（#70）。 -->
+    <DefineConstants Condition="'$(OS)' == 'Windows_NT'">$(DefineConstants);PP_WINDOWS_HOST</DefineConstants>
+  </PropertyGroup>
 
 </Project>

@@ -8,8 +8,16 @@ param(
   [string]$Action = "install",
   [string]$ServiceName = "PhotoPrivacyCleaner",
   [string]$ExePath = "",
-  [string]$ConfigPath = ""
+  [string]$ConfigPath = "",
+  # 服务管道 DACL 使用的安装者 SID（#70，决策 #82 D3）。留空则取当前（提权）账户的 SID。
+  # 若安装用管理员与日常使用用户不是同一账户，须显式传日常用户 SID，否则其 UI 连不上服务管道。
+  [string]$InstallerSid = ""
 )
+
+# 服务管道显式 ACL 的注册表落点：服务（LocalSystem）运行时读取该值构建 DACL；
+# 键默认继承允许 Users 读，SID 字符串非敏感。缺失时服务 fail-closed 回退 CurrentUserOnly。
+$RegistryPath = "HKLM:\SOFTWARE\PhotoPrivacy"
+$RegistryValueName = "ServicePipeInstallerSid"
 
 $ErrorActionPreference = "Stop"
 
@@ -35,6 +43,9 @@ function Remove-ServiceCompat([string]$Name) {
 
 switch ($Action.ToLower()) {
   "install" {
+    if ([string]::IsNullOrWhiteSpace($InstallerSid)) {
+      $InstallerSid = ([System.Security.Principal.WindowsIdentity]::GetCurrent()).User.Value
+    }
     $binPath = '"{0}" --mode service --config "{1}"' -f $ExePath, $ConfigPath
     if (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
       Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
@@ -45,10 +56,15 @@ switch ($Action.ToLower()) {
     } else {
       sc.exe create $ServiceName binPath= $binPath start= auto
     }
+    # 先登记 SID 再启动服务：服务首次建管道时即按最新安装者构建 DACL（重装/升级覆盖旧值）。
+    if (-not (Test-Path $RegistryPath)) { New-Item -Path $RegistryPath -Force | Out-Null }
+    New-ItemProperty -Path $RegistryPath -Name $RegistryValueName -Value $InstallerSid -PropertyType String -Force | Out-Null
     Start-Service -Name $ServiceName
-    Write-Host "Installed and started $ServiceName"
+    Write-Host "Installed and started $ServiceName (service pipe ACL SID: $InstallerSid)"
   }
   "uninstall" {
+    # 注册表清理不依赖服务是否仍在：服务已被手工删除时也要清掉孤儿 SID 登记。
+    Remove-ItemProperty -Path $RegistryPath -Name $RegistryValueName -ErrorAction SilentlyContinue
     if (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
       Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
       Remove-ServiceCompat $ServiceName
