@@ -19,7 +19,7 @@ PhotoPrivacy：批量清理照片/视频/文档隐私元数据的跨平台桌面
 
 ## 代码里看不出来的坑
 
-- ExifTool 必须 stay_open 长驻，禁每文件 spawn；备份镜像相对路径、同内容跳过、分歧写旁路版本、原子写；IPC 认证以 OS 身份为边界；UI 线程与后台线程禁 sync-over-async；未知格式立即跳过；视觉尺寸/字号只消费 DesignTokens token，按钮/nav 尺寸权威在 AppTheme.axaml。
+- ExifTool 必须 stay_open 长驻，禁每文件 spawn；备份镜像相对路径、同内容跳过、分歧写旁路版本、原子写；IPC 认证以 OS 身份为边界；UI 线程与后台线程禁 sync-over-async；未知格式立即跳过；新 UI 视觉与主题消费 theme.rs（排版先行、弱边框），观感以 #49 T4 六锚与 docs/agents/ui-smoke.md 为准。
 - 改 IPC 客户端或新 UI 连接代码前读 `docs/agents/ipc-contract.md`（帧、超时、端点、重试、认证边界的事实源指针）。
 - 改规则页或 `rules.json` 读写前读 `docs/agents/rules-contract.md`（五族×六组键名、缺键回退、原子写的事实源指针）；新 UI 手工冒烟与视觉证据口径见 `docs/agents/ui-smoke.md`。
 
