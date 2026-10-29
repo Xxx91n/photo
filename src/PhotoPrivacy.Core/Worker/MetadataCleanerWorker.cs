@@ -282,9 +282,10 @@ public sealed class MetadataCleanerWorker : BackgroundService
     }
 
     /// <summary>
-    /// 释放旧实例的常驻句柄（#85）：失败只记录为 best-effort，不阻断重载/停机路径。
+    /// 释放旧实例的常驻句柄（#85）：失败静默吞掉，不阻断重载/停机路径——
+    /// 释放失败的真实后果由调用方（重载结果）呈现，句柄释放本身不另发日志。
     /// </summary>
-    private void DisposeQuietly(IDisposable? disposable)
+    private static void DisposeQuietly(IDisposable? disposable)
     {
         if (disposable is null)
         {
@@ -297,15 +298,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
         }
         catch
         {
-            // best-effort：释放失败不阻断重载/停机；日志写失败同样不得反噬（#85）。
-            try
-            {
-                _logger.LogWarning("dispose of retired resource failed, continuing");
-            }
-            catch
-            {
-                // 日志 provider 故障：静默丢弃。
-            }
+            // best-effort：释放失败不阻断重载/停机。
         }
     }
 

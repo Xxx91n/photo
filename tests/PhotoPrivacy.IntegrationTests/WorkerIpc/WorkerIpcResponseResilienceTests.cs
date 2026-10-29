@@ -46,7 +46,7 @@ public sealed class WorkerIpcResponseResilienceTests
         var response = connection.ReadResponse();
         Assert.Contains("\"ok\":false", response, StringComparison.Ordinal);
         Assert.Contains("\"id\":\"fault\"", response, StringComparison.Ordinal);
-        Assert.Contains("\"v\":1", response, StringComparison.Ordinal);
+        Assert.Contains($"\"v\":{WorkerIpcProtocol.Version}", response, StringComparison.Ordinal);
 
         cts.Cancel();
         await loopTask.WaitAsync(TimeSpan.FromSeconds(10));
@@ -79,6 +79,8 @@ public sealed class WorkerIpcResponseResilienceTests
         var response = connection.ReadResponse();
         Assert.Contains("\"ok\":false", response, StringComparison.Ordinal);
         Assert.Contains("\"id\":\"s5\"", response, StringComparison.Ordinal);
+        // 日志 provider 抛异常不得吃掉失败原因：处理器自己的 catch 也走 SafeLog，仍带回 reload_failed（#85）。
+        Assert.Contains("reload_failed", response, StringComparison.Ordinal);
 
         // 处理链已失败，但仍必须能被后续连接正常服务（连接循环不得被日志异常带崩）。
         var ping = new ScriptedIpcConnection(SerializeRequest(WorkerIpcMethods.Ping, "after"));

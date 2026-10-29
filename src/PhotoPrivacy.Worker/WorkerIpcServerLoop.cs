@@ -141,7 +141,7 @@ public sealed class WorkerIpcServerLoop
                     // 响应写入被跳过，客户端只能等到读超时——这正是服务管道 ReloadConfig 挂起的直接机制。
                     // 因此请求处理链的任何异常都必须仍回一条 ok:false。
                     // Design(#85): 处理链异常必须仍写出 ok:false 响应；本类日志调用失败只降级不反噬。
-                    SafeLog(() => _logger.LogWarning(ex, "worker ipc request handling fault"));
+                    SafeLog.Try(() => _logger.LogWarning(ex, "worker ipc request handling fault"));
                     response = new WorkerIpcResponse(
                         false,
                         Message: "internal_error",
@@ -166,23 +166,7 @@ public sealed class WorkerIpcServerLoop
         }
         catch (Exception ex)
         {
-            SafeLog(() => _logger.LogWarning(ex, "worker ipc client handling error"));
-        }
-    }
-
-    /// <summary>
-    /// 日志失败只降级、不反噬：服务模式下 EventLog provider 写失败会让 MEL <c>Logger.Log</c>
-    /// 直接抛（#85），连接循环的响应与 accept 语义不得被日志带崩。
-    /// </summary>
-    private static void SafeLog(Action log)
-    {
-        try
-        {
-            log();
-        }
-        catch
-        {
-            // best-effort：日志写失败静默丢弃，不打断连接处理。
+            SafeLog.Try(() => _logger.LogWarning(ex, "worker ipc client handling error"));
         }
     }
 }
