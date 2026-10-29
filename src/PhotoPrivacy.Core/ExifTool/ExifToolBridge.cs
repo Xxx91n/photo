@@ -29,7 +29,6 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
 
     private volatile bool _started;
     private int _taskId;
-    private int _versionProbeAttempts;
     // 跨线程可见性：#86 的上报链路由 IPC 线程读取、stdout pump 线程写入。
     private volatile string _versionText = ExifToolVersionText.Unknown;
 
@@ -138,8 +137,8 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
     /// <summary>
     /// 版本解析入口（#86）——只由状态消费者（IPC 状态请求）调用，<b>不进文件处理热路径</b>。
     ///
-    /// 先让桥进入「已启动且健康」状态（冷启动自带版本探针；进程崩溃/被杀时健康检查会重启它，
-    /// 重启同样自带探针），再对「仍未知」的版本补探一次。已解析出真实版本时全程零往返。
+    /// 只有进程真的没了才走启动/重启（冷启动与重启各自自带版本探针）；进程还在时只补探，不做
+    /// 健康检查——见方法内注释。已解析出真实版本时全程零往返。
     /// </summary>
     // Design(#86): 版本解析按需触发（IPC 状态请求驱动），既不做启动期 eager start，也不进每文件热路径。
     public async Task EnsureVersionAsync(CancellationToken cancellationToken)
@@ -149,19 +148,19 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
             return;
         }
 
-        // 兼做健康检查与崩溃恢复：进程已死时 _started 仍为 true，只有这一步能把它拉回来。
-        var probesBefore = Volatile.Read(ref _versionProbeAttempts);
-        await EnsureStartedAsync(cancellationToken);
-
-        // 本次调用内若已经跑过探针（冷启动与重启各自带一次），就不再叠第二次 3 s 预算——
-        // 下一拍由状态轮询重试。
-        if (Volatile.Read(ref _versionProbeAttempts) == probesBefore
-            && ExifToolVersionText.IsUnknown(_versionText))
+        // 进程还在就不在这里做健康检查/重启：一次状态轮询不该把一个正在处理大文件、只是错过
+        // 500 ms 健康应答的进程判成不健康并杀掉——重启会让在途擦除的 marker 失去归属，
+        // 其输出可能被新进程的 {ready} 顶成「无元数据」而静默跳过该文件。
+        // 进程真的没了（崩溃/被杀）时，这里负责把它拉回来。
+        if (!_process.IsRunning)
         {
-            // 补探与在途擦除任务共享 stdout：读侧靠「只接受整行版本文本」+ IsProtocolNoiseLine
-            // 排除对方的协议 marker/JSON 行，写侧靠 WriteBlockAsync 保证命令块不被拆散。
-            await ProbeVersionAndWarnIfNeededAsync(cancellationToken);
+            await EnsureStartedAsync(cancellationToken);
+            return;
         }
+
+        // 补探与在途擦除任务共享 stdout：读侧靠「只接受整行版本文本」+ IsProtocolNoiseLine
+        // 排除对方的协议 marker/JSON 行，写侧靠 WriteBlockAsync 保证命令块不被拆散。
+        await ProbeVersionAndWarnIfNeededAsync(cancellationToken);
     }
 
     /// <summary>
@@ -486,8 +485,6 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
 
     private async Task ProbeVersionAndWarnIfNeededAsync(CancellationToken cancellationToken)
     {
-        Interlocked.Increment(ref _versionProbeAttempts);
-
         var marker = $"VERSION_{Guid.NewGuid():N}";
         var tcs = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
 

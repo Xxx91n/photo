@@ -389,6 +389,32 @@ public sealed class ExifToolBridgeTests
     }
 
     [Fact]
+    public async Task EnsureVersionAsync_Should_Not_Restart_A_Live_But_Slow_Process()
+    {
+        // CodeRabbit 保留意见成立的形态（#86）：状态轮询不得把「只是错过 500 ms 健康应答」的
+        // 活进程判成不健康并重启——重启会打断在途擦除，让它的输出被新进程的 {ready} 顶成
+        // 「无元数据」而静默跳过该文件。进程还在就只补探。
+        var process = new ProtocolLevelFakeExifToolProcess
+        {
+            VersionResponseDelayMs = 400
+        };
+        var bridge = new ExifToolBridge(process, Config, healthTimeout: TimeSpan.FromMilliseconds(80));
+
+        await bridge.EnsureStartedAsync(CancellationToken.None);
+        Assert.Equal(ExifToolVersionText.Unknown, bridge.VersionText);
+
+        // 进程仍活着，但健康应答比 500 ms 预算慢；版本探针本身正常。
+        process.HealthResponseDelayMs = 900;
+        process.VersionResponseDelayMs = 0;
+
+        await bridge.EnsureVersionAsync(CancellationToken.None);
+
+        Assert.Equal("13.20", bridge.VersionText);
+        Assert.Equal(1, process.StartCalls);
+        Assert.Equal(0, process.StopCalls);
+    }
+
+    [Fact]
     public async Task EnsureVersionAsync_Should_Start_Process_When_Not_Started()
     {
         // 状态查询驱动的版本解析：桥还没启动时不得只返回 unknown，必须冷启动并拿到真实版本。
