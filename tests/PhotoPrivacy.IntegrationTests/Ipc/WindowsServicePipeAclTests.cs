@@ -130,15 +130,15 @@ public sealed class WindowsServicePipeAclTests
             var sidValue = common.SecurityIdentifier.Value;
             if (string.Equals(sidValue, installerSid, StringComparison.OrdinalIgnoreCase))
             {
-                installerMask = common.AccessMask;
+                installerMask = (uint)common.AccessMask;
             }
             else if (sidValue == systemSid)
             {
-                systemMask = common.AccessMask;
+                systemMask = (uint)common.AccessMask;
             }
             else if (sidValue == administratorsSid)
             {
-                administratorsMask = common.AccessMask;
+                administratorsMask = (uint)common.AccessMask;
             }
         }
 
