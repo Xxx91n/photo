@@ -32,7 +32,32 @@ public sealed class MetadataCleanerWorker : BackgroundService
     private AppConfig? _currentConfig;
     private IReadOnlyList<string> _autoExcludedSubdirectories = Array.Empty<string>();
 
-    public string CurrentExifToolVersion => _bridge?.VersionText ?? "unknown";
+    public string CurrentExifToolVersion => _bridge?.VersionText ?? ExifToolVersionText.Unknown;
+
+    /// <summary>
+    /// 驱动 ExifTool 版本解析（#86）。
+    ///
+    /// 桥自 M4 起惰性启动（首个文件才拉进程），于是首个文件到达前 <see cref="CurrentExifToolVersion"/>
+    /// 恒为 <see cref="ExifToolVersionText.Unknown"/>——即使 ExifTool 就在配置路径上且完全可用。
+    /// IPC handler 在状态快照仍为 unknown 时调用本方法：未启动则冷启动（启动流程自带版本探针），
+    /// 已启动但那次探针超时则补探。失败（路径失效、进程起不来、探针超时）原样上抛，由调用方记录降级。
+    /// </summary>
+    // Design(#86): 版本解析按需触发（IPC 状态请求驱动），不引入启动期 eager start，也不进每文件热路径。
+    public async Task EnsureExifToolVersionAsync(CancellationToken cancellationToken)
+    {
+        var bridge = _bridge;
+        if (bridge is null)
+        {
+            return;
+        }
+
+        // 停机期间不得再拉起/重启桥：StopAsync 之后新起的进程无人回收（子进程泄漏）。
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            _applicationLifetime.ApplicationStopping);
+
+        await bridge.EnsureVersionAsync(linked.Token);
+    }
 
     public MetadataCleanerWorker(
         IConfiguration configuration,

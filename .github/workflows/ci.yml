@@ -92,6 +92,9 @@ jobs:
       - name: Rust tests (photoprivacy-service, Windows)
         working-directory: ui
         run: cargo test -p photoprivacy-service --locked
+      - name: Rust tests (photoprivacy-ui, Windows)
+        working-directory: ui
+        run: cargo test -p photoprivacy-ui --locked
 
   markers:
     runs-on: ubuntu-latest

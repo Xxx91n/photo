@@ -77,7 +77,7 @@
 
 | # | 新栈对应 | 结果 | 证据 |
 |---|---|---|---|
-| F1 | 导航/ghost/primary/danger 按钮 hover 有反馈（新栈 DesignTokens，按 #49 T4 六锚目检） | | |
+| F1 | ghost 按钮 hover 有反馈（新栈 theme.rs token，按 #49 T4 六锚目检）；primary/danger 实心按钮按设计不改 hover 底色 | | |
 | F2 | 按下态有视觉反馈，松开恢复 | | |
 | F3 | 不可用操作呈禁用态且点击无响应（如服务未安装时的启动/停止） | | |
 | F4 | 键盘 Tab 焦点有可见指示 | | |

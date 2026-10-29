@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging.Abstractions;
+using PhotoPrivacy.Core.ExifTool;
 using PhotoPrivacy.Ipc;
 using PhotoPrivacy.Worker;
 
@@ -183,6 +184,120 @@ public sealed class WorkerIpcResidentStabilityTests
         Assert.False(nullRequest.Ok);
     }
 
+    /// <summary>状态快照为 unknown 时必须驱动一次版本补探（#86 回归）。</summary>
+    [Fact]
+    public async Task Handler_Should_Trigger_ExifTool_Version_Resolution_When_Status_Reports_Unknown()
+    {
+        // #86 回归：桥惰性启动 → 首个文件前版本恒为 unknown。状态消费者的出现必须驱动补探，
+        // 否则两种模式都会一直上报 unknown（P2/E2 实机形态）。
+        var runtime = new FakeWorkerIpcRuntime { ExifToolVersion = ExifToolVersionText.Unknown };
+        var handler = new WorkerIpcRequestHandler(runtime, NullLogger<WorkerIpcRequestHandler>.Instance);
+
+        var (response, _) = await handler
+            .HandleAsync(new WorkerIpcRequest(WorkerIpcMethods.GetExifToolVersion), CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(response.Ok);
+        Assert.Equal(ExifToolVersionText.Unknown, response.Data!.ExifToolVersion);
+
+        await WaitUntilAsync(() => runtime.EnsureExifToolVersionCalls == 1, TimeSpan.FromSeconds(5));
+        Assert.Equal(1, runtime.EnsureExifToolVersionCalls);
+    }
+
+    /// <summary>版本已知时三种状态方法都不得再触发补探。</summary>
+    [Fact]
+    public async Task Handler_Should_Not_Trigger_ExifTool_Version_Resolution_When_Version_Is_Known()
+    {
+        // 版本已解析后不得每次轮询都重启/补探——补探只服务「还没有版本」这一状态。
+        var runtime = new FakeWorkerIpcRuntime { ExifToolVersion = "13.20" };
+        var handler = new WorkerIpcRequestHandler(runtime, NullLogger<WorkerIpcRequestHandler>.Instance);
+
+        foreach (var method in new[] { WorkerIpcMethods.GetStatus, WorkerIpcMethods.Ping, WorkerIpcMethods.GetExifToolVersion })
+        {
+            var (response, _) = await handler
+                .HandleAsync(new WorkerIpcRequest(method), CancellationToken.None)
+                .WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.True(response.Ok);
+        }
+
+        Assert.Equal(0, runtime.EnsureExifToolVersionCalls);
+    }
+
+    /// <summary>补探在途时状态响应仍立即返回，且轮询不得叠加补探。</summary>
+    [Fact]
+    public async Task Handler_Status_Response_Should_Not_Block_On_InFlight_Version_Resolution()
+    {
+        // 补探可能持续数秒（拉进程 + -ver 往返）。状态响应必须立即返回当前快照，
+        // 且同一时刻只允许一路补探在途（1s/3s 轮询不得叠加启动尝试）。
+        var probeGate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var runtime = new FakeWorkerIpcRuntime
+        {
+            ExifToolVersion = ExifToolVersionText.Unknown,
+            EnsureExifToolVersionTask = probeGate.Task
+        };
+        var handler = new WorkerIpcRequestHandler(runtime, NullLogger<WorkerIpcRequestHandler>.Instance);
+
+        var (first, _) = await handler
+            .HandleAsync(new WorkerIpcRequest(WorkerIpcMethods.GetStatus), CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(first.Ok);
+        Assert.Equal(ExifToolVersionText.Unknown, first.Data!.ExifToolVersion);
+
+        await WaitUntilAsync(() => runtime.EnsureExifToolVersionCalls == 1, TimeSpan.FromSeconds(5));
+
+        // 补探仍在途时再走两拍轮询：响应照常返回，补探不叠加。
+        await handler.HandleAsync(new WorkerIpcRequest(WorkerIpcMethods.GetExifToolVersion), CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(5));
+        await handler.HandleAsync(new WorkerIpcRequest(WorkerIpcMethods.Ping), CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(1, runtime.EnsureExifToolVersionCalls);
+        Assert.False(probeGate.Task.IsCompleted);
+
+        probeGate.TrySetResult(true);
+    }
+
+    /// <summary>第一拍 unknown 触发补探，第二拍必须返回真实版本（AC1 红测）。</summary>
+    [Fact]
+    public async Task Handler_Should_Report_Real_Version_On_Next_Poll_After_Probe_Resolves()
+    {
+        // AC1 的红测：第一拍返回 unknown 并驱动补探，第二拍必须拿到真实版本——
+        // 修复前完全没有触发路径，第二拍仍是 unknown。
+        var runtime = new FakeWorkerIpcRuntime
+        {
+            ExifToolVersion = ExifToolVersionText.Unknown,
+            ExifToolVersionAfterEnsure = "13.20"
+        };
+        var handler = new WorkerIpcRequestHandler(runtime, NullLogger<WorkerIpcRequestHandler>.Instance);
+
+        var (first, _) = await handler
+            .HandleAsync(new WorkerIpcRequest(WorkerIpcMethods.GetExifToolVersion), CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(ExifToolVersionText.Unknown, first.Data!.ExifToolVersion);
+
+        await WaitUntilAsync(() => runtime.ExifToolVersion == "13.20", TimeSpan.FromSeconds(5));
+
+        var (second, _) = await handler
+            .HandleAsync(new WorkerIpcRequest(WorkerIpcMethods.GetExifToolVersion), CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal("13.20", second.Data!.ExifToolVersion);
+    }
+
+    /// <summary>轮询等待条件成立（用于 fire-and-forget 补探的完成判定）；超时后由调用方的断言定红绿。</summary>
+    private static async Task WaitUntilAsync(Func<bool> condition, TimeSpan budget)
+    {
+        var deadline = DateTime.UtcNow + budget;
+        while (DateTime.UtcNow < deadline)
+        {
+            if (condition())
+            {
+                return;
+            }
+
+            await Task.Delay(10);
+        }
+    }
+
     private static string SerializeRequest(string method, string id)
         => JsonSerializer.Serialize(new WorkerIpcRequest(method, id), WorkerIpcJsonContext.Default.WorkerIpcRequest);
 
@@ -296,6 +411,12 @@ internal sealed class FakeWorkerIpcRuntime : IWorkerIpcRuntime
 
     public Task ReloadTask { get; set; } = Task.CompletedTask;
 
+    /// <summary>版本补探的挂起点——默认立即完成；置为未完成任务可造出「补探在途」窗口。</summary>
+    public Task EnsureExifToolVersionTask { get; set; } = Task.CompletedTask;
+
+    /// <summary>补探完成后写回的版本——模拟桥解析成功；null 表示保持原值。</summary>
+    public string? ExifToolVersionAfterEnsure { get; set; }
+
     public (bool valid, string? error) ValidationResult { get; set; } = (true, null);
 
     public int PauseCalls { get; private set; }
@@ -303,6 +424,8 @@ internal sealed class FakeWorkerIpcRuntime : IWorkerIpcRuntime
     public int ResumeCalls { get; private set; }
 
     public int ReloadCalls { get; private set; }
+
+    public int EnsureExifToolVersionCalls { get; private set; }
 
     public void Pause()
     {
@@ -317,6 +440,17 @@ internal sealed class FakeWorkerIpcRuntime : IWorkerIpcRuntime
     }
 
     public (bool valid, string? error) TryValidateConfig() => ValidationResult;
+
+    /// <summary>记录补探调用次数，并在补探完成后按需写回版本（模拟桥解析成功）。</summary>
+    public async Task EnsureExifToolVersionAsync(CancellationToken cancellationToken)
+    {
+        EnsureExifToolVersionCalls++;
+        await EnsureExifToolVersionTask;
+        if (ExifToolVersionAfterEnsure is not null)
+        {
+            ExifToolVersion = ExifToolVersionAfterEnsure;
+        }
+    }
 
     public async Task ReloadConfigAsync()
     {
