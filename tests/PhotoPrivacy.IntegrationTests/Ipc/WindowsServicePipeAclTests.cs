@@ -115,7 +115,22 @@ public sealed class WindowsServicePipeAclTests
         await using var client = await transport.ConnectAsync(TimeSpan.FromSeconds(10), CancellationToken.None);
         await using var accepted = await acceptTask;
 
-        Assert.True(accepted.CanRead);
+        // 回退路径必须保持后台模式同界：同用户客户端完整往返可用，而不是仅"能连"。
+        var request = System.Text.Encoding.UTF8.GetBytes("ping\n");
+        await client.WriteAsync(request, CancellationToken.None);
+        var buffer = new byte[request.Length];
+        var totalRead = 0;
+        while (totalRead < request.Length)
+        {
+            var read = await accepted.ReadAsync(buffer.AsMemory(totalRead), CancellationToken.None);
+            if (read == 0)
+            {
+                break;
+            }
+            totalRead += read;
+        }
+
+        Assert.Equal(request.Length, totalRead);
     }
 
     [Fact]

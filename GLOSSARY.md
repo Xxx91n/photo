@@ -43,6 +43,7 @@
 **SIGHUP Reload**：SIGHUP 触发配置热载，异常只记日志、不阻塞信号线程。
 **Zombie Reap**：ExifTool 子进程经 Exited→WaitForExit 回收，防 Unix 僵尸。
 **Shared Group Model**：服务与 GUI 用户共享组和 setgid 目录。
+**Service Pipe ACL**：Windows 服务管道显式 DACL（#70）——安装者 SID 由 install-service.ps1 登记，服务端建例时授予读写；SID 缺失 fail-closed 回退 CurrentUserOnly。
 **IPC Protocol Version**：消息可选 `v` 字段（默认 1），新功能以方法名扩展。
 **Mode-Scoped Shutdown**：仅 CLI 模式可经 IPC 触发 Shutdown。
 **Post-Action Probe Retry**：服务操作后指数退避重试探测。

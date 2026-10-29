@@ -78,8 +78,7 @@ public sealed class NamedPipeIpcTransport : IIpcTransport
             serverName: ".",
             pipeName: _pipeName,
             direction: PipeDirection.InOut,
-            options: ClientOptions);
-        await client.ConnectAsync(cts.Token);
+            options: ClientOptions);        await client.ConnectAsync(cts.Token);
         return client;
     }
 
@@ -106,6 +105,7 @@ public sealed class NamedPipeIpcTransport : IIpcTransport
             : WindowsServicePipeAcl.TryResolveInstallerSid(out var registered)
                 ? registered
                 : null;
+        // 注入解析器可能返回非法 SID 字符串；注册表路径已在 TryResolveInstallerSid 内校验过。
         if (string.IsNullOrWhiteSpace(rawSid))
         {
             return null;
@@ -166,8 +166,14 @@ public sealed class NamedPipeIpcTransport : IIpcTransport
         return options;
     }
 
-    /// <summary>客户端管道选项：Windows 上要求同用户对端（CurrentUserOnly）。</summary>
-    private static PipeOptions ClientOptions => OperatingSystem.IsWindows()
-        ? PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly
+    /// <summary>
+    /// 客户端管道选项：后台模式在 Windows 上要求同用户对端（CurrentUserOnly）；
+    /// 服务模式不带该标志——服务端 DACL 已按安装者 SID 放行，客户端再设 CurrentUserOnly
+    /// 会在内核之外把跨账户（含对 SYSTEM 服务的合法连接）整体拒绝，与服务端自相矛盾（#70）。
+    /// </summary>
+    private PipeOptions ClientOptions => _accessMode == WindowsPipeAccessMode.BackgroundOnly
+        ? (OperatingSystem.IsWindows()
+            ? PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly
+            : PipeOptions.Asynchronous)
         : PipeOptions.Asynchronous;
 }

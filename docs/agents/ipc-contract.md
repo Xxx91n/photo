@@ -77,7 +77,9 @@ UI 侧并发探测（#59）：新 UI 另起短连接预算客户端（连接 250
   读写 + SYSTEM/Administrators 完全控制，并设 `PIPE_REJECT_REMOTE_CLIENTS` 拒绝远程连接。
   SID 缺失/无效时 fail-closed 回退 `CurrentUserOnly` 并记 warning；重装/升级覆盖登记值，ACL 随最新安装者。
   安装者账户的非提权 UI 可完成服务端点往返；其他账户仍被拒（多用户/跨账户归 #1）。
-  C# 传输层 `ConnectAsync` 客户端仍带 `CurrentUserOnly`（同用户语义），服务端点的产品客户端只有 Rust UI。
+  C# 传输层 `ConnectAsync` 客户端与所连模式同界：后台模式带 `CurrentUserOnly`（不变），
+  服务模式不带（与服务端 DACL 同界，否则会在客户端把对 SYSTEM 服务的合法连接整体拒绝）；
+  服务端点的产品客户端只有 Rust UI（本就不做属主校验）。
 - Unix 服务模式不变（0660 + 组白名单）；Linux/macOS 的服务管道访问按各自机制另行核对（#70 AC）。
 - 客户端**不做**旧 UI 的 `PipeOptions.CurrentUserOnly` 属主校验（服务模式下自相矛盾）；理由见 `ui/crates/photoprivacy-ipc/src/client.rs` 注释。
 
