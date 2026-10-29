@@ -222,12 +222,14 @@ static void RegisterBestEffortShutdown(
 }
 
 // 服务进程的 CWD 是 %WINDIR%\System32：相对日志路径不可发现、受限服务账户也写不进去。
-// 仅「真由 SCM 启动」才改落点——控制台 --mode service 与真实服务并存时不争同一文件。
+// 仅「非交互会话（SCM 拉起）的服务进程」才改落点——控制台 --mode service 与真实服务并存时不争同一文件。
+// 会话判定用 Environment.UserInteractive（仓库既有信号，见文件头的 WorkerEntryGuard 调用），
+// 不用 WindowsServiceHelpers：net10 下该类型在 Worker 项目上下文不可见（CI 编译已实证）。
 static string ResolveLogFilePath(RuntimeMode runtimeMode)
 {
     if (runtimeMode == RuntimeMode.Service
         && OperatingSystem.IsWindows()
-        && WindowsServiceHelpers.IsWindowsService())
+        && !Environment.UserInteractive)
     {
         var programData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
         if (!string.IsNullOrWhiteSpace(programData))
