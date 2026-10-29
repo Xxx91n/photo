@@ -220,6 +220,9 @@ public sealed class FileTaskPipelineTests
     {
         public string VersionText => "test";
 
+        /// <summary>版本解析在假件里无副作用：版本由构造参数直接给出。</summary>
+        public Task EnsureVersionAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
         public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
         public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
@@ -235,6 +238,9 @@ public sealed class FileTaskPipelineTests
         public string VersionText => "test";
 
         public string LastTargetPath { get; private set; } = string.Empty;
+
+        /// <summary>版本解析在假件里无副作用：版本由构造参数直接给出。</summary>
+        public Task EnsureVersionAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
         public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
@@ -252,6 +258,9 @@ public sealed class FileTaskPipelineTests
         public string VersionText => "test";
 
         public int Calls { get; private set; }
+
+        /// <summary>版本解析在假件里无副作用：版本由构造参数直接给出。</summary>
+        public Task EnsureVersionAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
         public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 

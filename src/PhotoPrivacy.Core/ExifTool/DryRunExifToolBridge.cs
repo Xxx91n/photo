@@ -13,6 +13,10 @@ public sealed class DryRunExifToolBridge : IExifToolBridge
         _audit = audit;
     }
 
+    /// <summary>dry-run 不上真实进程，版本恒为 <c>dry-run</c>（非 unknown），无探针可跑。</summary>
+    public Task EnsureVersionAsync(CancellationToken cancellationToken)
+        => Task.CompletedTask;
+
     public Task StartAsync(CancellationToken cancellationToken)
     {
         return Task.CompletedTask;

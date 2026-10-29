@@ -52,6 +52,42 @@ public sealed class PooledExifToolBridgeTests
     }
 
     [Fact]
+    public void VersionText_Should_Report_First_Known_Version_Across_Bridges()
+    {
+        // #86 回归：派发从 index 1 起轮转，pool>1 时首个文件通常落在 bridge[1..]，
+        // bridge[0] 可能整个生命周期都没启动过——只看 bridge[0] 会恒报 unknown。
+        var bridgeA = new FakeBridge(ExifToolVersionText.Unknown);
+        var bridgeB = new FakeBridge("13.20");
+        var pooled = new PooledExifToolBridge([bridgeA, bridgeB]);
+
+        Assert.Equal("13.20", pooled.VersionText);
+    }
+
+    [Fact]
+    public void VersionText_Should_Fall_Back_To_Unknown_When_No_Bridge_Resolved_Version()
+    {
+        var pooled = new PooledExifToolBridge(
+            [new FakeBridge(ExifToolVersionText.Unknown), new FakeBridge(ExifToolVersionText.Unknown)]);
+
+        Assert.Equal(ExifToolVersionText.Unknown, pooled.VersionText);
+    }
+
+    [Fact]
+    public async Task EnsureVersionAsync_Should_Only_Start_The_First_Bridge()
+    {
+        // #86：一次状态查询没有理由把整个池的 stay_open 进程全部拉起——
+        // 版本对同一 ExifTool 二进制是同一值，只解析第一个子桥。
+        var bridgeA = new FakeBridge(ExifToolVersionText.Unknown);
+        var bridgeB = new FakeBridge(ExifToolVersionText.Unknown);
+        var pooled = new PooledExifToolBridge([bridgeA, bridgeB]);
+
+        await pooled.EnsureVersionAsync(CancellationToken.None);
+
+        Assert.Equal(1, bridgeA.EnsureVersionCalls);
+        Assert.Equal(0, bridgeB.EnsureVersionCalls);
+    }
+
+    [Fact]
     public async Task BuildFromConfig_Should_Create_Single_Bridge_When_Pool_Size_Is_One()
     {
         var config = AppConfig.Default with
@@ -83,9 +119,18 @@ public sealed class PooledExifToolBridgeTests
 
         public int StartCalls { get; private set; }
 
+        public int EnsureVersionCalls { get; private set; }
+
         public int StopCalls { get; private set; }
 
         public int WipeCalls { get; private set; }
+
+        /// <summary>记录版本解析调用次数；版本值由构造参数给出。</summary>
+        public Task EnsureVersionAsync(CancellationToken cancellationToken)
+        {
+            EnsureVersionCalls++;
+            return Task.CompletedTask;
+        }
 
         public Task StartAsync(CancellationToken cancellationToken)
         {
@@ -120,6 +165,9 @@ public sealed class PooledExifToolBridgeTests
         public string VersionText => "blocking";
 
         private static int _inflight;
+
+        /// <summary>版本解析在假件里无副作用：版本由构造参数直接给出。</summary>
+        public Task EnsureVersionAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
         public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 

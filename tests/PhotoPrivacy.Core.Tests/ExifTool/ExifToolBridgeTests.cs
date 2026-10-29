@@ -310,6 +310,236 @@ public sealed class ExifToolBridgeTests
     }
 
     [Fact]
+    public async Task EnsureVersionAsync_Should_Probe_Version_After_First_Probe_Timed_Out()
+    {
+        // #86 回归：版本探针只在冷启动跑一次，超时后该桥实例会一直上报 unknown。
+        // 状态消费者驱动的版本解析必须能补探到真实版本——ExifTool 本身一直是可用的。
+        var process = new ProtocolLevelFakeExifToolProcess
+        {
+            VersionResponseDelayMs = 400
+        };
+        var bridge = new ExifToolBridge(process, Config, healthTimeout: TimeSpan.FromMilliseconds(80));
+
+        await bridge.EnsureStartedAsync(CancellationToken.None);
+        Assert.Equal(ExifToolVersionText.Unknown, bridge.VersionText);
+
+        // 探针不再超时（例如首次冷启动被杀软拖慢，后续恢复正常）。
+        process.VersionResponseDelayMs = 0;
+        await bridge.EnsureVersionAsync(CancellationToken.None);
+
+        Assert.Equal("13.20", bridge.VersionText);
+    }
+
+    [Fact]
+    public async Task EnsureStartedAsync_Should_Not_Probe_Version_For_File_Processing_Path()
+    {
+        // 防吞吐回归：文件处理热路径（每文件 EnsureStartedAsync）不得再跑版本探针——
+        // 探针超时预算 3 s，挂在热路径上会让降级态每文件多付一次超时。
+        var process = new ProtocolLevelFakeExifToolProcess
+        {
+            VersionResponseDelayMs = 400
+        };
+        var bridge = new ExifToolBridge(process, Config, healthTimeout: TimeSpan.FromMilliseconds(80));
+
+        await bridge.EnsureStartedAsync(CancellationToken.None);
+        await bridge.EnsureStartedAsync(CancellationToken.None);
+        await bridge.EnsureStartedAsync(CancellationToken.None);
+
+        Assert.Equal(ExifToolVersionText.Unknown, bridge.VersionText);
+        Assert.Single(process.Writes.Where(w => w.Contains("-ver", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task EnsureVersionAsync_Should_Not_ReProbe_When_Version_Already_Known()
+    {
+        // 补探只服务「还没有版本」这一状态；版本就绪后不得再产生 -ver 往返。
+        var process = new ProtocolLevelFakeExifToolProcess();
+        var bridge = new ExifToolBridge(process, Config);
+
+        await bridge.EnsureStartedAsync(CancellationToken.None);
+        await bridge.EnsureVersionAsync(CancellationToken.None);
+        await bridge.EnsureVersionAsync(CancellationToken.None);
+
+        Assert.Equal("13.20", bridge.VersionText);
+        Assert.Single(process.Writes.Where(w => w.Contains("-ver", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task EnsureVersionAsync_Should_Recover_Version_When_Process_Died_After_Timed_Out_Probe()
+    {
+        // 进程崩溃/被杀后 _started 仍为 true：只补探会往死管道写、异常被吞、版本永久 unknown。
+        // 版本解析入口必须先过健康检查（必要时重启），再补探。
+        var process = new ProtocolLevelFakeExifToolProcess
+        {
+            VersionResponseDelayMs = 400
+        };
+        var bridge = new ExifToolBridge(process, Config, healthTimeout: TimeSpan.FromMilliseconds(80));
+
+        await bridge.EnsureStartedAsync(CancellationToken.None);
+        Assert.Equal(ExifToolVersionText.Unknown, bridge.VersionText);
+
+        // 桥不知道进程已经没了（模拟外部崩溃）。
+        await process.StopAsync(CancellationToken.None);
+        process.VersionResponseDelayMs = 0;
+
+        await bridge.EnsureVersionAsync(CancellationToken.None);
+
+        Assert.Equal("13.20", bridge.VersionText);
+        Assert.True(process.StartCalls >= 2, "崩溃后必须重新拉起进程才能解析版本");
+    }
+
+    [Fact]
+    public async Task EnsureVersionAsync_Should_Not_Restart_A_Live_But_Slow_Process()
+    {
+        // CodeRabbit 保留意见成立的形态（#86）：状态轮询不得把「只是错过 500 ms 健康应答」的
+        // 活进程判成不健康并重启——重启会打断在途擦除，让它的输出被新进程的 {ready} 顶成
+        // 「无元数据」而静默跳过该文件。进程还在就只补探。
+        var process = new ProtocolLevelFakeExifToolProcess
+        {
+            VersionResponseDelayMs = 400
+        };
+        var bridge = new ExifToolBridge(process, Config, healthTimeout: TimeSpan.FromMilliseconds(80));
+
+        await bridge.EnsureStartedAsync(CancellationToken.None);
+        Assert.Equal(ExifToolVersionText.Unknown, bridge.VersionText);
+
+        // 进程仍活着，但健康应答比 500 ms 预算慢；版本探针本身正常。
+        process.HealthResponseDelayMs = 900;
+        process.VersionResponseDelayMs = 0;
+
+        await bridge.EnsureVersionAsync(CancellationToken.None);
+
+        Assert.Equal("13.20", bridge.VersionText);
+        Assert.Equal(1, process.StartCalls);
+        Assert.Equal(0, process.StopCalls);
+    }
+
+    [Fact]
+    public async Task EnsureVersionAsync_Should_Not_Start_Process_On_Retired_Bridge()
+    {
+        // CodeRabbit 第二轮 Major（#86）：ReloadConfig 会先 Stop 再 Dispose 旧桥。若热重载窗口内的
+        // 状态探针还能在旧桥上拉起进程，那个子进程无人回收 → 泄漏。退休桥必须拒绝启动。
+        var process = new ProtocolLevelFakeExifToolProcess();
+        var bridge = new ExifToolBridge(process, Config);
+
+        await bridge.StopAsync(CancellationToken.None);
+        await bridge.EnsureVersionAsync(CancellationToken.None);
+
+        Assert.Equal(0, process.StartCalls);
+        Assert.Equal(ExifToolVersionText.Unknown, bridge.VersionText);
+    }
+
+    [Fact]
+    public async Task EnsureVersionAsync_Concurrent_With_File_Path_Should_Start_Once_And_Never_Restart()
+    {
+        // CodeRabbit 第三轮（#86）：版本路径观察到「进程已停」后等锁，其间文件路径可能已经启动
+        // 进程并开始处理文件。此时若走健康检查，忙进程会超时 → 重启 → 打断在途擦除。
+        // 这里并发驱动两条路径：只允许启动一次、零重启。
+        var process = new ProtocolLevelFakeExifToolProcess
+        {
+            StartDelayMs = 60
+        };
+        var bridge = new ExifToolBridge(process, Config, healthTimeout: TimeSpan.FromMilliseconds(80));
+
+        var filePath = Task.Run(() => bridge.EnsureStartedAsync(CancellationToken.None));
+        var versionPath = Task.Run(() => bridge.EnsureVersionAsync(CancellationToken.None));
+
+        await Task.WhenAll(filePath, versionPath).WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(1, process.StartCalls);
+        Assert.Equal(0, process.StopCalls);
+        Assert.Equal("13.20", bridge.VersionText);
+    }
+
+    [Fact]
+    public async Task StopAsync_Should_Stop_A_Process_Started_By_An_Admitted_Start()
+    {
+        // ARCH-EXIFTOOL-RETIREMENT-001（CodeRabbit 第四轮）：启动已进锁、StopAsync 后到时，
+        // 必须由 StopAsync 在锁内把刚起的进程停掉，而不是在退役桥上留下一个无人回收的子进程。
+        var process = new ProtocolLevelFakeExifToolProcess
+        {
+            StartDelayMs = 150
+        };
+        var bridge = new ExifToolBridge(process, Config, healthTimeout: TimeSpan.FromMilliseconds(80));
+
+        var start = bridge.EnsureStartedAsync(CancellationToken.None);   // 同步段已拿锁并进入启动
+        await Task.Delay(30);                                            // 让启动在锁内阻塞于慢启动
+
+        var stop = bridge.StopAsync(CancellationToken.None);
+
+        await Task.WhenAll(start, stop).WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(1, process.StartCalls);
+        Assert.Equal(1, process.StopCalls);
+        Assert.False(process.IsRunning);
+    }
+
+    [Fact]
+    public async Task EnsureVersionAsync_Should_Not_Start_When_Stop_Already_Won()
+    {
+        // 退役先到：版本路径即便拿到旧桥引用也不得启动进程。
+        var process = new ProtocolLevelFakeExifToolProcess();
+        var bridge = new ExifToolBridge(process, Config);
+
+        var stop = bridge.StopAsync(CancellationToken.None);   // 同步段即置终态
+        var version = bridge.EnsureVersionAsync(CancellationToken.None);
+
+        await Task.WhenAll(stop, version).WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(0, process.StartCalls);
+        Assert.Equal(ExifToolVersionText.Unknown, bridge.VersionText);
+    }
+
+    [Fact]
+    public async Task HealthCheck_Should_Time_Out_When_Stdin_Gate_Is_Held_By_A_Stalled_Write()
+    {
+        // 审计残留（与 ARCH-EXIFTOOL-RETIREMENT 同源的准入缺口）：stdin 闸被一次卡死的擦除写入
+        // 长期占住时，健康检查必须在自己 500 ms 预算内超时并走恢复，而不是无限排队等闸。
+        var process = new ProtocolLevelFakeExifToolProcess();
+        var bridge = new ExifToolBridge(process, Config, healthTimeout: TimeSpan.FromMilliseconds(150));
+
+        await bridge.EnsureStartedAsync(CancellationToken.None);
+        Assert.Equal("13.20", bridge.VersionText);
+
+        var release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        process.BlockWrites = release;
+
+        using var stallCts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        var stalled = Task.Run(() => bridge.WipeMetadataAsync(
+            Path.Combine(Path.GetTempPath(), "pp-bridge", "stalled.jpg"),
+            stallCts.Token));
+
+        // 等到卡死的那次写入真的落在闸上（冷启动已有 1 次写入），避免用固定等待赌时序。
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (process.Writes.Count < 2 && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(10);
+        }
+
+        Assert.True(process.Writes.Count >= 2, "stalled 写入未取得 stdin 闸");
+
+        // 预算被闸吃掉时必须超时 → 重启（StartCalls 增加），而不是挂死。
+        await bridge.EnsureStartedAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(process.StartCalls >= 2, "闸被占死时健康检查必须超时并走重启恢复");
+
+        release.TrySetResult(true);
+        await Record.ExceptionAsync(() => stalled).WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    [Fact]
+    public async Task EnsureVersionAsync_Should_Start_Process_When_Not_Started()
+    {
+        // 状态查询驱动的版本解析：桥还没启动时不得只返回 unknown，必须冷启动并拿到真实版本。
+        var process = new ProtocolLevelFakeExifToolProcess();
+        var bridge = new ExifToolBridge(process, Config);
+
+        await bridge.EnsureVersionAsync(CancellationToken.None);
+
+        Assert.Equal(1, process.StartCalls);
+        Assert.Equal("13.20", bridge.VersionText);
+    }
+
+    [Fact]
     public async Task EnsureStartedAsync_Should_Emit_VersionWarning_Lifecycle_Event_When_Known_Issue_Version_Detected()
     {
         var process = new ProtocolLevelFakeExifToolProcess
