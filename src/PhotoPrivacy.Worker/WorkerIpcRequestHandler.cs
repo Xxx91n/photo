@@ -119,6 +119,9 @@ public sealed class WorkerIpcRequestHandler
         }
     }
 
+    /// <summary>
+    /// 构造状态快照。版本仍为 unknown 时顺手驱动一次后台补探（#86），但当前响应只返回快照。
+    /// </summary>
     private WorkerStatusDto BuildStatus()
     {
         var exifToolVersion = _runtime.ExifToolVersion;
@@ -164,6 +167,9 @@ public sealed class WorkerIpcRequestHandler
         _ = RunExifToolVersionProbeAsync();
     }
 
+    /// <summary>
+    /// 在后台执行一次版本解析；异常降级为 warning（停机取消不告警），结束后释放 in-flight 门闩。
+    /// </summary>
     private async Task RunExifToolVersionProbeAsync()
     {
         try

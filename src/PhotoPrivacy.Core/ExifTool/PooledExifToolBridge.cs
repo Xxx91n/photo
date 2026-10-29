@@ -21,6 +21,9 @@ public sealed class PooledExifToolBridge : IExifToolBridge, IDisposable
         _parallelGate = new SemaphoreSlim(Math.Min(cap, _bridges.Length));
     }
 
+    /// <summary>
+    /// 上报「首个已解析出的版本」：池内任一子桥解析出版本即可，全部未知时仍是 unknown 哨兵。
+    /// </summary>
     // 原来只看 _bridges[0]，但派发从 index 1 起轮转，第一个文件往往落在 _bridges[1]，
     // bridge[0] 可能整个生命周期都没启动过 → 恒报 unknown。版本对同一 ExifTool 二进制
     // 是同一值，取任一非 unknown 的子桥值语义等价。

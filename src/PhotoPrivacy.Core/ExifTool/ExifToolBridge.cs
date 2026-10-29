@@ -64,22 +64,36 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
         await EnsureStartedAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// 停止并退役本桥：<b>终态</b>。StopAsync 之后该实例只会被 Dispose（停机或配置热重载），
+    /// 不得再拉起进程——否则旧桥上会出现无人回收的子进程。
+    ///
+    /// 与启动路径互斥：先置 <see cref="_retired"/> 再取 <see cref="_startLock"/>。等在锁上的启动
+    /// 路径重检终态后必然放弃；已进锁的启动路径则由本方法在锁内停掉它刚起的进程。
+    /// </summary>
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        // 终态：StopAsync 之后该实例只会被 Dispose（停机或配置热重载），不得再拉起进程——
-        // 否则热重载期间的状态探针会在旧桥上启动一个没人回收的子进程（#86 CodeRabbit 保留意见）。
         _retired = true;
-        _started = false;
 
-        foreach (var marker in _pending.Keys)
+        await _startLock.WaitAsync(cancellationToken);
+        try
         {
-            if (_pending.TryRemove(marker, out var tcs))
-            {
-                tcs.TrySetCanceled(cancellationToken);
-            }
-        }
+            _started = false;
 
-        await _process.StopAsync(cancellationToken);
+            foreach (var marker in _pending.Keys)
+            {
+                if (_pending.TryRemove(marker, out var tcs))
+                {
+                    tcs.TrySetCanceled(cancellationToken);
+                }
+            }
+
+            await _process.StopAsync(cancellationToken);
+        }
+        finally
+        {
+            _startLock.Release();
+        }
     }
 
     /// <summary>
@@ -130,6 +144,13 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
     /// </summary>
     private async Task StartProcessLockedAsync(CancellationToken cancellationToken)
     {
+        // 终态判定必须在持锁后重做：StopAsync 取同一把锁，因此「检查终态」与「创建子进程」
+        // 之间插不进一次退役（ARCH-EXIFTOOL-RETIREMENT-001）。
+        if (_retired)
+        {
+            return;
+        }
+
         if (_started)
         {
             // 上次启动过但进程已不在（崩溃/被杀）：ProcessExifToolProcess.StartAsync 对非 null
@@ -244,6 +265,10 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
         }
     }
 
+    /// <summary>
+    /// 清理单个文件的元数据：未知扩展名立即跳过；否则 stay_open 探测 → 判定是否有可清除字段 →
+    /// 按规则生成擦除块并等待 <c>TASK_DONE_</c> marker。返回值即该文件的处理结论。
+    /// </summary>
     public async Task<WipeResult> WipeMetadataAsync(string targetPath, CancellationToken cancellationToken)
     {
         // 未知扩展名一律立即跳过——不进 ExifTool、不写协议块、不注册等待 marker。
@@ -453,6 +478,13 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
         await _startLock.WaitAsync(cancellationToken);
         try
         {
+            // 退休桥不再重启：StopAsync 取同一把锁，等锁期间发生退役时这里必须放弃，
+            // 否则会在旧桥上留下一个无人回收的子进程（ARCH-EXIFTOOL-RETIREMENT-001）。
+            if (_retired)
+            {
+                return;
+            }
+
             if (_started)
             {
                 var recheck = await TryHealthCheckAsync(cancellationToken, RunningHealthTimeout);
@@ -543,6 +575,10 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
         }
     }
 
+    /// <summary>
+    /// 探一次 <c>-ver</c> 并落 <see cref="_versionText"/>：只接受整行版本文本，顺带在已知
+    /// WindowsLongPath 问题版本区间时发告警事件。超时/失败只记 warning，不改动已有版本值。
+    /// </summary>
     private async Task ProbeVersionAndWarnIfNeededAsync(CancellationToken cancellationToken)
     {
         var marker = $"VERSION_{Guid.NewGuid():N}";

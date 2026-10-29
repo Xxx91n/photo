@@ -30,6 +30,9 @@ public sealed class WorkerRuntimeContext : IWorkerIpcRuntime
 
     public string ExifToolVersion => _worker.CurrentExifToolVersion;
 
+    /// <summary>
+    /// 转发到 worker 的版本解析入口（#86）：惰性桥未启动时拉起进程并探版本，已解析出则立即返回。
+    /// </summary>
     public Task EnsureExifToolVersionAsync(CancellationToken cancellationToken)
         => _worker.EnsureExifToolVersionAsync(cancellationToken);
 

@@ -90,6 +90,10 @@ internal sealed class ProtocolLevelFakeExifToolProcess : IExifToolProcess
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// 按 stay_open 语义回放一个写入的命令块：先 <c>-echo1</c> 回显、再按块类型产出版本号/JSON、
+    /// 最后 <c>{ready}</c>。进程已停或注入静默时不产出任何 stdout。
+    /// </summary>
     public Task WriteStdinAsync(string text, CancellationToken cancellationToken)
     {
         _writes.Add(text);

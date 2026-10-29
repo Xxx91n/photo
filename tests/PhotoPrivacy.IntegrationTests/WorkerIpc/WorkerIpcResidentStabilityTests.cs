@@ -279,6 +279,7 @@ public sealed class WorkerIpcResidentStabilityTests
         Assert.Equal("13.20", second.Data!.ExifToolVersion);
     }
 
+    /// <summary>轮询等待条件成立（用于 fire-and-forget 补探的完成判定）；超时后由调用方的断言定红绿。</summary>
     private static async Task WaitUntilAsync(Func<bool> condition, TimeSpan budget)
     {
         var deadline = DateTime.UtcNow + budget;
@@ -436,6 +437,7 @@ internal sealed class FakeWorkerIpcRuntime : IWorkerIpcRuntime
 
     public (bool valid, string? error) TryValidateConfig() => ValidationResult;
 
+    /// <summary>记录补探调用次数，并在补探完成后按需写回版本（模拟桥解析成功）。</summary>
     public async Task EnsureExifToolVersionAsync(CancellationToken cancellationToken)
     {
         EnsureExifToolVersionCalls++;

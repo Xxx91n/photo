@@ -125,6 +125,7 @@ public sealed class PooledExifToolBridgeTests
 
         public int WipeCalls { get; private set; }
 
+        /// <summary>记录版本解析调用次数；版本值由构造参数给出。</summary>
         public Task EnsureVersionAsync(CancellationToken cancellationToken)
         {
             EnsureVersionCalls++;
@@ -165,6 +166,7 @@ public sealed class PooledExifToolBridgeTests
 
         private static int _inflight;
 
+        /// <summary>版本解析在假件里无副作用：版本由构造参数直接给出。</summary>
         public Task EnsureVersionAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
         public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;

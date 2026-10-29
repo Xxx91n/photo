@@ -452,6 +452,45 @@ public sealed class ExifToolBridgeTests
     }
 
     [Fact]
+    public async Task StopAsync_Should_Stop_A_Process_Started_By_An_Admitted_Start()
+    {
+        // ARCH-EXIFTOOL-RETIREMENT-001（CodeRabbit 第四轮）：启动已进锁、StopAsync 后到时，
+        // 必须由 StopAsync 在锁内把刚起的进程停掉，而不是在退役桥上留下一个无人回收的子进程。
+        var process = new ProtocolLevelFakeExifToolProcess
+        {
+            StartDelayMs = 150
+        };
+        var bridge = new ExifToolBridge(process, Config, healthTimeout: TimeSpan.FromMilliseconds(80));
+
+        var start = bridge.EnsureStartedAsync(CancellationToken.None);   // 同步段已拿锁并进入启动
+        await Task.Delay(30);                                            // 让启动在锁内阻塞于慢启动
+
+        var stop = bridge.StopAsync(CancellationToken.None);
+
+        await Task.WhenAll(start, stop).WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(1, process.StartCalls);
+        Assert.Equal(1, process.StopCalls);
+        Assert.False(process.IsRunning);
+    }
+
+    [Fact]
+    public async Task EnsureVersionAsync_Should_Not_Start_When_Stop_Already_Won()
+    {
+        // 退役先到：版本路径即便拿到旧桥引用也不得启动进程。
+        var process = new ProtocolLevelFakeExifToolProcess();
+        var bridge = new ExifToolBridge(process, Config);
+
+        var stop = bridge.StopAsync(CancellationToken.None);   // 同步段即置终态
+        var version = bridge.EnsureVersionAsync(CancellationToken.None);
+
+        await Task.WhenAll(stop, version).WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(0, process.StartCalls);
+        Assert.Equal(ExifToolVersionText.Unknown, bridge.VersionText);
+    }
+
+    [Fact]
     public async Task EnsureVersionAsync_Should_Start_Process_When_Not_Started()
     {
         // 状态查询驱动的版本解析：桥还没启动时不得只返回 unknown，必须冷启动并拿到真实版本。

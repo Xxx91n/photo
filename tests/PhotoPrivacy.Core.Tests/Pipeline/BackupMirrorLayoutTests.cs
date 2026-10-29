@@ -266,6 +266,7 @@ public sealed class BackupMirrorLayoutTests : IDisposable
     {
         public string VersionText => "fake-12.00";
 
+        /// <summary>版本解析在假件里无副作用：版本由构造参数直接给出。</summary>
         public Task EnsureVersionAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
         public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
