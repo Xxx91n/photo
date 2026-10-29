@@ -1,6 +1,9 @@
 using System.Security.AccessControl;
 using System.Security.Principal;
 using PhotoPrivacy.Ipc;
+#if PP_WINDOWS_HOST
+using System.IO.Pipes;
+#endif
 
 namespace PhotoPrivacy.IntegrationTests.Ipc;
 
@@ -99,8 +102,9 @@ public sealed class WindowsServicePipeAclTests
         await AssertRoundTripAsync(transport);
     }
 
+#if PP_WINDOWS_HOST
     [Fact]
-    public void SecurityDescriptor_Grants_Installer_ReadWrite_And_System_Admin_FullControl()
+    public void ServicePipeSecurity_Grants_Installer_ReadWrite_And_System_Admin_FullControl()
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -108,39 +112,38 @@ public sealed class WindowsServicePipeAclTests
         }
 
         var installerSid = WindowsIdentity.GetCurrent().User!.Value;
-        var bytes = WindowsServicePipeAcl.BuildServicePipeSecurityDescriptor(new SecurityIdentifier(installerSid));
+        var security = WindowsPipeNative.BuildServicePipeSecurity(new SecurityIdentifier(installerSid));
+        var rules = security.GetAccessRules(includeExplicit: true, includeInherited: false, targetType: typeof(SecurityIdentifier));
 
         // 掩码与 WindowsServicePipeAcl 的常量同源：FILE_GENERIC_READ|WRITE、FILE_ALL_ACCESS。
         const uint fileGenericReadWrite = 0x00120089u | 0x00120116u;
         const uint fileAllAccess = 0x001F01FFu;
-
-        var descriptor = new RawSecurityDescriptor(bytes, 0);
-        var dacl = descriptor.DiscretionaryAcl;
-        Assert.NotNull(dacl);
 
         uint? installerMask = null;
         uint? systemMask = null;
         uint? administratorsMask = null;
         var systemSid = new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null).Value;
         var administratorsSid = new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null).Value;
-        foreach (var ace in dacl!)
+        foreach (var rule in rules)
         {
-            if (ace is not CommonAce common || common.AceType != AceType.AccessAllowed)
+            var pipeRule = (PipeAccessRule)rule;
+            if (pipeRule.AccessControlType != AccessControlType.Allow)
             {
                 continue;
             }
-            var sidValue = common.SecurityIdentifier.Value;
+            var mask = (uint)pipeRule.PipeAccessRights;
+            var sidValue = pipeRule.IdentityReference.Value;
             if (string.Equals(sidValue, installerSid, StringComparison.OrdinalIgnoreCase))
             {
-                installerMask = (uint)common.AccessMask;
+                installerMask = mask;
             }
             else if (sidValue == systemSid)
             {
-                systemMask = (uint)common.AccessMask;
+                systemMask = mask;
             }
             else if (sidValue == administratorsSid)
             {
-                administratorsMask = (uint)common.AccessMask;
+                administratorsMask = mask;
             }
         }
 
@@ -153,4 +156,5 @@ public sealed class WindowsServicePipeAclTests
             () => Assert.True(administratorsMask.HasValue, "Administrators ACE must exist"),
             () => Assert.Equal(fileAllAccess, administratorsMask));
     }
+#endif
 }

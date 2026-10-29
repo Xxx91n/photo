@@ -18,7 +18,7 @@ public enum WindowsPipeAccessMode
 /// <summary>
 /// Windows named-pipe IPC transport. Falls back to FIFO on Unix (not recommended — use UnixDomainSocketIpcTransport instead).
 /// 首实例防抢占（FirstPipeInstance）+ 后台模式同用户边界（CurrentUserOnly）；
-/// 服务模式以安装者 SID 显式 DACL 认证（DACL 在建例时经原生 CreateNamedPipeW 携带，
+/// 服务模式以安装者 SID 显式 DACL 认证（managed NamedPipeServerStreamAcl.Create 建例，
 /// 仅 Windows 宿主编译，见 PhotoPrivacy.Ipc.csproj 的 PP_WINDOWS_HOST）。
 /// </summary>
 // Design(#70): 服务模式管道以安装者 SID 显式 DACL 取代 CurrentUserOnly（SID 缺失/无效时 fail-closed 回退 CurrentUserOnly），后台管道保持 CurrentUserOnly；不承诺多用户/跨账户（归 #1）。
@@ -28,8 +28,8 @@ public sealed class NamedPipeIpcTransport : IIpcTransport
     private readonly WindowsPipeAccessMode _accessMode;
     /// <summary>服务模式安装者 SID 解析器（null → 读安装期登记的注册表值）；测试经此注入免注册表依赖。</summary>
     private readonly Func<string?>? _installerSidResolver;
-    /// <summary>服务模式管道的安全描述符二进制（null → 走 CurrentUserOnly 路径），ListenAsync 时解析一次。</summary>
-    private byte[]? _servicePipeSecurityDescriptor;
+    /// <summary>服务模式解析出的安装者 SID（null → 走 CurrentUserOnly 路径），ListenAsync 时解析一次。</summary>
+    private SecurityIdentifier? _serviceClientSid;
     private NamedPipeServerStream? _server;
 
     public NamedPipeIpcTransport(string pipeName)
@@ -54,7 +54,7 @@ public sealed class NamedPipeIpcTransport : IIpcTransport
         // Named pipes don't need explicit bind/listen — the server is created per-connection.
         // We pre-create the first server instance here to match the IIpcTransport lifecycle.
         // 防抢占语义只施加于这个首实例（accept 后预建的后续实例不得加标志）。
-        ResolveServicePipeSecurityDescriptor();
+        ResolveServiceClientSid();
         _server = CreatePipeServer(_pipeName, isFirstInstance: true);
         return Task.CompletedTask;
     }
@@ -92,10 +92,9 @@ public sealed class NamedPipeIpcTransport : IIpcTransport
     }
 
     /// <summary>
-    /// 服务模式解析安装者 SID 并构建显式 DACL 的二进制安全描述符；
-    /// SID 缺失或无效时置 null（fail-closed 回退 CurrentUserOnly，不多授任何账户）。
+    /// 服务模式解析安装者 SID；缺失或无效时置 null（fail-closed 回退 CurrentUserOnly，不多授任何账户）。
     /// </summary>
-    private void ResolveServicePipeSecurityDescriptor()
+    private void ResolveServiceClientSid()
     {
         if (_accessMode != WindowsPipeAccessMode.ServiceShared || !OperatingSystem.IsWindows())
         {
@@ -113,14 +112,13 @@ public sealed class NamedPipeIpcTransport : IIpcTransport
             return;
         }
 
-        // 赋值同样纳入 PP_WINDOWS_HOST：交叉发布（非 Windows 宿主产出 win-x64）时原生建例
-        // 分支已被编译排除，若仍赋值会得到「无 CurrentUserOnly 也无 DACL」的管道；
+        // 解析同样纳入 PP_WINDOWS_HOST：交叉发布（非 Windows 宿主产出 win-x64）时原生建例
+        // 分支已被编译排除，若仍解析会得到「无 CurrentUserOnly 也无 DACL」的管道；
         // 守卫使该场景 fail-closed 回退 CurrentUserOnly。
 #if PP_WINDOWS_HOST
         try
         {
-            _servicePipeSecurityDescriptor =
-                WindowsServicePipeAcl.BuildServicePipeSecurityDescriptor(new SecurityIdentifier(rawSid));
+            _serviceClientSid = new SecurityIdentifier(rawSid);
         }
         catch (ArgumentException)
         {
@@ -129,19 +127,19 @@ public sealed class NamedPipeIpcTransport : IIpcTransport
 #endif
     }
 
-    // ponytail: 后台模式仍走 plain NamedPipeServerStream（无 ACL）。managed NamedPipeServerStreamAcl.Create
-    // 在本仓单文件发布上下文曾抛 UnauthorizedAccessException 并按 accept 逐次泄漏管道实例直到
-    // 254 实例上限（38142f9b）；服务 exe 恰是单文件发布，不复活该 API。服务模式 ACL 走原生
-    // CreateNamedPipeW 携带 SECURITY_ATTRIBUTES（正典建例时 DACL；事后改 DACL 的
-    // SetNamedSecurityInfoW/SetKernelObjectSecurity 两条路分别因「不支持按名操作管道」与
-    // 「managed 句柄无 WRITE_DAC」不可行，CodeRabbit 复审实证）。该路径仅 Windows 宿主编译
-    // （csproj PP_WINDOWS_HOST；CreateFromPipe/CreateNamedPipeW 安全属性在 Linux 编译面缺失）。
+    // ponytail: 后台模式仍走 plain NamedPipeServerStream（无 ACL）。服务模式 ACL 走 managed 正典
+    // NamedPipeServerStreamAcl.Create（带 PipeSecurity 的建例，仅 Windows 宿主编译，csproj
+    // PP_WINDOWS_HOST 分区）。38142f9b 把当年 NamedPipeServerStreamAcl.Create 的
+    // UnauthorizedAccessException 归因「单文件解压上下文」系误诊：真因是旧 WorldSid-ReadWrite
+    // DACL 缺 FILE_CREATE_PIPE_INSTANCE（PipeAccessRights.Write 刻意不含该位）——服务建第
+    // 2..N 个实例时内核按 DACL 对创建者令牌做该项检查，失败且按 accept 逐次泄漏实例直到 254
+    // 上限。本票 DACL 给创建者保留 FILE_ALL_ACCESS（含该位），同一 API 不再触发该失败。
     private NamedPipeServerStream CreatePipeServer(string pipeName, bool isFirstInstance)
     {
 #if PP_WINDOWS_HOST
-        if (_servicePipeSecurityDescriptor is not null)
+        if (_serviceClientSid is not null)
         {
-            return WindowsPipeNative.CreateAclServerInstance(pipeName, isFirstInstance, _servicePipeSecurityDescriptor);
+            return WindowsPipeNative.CreateAclServerInstance(pipeName, isFirstInstance, _serviceClientSid);
         }
 #endif
 
@@ -169,7 +167,7 @@ public sealed class NamedPipeIpcTransport : IIpcTransport
             return options;
         }
 
-        if (_servicePipeSecurityDescriptor is null)
+        if (_serviceClientSid is null)
         {
             options |= PipeOptions.CurrentUserOnly;
         }
