@@ -12,6 +12,9 @@ public sealed class FileProcessedRecordStore : IProcessedRecordStore, IDisposabl
     private readonly Timer? _cleanupTimer;
     private bool _disposed;
 
+    /// <summary>压缩后无法恢复可写句柄时置位：此后只在内存去重，不再写盘（#85 审查）。</summary>
+    private bool _persistenceFailed;
+
    public FileProcessedRecordStore(string directory, TimeSpan? ttl = null)
    {
        _ttl = ttl ?? TimeSpan.FromDays(7);
@@ -86,6 +89,13 @@ public sealed class FileProcessedRecordStore : IProcessedRecordStore, IDisposabl
         ObjectDisposedException.ThrowIf(_disposed, this);
 
         _cache[key] = DateTimeOffset.UtcNow;
+
+        // 压缩失败后已显式标记不可写：只在内存里去重，不再写盘（避免写进已释放的 writer）。
+        if (_persistenceFailed)
+        {
+            return;
+        }
+
         var entry = new { key, ts = DateTimeOffset.UtcNow.ToString("O") };
         var json = JsonSerializer.Serialize(entry);
         lock (_writer)
@@ -123,21 +133,57 @@ public sealed class FileProcessedRecordStore : IProcessedRecordStore, IDisposabl
             _writer.Dispose();
 
             var tmpPath = _filePath + ".compact.tmp";
-            using (var compactWriter = new StreamWriter(new FileStream(tmpPath, FileMode.Create, FileAccess.Write, FileShare.None)))
+            try
             {
-                foreach (var kv in _cache)
+                using (var compactWriter = new StreamWriter(new FileStream(tmpPath, FileMode.Create, FileAccess.Write, FileShare.None)))
                 {
-                    var entry = new { key = kv.Key, ts = kv.Value.ToString("O") };
-                    var json = JsonSerializer.Serialize(entry);
-                    compactWriter.WriteLine(json);
+                    foreach (var kv in _cache)
+                    {
+                        var entry = new { key = kv.Key, ts = kv.Value.ToString("O") };
+                        var json = JsonSerializer.Serialize(entry);
+                        compactWriter.WriteLine(json);
+                    }
+                    compactWriter.Flush();
                 }
-                compactWriter.Flush();
+
+                File.Move(tmpPath, _filePath, overwrite: true);
             }
+            finally
+            {
+                // 无论压缩成败都要恢复可写句柄，否则后续 MarkProcessed 会写进已释放的 writer；
+                // 恢复失败则显式标记为不可写（只降级为「内存去重」），不把异常留给下次写入。
+                TryDeleteQuietly(tmpPath);
+                TryReopen();
+            }
+        }
+    }
 
-            File.Move(tmpPath, _filePath, overwrite: true);
-
+    private void TryReopen()
+    {
+        try
+        {
             var stream = new FileStream(_filePath, FileMode.Append, FileAccess.Write, FileShare.Read);
             _writer = new StreamWriter(stream);
+            _persistenceFailed = false;
+        }
+        catch
+        {
+            _persistenceFailed = true;
+        }
+    }
+
+    private static void TryDeleteQuietly(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch
+        {
+            // best-effort：残留的 .compact.tmp 不影响主文件。
         }
     }
 
@@ -149,7 +195,11 @@ public sealed class FileProcessedRecordStore : IProcessedRecordStore, IDisposabl
         _cleanupTimer?.Dispose();
         lock (_writer)
         {
-            _writer.Flush();
+            if (!_persistenceFailed)
+            {
+                _writer.Flush();
+            }
+
             _writer.Dispose();
         }
     }
