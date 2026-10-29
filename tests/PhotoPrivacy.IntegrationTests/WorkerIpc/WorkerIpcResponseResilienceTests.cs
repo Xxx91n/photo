@@ -92,6 +92,31 @@ public sealed class WorkerIpcResponseResilienceTests
         await loopTask.WaitAsync(TimeSpan.FromSeconds(10));
     }
 
+    [Fact]
+    public async Task Loop_Should_Respond_With_Invalid_Request_For_Malformed_Json()
+    {
+        var transport = new ScriptedIpcTransport();
+        var loop = new WorkerIpcServerLoop(NullLogger<WorkerIpcServerLoop>.Instance);
+        using var cts = new CancellationTokenSource();
+
+        var loopTask = loop.RunAsync(
+            transport,
+            static (request, _) => Task.FromResult((new WorkerIpcResponse(true, Id: request?.Id, V: WorkerIpcProtocol.Version), false)),
+            () => { },
+            cts.Token);
+
+        var connection = new ScriptedIpcConnection("{not-json");
+        transport.PushConnection(connection);
+
+        Assert.True(
+            await WaitForResponseAsync(connection, TimeSpan.FromSeconds(5)),
+            "畸形请求行也必须在读预算内回包；旧形态静默丢包，客户端只等到超时（#85）");
+        Assert.Contains("invalid_request", connection.ReadResponse(), StringComparison.Ordinal);
+
+        cts.Cancel();
+        await loopTask.WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
     private static string SerializeRequest(string method, string id)
         => JsonSerializer.Serialize(new WorkerIpcRequest(method, id), WorkerIpcJsonContext.Default.WorkerIpcRequest);
 
