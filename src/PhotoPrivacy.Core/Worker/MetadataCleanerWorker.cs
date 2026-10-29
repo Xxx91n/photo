@@ -28,6 +28,14 @@ public sealed class MetadataCleanerWorker : BackgroundService
     private FswFolderWatcher? _watcher;
     private int _maxParallelDrain = 1;
     private readonly SemaphoreSlim _reloadGate = new(1, 1);
+
+    /// <summary>
+    /// 串行化「drain 一轮」与「拆卸重建」（#85）：重载在拆卸 store/audit 前必须先等当前一轮 drain 结束，
+    /// 否则在途 <c>HandleAsync</c> 会用到已释放实例；同时 <c>PopReady</c> 已弹出的路径也不会因
+    /// <c>_pipeline</c> 被置空而丢失（不重入队）。
+    /// </summary>
+    private readonly SemaphoreSlim _drainGate = new(1, 1);
+
     private Timer? _cleanupTimer;
     private AppConfig? _currentConfig;
     private IReadOnlyList<string> _autoExcludedSubdirectories = Array.Empty<string>();
@@ -206,7 +214,17 @@ public sealed class MetadataCleanerWorker : BackgroundService
                         continue;
                     }
 
-                    await DrainReadyItemsAsync(stoppingToken);
+                    // 一轮 drain 与重载拆卸互斥（#85）：拆卸必须等在途处理结束，弹队的路径也不会丢。
+                    await _drainGate.WaitAsync(stoppingToken);
+                    try
+                    {
+                        await DrainReadyItemsAsync(stoppingToken);
+                    }
+                    finally
+                    {
+                        _drainGate.Release();
+                    }
+
                     await Task.Delay(200, stoppingToken);
 
                     // Reset backoff on successful iteration
@@ -299,11 +317,25 @@ public sealed class MetadataCleanerWorker : BackgroundService
             }
         }
 
-        _audit?.Dispose();
-        _audit = null;
-        _pipeline = null;
-        DisposeQuietly(_processedRecordStore);
-        _processedRecordStore = null;
+        // 与 ApplyConfigAsync 同一口径（#85）：等当前一轮 drain 结束再释放，避免在途 HandleAsync 用到
+        // 已释放实例。停机路径用有界等待（4 s）：拿不到闸也只降级继续，不让停机被长任务拖死。
+        var drainIdle = await _drainGate.WaitAsync(TimeSpan.FromSeconds(4));
+        try
+        {
+            _audit?.Dispose();
+            _audit = null;
+            _pipeline = null;
+            DisposeQuietly(_processedRecordStore);
+            _processedRecordStore = null;
+        }
+        finally
+        {
+            if (drainIdle)
+            {
+                _drainGate.Release();
+            }
+        }
+
         _reloadGate.Dispose();
 
         await base.StopAsync(cancellationToken);
@@ -551,6 +583,26 @@ public sealed class MetadataCleanerWorker : BackgroundService
         // reload 路径的软告警落点（写进当前生效的审计日志）。
         await EmitConfigWarningsAsync(config, token);
 
+        // 拆卸与重建期间持 drain 闸（#85）：等在途一轮处理结束，避免在途 HandleAsync 用到已释放的
+        // store/audit；也避免 PopReady 已弹出的路径因 _pipeline 被置空而丢失（该路径不重入队）。
+        // 等待有界：超时即放弃本次重载（旧配置与组件保持原样），不带着在途处理强拆。
+        if (!await _drainGate.WaitAsync(TimeSpan.FromSeconds(8)))
+        {
+            throw new InvalidOperationException("reload_busy: 处理中的文件未在 8 s 内结束，本次重载已取消（旧配置仍生效）");
+        }
+
+        try
+        {
+            await RebuildRuntimeAsync(config, token);
+        }
+        finally
+        {
+            _drainGate.Release();
+        }
+    }
+
+    private async Task RebuildRuntimeAsync(AppConfig config, CancellationToken token)
+    {
         _watcher?.Stop();
 
         if (_bridge is not null)

@@ -46,6 +46,8 @@ UI 侧并发探测（#59）：新 UI 另起短连接预算客户端（连接 250
 
 重建阶段失败的后果（D7 禁新字段，故不以状态位上报）：watcher 已停、`_pipeline`/`_bridge` 已拆，
 `GetStatus` 仍可应答但不保证在监视——客户端需再次 `ReloadConfig` 或重启 Worker 恢复。
+重载与「一轮文件处理」互斥：若正在处理文件，重载最多等 8 s；超时回 `ok:false` 并带 `reload_busy`，
+此时旧配置与组件保持原样（不做半拆）。
 
 ### `exifToolVersion` 字段（`GetStatus` / `GetExifToolVersion` 的 `data`）
 
