@@ -81,6 +81,14 @@ if (mode == RuntimeMode.Service)
         {
             options.ServiceName = "PhotoPrivacyCleaner";
         });
+
+        // AddWindowsService 隐式挂载 EventLog logging provider；服务会话下该 provider 写失败
+        // （Cannot open log for source，Win32 1722）会让 MEL Logger.Log 直接抛 AggregateException，
+        // 沿 ReloadConfig 的 catch 链炸穿 IPC 响应路径（服务管道 ReloadConfig 挂起）。服务诊断已有
+        // Serilog 文件日志（logs/worker-.log）；按 provider 别名 "EventLog"（EventLogLoggerProvider
+        // 的 ProviderAlias）整体停用该 provider，不直连该包类型——不写即不抛。
+        // Design(#85): 服务模式停用 EventLog logging provider；日志 provider 失败不得反噬 IPC 响应路径。
+        builder.Logging.AddFilter("EventLog", _ => false);
     }
     else if (OperatingSystem.IsLinux())
     {
