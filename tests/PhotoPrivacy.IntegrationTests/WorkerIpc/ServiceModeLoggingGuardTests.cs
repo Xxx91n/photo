@@ -13,12 +13,13 @@ namespace PhotoPrivacy.IntegrationTests.WorkerIpc;
 public sealed class ServiceModeLoggingGuardTests
 {
     private const string ClearProvidersToken = "builder.Logging.ClearProviders()";
+    private const string AddWindowsServiceToken = "AddWindowsService";
 
-    internal static List<string> ClassifyServiceLogging(string strippedProgram)
+    internal static List<string> ClassifyServiceLogging(string strippedProgramWithLineBreaks)
     {
         var violations = new List<string>();
-        var windowsServiceIndex = strippedProgram.IndexOf("AddWindowsService", StringComparison.Ordinal);
-        var clearProvidersIndex = strippedProgram.IndexOf(ClearProvidersToken, StringComparison.Ordinal);
+        var windowsServiceIndex = strippedProgramWithLineBreaks.IndexOf(AddWindowsServiceToken, StringComparison.Ordinal);
+        var clearProvidersIndex = strippedProgramWithLineBreaks.IndexOf(ClearProvidersToken, StringComparison.Ordinal);
 
         if (windowsServiceIndex < 0)
         {
@@ -36,6 +37,11 @@ public sealed class ServiceModeLoggingGuardTests
                 "ClearProviders 排在 AddWindowsService 之前：EventLog provider 会在其后重新登记，等于未摘除（#85）");
         }
 
+        if (strippedProgramWithLineBreaks.Contains("AddEventLog", StringComparison.Ordinal))
+        {
+            violations.Add("Program.cs 直接登记 EventLog provider：ClearProviders 之后重新挂载同样会让服务会话抛异常（#85）");
+        }
+
         return violations;
     }
 
@@ -43,30 +49,42 @@ public sealed class ServiceModeLoggingGuardTests
     public void Service_Mode_Should_Drop_EventLog_Provider_After_Registering_WindowsService()
     {
         // 防的具体回潮形态：① 删掉 ClearProviders（EventLog provider 随 AddWindowsService 重新挂上）；
-        // ② 把 ClearProviders 挪到 AddWindowsService 之前（同样留活口）；③ 换成
-        // AddFilter("EventLog", …) —— 该重载的首参是类别前缀，摘不掉 provider，服务会话下
-        // EventLog 写失败照样抛。关联 issue #85。
-        var violations = ClassifyServiceLogging(SourceLint.ReadStripped("src", "PhotoPrivacy.Worker", "Program.cs"));
+        // ② 把 ClearProviders 挪到 AddWindowsService 之前（同样留活口）；③ 之后又显式
+        // AddEventLog；④ 换成 AddFilter("EventLog", …) —— 该重载首参是类别前缀，摘不掉 provider。
+        // ①–③ 由本断言直接判红；④ 由上面的类型/重载说明与自证样本兜住。关联 issue #85。
+        var violations = ClassifyServiceLogging(ReadStrippedProgramWithLineBreaks());
         Assert.True(violations.Count == 0, string.Join("；", violations));
     }
 
     [Fact]
     public void Service_Logging_Guard_Negative_Self_Proof()
     {
-        // 失效即红自证：绿态必须零违规；删掉 ClearProviders、或把它挪到 AddWindowsService
-        // 之前，分类器都必须报红——防「过滤被删而守卫仍绿」的恒绿事故。关联 issue #85。
-        var green = SourceLint.ReadStripped("src", "PhotoPrivacy.Worker", "Program.cs");
+        // 失效即红自证：绿态必须零违规；删掉 ClearProviders、把它挪到 AddWindowsService 之前、
+        // 或在其后重新 AddEventLog，分类器都必须报红——防「摘除被删而守卫仍绿」的恒绿事故。
+        // 关联 issue #85。
+        var green = ReadStrippedProgramWithLineBreaks();
         Assert.Empty(ClassifyServiceLogging(green));
 
+        var lines = green.Split('\n');
         var withoutClear = string.Join(
             "\n",
-            green.Split('\n').Where(line => !line.Contains(ClearProvidersToken, StringComparison.Ordinal)));
+            lines.Where(line => !line.Contains(ClearProvidersToken, StringComparison.Ordinal)));
         Assert.NotEmpty(ClassifyServiceLogging(withoutClear));
 
-        var clearLine = green
-            .Split('\n')
-            .First(line => line.Contains(ClearProvidersToken, StringComparison.Ordinal));
-        var clearBeforeWindowsService = clearLine + "\n" + withoutClear;
-        Assert.NotEmpty(ClassifyServiceLogging(clearBeforeWindowsService));
+        var clearLine = lines.First(line => line.Contains(ClearProvidersToken, StringComparison.Ordinal));
+        Assert.NotEmpty(ClassifyServiceLogging(clearLine + "\n" + withoutClear));
+
+        Assert.NotEmpty(ClassifyServiceLogging(green + "\nbuilder.Logging.AddEventLog();"));
     }
+
+    /// <summary>
+    /// <c>SourceLint.ReadStripped</c> 逐行剥注释后 <c>string.Concat</c>，产物不含换行——用于
+    /// 「存在性」断言足够，但本守卫要判**顺序**并对样本做增删，必须保留行结构，故在此按行拼接。
+    /// </summary>
+    private static string ReadStrippedProgramWithLineBreaks()
+        => string.Join(
+            "\n",
+            SourceLint.Read("src", "PhotoPrivacy.Worker", "Program.cs")
+                .Split('\n')
+                .Select(line => SourceLint.StripLineComment(line.TrimEnd('\r'))));
 }

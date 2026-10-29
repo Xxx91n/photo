@@ -181,9 +181,14 @@ public sealed class WorkerReloadConfigRegressionTests
     {
         try
         {
-            return File.Exists(processedPath)
-                ? File.ReadAllLines(processedPath).Count(line => !string.IsNullOrWhiteSpace(line))
-                : 0;
+            if (!File.Exists(processedPath))
+            {
+                return 0;
+            }
+
+            // 只认「已写完整的 JSON 行」（以 } 结尾）：写入瞬间可能读到半行，按行计数会提前判绿。
+            return File.ReadAllLines(processedPath)
+                .Count(line => line.TrimEnd().EndsWith('}'));
         }
         catch (IOException)
         {
