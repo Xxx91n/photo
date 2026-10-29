@@ -23,11 +23,18 @@ namespace PhotoPrivacy.IntegrationTests.Worker;
 /// 本用例直接驱动真实 worker（dry-run 桥，不 spawn ExifTool），用「重载后热文件夹仍被监视、
 /// 新文件仍被处理」区分新旧实现：旧形态重载在新建 store 时就抛（被吞掉），旧 watcher 已停、
 /// 新 watcher 从未创建——文件不再被处理，必红。
+///
+/// 服务与后台（托盘）两种运行形态各自单列（#85 AC「后台管道同方法无回归」）：重载链路
+/// 两种形态共用同一 handler/worker，但响应 <c>Mode</c> 字段按形态回 service/background，
+/// 逐形态断言，防止后台形态被服务形态的断言顺带掩盖。
 /// </summary>
 public sealed class WorkerReloadConfigRegressionTests
 {
-    [Fact]
-    public async Task ReloadConfig_Should_Keep_Watching_And_Processing_After_Repeated_Reloads()
+    [Theory]
+    [InlineData(RuntimeMode.Service, "service")]
+    [InlineData(RuntimeMode.Background, "background")]
+    public async Task ReloadConfig_Should_Keep_Watching_And_Processing_After_Repeated_Reloads(
+        RuntimeMode runtimeMode, string expectedMode)
     {
         var root = Path.Combine(Path.GetTempPath(), "pp-85-" + Guid.NewGuid().ToString("N"));
         var hot = Path.Combine(root, "hot");
@@ -70,13 +77,13 @@ public sealed class WorkerReloadConfigRegressionTests
                 "启动态未处理热文件夹里的文件：用例前提不成立");
 
             // 连续两次重载都走真实 IPC 处理器（handler → WorkerRuntimeContext → worker）：
-            // 既锁「旧 store 常驻写句柄必须先释放」，也锁「重载真的回 ok 且 mode=service」——
+            // 既锁「旧 store 常驻写句柄必须先释放」，也锁「重载真的回 ok 且 Mode 与形态一致」——
             // 旧形态第一次重载的异常被吞，回 ok 但组件已拆；第二次直接失败。
             var runtime = new WorkerRuntimeContext(
                 new RuntimeControl(),
                 worker,
                 () => hot,
-                RuntimeMode.Service,
+                runtimeMode,
                 () => audit);
             var handler = new WorkerIpcRequestHandler(runtime, NullLogger<WorkerIpcRequestHandler>.Instance);
 
@@ -88,7 +95,7 @@ public sealed class WorkerReloadConfigRegressionTests
 
                 Assert.True(reloadResponse.Ok, $"第 {attempt} 次重载必须回 ok：{reloadResponse.Message}");
                 Assert.False(shouldShutdown);
-                Assert.Equal("service", reloadResponse.Data!.Mode);
+                Assert.Equal(expectedMode, reloadResponse.Data!.Mode);
             }
 
             // 重载真正生效的判据：watcher/pipeline 已重建并在跑，新文件继续被处理。
