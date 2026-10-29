@@ -91,10 +91,15 @@ public sealed class WorkerReloadConfigRegressionTests
 
         try
         {
-            // Windows 管道名是内核对象名；Unix socket 落在夹具临时目录（固定路径 /run/photoprivacy 需 root）。
+            // Windows 管道名是内核对象名。Unix socket 落点：Linux 用夹具临时目录（固定路径
+            // /run/photoprivacy 需 root）；macOS 的 sun_path 上限 104 字节，夹具目录路径太长，
+            // 改用临时目录下的短文件名（GetTempPath() 约 49 字节 + 约 21 字节 < 104），
+            // socket 文件由 transport.DisposeAsync（端点属主）负责删除。
             var endpoint = OperatingSystem.IsWindows()
                 ? "pp85-bg-" + Guid.NewGuid().ToString("N")
-                : Path.Combine(fixture.Root, "worker-background.sock");
+                : OperatingSystem.IsMacOS()
+                    ? Path.Combine(Path.GetTempPath(), "pp85-bg-" + Guid.NewGuid().ToString("N")[..8] + ".sock")
+                    : Path.Combine(fixture.Root, "worker-background.sock");
 
             // 形态→端点选择映射（WorkerIpcServerHostedService 内同一调用的 background 分支）逐 OS 钉住；
             // 兜底失败防止未知 OS 上断言静默跳过。真实固定端点在 CI 无法绑定（Linux /run/photoprivacy
@@ -236,19 +241,29 @@ public sealed class WorkerReloadConfigRegressionTests
 
         await worker.StartAsync(CancellationToken.None);
 
-        // ExecuteAsync 建 pipeline 时创建 processed.ndjson；见到该文件即启动期 store 已就位。
-        var processedPath = Path.Combine(audit, "processed.ndjson");
-        Assert.True(
-            await WaitForFileAsync(processedPath, TimeSpan.FromSeconds(30)),
-            $"启动期未创建 {processedPath}（worker 可能未能完成初始化）");
+        try
+        {
+            // ExecuteAsync 建 pipeline 时创建 processed.ndjson；见到该文件即启动期 store 已就位。
+            var processedPath = Path.Combine(audit, "processed.ndjson");
+            Assert.True(
+                await WaitForFileAsync(processedPath, TimeSpan.FromSeconds(30)),
+                $"启动期未创建 {processedPath}（worker 可能未能完成初始化）");
 
-        // 基线：启动态确实在处理文件（1 条处理记录）。
-        await File.WriteAllTextAsync(Path.Combine(hot, "baseline.jpg"), "baseline");
-        Assert.True(
-            await WaitForProcessedRecordsAsync(processedPath, expectedAtLeast: 1, TimeSpan.FromSeconds(30)),
-            "启动态未处理热文件夹里的文件：用例前提不成立");
+            // 基线：启动态确实在处理文件（1 条处理记录）。
+            await File.WriteAllTextAsync(Path.Combine(hot, "baseline.jpg"), "baseline");
+            Assert.True(
+                await WaitForProcessedRecordsAsync(processedPath, expectedAtLeast: 1, TimeSpan.FromSeconds(30)),
+                "启动态未处理热文件夹里的文件：用例前提不成立");
 
-        return new ReloadFixture(root, hot, audit, processedPath, worker);
+            return new ReloadFixture(root, hot, audit, processedPath, worker);
+        }
+        catch
+        {
+            // 夹具未返回，调用方的 finally 够不着：就绪断言失败时就地清理，原样重抛。
+            await worker.StopAsync(CancellationToken.None);
+            TryDelete(root);
+            throw;
+        }
     }
 
     private static async Task StopAndDeleteAsync(ReloadFixture fixture)
