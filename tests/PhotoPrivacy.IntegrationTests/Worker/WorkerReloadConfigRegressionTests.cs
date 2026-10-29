@@ -47,13 +47,7 @@ public sealed class WorkerReloadConfigRegressionTests
             // 连续两次重载都走真实 IPC 处理器（handler → WorkerRuntimeContext → worker）：
             // 既锁「旧 store 常驻写句柄必须先释放」，也锁「重载真的回 ok 且 Mode 与形态一致」——
             // 旧形态第一次重载的异常被吞，回 ok 但组件已拆；第二次直接失败。
-            var runtime = new WorkerRuntimeContext(
-                new RuntimeControl(),
-                fixture.Worker,
-                () => fixture.Hot,
-                runtimeMode,
-                () => fixture.AuditDirectory);
-            var handler = new WorkerIpcRequestHandler(runtime, NullLogger<WorkerIpcRequestHandler>.Instance);
+            var handler = CreateHandler(fixture, runtimeMode);
 
             for (var attempt = 1; attempt <= 2; attempt++)
             {
@@ -68,10 +62,7 @@ public sealed class WorkerReloadConfigRegressionTests
 
             // 重载真正生效的判据：watcher/pipeline 已重建并在跑，新文件继续被处理。
             // 旧形态在此必红——重载抛在 store 构造处（被吞），watcher 停掉后再没重建。
-            await File.WriteAllTextAsync(Path.Combine(fixture.Hot, "after-reload.jpg"), "after-reload");
-            Assert.True(
-                await WaitForProcessedRecordsAsync(fixture.ProcessedPath, expectedAtLeast: 2, TimeSpan.FromSeconds(30)),
-                "重载后热文件夹不再处理文件：ReloadConfig 没有真正生效（#85）");
+            await AssertReloadKeepsProcessingAsync(fixture, "after-reload.jpg");
         }
         finally
         {
@@ -94,47 +85,51 @@ public sealed class WorkerReloadConfigRegressionTests
     public async Task ReloadConfig_Through_Background_Endpoint_Should_Reply_And_Keep_Processing()
     {
         var fixture = await StartProcessingWorkerAsync();
-        // Windows 管道名是内核对象名；Unix socket 落在夹具临时目录（固定路径 /run/photoprivacy 需 root）。
-        var endpoint = OperatingSystem.IsWindows()
-            ? "pp85-bg-" + Guid.NewGuid().ToString("N")
-            : Path.Combine(fixture.Root, "worker-background.sock");
-
-        if (OperatingSystem.IsLinux())
-        {
-            Assert.Equal(WorkerIpcEndpointNames.LinuxBackgroundSocket, IpcTransportFactory.ResolveEndpoint(isServiceMode: false));
-        }
-        else if (OperatingSystem.IsMacOS())
-        {
-            Assert.Equal(WorkerIpcEndpointNames.MacBackgroundSocket, IpcTransportFactory.ResolveEndpoint(isServiceMode: false));
-        }
-        else if (OperatingSystem.IsWindows())
-        {
-            Assert.Equal(WorkerIpcEndpointNames.BackgroundPipe, IpcTransportFactory.ResolveEndpoint(isServiceMode: false));
-        }
-
-        var transport = IpcTransportFactory.CreateServer(endpoint, isServiceMode: false);
-        if (transport is UnixDomainSocketIpcTransport unixTransport)
-        {
-            // 后台访问策略必须随形态绑定：0600 仅属主可连（service 侧才是 0660 + 组边界）。
-            Assert.Equal(UnixSocketAccessMode.BackgroundOnly, unixTransport.AccessMode);
-        }
-
-        var runtime = new WorkerRuntimeContext(
-            new RuntimeControl(),
-            fixture.Worker,
-            () => fixture.Hot,
-            RuntimeMode.Background,
-            () => fixture.AuditDirectory);
-        var handler = new WorkerIpcRequestHandler(runtime, NullLogger<WorkerIpcRequestHandler>.Instance);
-
         var loopStop = new CancellationTokenSource();
-        var loop = new WorkerIpcServerLoop(NullLogger<WorkerIpcServerLoop>.Instance);
-        // 与宿主同序：先绑定端点再进 accept 循环（两个传输的 ListenAsync 都是非阻塞绑定）。
-        await transport.ListenAsync(loopStop.Token);
-        var loopTask = loop.RunAsync(transport, handler.HandleAsync, requestShutdown: () => { }, loopStop.Token);
+        IIpcTransport? transport = null;
+        Task loopTask = Task.CompletedTask;
 
         try
         {
+            // Windows 管道名是内核对象名；Unix socket 落在夹具临时目录（固定路径 /run/photoprivacy 需 root）。
+            var endpoint = OperatingSystem.IsWindows()
+                ? "pp85-bg-" + Guid.NewGuid().ToString("N")
+                : Path.Combine(fixture.Root, "worker-background.sock");
+
+            // 形态→端点选择映射（WorkerIpcServerHostedService 内同一调用的 background 分支）逐 OS 钉住；
+            // 兜底失败防止未知 OS 上断言静默跳过。真实固定端点在 CI 无法绑定（Linux /run/photoprivacy
+            // 需 root），故绑定行为在临时端点上验证。
+            if (OperatingSystem.IsLinux())
+            {
+                Assert.Equal(WorkerIpcEndpointNames.LinuxBackgroundSocket, IpcTransportFactory.ResolveEndpoint(isServiceMode: false));
+            }
+            else if (OperatingSystem.IsMacOS())
+            {
+                Assert.Equal(WorkerIpcEndpointNames.MacBackgroundSocket, IpcTransportFactory.ResolveEndpoint(isServiceMode: false));
+            }
+            else if (OperatingSystem.IsWindows())
+            {
+                Assert.Equal(WorkerIpcEndpointNames.BackgroundPipe, IpcTransportFactory.ResolveEndpoint(isServiceMode: false));
+            }
+            else
+            {
+                Assert.Fail("未覆盖的 OS：形态→端点选择映射断言被静默跳过");
+            }
+
+            transport = IpcTransportFactory.CreateServer(endpoint, isServiceMode: false);
+            if (transport is UnixDomainSocketIpcTransport unixTransport)
+            {
+                // 后台访问策略必须随形态绑定：0600 仅属主可连（service 侧才是 0660 + 组边界）。
+                Assert.Equal(UnixSocketAccessMode.BackgroundOnly, unixTransport.AccessMode);
+            }
+
+            var handler = CreateHandler(fixture, RuntimeMode.Background);
+
+            var loop = new WorkerIpcServerLoop(NullLogger<WorkerIpcServerLoop>.Instance);
+            // 与宿主同序：先绑定端点再进 accept 循环（两个传输的 ListenAsync 都是非阻塞绑定）。
+            await transport.ListenAsync(loopStop.Token);
+            loopTask = loop.RunAsync(transport, handler.HandleAsync, requestShutdown: () => { }, loopStop.Token);
+
             for (var attempt = 1; attempt <= 2; attempt++)
             {
                 var request = new WorkerIpcRequest(WorkerIpcMethods.ReloadConfig, "reload-endpoint-" + attempt);
@@ -162,10 +157,7 @@ public sealed class WorkerReloadConfigRegressionTests
             }
 
             // 重载真正生效的判据与 handler 级用例一致：watcher/pipeline 已重建并在跑。
-            await File.WriteAllTextAsync(Path.Combine(fixture.Hot, "after-reload-endpoint.jpg"), "after-reload-endpoint");
-            Assert.True(
-                await WaitForProcessedRecordsAsync(fixture.ProcessedPath, expectedAtLeast: 2, TimeSpan.FromSeconds(30)),
-                "重载后热文件夹不再处理文件：后台端点 ReloadConfig 没有真正生效（#85）");
+            await AssertReloadKeepsProcessingAsync(fixture, "after-reload-endpoint.jpg");
         }
         finally
         {
@@ -179,9 +171,33 @@ public sealed class WorkerReloadConfigRegressionTests
                 // 循环停不下来只说明停机路径有缺陷，不得掩盖上面的断言失败。
             }
 
-            await transport.DisposeAsync();
+            if (transport is not null)
+            {
+                await transport.DisposeAsync();
+            }
+
             await StopAndDeleteAsync(fixture);
         }
+    }
+
+    private static WorkerIpcRequestHandler CreateHandler(ReloadFixture fixture, RuntimeMode runtimeMode)
+    {
+        var runtime = new WorkerRuntimeContext(
+            new RuntimeControl(),
+            fixture.Worker,
+            () => fixture.Hot,
+            runtimeMode,
+            () => fixture.AuditDirectory);
+        return new WorkerIpcRequestHandler(runtime, NullLogger<WorkerIpcRequestHandler>.Instance);
+    }
+
+    /// <summary>重载真正生效的判据：重载后写入新文件，等处理记录继续增长（旧实现必红）。</summary>
+    private static async Task AssertReloadKeepsProcessingAsync(ReloadFixture fixture, string fileName)
+    {
+        await File.WriteAllTextAsync(Path.Combine(fixture.Hot, fileName), fileName);
+        Assert.True(
+            await WaitForProcessedRecordsAsync(fixture.ProcessedPath, expectedAtLeast: 2, TimeSpan.FromSeconds(30)),
+            "重载后热文件夹不再处理文件：ReloadConfig 没有真正生效（#85）");
     }
 
     private sealed record ReloadFixture(
