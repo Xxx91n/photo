@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using PhotoPrivacy.Core.ExifTool;
 using PhotoPrivacy.Ipc;
 
 namespace PhotoPrivacy.Worker;
@@ -21,6 +22,8 @@ public sealed class WorkerIpcRequestHandler
 
     private readonly IWorkerIpcRuntime _runtime;
     private readonly ILogger<WorkerIpcRequestHandler> _logger;
+
+    private int _versionProbeInFlight;
 
     public WorkerIpcRequestHandler(IWorkerIpcRuntime runtime, ILogger<WorkerIpcRequestHandler> logger)
     {
@@ -111,11 +114,59 @@ public sealed class WorkerIpcRequestHandler
 
     private WorkerStatusDto BuildStatus()
     {
+        var exifToolVersion = _runtime.ExifToolVersion;
+
+        // #86：桥惰性启动，首个文件到达前版本恒为 unknown。状态消费者出现时补探一次，
+        // 但绝不把响应挂在这条探针上——本次响应仍返回当前快照，真实版本由下一拍轮询带出。
+        if (ExifToolVersionText.IsUnknown(exifToolVersion))
+        {
+            TriggerExifToolVersionProbe();
+        }
+
         return new WorkerStatusDto(
             IsPaused: _runtime.IsPaused,
-            ExifToolVersion: _runtime.ExifToolVersion,
+            ExifToolVersion: exifToolVersion,
             WatchDirectory: _runtime.WatchDirectory,
             Mode: _runtime.Mode == RuntimeMode.Service ? "service" : "background");
+    }
+
+    /// <summary>
+    /// 版本补探（#86）：状态快照仍为 <see cref="ExifToolVersionText.Unknown"/> 时，
+    /// 在后台驱动一次桥启动 + 版本探针（暖路径会重探冷启动时超时的那次）。
+    ///
+    /// in-flight 门闩保证 1s/3s 的轮询节奏不会叠加多路启动尝试；失败只记降级告警，
+    /// 版本继续上报 unknown，下一轮轮询自然重试。
+    /// </summary>
+    // Design(#86): 版本解析由状态消费者驱动（惰性桥 + 暖路径补探），状态响应内容与字段语义不变。
+    private void TriggerExifToolVersionProbe()
+    {
+        if (Interlocked.CompareExchange(ref _versionProbeInFlight, 1, 0) != 0)
+        {
+            return;
+        }
+
+        _ = RunExifToolVersionProbeAsync();
+    }
+
+    private async Task RunExifToolVersionProbeAsync()
+    {
+        try
+        {
+            // 不随单次 IPC 请求取消：补探是 worker 级动作，连接断开不应中断它。
+            await _runtime.EnsureExifToolVersionAsync(CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "ExifTool version probe failed; exifToolVersion stays '{VersionText}': {Message}",
+                ExifToolVersionText.Unknown,
+                ex.Message);
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _versionProbeInFlight, 0);
+        }
     }
 
     /// <summary>

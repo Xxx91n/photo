@@ -310,6 +310,42 @@ public sealed class ExifToolBridgeTests
     }
 
     [Fact]
+    public async Task EnsureStartedAsync_Should_ReProbe_Version_On_Warm_Path_When_First_Probe_Timed_Out()
+    {
+        // #86 回归：版本探针只在冷启动跑一次，超时后该桥实例会一直上报 unknown。
+        // 暖路径必须补探，直到拿到真实版本——ExifTool 本身一直是可用的。
+        var process = new ProtocolLevelFakeExifToolProcess
+        {
+            VersionResponseDelayMs = 400
+        };
+        var bridge = new ExifToolBridge(process, Config, healthTimeout: TimeSpan.FromMilliseconds(80));
+
+        await bridge.EnsureStartedAsync(CancellationToken.None);
+        Assert.Equal(ExifToolVersionText.Unknown, bridge.VersionText);
+
+        // 探针不再超时（例如首次冷启动被杀软拖慢，后续恢复正常）。
+        process.VersionResponseDelayMs = 0;
+        await bridge.EnsureStartedAsync(CancellationToken.None);
+
+        Assert.Equal("13.20", bridge.VersionText);
+    }
+
+    [Fact]
+    public async Task EnsureStartedAsync_Should_Not_ReProbe_Version_When_Already_Known()
+    {
+        // 补探只服务「还没有版本」这一状态；版本就绪后暖路径不得再产生 -ver 往返。
+        var process = new ProtocolLevelFakeExifToolProcess();
+        var bridge = new ExifToolBridge(process, Config);
+
+        await bridge.EnsureStartedAsync(CancellationToken.None);
+        await bridge.EnsureStartedAsync(CancellationToken.None);
+        await bridge.EnsureStartedAsync(CancellationToken.None);
+
+        Assert.Equal("13.20", bridge.VersionText);
+        Assert.Single(process.Writes.Where(w => w.Contains("-ver", StringComparison.Ordinal)));
+    }
+
+    [Fact]
     public async Task EnsureStartedAsync_Should_Emit_VersionWarning_Lifecycle_Event_When_Known_Issue_Version_Detected()
     {
         var process = new ProtocolLevelFakeExifToolProcess

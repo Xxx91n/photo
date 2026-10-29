@@ -30,6 +30,9 @@ public sealed class WorkerRuntimeContext : IWorkerIpcRuntime
 
     public string ExifToolVersion => _worker.CurrentExifToolVersion;
 
+    public Task EnsureExifToolVersionAsync(CancellationToken cancellationToken)
+        => _worker.EnsureExifToolVersionAsync(cancellationToken);
+
     public string WatchDirectory => _watchDirectoryAccessor();
 
     /// <summary>

@@ -52,6 +52,27 @@ public sealed class PooledExifToolBridgeTests
     }
 
     [Fact]
+    public void VersionText_Should_Report_First_Known_Version_Across_Bridges()
+    {
+        // #86 回归：派发从 index 1 起轮转，pool>1 时首个文件通常落在 bridge[1..]，
+        // bridge[0] 可能整个生命周期都没启动过——只看 bridge[0] 会恒报 unknown。
+        var bridgeA = new FakeBridge(ExifToolVersionText.Unknown);
+        var bridgeB = new FakeBridge("13.20");
+        var pooled = new PooledExifToolBridge([bridgeA, bridgeB]);
+
+        Assert.Equal("13.20", pooled.VersionText);
+    }
+
+    [Fact]
+    public void VersionText_Should_Fall_Back_To_Unknown_When_No_Bridge_Resolved_Version()
+    {
+        var pooled = new PooledExifToolBridge(
+            [new FakeBridge(ExifToolVersionText.Unknown), new FakeBridge(ExifToolVersionText.Unknown)]);
+
+        Assert.Equal(ExifToolVersionText.Unknown, pooled.VersionText);
+    }
+
+    [Fact]
     public async Task BuildFromConfig_Should_Create_Single_Bridge_When_Pool_Size_Is_One()
     {
         var config = AppConfig.Default with

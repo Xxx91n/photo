@@ -21,7 +21,25 @@ public sealed class PooledExifToolBridge : IExifToolBridge, IDisposable
         _parallelGate = new SemaphoreSlim(Math.Min(cap, _bridges.Length));
     }
 
-    public string VersionText => _bridges[0].VersionText;
+    // 原来只看 _bridges[0]，但派发从 index 1 起轮转，第一个文件往往落在 _bridges[1]，
+    // bridge[0] 可能整个生命周期都没启动过 → 恒报 unknown。版本对同一 ExifTool 二进制
+    // 是同一值，取任一非 unknown 的子桥值语义等价。
+    // Design(#86): 池化桥上报「首个已解析出的版本」，不再锚定 _bridges[0]。
+    public string VersionText
+    {
+        get
+        {
+            foreach (var bridge in _bridges)
+            {
+                if (!ExifToolVersionText.IsUnknown(bridge.VersionText))
+                {
+                    return bridge.VersionText;
+                }
+            }
+
+            return _bridges[0].VersionText;
+        }
+    }
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {

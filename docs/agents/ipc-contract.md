@@ -39,6 +39,13 @@ UI 侧并发探测（#59）：新 UI 另起短连接预算客户端（连接 250
 `Shutdown` 仅 CLI 模式可用（服务/后台模式返回 `ok:false`，退出不要依赖它）。协议版本 `v` 当前为 1。
 `ReloadConfig` 在服务模式与后台（托盘）模式下走同一方法、同一客户端实现，差异只是调用方当前连上的端点。
 
+### `exifToolVersion` 字段（`GetStatus` / `GetExifToolVersion` 的 `data`）
+
+- 取值来源：`WorkerIpcContracts.cs` 的 `WorkerStatusDto.exifToolVersion`，由 `ExifToolBridge.VersionText` 提供。
+- **惰性解析**：桥自 M4 起惰性启动（首个文件才拉 `stay_open` 进程），因此首个文件到达前该字段为 `"unknown"`。状态消费者每来一次请求，服务端若读到 `"unknown"` 就在后台补探一次（拉起进程 + `-ver`）；响应不等待探针，真实版本由下一拍轮询带出（#86）。
+- **降级语义**：ExifTool 不可用（路径失效 / 进程起不来 / 探针超时）时字段保持 `"unknown"` 并记 warning 日志，下一拍轮询自然重试。`"unknown"` 只表示「尚未解析出版本」，不表示「ExifTool 不存在」。dry-run 模式恒为 `"dry-run"`，不触发补探。
+- 字段语义与线格式不变；本轮只补上报链路，不扩协议。
+
 ## UI 侧轮询
 
 - 心跳：`GetStatus` 每 1 s；失败按 1→2→4→8→16→32→60 s 退避（`ui/crates/photoprivacy-ipc/src/monitor.rs`）。

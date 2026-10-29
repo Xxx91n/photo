@@ -17,6 +17,12 @@ public interface IWorkerIpcRuntime
 
     string ExifToolVersion { get; }
 
+    /// <summary>
+    /// 驱动 ExifTool 版本解析（#86）：惰性桥尚未启动时拉起进程并探版本，已解析出则立即返回。
+    /// 供请求处理在 <see cref="ExifToolVersion"/> 仍为 unknown 时补探，绝不阻塞状态响应。
+    /// </summary>
+    Task EnsureExifToolVersionAsync(CancellationToken cancellationToken);
+
     string WatchDirectory { get; }
 
     /// <summary>Audit log directory for GetRecentLogs IPC channel.</summary>

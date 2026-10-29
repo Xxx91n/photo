@@ -21,7 +21,8 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
 
     private volatile bool _started;
     private int _taskId;
-    private string _versionText = "unknown";
+    // 跨线程可见性：#86 的上报链路由 IPC 线程读取、stdout pump 线程写入。
+    private volatile string _versionText = ExifToolVersionText.Unknown;
 
     public string VersionText => _versionText;
 
@@ -80,7 +81,17 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
             if (!health.IsHealthy)
             {
                 await RestartAsync(cancellationToken, health);
+                return;
             }
+
+            // 冷启动那次探针一旦超时（_startupTimeout），该桥实例在整个生命周期里永远上报
+            // unknown——即使 ExifTool 随后处理文件一切正常。探针成功后再无额外往返。
+            // Design(#86): 版本探针只在进程启动时执行；暖路径在 VersionText 仍为 unknown 时补探一次。
+            if (ExifToolVersionText.IsUnknown(_versionText))
+            {
+                await ProbeVersionAndWarnIfNeededAsync(cancellationToken);
+            }
+
             return;
         }
 
@@ -443,6 +454,7 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
                 return;
             }
 
+            // 本探针自己的 marker 必须先认领——它同样以 VERSION_ 开头。
             if (line.Contains(marker, StringComparison.Ordinal))
             {
                 markerSeen = true;
@@ -451,6 +463,13 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
                 {
                     tcs.TrySetResult(capturedVersionLine);
                 }
+                return;
+            }
+
+            // 暖路径重探（见 EnsureStartedAsync）与在途擦除任务共享 stdout：另一条命令块的
+            // 协议 marker 行或 JSON 输出绝不能当成版本号（否则会把 TASK_DONE_/[{"…"}] 报成版本）。
+            if (IsProtocolNoiseLine(line))
+            {
                 return;
             }
 
@@ -524,6 +543,20 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
         {
             _process.StdoutLine -= Handler;
         }
+    }
+
+    /// <summary>
+    /// stay_open 协议噪声行——命令块边界 marker（任务/探测/健康/版本）或 JSON/提示输出，
+    /// 它们永远不是版本文本。暖路径重探期间 stdout 与在途擦除任务共享，故须显式排除。
+    /// </summary>
+    private static bool IsProtocolNoiseLine(string line)
+    {
+        return line.StartsWith("TASK_DONE_", StringComparison.Ordinal)
+            || line.StartsWith("PROBE_DONE_", StringComparison.Ordinal)
+            || line.StartsWith("HEALTH_", StringComparison.Ordinal)
+            || line.StartsWith("VERSION_", StringComparison.Ordinal)
+            || line.StartsWith("[", StringComparison.Ordinal)
+            || line.StartsWith("{", StringComparison.Ordinal);
     }
 
     private static Version? TryParseExifToolVersion(string versionText)
