@@ -99,8 +99,9 @@ internal sealed class ProtocolLevelFakeExifToolProcess : IExifToolProcess
             return Task.CompletedTask;
         }
 
-        // 进程已死（StopAsync 之后）不可能回包：往死管道写不会产生任何 stdout。
-        // 缺了这条，崩溃恢复类用例会在修复前也变绿。
+        // 语义保真：进程已死时不应产出任何 stdout（真实进程死了 stdout 也不会再有数据）。
+        // 当前没有用例依赖这条路径（健康检查在写入前就按 IsRunning 短路），保留它是为了让假件
+        // 不撒谎，而不是为了击穿某个具体用例。
         if (!IsRunning)
         {
             return Task.CompletedTask;
