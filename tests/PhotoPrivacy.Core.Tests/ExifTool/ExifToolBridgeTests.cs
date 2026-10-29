@@ -415,6 +415,21 @@ public sealed class ExifToolBridgeTests
     }
 
     [Fact]
+    public async Task EnsureVersionAsync_Should_Not_Start_Process_On_Retired_Bridge()
+    {
+        // CodeRabbit 第二轮 Major（#86）：ReloadConfig 会先 Stop 再 Dispose 旧桥。若热重载窗口内的
+        // 状态探针还能在旧桥上拉起进程，那个子进程无人回收 → 泄漏。退休桥必须拒绝启动。
+        var process = new ProtocolLevelFakeExifToolProcess();
+        var bridge = new ExifToolBridge(process, Config);
+
+        await bridge.StopAsync(CancellationToken.None);
+        await bridge.EnsureVersionAsync(CancellationToken.None);
+
+        Assert.Equal(0, process.StartCalls);
+        Assert.Equal(ExifToolVersionText.Unknown, bridge.VersionText);
+    }
+
+    [Fact]
     public async Task EnsureVersionAsync_Should_Start_Process_When_Not_Started()
     {
         // 状态查询驱动的版本解析：桥还没启动时不得只返回 unknown，必须冷启动并拿到真实版本。

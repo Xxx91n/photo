@@ -28,6 +28,7 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
         new(@"^\s*\d+(?:\.\d+)+(?:\s*\[[^\]]*\])?\s*$", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
 
     private volatile bool _started;
+    private volatile bool _retired;
     private int _taskId;
     // 跨线程可见性：#86 的上报链路由 IPC 线程读取、stdout pump 线程写入。
     private volatile string _versionText = ExifToolVersionText.Unknown;
@@ -65,6 +66,9 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
+        // 终态：StopAsync 之后该实例只会被 Dispose（停机或配置热重载），不得再拉起进程——
+        // 否则热重载期间的状态探针会在旧桥上启动一个没人回收的子进程（#86 CodeRabbit 保留意见）。
+        _retired = true;
         _started = false;
 
         foreach (var marker in _pending.Keys)
@@ -83,6 +87,13 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
     /// </summary>
     public async Task EnsureStartedAsync(CancellationToken cancellationToken)
     {
+        // 已退休的桥不得再拉起进程（见 StopAsync）：返回而不抛，调用方（文件路径/版本路径）
+        // 各自按「拿不到进程」的既有方式收场。
+        if (_retired)
+        {
+            return;
+        }
+
         if (_started)
         {
             var health = await TryHealthCheckAsync(cancellationToken, RunningHealthTimeout);
@@ -143,7 +154,7 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
     // Design(#86): 版本解析按需触发（IPC 状态请求驱动），既不做启动期 eager start，也不进每文件热路径。
     public async Task EnsureVersionAsync(CancellationToken cancellationToken)
     {
-        if (!ExifToolVersionText.IsUnknown(_versionText))
+        if (_retired || !ExifToolVersionText.IsUnknown(_versionText))
         {
             return;
         }
