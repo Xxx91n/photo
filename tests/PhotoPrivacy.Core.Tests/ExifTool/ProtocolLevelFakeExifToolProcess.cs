@@ -39,6 +39,12 @@ internal sealed class ProtocolLevelFakeExifToolProcess : IExifToolProcess
     /// <summary>故障注入：进程级静默（模拟 ExifTool 卡死/无响应），不产出任何 stdout。</summary>
     public bool SilenceOutput { get; set; }
 
+    /// <summary>
+    /// 写入挂起点：非 null 时每次 <see cref="WriteStdinAsync"/> 都会先挂在这上面再返回
+    /// （模拟卡死的 stdin——调用方会一直持有 stdin 闸）。
+    /// </summary>
+    public TaskCompletionSource<bool>? BlockWrites { get; set; }
+
     /// <summary>无 -json/-ver 的块（健康检查、擦除）的回包延迟，单位毫秒。</summary>
     public int HealthResponseDelayMs { get; set; }
 
@@ -97,6 +103,12 @@ internal sealed class ProtocolLevelFakeExifToolProcess : IExifToolProcess
     public Task WriteStdinAsync(string text, CancellationToken cancellationToken)
     {
         _writes.Add(text);
+
+        // 卡死注入优先：调用方会在等待期间一直持有 stdin 闸。
+        if (BlockWrites is { } blocked)
+        {
+            return blocked.Task;
+        }
 
         if (SilenceOutput)
         {

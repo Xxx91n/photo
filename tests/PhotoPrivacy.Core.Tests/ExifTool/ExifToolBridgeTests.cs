@@ -491,6 +491,42 @@ public sealed class ExifToolBridgeTests
     }
 
     [Fact]
+    public async Task HealthCheck_Should_Time_Out_When_Stdin_Gate_Is_Held_By_A_Stalled_Write()
+    {
+        // 审计残留（与 ARCH-EXIFTOOL-RETIREMENT 同源的准入缺口）：stdin 闸被一次卡死的擦除写入
+        // 长期占住时，健康检查必须在自己 500 ms 预算内超时并走恢复，而不是无限排队等闸。
+        var process = new ProtocolLevelFakeExifToolProcess();
+        var bridge = new ExifToolBridge(process, Config, healthTimeout: TimeSpan.FromMilliseconds(150));
+
+        await bridge.EnsureStartedAsync(CancellationToken.None);
+        Assert.Equal("13.20", bridge.VersionText);
+
+        var release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        process.BlockWrites = release;
+
+        using var stallCts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        var stalled = Task.Run(() => bridge.WipeMetadataAsync(
+            Path.Combine(Path.GetTempPath(), "pp-bridge", "stalled.jpg"),
+            stallCts.Token));
+
+        // 等到卡死的那次写入真的落在闸上（冷启动已有 1 次写入），避免用固定等待赌时序。
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (process.Writes.Count < 2 && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(10);
+        }
+
+        Assert.True(process.Writes.Count >= 2, "stalled 写入未取得 stdin 闸");
+
+        // 预算被闸吃掉时必须超时 → 重启（StartCalls 增加），而不是挂死。
+        await bridge.EnsureStartedAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(process.StartCalls >= 2, "闸被占死时健康检查必须超时并走重启恢复");
+
+        release.TrySetResult(true);
+        await Record.ExceptionAsync(() => stalled).WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    [Fact]
     public async Task EnsureVersionAsync_Should_Start_Process_When_Not_Started()
     {
         // 状态查询驱动的版本解析：桥还没启动时不得只返回 unknown，必须冷启动并拿到真实版本。

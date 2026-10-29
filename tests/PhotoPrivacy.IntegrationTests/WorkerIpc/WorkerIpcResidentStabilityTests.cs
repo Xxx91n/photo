@@ -184,6 +184,7 @@ public sealed class WorkerIpcResidentStabilityTests
         Assert.False(nullRequest.Ok);
     }
 
+    /// <summary>状态快照为 unknown 时必须驱动一次版本补探（#86 回归）。</summary>
     [Fact]
     public async Task Handler_Should_Trigger_ExifTool_Version_Resolution_When_Status_Reports_Unknown()
     {
@@ -203,6 +204,7 @@ public sealed class WorkerIpcResidentStabilityTests
         Assert.Equal(1, runtime.EnsureExifToolVersionCalls);
     }
 
+    /// <summary>版本已知时三种状态方法都不得再触发补探。</summary>
     [Fact]
     public async Task Handler_Should_Not_Trigger_ExifTool_Version_Resolution_When_Version_Is_Known()
     {
@@ -221,6 +223,7 @@ public sealed class WorkerIpcResidentStabilityTests
         Assert.Equal(0, runtime.EnsureExifToolVersionCalls);
     }
 
+    /// <summary>补探在途时状态响应仍立即返回，且轮询不得叠加补探。</summary>
     [Fact]
     public async Task Handler_Status_Response_Should_Not_Block_On_InFlight_Version_Resolution()
     {
@@ -254,6 +257,7 @@ public sealed class WorkerIpcResidentStabilityTests
         probeGate.TrySetResult(true);
     }
 
+    /// <summary>第一拍 unknown 触发补探，第二拍必须返回真实版本（AC1 红测）。</summary>
     [Fact]
     public async Task Handler_Should_Report_Real_Version_On_Next_Poll_After_Probe_Resolves()
     {

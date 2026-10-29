@@ -251,10 +251,17 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
     /// 块级串行化把这条前提钉住，代价是每次写多一次信号量往返。
     /// 例外：进程层 <c>ProcessExifToolProcess.StopAsync</c> 的 <c>-stay_open False</c> 收尾写字在
     /// 停机路径上直接写 stdin——那时进程正在被拆除，块完整性不再有约束意义。
+    ///
+    /// <paramref name="gateTimeoutToken"/> 只约束「取闸」这一步：健康/版本探针据此把排队等待计入
+    /// 自己的超时预算（否则一次卡死的擦除写入会让 500 ms 健康预算永远等不到超时恢复）；
+    /// 一旦拿到闸，写入本身仍只受 <paramref name="cancellationToken"/> 约束——半块写入会毒化协议流。
     /// </summary>
-    private async Task WriteBlockAsync(string block, CancellationToken cancellationToken)
+    private async Task WriteBlockAsync(
+        string block,
+        CancellationToken cancellationToken,
+        CancellationToken gateTimeoutToken = default)
     {
-        await _stdinGate.WaitAsync(cancellationToken);
+        await _stdinGate.WaitAsync(gateTimeoutToken);
         try
         {
             await _process.WriteStdinAsync(block, cancellationToken);
@@ -549,7 +556,9 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
             // 于是每处理一个文件就整进程重启一次，摧毁 stay_open 常驻收益（不变量④）。
             var cmd = $"-fast\n-echo1\n{marker}\n-execute\n";
 
-            await WriteBlockAsync(cmd, cancellationToken);
+            // 取闸计入 500 ms 预算：闸被一次卡死的擦除写入长期占用时，这里必须超时走恢复，
+            // 而不是无限排队（ARCH-EXIFTOOL-RETIREMENT 同源的准入缺口）。
+            await WriteBlockAsync(cmd, cancellationToken, timeoutCts.Token);
             await tcs.Task.WaitAsync(timeoutCts.Token);
             return HealthCheckResult.Success;
         }
@@ -637,7 +646,8 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
             timeoutCts.CancelAfter(_startupTimeout);
 
             var cmd = $"-ver\n-echo1\n{marker}\n-execute\n";
-            await WriteBlockAsync(cmd, cancellationToken);
+            // 取闸同样计入探针预算：否则卡死的写入会让状态补探的 in-flight 门闩长期占住。
+            await WriteBlockAsync(cmd, cancellationToken, timeoutCts.Token);
 
             var versionRaw = await tcs.Task.WaitAsync(timeoutCts.Token);
             if (string.IsNullOrWhiteSpace(versionRaw))
