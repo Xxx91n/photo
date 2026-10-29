@@ -46,7 +46,23 @@ public sealed class FileProcessedRecordStore : IProcessedRecordStore, IDisposabl
             throw;
         }
 
-        _cleanupTimer = new Timer(_ => Cleanup(), null, TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(10));
+        // 定时回调不得把异常抛回线程池：Dispose 不等待已排队的回调（#85 重载会提高触发频率），
+        // 回调内 Cleanup 在已释放实例上抛 ObjectDisposedException 会终结进程。
+        _cleanupTimer = new Timer(
+            _ =>
+            {
+                try
+                {
+                    Cleanup();
+                }
+                catch
+                {
+                    // best-effort：清理失败不影响写入与重载路径。
+                }
+            },
+            null,
+            TimeSpan.FromMinutes(10),
+            TimeSpan.FromMinutes(10));
     }
 
     public bool IsProcessed(string key)
@@ -81,7 +97,11 @@ public sealed class FileProcessedRecordStore : IProcessedRecordStore, IDisposabl
 
     public int Cleanup()
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        // 定时回调路径：实例已释放时静默返回，不抛 ObjectDisposedException（旧形态会终结进程，#85）。
+        if (_disposed)
+        {
+            return 0;
+        }
 
         var cutoff = DateTimeOffset.UtcNow - _ttl;
         var removed = 0;
