@@ -178,8 +178,10 @@ public sealed class WorkerReloadConfigRegressionTests
     }
 
     /// <summary>
-    /// 等处理记录条数达到预期。<c>processed.ndjson</c> 以 <c>FileShare.Read</c> 常驻写句柄打开，
-    /// 读侧可并发读取；每成功处理一个文件追加一行。
+    /// 等处理记录条数达到预期。<c>processed.ndjson</c> 由 store 以 <c>FileAccess.Write</c> +
+    /// <c>FileShare.Read</c> 常驻持有，读侧必须用 <c>FileShare.ReadWrite</c> 才能真正共享
+    /// （Windows 下 <c>File.ReadAllLines</c> 的 <c>FileShare.Read</c> 与写句柄冲突，必抛共享冲突）。
+    /// 每成功处理一个文件追加一行。
     /// </summary>
     private static async Task<bool> WaitForProcessedRecordsAsync(string processedPath, int expectedAtLeast, TimeSpan budget)
     {
@@ -199,20 +201,32 @@ public sealed class WorkerReloadConfigRegressionTests
 
     private static int CountProcessedRecords(string processedPath)
     {
+        if (!File.Exists(processedPath))
+        {
+            return 0;
+        }
+
         try
         {
-            if (!File.Exists(processedPath))
-            {
-                return 0;
-            }
+            using var stream = new FileStream(
+                processedPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var reader = new StreamReader(stream);
 
             // 只认「已写完整的 JSON 行」（以 } 结尾）：写入瞬间可能读到半行，按行计数会提前判绿。
-            return File.ReadAllLines(processedPath)
-                .Count(line => line.TrimEnd().EndsWith('}'));
+            var count = 0;
+            while (reader.ReadLine() is { } line)
+            {
+                if (line.TrimEnd().EndsWith('}'))
+                {
+                    count++;
+                }
+            }
+
+            return count;
         }
-        catch (IOException)
+        catch (FileNotFoundException)
         {
-            // 写入瞬间的竞争：下一轮再读。
+            // 文件在 Exists 与 Open 之间被 Compact 换掉：下一轮再读。
             return 0;
         }
     }
