@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using PhotoPrivacy.Core.Runtime;
 using PhotoPrivacy.Ipc;
 
 namespace PhotoPrivacy.Worker;
@@ -111,7 +112,6 @@ public sealed class WorkerIpcServerLoop
         Action requestShutdown,
         CancellationToken stoppingToken)
     {
-        WorkerIpcRequest? request = null;
         try
         {
             await using (client)
@@ -122,7 +122,21 @@ public sealed class WorkerIpcServerLoop
                     return;
                 }
 
-                request = JsonSerializer.Deserialize(line, WorkerIpcJsonContext.Default.WorkerIpcRequest);
+                WorkerIpcRequest? request;
+                try
+                {
+                    request = JsonSerializer.Deserialize(line, WorkerIpcJsonContext.Default.WorkerIpcRequest);
+                }
+                catch (JsonException ex)
+                {
+                    // 反序列化失败也必须在读预算内回包（旧形态静默丢包，客户端只等到超时）。
+                    SafeLog.Try(() => _logger.LogWarning(ex, "worker ipc request malformed"));
+                    await WriteResponseAsync(
+                        client,
+                        new WorkerIpcResponse(false, Message: "invalid_request", V: WorkerIpcProtocol.Version),
+                        stoppingToken);
+                    return;
+                }
 
                 var shouldShutdown = false;
                 WorkerIpcResponse response;
@@ -149,10 +163,7 @@ public sealed class WorkerIpcServerLoop
                         V: WorkerIpcProtocol.Version);
                 }
 
-                var responseText = JsonSerializer.Serialize(response, WorkerIpcJsonContext.Default.WorkerIpcResponse);
-                var responseBytes = Encoding.UTF8.GetBytes(responseText);
-                await client.WriteAsync(responseBytes, stoppingToken);
-                await client.FlushAsync(stoppingToken);
+                await WriteResponseAsync(client, response, stoppingToken);
 
                 if (shouldShutdown)
                 {
@@ -168,5 +179,14 @@ public sealed class WorkerIpcServerLoop
         {
             SafeLog.Try(() => _logger.LogWarning(ex, "worker ipc client handling error"));
         }
+    }
+
+    /// <summary>写响应（UTF-8 JSON，无结尾换行，连接关闭即 EOF 定界）。</summary>
+    private static async Task WriteResponseAsync(Stream client, WorkerIpcResponse response, CancellationToken stoppingToken)
+    {
+        var responseText = JsonSerializer.Serialize(response, WorkerIpcJsonContext.Default.WorkerIpcResponse);
+        var responseBytes = Encoding.UTF8.GetBytes(responseText);
+        await client.WriteAsync(responseBytes, stoppingToken);
+        await client.FlushAsync(stoppingToken);
     }
 }

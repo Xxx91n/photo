@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using PhotoPrivacy.Core.Runtime;
 using PhotoPrivacy.Ipc;
 
 namespace PhotoPrivacy.Worker;

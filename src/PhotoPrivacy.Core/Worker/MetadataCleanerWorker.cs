@@ -249,6 +249,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
                 _logger.LogWarning(ex, "Bridge stop threw unexpectedly, continuing shutdown.");
             }
             (_bridge as IDisposable)?.Dispose();
+            _bridge = null;
         }
 
         if (_audit is not null)
@@ -283,22 +284,13 @@ public sealed class MetadataCleanerWorker : BackgroundService
 
     /// <summary>
     /// 释放旧实例的常驻句柄（#85）：失败静默吞掉，不阻断重载/停机路径——
-    /// 释放失败的真实后果由调用方（重载结果）呈现，句柄释放本身不另发日志。
+    /// 释放失败的真实后果由调用方（重载结果）呈现。
     /// </summary>
     private static void DisposeQuietly(IDisposable? disposable)
     {
-        if (disposable is null)
+        if (disposable is not null)
         {
-            return;
-        }
-
-        try
-        {
-            disposable.Dispose();
-        }
-        catch
-        {
-            // best-effort：释放失败不阻断重载/停机。
+            SafeLog.Try(disposable.Dispose);
         }
     }
 
@@ -546,6 +538,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
                 // best-effort
             }
             (_bridge as IDisposable)?.Dispose();
+            _bridge = null;
        }
 
         // 重建前先摘空引用并释放旧实例的常驻句柄：FileProcessedRecordStore 以 FileShare.Read
