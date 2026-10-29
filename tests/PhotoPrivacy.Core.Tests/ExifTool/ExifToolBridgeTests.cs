@@ -365,6 +365,30 @@ public sealed class ExifToolBridgeTests
     }
 
     [Fact]
+    public async Task EnsureVersionAsync_Should_Recover_Version_When_Process_Died_After_Timed_Out_Probe()
+    {
+        // 进程崩溃/被杀后 _started 仍为 true：只补探会往死管道写、异常被吞、版本永久 unknown。
+        // 版本解析入口必须先过健康检查（必要时重启），再补探。
+        var process = new ProtocolLevelFakeExifToolProcess
+        {
+            VersionResponseDelayMs = 400
+        };
+        var bridge = new ExifToolBridge(process, Config, healthTimeout: TimeSpan.FromMilliseconds(80));
+
+        await bridge.EnsureStartedAsync(CancellationToken.None);
+        Assert.Equal(ExifToolVersionText.Unknown, bridge.VersionText);
+
+        // 桥不知道进程已经没了（模拟外部崩溃）。
+        await process.StopAsync(CancellationToken.None);
+        process.VersionResponseDelayMs = 0;
+
+        await bridge.EnsureVersionAsync(CancellationToken.None);
+
+        Assert.Equal("13.20", bridge.VersionText);
+        Assert.True(process.StartCalls >= 2, "崩溃后必须重新拉起进程才能解析版本");
+    }
+
+    [Fact]
     public async Task EnsureVersionAsync_Should_Start_Process_When_Not_Started()
     {
         // 状态查询驱动的版本解析：桥还没启动时不得只返回 unknown，必须冷启动并拿到真实版本。

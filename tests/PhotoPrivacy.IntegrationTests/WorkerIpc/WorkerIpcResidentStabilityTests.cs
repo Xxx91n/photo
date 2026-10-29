@@ -254,6 +254,31 @@ public sealed class WorkerIpcResidentStabilityTests
         probeGate.TrySetResult(true);
     }
 
+    [Fact]
+    public async Task Handler_Should_Report_Real_Version_On_Next_Poll_After_Probe_Resolves()
+    {
+        // AC1 的红测：第一拍返回 unknown 并驱动补探，第二拍必须拿到真实版本——
+        // 修复前完全没有触发路径，第二拍仍是 unknown。
+        var runtime = new FakeWorkerIpcRuntime
+        {
+            ExifToolVersion = ExifToolVersionText.Unknown,
+            ExifToolVersionAfterEnsure = "13.20"
+        };
+        var handler = new WorkerIpcRequestHandler(runtime, NullLogger<WorkerIpcRequestHandler>.Instance);
+
+        var (first, _) = await handler
+            .HandleAsync(new WorkerIpcRequest(WorkerIpcMethods.GetExifToolVersion), CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(ExifToolVersionText.Unknown, first.Data!.ExifToolVersion);
+
+        await WaitUntilAsync(() => runtime.ExifToolVersion == "13.20", TimeSpan.FromSeconds(5));
+
+        var (second, _) = await handler
+            .HandleAsync(new WorkerIpcRequest(WorkerIpcMethods.GetExifToolVersion), CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal("13.20", second.Data!.ExifToolVersion);
+    }
+
     private static async Task WaitUntilAsync(Func<bool> condition, TimeSpan budget)
     {
         var deadline = DateTime.UtcNow + budget;
@@ -384,6 +409,9 @@ internal sealed class FakeWorkerIpcRuntime : IWorkerIpcRuntime
     /// <summary>版本补探的挂起点——默认立即完成；置为未完成任务可造出「补探在途」窗口。</summary>
     public Task EnsureExifToolVersionTask { get; set; } = Task.CompletedTask;
 
+    /// <summary>补探完成后写回的版本——模拟桥解析成功；null 表示保持原值。</summary>
+    public string? ExifToolVersionAfterEnsure { get; set; }
+
     public (bool valid, string? error) ValidationResult { get; set; } = (true, null);
 
     public int PauseCalls { get; private set; }
@@ -408,10 +436,14 @@ internal sealed class FakeWorkerIpcRuntime : IWorkerIpcRuntime
 
     public (bool valid, string? error) TryValidateConfig() => ValidationResult;
 
-    public Task EnsureExifToolVersionAsync(CancellationToken cancellationToken)
+    public async Task EnsureExifToolVersionAsync(CancellationToken cancellationToken)
     {
         EnsureExifToolVersionCalls++;
-        return EnsureExifToolVersionTask;
+        await EnsureExifToolVersionTask;
+        if (ExifToolVersionAfterEnsure is not null)
+        {
+            ExifToolVersion = ExifToolVersionAfterEnsure;
+        }
     }
 
     public async Task ReloadConfigAsync()

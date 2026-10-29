@@ -31,13 +31,14 @@ public sealed class PooledExifToolBridge : IExifToolBridge, IDisposable
         {
             foreach (var bridge in _bridges)
             {
-                if (!ExifToolVersionText.IsUnknown(bridge.VersionText))
+                var version = bridge.VersionText;
+                if (!ExifToolVersionText.IsUnknown(version))
                 {
-                    return bridge.VersionText;
+                    return version;
                 }
             }
 
-            return _bridges[0].VersionText;
+            return ExifToolVersionText.Unknown;
         }
     }
 

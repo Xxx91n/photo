@@ -130,8 +130,8 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
     /// <summary>
     /// 版本解析入口（#86）——只由状态消费者（IPC 状态请求）调用，<b>不进文件处理热路径</b>。
     ///
-    /// 三种情形：未启动 → 冷启动（启动流程自带版本探针）；已启动但版本仍未知（冷启动那次探针
-    /// 超时或失败）→ 补探；已解析出真实版本 → 直接返回。
+    /// 先让桥进入「已启动且健康」状态（冷启动自带版本探针；进程崩溃/被杀时健康检查会重启它，
+    /// 重启同样自带探针），再对「仍未知」的版本补探一次。已解析出真实版本时全程零往返。
     /// </summary>
     // Design(#86): 版本解析按需触发（IPC 状态请求驱动），既不做启动期 eager start，也不进每文件热路径。
     public async Task EnsureVersionAsync(CancellationToken cancellationToken)
@@ -141,15 +141,18 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
             return;
         }
 
-        if (!_started)
-        {
-            await EnsureStartedAsync(cancellationToken);
-            return;
-        }
+        // 兼做健康检查与崩溃恢复：进程已死时 _started 仍为 true，只有这一步能把它拉回来。
+        var wasStarted = _started;
+        await EnsureStartedAsync(cancellationToken);
 
-        // 补探与在途擦除任务共享 stdout：读侧靠 IsProtocolNoiseLine 排除对方的协议 marker/JSON 行，
-        // 写侧靠 WriteBlockAsync 保证命令块不被拆散。
-        await ProbeVersionAndWarnIfNeededAsync(cancellationToken);
+        // 冷启动那次探针已在 EnsureStartedAsync 内跑过——即使超时也不再立刻补第二次，
+        // 免得单次调用把两个 3 s 探针预算叠起来；下一拍由状态轮询重试。
+        if (wasStarted && ExifToolVersionText.IsUnknown(_versionText))
+        {
+            // 补探与在途擦除任务共享 stdout：读侧靠「只接受可解析的版本文本」+ IsProtocolNoiseLine
+            // 排除对方的协议 marker/JSON 行，写侧靠 WriteBlockAsync 保证命令块不被拆散。
+            await ProbeVersionAndWarnIfNeededAsync(cancellationToken);
+        }
     }
 
     /// <summary>
@@ -501,14 +504,16 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
                 return;
             }
 
-            // 暖路径重探（见 EnsureStartedAsync）与在途擦除任务共享 stdout：另一条命令块的
-            // 协议 marker 行或 JSON 输出绝不能当成版本号（否则会把 TASK_DONE_/[{"…"}] 报成版本）。
+            // 补探（见 EnsureVersionAsync）与在途擦除任务共享 stdout：另一条命令块的协议 marker 行、
+            // JSON 输出或「N image files updated」类状态行都不是版本号，先按前缀排除。
             if (IsProtocolNoiseLine(line))
             {
                 return;
             }
 
-            if (!string.IsNullOrWhiteSpace(line))
+            // 只接受能解析出版本号的文本。版本文本一旦被并发输出污染就被 latch 成永久版本
+            // （IsUnknown 变 false，再也不重探），所以候选必须先过硬门槛。
+            if (!string.IsNullOrWhiteSpace(line) && TryParseExifToolVersion(line) is not null)
             {
                 capturedVersionLine = line.Trim();
                 // 如果 marker 已经看到，现在收到 version text，返回结果
@@ -535,15 +540,15 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
                 return;
             }
 
-            _logger.LogInformation("Detected ExifTool version: {VersionText}", versionRaw);
-            _versionText = versionRaw;
-
             var parsed = TryParseExifToolVersion(versionRaw);
             if (parsed is null)
             {
                 _logger.LogWarning("Unable to parse ExifTool version from: {VersionText}", versionRaw);
                 return;
             }
+
+            _logger.LogInformation("Detected ExifTool version: {VersionText}", versionRaw);
+            _versionText = versionRaw;
 
             if (_config.ExifTool.EnableWindowsLongPath && IsKnownWindowsLongPathIssueVersion(parsed))
             {
