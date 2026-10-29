@@ -39,6 +39,18 @@ public sealed class WorkerIpcServerHostedService : BackgroundService
     {
         var endpoint = IpcTransportFactory.ResolveEndpoint(_runtime.Mode == RuntimeMode.Service);
 
+        // 服务模式 fail-closed 可观测性（#70）：安装者 SID 解析不到时传输层回退 CurrentUserOnly，
+        // 桌面用户仍会被拒——这里记 warning 指向安装动作，否则 S4 复测只剩一句 ACCESS_DENIED 无从下手。
+        if (_runtime.Mode == RuntimeMode.Service && OperatingSystem.IsWindows()
+            && !WindowsServicePipeAcl.TryResolveInstallerSid(out _))
+        {
+            SafeLog.Try(() => _logger.LogWarning(
+                "Service pipe installer SID not resolved (install-service.ps1 writes {Key}); " +
+                "service pipe falls back to current-user-only and non-elevated desktop UI will be denied. " +
+                "Reinstall the service to register it (#70).",
+                WindowsServicePipeAcl.RegistrySubKeyName + "\\" + WindowsServicePipeAcl.InstallerSidValueName));
+        }
+
         IIpcTransport? transport = null;
         try
         {

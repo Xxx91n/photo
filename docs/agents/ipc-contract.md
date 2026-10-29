@@ -70,7 +70,15 @@ UI 侧并发探测（#59）：新 UI 另起短连接预算客户端（连接 250
 ## 认证边界与已知缺陷
 
 - Windows：后台管道 `PipeOptions.CurrentUserOnly`；Unix：0600/0660 + 对端 uid 白名单（fail-closed）。
-- 服务模式既有缺陷：服务以 `LocalSystem` 运行，服务管道仍是 `CurrentUserOnly`，桌面用户会被拒绝——另见 #70；新 UI 因此会回落到后台 Worker。
+- Windows 服务管道（#70，决策 #82 D3）：显式 DACL 取代 `CurrentUserOnly`——安装脚本
+  （`scripts/install-service.ps1`）把安装者 SID 写入 `HKLM\SOFTWARE\PhotoPrivacy\ServicePipeInstallerSid`，
+  服务端以原生 `CreateNamedPipeW` 建管道（不走 managed ACL API：其在本仓单文件发布上下文曾抛
+  UnauthorizedAccessException 并按 accept 逐次泄漏管道实例直到 254 上限，38142f9b），授予安装者 SID
+  读写 + SYSTEM/Administrators 完全控制，并设 `PIPE_REJECT_REMOTE_CLIENTS` 拒绝远程连接。
+  SID 缺失/无效时 fail-closed 回退 `CurrentUserOnly` 并记 warning；重装/升级覆盖登记值，ACL 随最新安装者。
+  安装者账户的非提权 UI 可完成服务端点往返；其他账户仍被拒（多用户/跨账户归 #1）。
+  C# 传输层 `ConnectAsync` 客户端仍带 `CurrentUserOnly`（同用户语义），服务端点的产品客户端只有 Rust UI。
+- Unix 服务模式不变（0660 + 组白名单）；Linux/macOS 的服务管道访问按各自机制另行核对（#70 AC）。
 - 客户端**不做**旧 UI 的 `PipeOptions.CurrentUserOnly` 属主校验（服务模式下自相矛盾）；理由见 `ui/crates/photoprivacy-ipc/src/client.rs` 注释。
 
 ## UI 单实例唤起通道（非 Worker 协议）

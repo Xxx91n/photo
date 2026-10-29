@@ -19,6 +19,7 @@ public static class IpcTransportFactory
     /// <summary>
     /// Create a server-side transport with the access policy matching the runtime mode
     /// Unix socket policy: background 0600, service 0660 + group.
+    /// Windows pipe policy: background CurrentUserOnly, service installer-SID DACL (#70).
     /// </summary>
     public static IIpcTransport CreateServer(string endpointName, bool isServiceMode)
     {
@@ -28,7 +29,9 @@ public static class IpcTransportFactory
                 endpointName,
                 isServiceMode ? UnixSocketAccessMode.ServiceShared : UnixSocketAccessMode.BackgroundOnly);
         }
-        return new NamedPipeIpcTransport(endpointName);
+        return new NamedPipeIpcTransport(
+            endpointName,
+            isServiceMode ? WindowsPipeAccessMode.ServiceShared : WindowsPipeAccessMode.BackgroundOnly);
     }
 
     /// <summary>
