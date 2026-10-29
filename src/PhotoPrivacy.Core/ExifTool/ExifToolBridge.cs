@@ -20,8 +20,16 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
     private readonly TimeSpan _startupTimeout;
     private static readonly TimeSpan RunningHealthTimeout = TimeSpan.FromMilliseconds(500);
 
+    /// <summary>
+    /// 整行版本文本形态（<c>13.20</c> 或 <c>13.20 [Warning: …]</c>）。补探与在途擦除任务共享
+    /// stdout，行内出现的文件名或日期不算版本——只有整行形态才可能是 <c>-ver</c> 输出。
+    /// </summary>
+    private static readonly Regex StandaloneVersionLine =
+        new(@"^\s*\d+(?:\.\d+)+(?:\s*\[[^\]]*\])?\s*$", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
+
     private volatile bool _started;
     private int _taskId;
+    private int _versionProbeAttempts;
     // 跨线程可见性：#86 的上报链路由 IPC 线程读取、stdout pump 线程写入。
     private volatile string _versionText = ExifToolVersionText.Unknown;
 
@@ -142,14 +150,15 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
         }
 
         // 兼做健康检查与崩溃恢复：进程已死时 _started 仍为 true，只有这一步能把它拉回来。
-        var wasStarted = _started;
+        var probesBefore = Volatile.Read(ref _versionProbeAttempts);
         await EnsureStartedAsync(cancellationToken);
 
-        // 冷启动那次探针已在 EnsureStartedAsync 内跑过——即使超时也不再立刻补第二次，
-        // 免得单次调用把两个 3 s 探针预算叠起来；下一拍由状态轮询重试。
-        if (wasStarted && ExifToolVersionText.IsUnknown(_versionText))
+        // 本次调用内若已经跑过探针（冷启动与重启各自带一次），就不再叠第二次 3 s 预算——
+        // 下一拍由状态轮询重试。
+        if (Volatile.Read(ref _versionProbeAttempts) == probesBefore
+            && ExifToolVersionText.IsUnknown(_versionText))
         {
-            // 补探与在途擦除任务共享 stdout：读侧靠「只接受可解析的版本文本」+ IsProtocolNoiseLine
+            // 补探与在途擦除任务共享 stdout：读侧靠「只接受整行版本文本」+ IsProtocolNoiseLine
             // 排除对方的协议 marker/JSON 行，写侧靠 WriteBlockAsync 保证命令块不被拆散。
             await ProbeVersionAndWarnIfNeededAsync(cancellationToken);
         }
@@ -160,6 +169,8 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
     /// 四类写入（擦除探测块、擦除任务块、健康探针、版本探针）并发时会让一个块的行插进另一个块，
     /// 被对方的行处理器误读（例如把版本号拼进 JSON 探测输出 → 该文件被静默判为无元数据）。
     /// 块级串行化把这条前提钉住，代价是每次写多一次信号量往返。
+    /// 例外：进程层 <c>ProcessExifToolProcess.StopAsync</c> 的 <c>-stay_open False</c> 收尾写字在
+    /// 停机路径上直接写 stdin——那时进程正在被拆除，块完整性不再有约束意义。
     /// </summary>
     private async Task WriteBlockAsync(string block, CancellationToken cancellationToken)
     {
@@ -475,6 +486,8 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
 
     private async Task ProbeVersionAndWarnIfNeededAsync(CancellationToken cancellationToken)
     {
+        Interlocked.Increment(ref _versionProbeAttempts);
+
         var marker = $"VERSION_{Guid.NewGuid():N}";
         var tcs = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -511,9 +524,9 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
                 return;
             }
 
-            // 只接受能解析出版本号的文本。版本文本一旦被并发输出污染就被 latch 成永久版本
+            // 只接受整行版本文本。版本文本一旦被并发输出污染就被 latch 成永久版本
             // （IsUnknown 变 false，再也不重探），所以候选必须先过硬门槛。
-            if (!string.IsNullOrWhiteSpace(line) && TryParseExifToolVersion(line) is not null)
+            if (!string.IsNullOrWhiteSpace(line) && StandaloneVersionLine.IsMatch(line))
             {
                 capturedVersionLine = line.Trim();
                 // 如果 marker 已经看到，现在收到 version text，返回结果

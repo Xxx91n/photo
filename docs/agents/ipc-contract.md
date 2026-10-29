@@ -43,6 +43,7 @@ UI 侧并发探测（#59）：新 UI 另起短连接预算客户端（连接 250
 
 - 取值来源：`WorkerIpcContracts.cs` 的 `WorkerStatusDto.exifToolVersion`；单桥取 `ExifToolBridge.VersionText`，`stay_open_pool_size>1` 时由 `PooledExifToolBridge` 返回首个已解析出的子桥版本。
 - **按需解析**：桥自 M4 起惰性启动（首个文件才拉 `stay_open` 进程），因此首个文件到达前该字段为 `"unknown"`。状态快照读到 `"unknown"` 时，服务端在后台驱动一次版本解析（未启动则冷启动，进程已死则经健康检查重启，已启动但那次探针超时则补探）；响应不等待探针，真实版本由下一拍轮询带出（#86）。凡是返回状态快照的方法（`Ping`/`GetStatus`/`GetExifToolVersion`/`Pause`/`Resume` 等）都走同一入口。补探**不进文件处理热路径**，也不为一次状态查询拉起整个池。
+- **有意取舍**：拿到真实版本的唯一途径是让 ExifTool 跑起来（`stay_open` 常驻本就是产品约束），因此一次状态查询会触发进程启动并记 `exiftool_started` 审计；`paused` 只表示不处理文件，不阻止版本解析。不想付这个代价就不要轮询该字段。
 - **降级语义**：ExifTool 不可用（路径失效 / 进程起不来 / 探针超时）时字段保持 `"unknown"` 并记 warning 日志；补探最多每 5 s 重试一次，下一拍到点后自动再试。`"unknown"` 只表示「尚未解析出版本」，不表示「ExifTool 不存在」——可用性判定不看这个字段。dry-run 模式恒为 `"dry-run"`，不触发补探。停机（`ApplicationStopping`）后的补探被取消，不会再拉起进程。
 - 字段语义与线格式不变；本轮只补上报链路，不扩协议。
 

@@ -39,6 +39,10 @@ public sealed class RealExifToolProbeTest : IntegrationTestBase
             await bridge.StartAsync(CancellationToken.None);
             Console.WriteLine($"ExifTool version: {bridge.VersionText}");
 
+            // #86 可重复探针：真实 ExifTool 上版本必须解析成功并上报，而不是恒为 unknown。
+            Assert.NotEqual(ExifToolVersionText.Unknown, bridge.VersionText);
+            Assert.Matches(@"\d+(\.\d+)+", bridge.VersionText);
+
             var result = await bridge.WipeMetadataAsync(targetPath, CancellationToken.None);
             Console.WriteLine($"WipeResult: {result}");
 

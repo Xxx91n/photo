@@ -99,6 +99,13 @@ internal sealed class ProtocolLevelFakeExifToolProcess : IExifToolProcess
             return Task.CompletedTask;
         }
 
+        // 进程已死（StopAsync 之后）不可能回包：往死管道写不会产生任何 stdout。
+        // 缺了这条，崩溃恢复类用例会在修复前也变绿。
+        if (!IsRunning)
+        {
+            return Task.CompletedTask;
+        }
+
         var lines = text
             .Split('\n')
             .Select(l => l.TrimEnd('\r'))
