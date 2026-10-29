@@ -27,7 +27,7 @@ public sealed class PooledExifToolBridge : IExifToolBridge, IDisposable
     // 原来只看 _bridges[0]，但派发从 index 1 起轮转，第一个文件往往落在 _bridges[1]，
     // bridge[0] 可能整个生命周期都没启动过 → 恒报 unknown。版本对同一 ExifTool 二进制
     // 是同一值，取任一非 unknown 的子桥值语义等价。
-    // Design(#86): 池化桥上报「首个已解析出的版本」，不再锚定 _bridges[0]。
+    // Design(#82): 池化桥上报「首个已解析出的版本」，不再锚定 _bridges[0]。
     public string VersionText
     {
         get
@@ -51,7 +51,7 @@ public sealed class PooledExifToolBridge : IExifToolBridge, IDisposable
     /// 已知单点：若子桥 0 的可执行文件路径本身失效，其余子桥同样起不来（配置共享同一路径），
     /// 因此不为这一情形扩散到整池。
     /// </summary>
-    // Design(#86): 版本解析只启动 _bridges[0]，不为一次状态查询拉起整池。
+    // Design(#82): 版本解析只启动 _bridges[0]，不为一次状态查询拉起整池。
     public Task EnsureVersionAsync(CancellationToken cancellationToken)
         => _bridges[0].EnsureVersionAsync(cancellationToken);
 

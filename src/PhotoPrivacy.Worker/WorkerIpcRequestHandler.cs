@@ -150,7 +150,7 @@ public sealed class WorkerIpcRequestHandler
     /// 两道闸：in-flight 门闩保证轮询不叠加启动尝试；最小间隔保证降级态不演变成每秒重试。
     /// 失败只记降级告警，版本继续上报 unknown，下一次到点重试。
     /// </summary>
-    // Design(#86): 版本解析由状态消费者驱动（按需冷启动 + 补探），状态响应内容与字段语义不变。
+    // Design(#82): 版本解析由状态消费者驱动（按需冷启动 + 补探），状态响应内容与字段语义不变。
     private void TriggerExifToolVersionProbe()
     {
         if (Interlocked.CompareExchange(ref _versionProbeInFlight, 1, 0) != 0)

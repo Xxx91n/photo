@@ -42,7 +42,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
     /// IPC handler 在状态快照仍为 unknown 时调用本方法：未启动则冷启动（启动流程自带版本探针），
     /// 已启动但那次探针超时则补探。失败（路径失效、进程起不来、探针超时）原样上抛，由调用方记录降级。
     /// </summary>
-    // Design(#86): 版本解析按需触发（IPC 状态请求驱动），不引入启动期 eager start，也不进每文件热路径。
+    // Design(#82): 版本解析按需触发（IPC 状态请求驱动），不引入启动期 eager start，也不进每文件热路径。
     public async Task EnsureExifToolVersionAsync(CancellationToken cancellationToken)
     {
         var bridge = _bridge;
