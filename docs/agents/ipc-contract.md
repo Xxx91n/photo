@@ -42,6 +42,10 @@ UI 侧并发探测（#59）：新 UI 另起短连接预算客户端（连接 250
 重载失败（校验失败、重建失败）回 `ok:false` 并带 `message`；只有真正生效才回 `ok:true`
 ——失败不得再被吞成成功（#85）。处理链任何异常都必须仍回包（`ok:false`），响应写入不得依赖日志 provider 健康；
 处理器自身未产出响应对象时，连接循环兜底回 `{ok:false,message:"internal_error",id,v}`（不改变任何既有字段语义）。
+请求行无法反序列化时回 `{ok:false,message:"invalid_request",v}`；超长行与空行仍按帧规则丢弃、不回包。
+
+重建阶段失败的后果（D7 禁新字段，故不以状态位上报）：watcher 已停、`_pipeline`/`_bridge` 已拆，
+`GetStatus` 仍可应答但不保证在监视——客户端需再次 `ReloadConfig` 或重启 Worker 恢复。
 
 ## UI 侧轮询
 

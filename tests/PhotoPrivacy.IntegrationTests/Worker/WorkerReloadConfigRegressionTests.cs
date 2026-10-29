@@ -5,6 +5,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 using PhotoPrivacy.Core.Configuration;
 using PhotoPrivacy.Core.Runtime;
 using PhotoPrivacy.Core.Worker;
+using PhotoPrivacy.Ipc;
+using PhotoPrivacy.Worker;
 
 namespace PhotoPrivacy.IntegrationTests.Worker;
 
@@ -67,9 +69,27 @@ public sealed class WorkerReloadConfigRegressionTests
                 await WaitForProcessedRecordsAsync(processedPath, expectedAtLeast: 1, TimeSpan.FromSeconds(30)),
                 "启动态未处理热文件夹里的文件：用例前提不成立");
 
-            // 连续两次重载：旧 store 的常驻写句柄必须先释放，否则新 store 构造即冲突。
-            await worker.ReloadConfigAsync().WaitAsync(TimeSpan.FromSeconds(30));
-            await worker.ReloadConfigAsync().WaitAsync(TimeSpan.FromSeconds(30));
+            // 连续两次重载都走真实 IPC 处理器（handler → WorkerRuntimeContext → worker）：
+            // 既锁「旧 store 常驻写句柄必须先释放」，也锁「重载真的回 ok 且 mode=service」——
+            // 旧形态第一次重载的异常被吞，回 ok 但组件已拆；第二次直接失败。
+            var runtime = new WorkerRuntimeContext(
+                new RuntimeControl(),
+                worker,
+                () => hot,
+                RuntimeMode.Service,
+                () => audit);
+            var handler = new WorkerIpcRequestHandler(runtime, NullLogger<WorkerIpcRequestHandler>.Instance);
+
+            for (var attempt = 1; attempt <= 2; attempt++)
+            {
+                var (reloadResponse, shouldShutdown) = await handler
+                    .HandleAsync(new WorkerIpcRequest(WorkerIpcMethods.ReloadConfig, "reload-" + attempt), CancellationToken.None)
+                    .WaitAsync(TimeSpan.FromSeconds(30));
+
+                Assert.True(reloadResponse.Ok, $"第 {attempt} 次重载必须回 ok：{reloadResponse.Message}");
+                Assert.False(shouldShutdown);
+                Assert.Equal("service", reloadResponse.Data!.Mode);
+            }
 
             // 重载真正生效的判据：watcher/pipeline 已重建并在跑，新文件继续被处理。
             // 旧形态在此必红——重载抛在 store 构造处（被吞），watcher 停掉后再没重建。

@@ -49,9 +49,9 @@ public sealed class ServiceModeLoggingGuardTests
     public void Service_Mode_Should_Drop_EventLog_Provider_After_Registering_WindowsService()
     {
         // 防的具体回潮形态：① 删掉 ClearProviders（EventLog provider 随 AddWindowsService 重新挂上）；
-        // ② 把 ClearProviders 挪到 AddWindowsService 之前（同样留活口）；③ 之后又显式
-        // AddEventLog；④ 换成 AddFilter("EventLog", …) —— 该重载首参是类别前缀，摘不掉 provider。
-        // ①–③ 由本断言直接判红；④ 由上面的类型/重载说明与自证样本兜住。关联 issue #85。
+        // ② 把 ClearProviders 挪到 AddWindowsService 之前（同样留活口）；③ 之后又显式 AddEventLog；
+        // ④ 换成 AddFilter("EventLog", …) —— 该重载首参是类别前缀，摘不掉 provider，且此时
+        // ClearProviders 已缺失。①–④ 都会被本断言判红，自证只对 ①②③ 造样本（④ 与 ① 同因：缺 ClearProviders）。关联 issue #85。
         var violations = ClassifyServiceLogging(ReadStrippedProgramWithLineBreaks());
         Assert.True(violations.Count == 0, string.Join("；", violations));
     }
