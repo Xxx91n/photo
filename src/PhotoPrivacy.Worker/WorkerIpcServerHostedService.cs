@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using PhotoPrivacy.Core.Runtime;
 using PhotoPrivacy.Ipc;
 
 namespace PhotoPrivacy.Worker;
@@ -46,7 +47,8 @@ public sealed class WorkerIpcServerHostedService : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to bind IPC transport on {Endpoint}", endpoint);
+            // 日志失败不得让绑定失败路径再炸一次（#85 同类：日志 provider 抛 → 宿主停摆）。
+            SafeLog.Try(() => _logger.LogError(ex, "Failed to bind IPC transport on {Endpoint}", endpoint));
             if (transport is not null)
             {
                 await transport.DisposeAsync();

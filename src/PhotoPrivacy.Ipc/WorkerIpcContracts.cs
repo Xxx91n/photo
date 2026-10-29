@@ -15,6 +15,12 @@ public static class WorkerIpcMethods
     public const string GetRecentLogs = "GetRecentLogs";
 }
 
+// 协议版本唯一出处：只在 `v` 字段语义变更时动它；新增 method 名不动版本（docs/agents/ipc-contract.md）。
+public static class WorkerIpcProtocol
+{
+    public const int Version = 1;
+}
+
 public sealed record WorkerIpcRequest(
     [property: JsonPropertyName("method")] string Method,
     [property: JsonPropertyName("id")] string? Id = null,

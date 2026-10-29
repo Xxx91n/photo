@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using PhotoPrivacy.Core.ExifTool;
+using PhotoPrivacy.Core.Runtime;
 using PhotoPrivacy.Ipc;
 
 namespace PhotoPrivacy.Worker;
@@ -18,7 +19,7 @@ namespace PhotoPrivacy.Worker;
 /// </summary>
 public sealed class WorkerIpcRequestHandler
 {
-    private const int ProtocolVersion = 1;
+    private const int ProtocolVersion = WorkerIpcProtocol.Version;
 
     /// <summary>
     /// 版本补探的最小间隔（#86）。ExifTool 不可用时 UI 的 1 s 轮询会退化成每秒一次启动尝试
@@ -41,7 +42,8 @@ public sealed class WorkerIpcRequestHandler
     /// <summary>
     /// Handle IPC request. Returns (response, shouldShutdown).
     /// Shutdown is only allowed in CLI mode. Service/Background rejects it.
-    /// ReloadConfig validates new config before applying; failure preserves old config.
+    /// ReloadConfig 先校验再应用：校验失败不触碰运行期组件（旧配置保留）；应用阶段失败如实回
+    /// <c>ok:false</c> 并带原因（此时重建可能已拆解旧组件，需下一次成功重载或重启恢复）。
     /// Response includes protocol version V field.
     /// </summary>
     public async Task<(WorkerIpcResponse response, bool shouldShutdown)> HandleAsync(
@@ -89,7 +91,7 @@ public sealed class WorkerIpcRequestHandler
                     var (valid, error) = _runtime.TryValidateConfig();
                     if (!valid)
                     {
-                        _logger.LogWarning("ReloadConfig validation failed: {Error}", error);
+                        SafeLog.Try(() => _logger.LogWarning("ReloadConfig validation failed: {Error}", error));
                         return (new WorkerIpcResponse(false,
                             Message: "\u914d\u7f6e\u9a8c\u8bc1\u5931\u8d25: " + error,
                             Id: request.Id, V: ProtocolVersion), false);
@@ -102,7 +104,8 @@ public sealed class WorkerIpcRequestHandler
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "ReloadConfig failed");
+                    // 日志失败不得吃掉回包：EventLog provider 抛异常时仍要带回 reload_failed 原因（#85）。
+                    SafeLog.Try(() => _logger.LogWarning(ex, "ReloadConfig failed"));
                     return (new WorkerIpcResponse(false,
                         Message: $"reload_failed: {ex.Message}",
                         Id: request.Id, V: ProtocolVersion), false);
@@ -147,7 +150,7 @@ public sealed class WorkerIpcRequestHandler
     /// 两道闸：in-flight 门闩保证轮询不叠加启动尝试；最小间隔保证降级态不演变成每秒重试。
     /// 失败只记降级告警，版本继续上报 unknown，下一次到点重试。
     /// </summary>
-    // Design(#86): 版本解析由状态消费者驱动（按需冷启动 + 补探），状态响应内容与字段语义不变。
+    // Design(#82): 版本解析由状态消费者驱动（按需冷启动 + 补探），状态响应内容与字段语义不变。
     private void TriggerExifToolVersionProbe()
     {
         if (Interlocked.CompareExchange(ref _versionProbeInFlight, 1, 0) != 0)

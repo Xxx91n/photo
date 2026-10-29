@@ -189,7 +189,7 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
     /// <summary>
     /// 确保进程在跑，但绝不健康检查/重启（版本解析路径）。只在进程真的没了时启动它。
     /// </summary>
-    // Design(#86): 状态查询只「拉起已死的进程」，不做健康检查——健康检查的副作用（重启）只属于文件路径。
+    // Design(#82): 状态查询只「拉起已死的进程」，不做健康检查——健康检查的副作用（重启）只属于文件路径。
     private async Task EnsureStartedWithoutHealthCheckAsync(CancellationToken cancellationToken)
     {
         if (_retired || _process.IsRunning)
@@ -220,7 +220,7 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
     /// 只有进程真的没了才启动它（启动自带版本探针）；进程还在就只补探。这条路径**绝不做健康检查**
     /// ——健康检查的副作用是重启，重启会打断在途擦除。已解析出真实版本时全程零往返。
     /// </summary>
-    // Design(#86): 版本解析按需触发（IPC 状态请求驱动），既不做启动期 eager start，也不进每文件热路径。
+    // Design(#82): 版本解析按需触发（IPC 状态请求驱动），既不做启动期 eager start，也不进每文件热路径。
     public async Task EnsureVersionAsync(CancellationToken cancellationToken)
     {
         if (_retired || !ExifToolVersionText.IsUnknown(_versionText))

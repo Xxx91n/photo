@@ -22,11 +22,20 @@ public sealed class MetadataCleanerWorker : BackgroundService
     private JsonLineAuditLogger? _audit;
     private IExifToolBridge? _bridge;
     private FileTaskPipeline? _pipeline;
+    private FileProcessedRecordStore? _processedRecordStore;
     private DebounceQueue? _debounceQueue;
     private RecentFingerprintCache? _recentFingerprintCache;
     private FswFolderWatcher? _watcher;
     private int _maxParallelDrain = 1;
     private readonly SemaphoreSlim _reloadGate = new(1, 1);
+
+    /// <summary>
+    /// 串行化「drain 一轮」与「拆卸重建」（#85）：重载在拆卸 store/audit 前必须先等当前一轮 drain 结束，
+    /// 否则在途 <c>HandleAsync</c> 会用到已释放实例；同时 <c>PopReady</c> 已弹出的路径也不会因
+    /// <c>_pipeline</c> 被置空而丢失（不重入队）。
+    /// </summary>
+    private readonly SemaphoreSlim _drainGate = new(1, 1);
+
     private Timer? _cleanupTimer;
     private AppConfig? _currentConfig;
     private IReadOnlyList<string> _autoExcludedSubdirectories = Array.Empty<string>();
@@ -41,7 +50,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
     /// IPC handler 在状态快照仍为 unknown 时调用本方法：未启动则冷启动（启动流程自带版本探针），
     /// 已启动但那次探针超时则补探。失败（路径失效、进程起不来、探针超时）原样上抛，由调用方记录降级。
     /// </summary>
-    // Design(#86): 版本解析按需触发（IPC 状态请求驱动），不引入启动期 eager start，也不进每文件热路径。
+    // Design(#82): 版本解析按需触发（IPC 状态请求驱动），不引入启动期 eager start，也不进每文件热路径。
     public async Task EnsureExifToolVersionAsync(CancellationToken cancellationToken)
     {
         var bridge = _bridge;
@@ -102,7 +111,8 @@ public sealed class MetadataCleanerWorker : BackgroundService
         // 启动路径的软告警落点（排除清单不可匹配/未支持模式）。
         await EmitConfigWarningsAsync(config, stoppingToken);
         _bridge = CreateBridge(config, auditLogger);
-        _pipeline = new FileTaskPipeline(config, new RuleEngine(config), _bridge, new LocalFileOperations(), auditLogger, new FileProcessedRecordStore(config.Audit.LogDirectory));
+        _processedRecordStore = new FileProcessedRecordStore(config.Audit.LogDirectory);
+        _pipeline = new FileTaskPipeline(config, new RuleEngine(config), _bridge, new LocalFileOperations(), auditLogger, _processedRecordStore);
         _maxParallelDrain = Math.Max(1, Math.Min(config.ExifTool.MaxParallelDrain, config.ExifTool.StayOpenPoolSize));
 
         _cleanupTimer = new Timer(_ => PerformPeriodicCleanup(config), null, TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(10));
@@ -204,7 +214,17 @@ public sealed class MetadataCleanerWorker : BackgroundService
                         continue;
                     }
 
-                    await DrainReadyItemsAsync(stoppingToken);
+                    // 一轮 drain 与重载拆卸互斥（#85）：拆卸必须等在途处理结束，弹队的路径也不会丢。
+                    await _drainGate.WaitAsync(stoppingToken);
+                    try
+                    {
+                        await DrainReadyItemsAsync(stoppingToken);
+                    }
+                    finally
+                    {
+                        _drainGate.Release();
+                    }
+
                     await Task.Delay(200, stoppingToken);
 
                     // Reset backoff on successful iteration
@@ -272,6 +292,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
                 _logger.LogWarning(ex, "Bridge stop threw unexpectedly, continuing shutdown.");
             }
             (_bridge as IDisposable)?.Dispose();
+            _bridge = null;
         }
 
         if (_audit is not null)
@@ -296,12 +317,41 @@ public sealed class MetadataCleanerWorker : BackgroundService
             }
         }
 
-        _audit?.Dispose();
+        // 与 ApplyConfigAsync 同一口径（#85）：等当前一轮 drain 结束再释放，避免在途 HandleAsync 用到
+        // 已释放实例。停机路径用有界等待（4 s）：拿不到闸也只降级继续，不让停机被长任务拖死。
+        var drainIdle = await _drainGate.WaitAsync(TimeSpan.FromSeconds(4));
+        try
+        {
+            _audit?.Dispose();
+            _audit = null;
+            _pipeline = null;
+            DisposeQuietly(_processedRecordStore);
+            _processedRecordStore = null;
+        }
+        finally
+        {
+            if (drainIdle)
+            {
+                _drainGate.Release();
+            }
+        }
+
         _reloadGate.Dispose();
 
         await base.StopAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// 释放旧实例的常驻句柄（#85）：失败静默吞掉，不阻断重载/停机路径——
+    /// 释放失败的真实后果由调用方（重载结果）呈现。
+    /// </summary>
+    private static void DisposeQuietly(IDisposable? disposable)
+    {
+        if (disposable is not null)
+        {
+            SafeLog.Try(disposable.Dispose);
+        }
+    }
 
     /// <summary>
     /// Scan %TEMP% for stale PP_ prefixed temp files left by prior crashes.
@@ -446,6 +496,13 @@ public sealed class MetadataCleanerWorker : BackgroundService
         return PooledExifToolBridgeFactory.BuildFromConfig(config, audit, rulesStore.Load());
     }
 
+    /// <summary>
+    /// 重载配置并重建运行期组件。
+    ///
+    /// 失败必须上抛：IPC 通道据此回 <c>ok:false</c> 带原因（<c>WorkerIpcRequestHandler</c>），
+    /// SIGHUP 通道自带 catch（<c>Program.cs</c>）。禁止再在方法内吞掉异常——
+    /// 旧形态把「重建失败、旧 watcher 已停」报成 <c>ok:true</c>，热重载从未真正生效（#85）。
+    /// </summary>
     public async Task ReloadConfigAsync()
     {
         await _reloadGate.WaitAsync();
@@ -454,14 +511,6 @@ public sealed class MetadataCleanerWorker : BackgroundService
             var config = LoadEffectiveConfig();
             _currentConfig = config;
             await ApplyConfigAsync(config, CancellationToken.None);
-        }
-        catch (AppConfigValidationException ex)
-        {
-            _logger.LogWarning(ex, "ReloadConfig validation failed: {Message}", ex.Message);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "ReloadConfig failed: {Message}", ex.Message);
         }
         finally
         {
@@ -534,6 +583,26 @@ public sealed class MetadataCleanerWorker : BackgroundService
         // reload 路径的软告警落点（写进当前生效的审计日志）。
         await EmitConfigWarningsAsync(config, token);
 
+        // 拆卸与重建期间持 drain 闸（#85）：等在途一轮处理结束，避免在途 HandleAsync 用到已释放的
+        // store/audit；也避免 PopReady 已弹出的路径因 _pipeline 被置空而丢失（该路径不重入队）。
+        // 等待有界：超时即放弃本次重载（旧配置与组件保持原样），不带着在途处理强拆。
+        if (!await _drainGate.WaitAsync(TimeSpan.FromSeconds(8)))
+        {
+            throw new InvalidOperationException("reload_busy: 处理中的文件未在 8 s 内结束，本次重载已取消（旧配置仍生效）");
+        }
+
+        try
+        {
+            await RebuildRuntimeAsync(config, token);
+        }
+        finally
+        {
+            _drainGate.Release();
+        }
+    }
+
+    private async Task RebuildRuntimeAsync(AppConfig config, CancellationToken token)
+    {
         _watcher?.Stop();
 
         if (_bridge is not null)
@@ -548,7 +617,22 @@ public sealed class MetadataCleanerWorker : BackgroundService
                 // best-effort
             }
             (_bridge as IDisposable)?.Dispose();
+            _bridge = null;
        }
+
+        // 重建前先摘空引用并释放旧实例的常驻句柄：FileProcessedRecordStore 以 FileShare.Read
+        // 常驻持有 processed.ndjson 的写句柄，JsonLineAuditLogger 持有后台消费任务；旧实例不释放
+        // 则新 store 打开同一文件必然自我冲突（IOException「being used by another process」，
+        // 单实例、任何模式皆然），ReloadConfig 从未真正生效。先置空 pipeline/audit 让 drain 循环
+        // 走空转分支，再释放（释放失败只吞，不阻断重建）。
+        // Design(#85): 重载重建前必须释放旧 store/audit 的常驻句柄；失败只降级不阻断重建。
+        _pipeline = null;
+        var retiredStore = _processedRecordStore;
+        _processedRecordStore = null;
+        var retiredAudit = _audit;
+        _audit = null;
+        DisposeQuietly(retiredStore);
+        DisposeQuietly(retiredAudit);
 
         // ponytail: empty config paths (config.sample.json defaults to "") would throw
         // ArgumentException on Directory.CreateDirectory — skip if blank.
@@ -568,7 +652,8 @@ public sealed class MetadataCleanerWorker : BackgroundService
        _audit = new JsonLineAuditLogger(config.Audit.LogDirectory, config.Audit.RetainDays, config.Audit.DiagnosticMode, AuditLevelParser.Parse(config.Audit.LogLevel));
         IAuditLogger auditLogger = _audit is not null ? _audit : new NoopAuditLogger();
         _bridge = CreateBridge(config, auditLogger);
-        _pipeline = new FileTaskPipeline(config, new RuleEngine(config), _bridge, new LocalFileOperations(), auditLogger, new FileProcessedRecordStore(config.Audit.LogDirectory));
+        _processedRecordStore = new FileProcessedRecordStore(config.Audit.LogDirectory);
+        _pipeline = new FileTaskPipeline(config, new RuleEngine(config), _bridge, new LocalFileOperations(), auditLogger, _processedRecordStore);
         _maxParallelDrain = Math.Max(1, Math.Min(config.ExifTool.MaxParallelDrain, config.ExifTool.StayOpenPoolSize));
 
         // ponytail: M4 lazy - do NOT eager StartAsync here; WipeMetadataAsync calls
