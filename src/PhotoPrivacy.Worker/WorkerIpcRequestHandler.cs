@@ -17,7 +17,7 @@ namespace PhotoPrivacy.Worker;
 /// </summary>
 public sealed class WorkerIpcRequestHandler
 {
-    private const int ProtocolVersion = 1;
+    private const int ProtocolVersion = WorkerIpcProtocol.Version;
 
     private readonly IWorkerIpcRuntime _runtime;
     private readonly ILogger<WorkerIpcRequestHandler> _logger;
