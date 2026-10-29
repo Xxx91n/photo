@@ -113,6 +113,10 @@ public sealed class NamedPipeIpcTransport : IIpcTransport
             return;
         }
 
+        // 赋值同样纳入 PP_WINDOWS_HOST：交叉发布（非 Windows 宿主产出 win-x64）时原生建例
+        // 分支已被编译排除，若仍赋值会得到「无 CurrentUserOnly 也无 DACL」的管道；
+        // 守卫使该场景 fail-closed 回退 CurrentUserOnly。
+#if PP_WINDOWS_HOST
         try
         {
             _servicePipeSecurityDescriptor =
@@ -122,6 +126,7 @@ public sealed class NamedPipeIpcTransport : IIpcTransport
         {
             // 非法 SID 视同缺失，走 fail-closed 回退。
         }
+#endif
     }
 
     // ponytail: 后台模式仍走 plain NamedPipeServerStream（无 ACL）。managed NamedPipeServerStreamAcl.Create
