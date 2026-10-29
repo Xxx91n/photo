@@ -9,8 +9,10 @@ namespace PhotoPrivacy.Ipc;
 /// <summary>
 /// Windows 服务管道显式 DACL 策略（#70，决策 #82 D3）：安装脚本（scripts/install-service.ps1）
 /// 在安装期把安装者用户 SID 登记到 <c>HKLM\SOFTWARE\PhotoPrivacy\ServicePipeInstallerSid</c>；
-/// 服务端建管道时授予该 SID 读写（并设 PIPE_REJECT_REMOTE_CLIENTS），SYSTEM/Administrators
-/// 保留完全控制。SID 缺失或无效时 fail-closed：回退 CurrentUserOnly，桌面用户仍被拒，不多授任何账户。
+/// 服务端建管道（不加 CurrentUserOnly）后经 <c>SetNamedSecurityInfoW</c> 应用本类构建的 DACL：
+/// 授予安装者 SID 读写，LocalSystem/Administrators 保留完全控制。
+/// SID 缺失或无效时 fail-closed：回退 CurrentUserOnly，桌面用户仍被拒，不多授任何账户；
+/// DACL 应用失败的间隙与后果同样 fail-closed（管道带 SYSTEM 令牌默认 DACL，仅 SYSTEM/管理员可连）。
 /// 重装/升级会覆盖登记值，ACL 随最新安装者；不承诺多用户/跨账户（归 #1）。
 /// 后台管道不经过本类，保持 CurrentUserOnly。
 /// </summary>
@@ -65,24 +67,17 @@ public static class WindowsServicePipeAcl
     }
 
     /// <summary>
-    /// 构建服务管道的 self-relative 二进制安全描述符：安装者 SID 读写
+    /// 构建服务管道的 DACL 二进制（RawAcl.GetBinaryForm 产物）：安装者 SID 读写
     /// （FILE_GENERIC_READ|WRITE）+ LocalSystem/Administrators 完全控制（FILE_ALL_ACCESS）。
     /// </summary>
-    public static byte[] BuildServicePipeSecurityDescriptor(SecurityIdentifier installerSid)
+    public static byte[] BuildServicePipeDacl(SecurityIdentifier installerSid)
     {
-        var dacl = new DiscretionaryAcl(isContainer: false, isDS: false, numAces: 3);
+        var dacl = new DiscretionaryAcl(false, false, 3);
         dacl.AddAccess(AccessControlType.Allow, installerSid, (int)ServiceClientAccessMask, InheritanceFlags.None, PropagationFlags.None);
         dacl.AddAccess(AccessControlType.Allow, new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null), (int)FileAllAccess, InheritanceFlags.None, PropagationFlags.None);
         dacl.AddAccess(AccessControlType.Allow, new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null), (int)FileAllAccess, InheritanceFlags.None, PropagationFlags.None);
-
-        var descriptor = new RawSecurityDescriptor(
-            ControlFlags.DiscretionaryAclPresent | ControlFlags.SelfRelative,
-            owner: new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null),
-            group: null,
-            systemAcl: null,
-            discretionaryAcl: dacl);
-        var binary = new byte[descriptor.BinaryLength];
-        descriptor.GetBinaryForm(binary, 0);
+        var binary = new byte[dacl.BinaryLength];
+        dacl.GetBinaryForm(binary, 0);
         return binary;
     }
 }
