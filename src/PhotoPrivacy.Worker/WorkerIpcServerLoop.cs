@@ -59,7 +59,8 @@ public sealed class WorkerIpcServerLoop
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "worker ipc accept loop error");
+                // accept 循环的日志同样不得反噬：抛出去会让 BackgroundService 失败、宿主停摆（#85 同类）。
+                SafeLog.Try(() => _logger.LogWarning(ex, "worker ipc accept loop error"));
                 try
                 {
                     await Task.Delay(100, stoppingToken);

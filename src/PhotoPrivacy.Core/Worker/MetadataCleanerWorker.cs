@@ -275,6 +275,8 @@ public sealed class MetadataCleanerWorker : BackgroundService
         }
 
         _audit?.Dispose();
+        _audit = null;
+        _pipeline = null;
         DisposeQuietly(_processedRecordStore);
         _processedRecordStore = null;
         _reloadGate.Dispose();
