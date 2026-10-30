@@ -423,8 +423,8 @@ public sealed class WorkerReloadConfigRegressionTests
     {
         // 防的具体回潮形态：拆卸窗口按 mtime 余量回收，多捞到的已处理文件要靠去重表挡住——同一次重载换了
         // 审计目录时新的 FileProcessedRecordStore 记录为空，那些文件会被重新处理（#114 残余 1）。
-        // 夹具是 same_as_source，所以本用例只验「不重处理」；票面点在 fixed_directory 下覆盖输出目录的后果
-        // 由同文件既有的换目录用例承担。
+        // 夹具的 output_mode 恒为 same_as_source，所以这里只验「不再重处理」这一步；票面点在
+        // fixed_directory 下覆盖输出目录的后果，本文件的夹具呈现不了。
         var root = Path.Combine(Path.GetTempPath(), "pp-114-dedup-" + Guid.NewGuid().ToString("N"));
         var hot = Path.Combine(root, "hot");
         var auditBefore = Path.Combine(hot, "_audit-a");
@@ -456,14 +456,15 @@ public sealed class WorkerReloadConfigRegressionTests
 
             // 把 mtime 拨新，复刻清洗落盘后的可观测形态（长度没变、mtime 变新），并等旧运行时按这个新指纹
             // 再处理一次——到这儿「窗口之前刚被处理过」这条前提就落定了。
-            File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddSeconds(3));
+            File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddSeconds(10));
             Assert.True(
                 await WaitForProcessedRecordsAsync(beforePath, expectedAtLeast: 2, TimeSpan.FromSeconds(30)),
                 "改写后的文件未被旧运行时处理：用例前提不成立");
 
-            // 窗口撑到 5 s：改动在窗口之前，但 mtime 拨到 +3 s，让它仍留在旧实现「起点前 2 s」的余量里，
-            // 而「刚入队」的 2 s 指纹抑制此时早已过期——那是旧实现唯一会多捞一条的时序，两头都留了秒级余量，
-            // 不靠 CI 快慢碰运气。新实现看差集，与这两头都不相干。
+            // 窗口撑到 5 s，mtime 拨到 +10 s：旧实现的判据是「起点前 2 s 余量」，而起点取在最长 8 s 的
+            // drain 闸之后，所以余量要盖住闸口停顿；同时「刚处理完」的 2 s 指纹抑制此时早已过期。
+            // 那两个常数就是旧实现唯一会多捞一条的时序前提，这里各留 5 s 以上，不靠 CI 快慢碰运气。
+            // 新实现比的是拆卸前后的差集，与这两个常数都不相干。
             worker.TeardownWindowHookAsync = () => Task.Delay(TimeSpan.FromSeconds(5));
 
             await File.WriteAllTextAsync(configPath, BuildConfigJson(hot, auditAfter));
