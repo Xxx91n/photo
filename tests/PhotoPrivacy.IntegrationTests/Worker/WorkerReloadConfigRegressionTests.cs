@@ -189,6 +189,51 @@ public sealed class WorkerReloadConfigRegressionTests
         }
     }
 
+    [Fact]
+    public async Task Reload_With_Unchanged_Folder_Should_Keep_The_File_Still_In_The_Debounce_Window()
+    {
+        // 防的具体回潮形态：RebuildRuntimeAsync 拆卸时把 _debounceQueue 连同去抖窗口内的在途路径一起丢掉。
+        // 目录未变的重载不再首扫，新 watcher 的轮询初始快照又把这些文件记成既有文件——
+        // 该文件从此永不被上报，隐私元数据静默留存（#85 只护住「已弹队」那一段，管不到窗口内）。
+        var root = Path.Combine(Path.GetTempPath(), "pp-100-debounce-" + Guid.NewGuid().ToString("N"));
+        var hot = Path.Combine(root, "hot");
+        var audit = Path.Combine(hot, "_audit");
+        var configPath = Path.Combine(root, "config.json");
+        Directory.CreateDirectory(hot);
+        // 2 s 去抖窗口：留出足够时间让重载落在窗口内，命中「在途路径随旧队列一起被丢」的形态。
+        await File.WriteAllTextAsync(configPath, BuildConfigJson(hot, audit, debounceMs: 2000));
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["config"] = configPath })
+            .Build();
+        var worker = new MetadataCleanerWorker(
+            configuration,
+            NullLogger<MetadataCleanerWorker>.Instance,
+            new NullApplicationLifetime(),
+            new RuntimeControl());
+
+        await worker.StartAsync(CancellationToken.None);
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(hot, "in-flight.jpg"), "in-flight");
+            await Task.Delay(300);
+
+            // 目录与去抖窗口都没变的一次重载。
+            await worker.ReloadConfigAsync();
+            Assert.Equal(hot, worker.CurrentWatchDirectory);
+
+            var processedPath = Path.Combine(audit, "processed.ndjson");
+            Assert.True(
+                await WaitForProcessedRecordForAsync(processedPath, "in-flight.jpg", TimeSpan.FromSeconds(30)),
+                "去抖窗口内的在途文件被重载拆卸丢弃，此后永不再报（#100）");
+        }
+        finally
+        {
+            await worker.StopAsync(CancellationToken.None);
+            TryDelete(root);
+        }
+    }
+
     [Theory]
     [InlineData(RuntimeMode.Service, "service")]
     [InlineData(RuntimeMode.Background, "background")]
@@ -428,7 +473,8 @@ public sealed class WorkerReloadConfigRegressionTests
         TryDelete(fixture.Root);
     }
 
-    private static string BuildConfigJson(string hotFolder, string auditDirectory, bool includeSubdirectories = true)
+    private static string BuildConfigJson(
+        string hotFolder, string auditDirectory, bool includeSubdirectories = true, int debounceMs = 100)
     {
         // 全量键位对齐 config.sample.json；dry_run=true 让 validator 走早退分支
         // （不需要真实 exiftool.exe 与 exiftool_files 目录）。
@@ -449,7 +495,7 @@ public sealed class WorkerReloadConfigRegressionTests
             {
                 hot_folder = hotFolder,
                 include_subdirectories = includeSubdirectories,
-                debounce_ms = 100,
+                debounce_ms = debounceMs,
                 internal_buffer_size = 65536,
                 auto_excluded_directories = Array.Empty<string>(),
                 // 1 s 轮询兜底：CI 上 FSW 事件可能丢失，轮询让「文件被处理」这条断言可重复。
