@@ -200,8 +200,8 @@ public sealed class WorkerReloadConfigRegressionTests
         var audit = Path.Combine(hot, "_audit");
         var configPath = Path.Combine(root, "config.json");
         Directory.CreateDirectory(hot);
-        // 2 s 去抖窗口：留出足够时间让重载落在窗口内，命中「在途路径随旧队列一起被丢」的形态。
-        await File.WriteAllTextAsync(configPath, BuildConfigJson(hot, audit, debounceMs: 2000));
+        // 5 s 去抖窗口：1.2 s 足以让 FSW 把事件投递进队列，又仍远小于窗口，重载必然落在「在途」区间内。
+        await File.WriteAllTextAsync(configPath, BuildConfigJson(hot, audit, debounceMs: 5000));
 
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> { ["config"] = configPath })
@@ -224,7 +224,7 @@ public sealed class WorkerReloadConfigRegressionTests
             await Task.Delay(500);
 
             await File.WriteAllTextAsync(Path.Combine(hot, "in-flight.jpg"), "in-flight");
-            await Task.Delay(300);
+            await Task.Delay(1200);
 
             // 目录与去抖窗口都没变的一次重载。
             await worker.ReloadConfigAsync();
@@ -254,7 +254,7 @@ public sealed class WorkerReloadConfigRegressionTests
         var configPath = Path.Combine(root, "config.json");
         Directory.CreateDirectory(folderA);
         Directory.CreateDirectory(folderB);
-        await File.WriteAllTextAsync(configPath, BuildConfigJson(folderA, audit, debounceMs: 2000));
+        await File.WriteAllTextAsync(configPath, BuildConfigJson(folderA, audit, debounceMs: 5000));
 
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> { ["config"] = configPath })
@@ -274,11 +274,11 @@ public sealed class WorkerReloadConfigRegressionTests
                 "启动期未创建处理记录表：用例前提不成立");
             await Task.Delay(500);
 
-            // 投进 A，落在 2 s 去抖窗口内——重载发生时它还没被弹队。
+            // 投进 A：1.2 s 足够事件入队，又仍在 5 s 窗口内——重载发生时它还没被弹队。
             await File.WriteAllTextAsync(Path.Combine(folderA, "retired.jpg"), "retired");
-            await Task.Delay(300);
+            await Task.Delay(1200);
 
-            await File.WriteAllTextAsync(configPath, BuildConfigJson(folderB, audit, debounceMs: 2000));
+            await File.WriteAllTextAsync(configPath, BuildConfigJson(folderB, audit, debounceMs: 5000));
             await worker.ReloadConfigAsync();
             Assert.Equal(folderB, worker.CurrentWatchDirectory);
 
