@@ -688,11 +688,13 @@ public sealed class WorkerReloadConfigRegressionTests
         Directory.CreateDirectory(root);
         await File.WriteAllTextAsync(configPath, BuildConfigJson(string.Empty, string.Empty));
 
-        // 同进程里其它监控态用例可能已在 <BaseDirectory>/hot 下留下目录：断言「待机没有新增」
-        // 而不是绝对不存在，避免用例间残留把断言变成假绿或假红。
+        // 同进程里其它监控态用例可能已在 <BaseDirectory>/hot 下留下目录：先清一次测试残留，
+        // 让本用例尽量从「不存在」起跑；清理失败（句柄延迟释放）时退回「前后存在性不变」的断言，
+        // 仍能抓住待机分支新增目录。
         var defaultHot = DefaultPaths.DefaultHotFolder;
         var defaultAudit = DefaultPaths.DefaultAuditLogDirectory;
         var defaultQuarantine = DefaultPaths.DefaultQuarantineDirectory;
+        TryDelete(defaultHot);
         var hotBefore = Directory.Exists(defaultHot);
         var auditBefore = Directory.Exists(defaultAudit);
         var quarantineBefore = Directory.Exists(defaultQuarantine);
@@ -868,6 +870,67 @@ public sealed class WorkerReloadConfigRegressionTests
         {
             using var stopCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             await worker.StopAsync(stopCts.Token);
+            TryDelete(root);
+        }
+    }
+
+    /// <summary>
+    /// 目录创建失败的重载必须保留旧运行时（#124）：创建挪到拆卸之前，失败时旧 watcher/pipeline
+    /// 仍继续处理文件，而不是留下「重载失败 + 监控已停」的死运行期。
+    /// </summary>
+    [Fact]
+    public async Task Failed_Reload_On_Directory_Creation_Should_Keep_The_Old_Runtime()
+    {
+        // 防：EnsureConfiguredDirectories 放在 RebuildRuntimeAsync 的拆卸之后——脏目录重载失败时
+        // 旧 watcher 已停、pipeline 已拆，监控从此静默停摆（#124）。
+        var root = Path.Combine(Path.GetTempPath(), "pp-124-reload-fail-" + Guid.NewGuid().ToString("N"));
+        var hot = Path.Combine(root, "hot");
+        var audit = Path.Combine(root, "audit");
+        var blocker = Path.Combine(root, "blocker");
+        var badAudit = Path.Combine(blocker, "audit");
+        var configPath = Path.Combine(root, "config.json");
+        Directory.CreateDirectory(root);
+        await File.WriteAllTextAsync(configPath, BuildConfigJson(hot, audit));
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["config"] = configPath })
+            .Build();
+        var worker = new MetadataCleanerWorker(
+            configuration,
+            NullLogger<MetadataCleanerWorker>.Instance,
+            new NullApplicationLifetime(),
+            new RuntimeControl());
+
+        await worker.StartAsync(CancellationToken.None);
+        try
+        {
+            var processedPath = Path.Combine(audit, "processed.ndjson");
+            Assert.True(
+                await WaitForFileAsync(processedPath, TimeSpan.FromSeconds(30)),
+                "启动期未创建处理记录表：用例前提不成立");
+
+            await File.WriteAllTextAsync(Path.Combine(hot, "before-failed-reload.jpg"), "before");
+            Assert.True(
+                await WaitForProcessedRecordsAsync(processedPath, expectedAtLeast: 1, TimeSpan.FromSeconds(30)),
+                "启动态未处理文件：用例前提不成立");
+
+            // 新配置 hot 非空、audit 父路径是普通文件 → 建目录必抛。
+            await File.WriteAllTextAsync(blocker, "not a directory");
+            await File.WriteAllTextAsync(configPath, BuildConfigJson(hot, badAudit));
+            var failure = await Assert.ThrowsAnyAsync<Exception>(() => worker.ReloadConfigAsync());
+            Assert.True(
+                failure is IOException or UnauthorizedAccessException,
+                $"重载失败必须来自目录创建，实际：{failure.GetType().Name}: {failure.Message}");
+
+            // 旧运行时仍在：写进旧 hot 的文件继续被处理（旧实现在拆卸后才建目录，这里必红）。
+            await File.WriteAllTextAsync(Path.Combine(hot, "after-failed-reload.jpg"), "after");
+            Assert.True(
+                await WaitForProcessedRecordForAsync(processedPath, "after-failed-reload.jpg", TimeSpan.FromSeconds(30)),
+                "重载因建目录失败后旧 watcher/pipeline 被拆掉，监控静默停摆（#124）");
+        }
+        finally
+        {
+            await worker.StopAsync(CancellationToken.None);
             TryDelete(root);
         }
     }

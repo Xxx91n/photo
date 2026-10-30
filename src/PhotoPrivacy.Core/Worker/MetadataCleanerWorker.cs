@@ -540,7 +540,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
     }
 
     /// <summary>
-    /// 只在运行时真正启用监控时创建配置里的目录（#124）：待机态不写盘。
+    /// 只在运行时真正启用监控时创建配置里的目录（#124）：待机态不创建这些目录。
     /// </summary>
     private static void EnsureConfiguredDirectories(AppConfig config)
     {
@@ -695,6 +695,13 @@ public sealed class MetadataCleanerWorker : BackgroundService
             && SamePath(_activeWatchFolder, config.Watch.HotFolder)
             && _currentConfig?.Watch.DebounceMs == config.Watch.DebounceMs;
 
+        // 先在拆卸旧运行期之前建目录（#124）：创建失败时旧 watcher/audit/pipeline 保持原样，
+        // 与旧 LoadEffectiveConfig 在 ApplyConfig 之前抛错的失败时机一致；待机重载跳过创建。
+        if (!string.IsNullOrWhiteSpace(config.Watch.HotFolder))
+        {
+            EnsureConfiguredDirectories(config);
+        }
+
         // 收口目录先切到新配置：此后旧 watcher 与轮询兜底的在途回调都按新目录过滤，不会漏进新队列。
         _activeWatchFolder = config.Watch.HotFolder;
 
@@ -745,9 +752,6 @@ public sealed class MetadataCleanerWorker : BackgroundService
            _currentConfig = config;
            return;
        }
-
-       // 待机分支已返回：启用监控才创建目录（#124）。
-       EnsureConfiguredDirectories(config);
 
        _cleanupTimer = new Timer(_ => PerformPeriodicCleanup(config), null, TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(10));
         if (!debounceWindowUnchanged)
