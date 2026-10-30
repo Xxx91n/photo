@@ -299,6 +299,64 @@ public sealed class WorkerReloadConfigRegressionTests
         }
     }
 
+    [Fact]
+    public async Task Reload_That_Widens_The_Scope_Should_Backfill_Existing_Nested_Files()
+    {
+        // 防的具体回潮形态：只改 include_subdirectories（false→true）被判成「范围没变」，既不整目录补扫、
+        // 又被 mtime 兜底跳过——新放开的子目录里既有文件永远不会被处理（#100 审查）。
+        var root = Path.Combine(Path.GetTempPath(), "pp-100-scope-flip-" + Guid.NewGuid().ToString("N"));
+        var hot = Path.Combine(root, "hot");
+        var nested = Path.Combine(hot, "nested");
+        var audit = Path.Combine(hot, "_audit");
+        var configPath = Path.Combine(root, "config.json");
+        Directory.CreateDirectory(hot);
+        // 关掉轮询兜底：它的快照恒递归所有子目录（独立票 #109），会把本用例「子目录未被处理」的前提打破。
+        await File.WriteAllTextAsync(
+            configPath, BuildConfigJson(hot, audit, includeSubdirectories: false, pollingSeconds: 0));
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["config"] = configPath })
+            .Build();
+        var worker = new MetadataCleanerWorker(
+            configuration,
+            NullLogger<MetadataCleanerWorker>.Instance,
+            new NullApplicationLifetime(),
+            new RuntimeControl());
+
+        await worker.StartAsync(CancellationToken.None);
+        try
+        {
+            var processedPath = Path.Combine(audit, "processed.ndjson");
+            Assert.True(
+                await WaitForFileAsync(processedPath, TimeSpan.FromSeconds(30)),
+                "启动期未创建处理记录表：用例前提不成立");
+
+            Directory.CreateDirectory(nested);
+            var nestedFile = Path.Combine(nested, "pre-existing.jpg");
+            await File.WriteAllTextAsync(nestedFile, "pre-existing");
+            // mtime 拨到 5 分钟前：排掉「拆卸窗口 mtime 兜底」这条路径，只剩「范围变更补扫」能捞到它。
+            File.SetLastWriteTimeUtc(nestedFile, DateTime.UtcNow.AddMinutes(-5));
+            await Task.Delay(500);
+            Assert.False(
+                await WaitForProcessedRecordForAsync(processedPath, "pre-existing.jpg", TimeSpan.FromSeconds(2)),
+                "include_subdirectories=false 时子目录文件仍被处理：用例前提不成立");
+
+            // 只放开深度键，监控目录本身不变。
+            await File.WriteAllTextAsync(
+                configPath, BuildConfigJson(hot, audit, includeSubdirectories: true, pollingSeconds: 0));
+            await worker.ReloadConfigAsync();
+
+            Assert.True(
+                await WaitForProcessedRecordForAsync(processedPath, "pre-existing.jpg", TimeSpan.FromSeconds(30)),
+                "放开 include_subdirectories 后未补扫新放开的子目录，既有文件永远不会被处理（#100）");
+        }
+        finally
+        {
+            await worker.StopAsync(CancellationToken.None);
+            TryDelete(root);
+        }
+    }
+
     [Theory]
     [InlineData(RuntimeMode.Service, "service")]
     [InlineData(RuntimeMode.Background, "background")]
@@ -539,7 +597,11 @@ public sealed class WorkerReloadConfigRegressionTests
     }
 
     private static string BuildConfigJson(
-        string hotFolder, string auditDirectory, bool includeSubdirectories = true, int debounceMs = 100)
+        string hotFolder,
+        string auditDirectory,
+        bool includeSubdirectories = true,
+        int debounceMs = 100,
+        int pollingSeconds = 1)
     {
         // 全量键位对齐 config.sample.json；dry_run=true 让 validator 走早退分支
         // （不需要真实 exiftool.exe 与 exiftool_files 目录）。
@@ -564,7 +626,7 @@ public sealed class WorkerReloadConfigRegressionTests
                 internal_buffer_size = 65536,
                 auto_excluded_directories = Array.Empty<string>(),
                 // 1 s 轮询兜底：CI 上 FSW 事件可能丢失，轮询让「文件被处理」这条断言可重复。
-                polling_interval_seconds = 1
+                polling_interval_seconds = pollingSeconds
             },
             rules = new
             {

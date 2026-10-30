@@ -668,9 +668,15 @@ public sealed class MetadataCleanerWorker : BackgroundService
 
     private async Task RebuildRuntimeAsync(AppConfig config, CancellationToken token)
     {
-        // 首扫判定看「上一个完整建成的目录」：重建中途抛异常时收口目录已切到新目录，只看收口目录
-        // 会让下一次重载同目录跳过首扫，那目录里的既有文件就永远漏扫。
-        var watchFolderChanged = !SamePath(_appliedWatchFolder, config.Watch.HotFolder);
+        // 拆卸窗口的起点：旧 watcher 一停，这期间新建的文件既不会有 FSW 事件，又会落进新轮询兜底的
+        // 初始快照，只能靠补扫捞回来（见下方 handoff 兜底）。
+        var handoffStartUtc = DateTime.UtcNow;
+
+        // 首扫判定看「上一个完整建成的范围」：重建中途抛异常时收口目录已切到新目录，只看收口目录
+        // 会让下一次重载同目录跳过首扫，那目录里的既有文件就永远漏扫。深度键也算范围——
+        // false→true 时必须补扫新放开的子目录，否则那些既有文件永远不会被处理。
+        var scopeChanged = !SamePath(_appliedWatchFolder, config.Watch.HotFolder)
+            || _currentConfig?.Watch.IncludeSubdirectories != config.Watch.IncludeSubdirectories;
 
         // 去抖队列的复用看「当前收口目录」：换了目录必须丢弃旧目录压在窗口内的在途路径，否则它们会被
         // 新 pipeline 照常清除元数据。窗口未变才复用——#85 只护住「已弹队」那一段，拆卸时若把队列连同
@@ -779,18 +785,25 @@ public sealed class MetadataCleanerWorker : BackgroundService
         // Design(#100): 重载首扫之前必须先起 watcher。
         _watcher.Start();
 
-        // 其余重载不重扫整目录：审计目录一改，新的去重记录表是空的，重扫即把既有文件重处理一遍，
+        // 其余重载不整目录补扫：审计目录一改，新的去重记录表是空的，把既有文件全排一遍就会重处理，
         // fixed_directory 产物可被覆盖。
-        // Design(#100): 重载首扫只在「监控目录被启用」或队列被重建（在途去抖项已随旧队列丢弃）时跑。
-        if ((watchFolderChanged || !debounceWindowUnchanged) && Directory.Exists(config.Watch.HotFolder))
+        // Design(#100): 重载首扫只在「监控范围被启用」或队列被重建（在途去抖项已随旧队列丢弃）时全量补扫。
+        if (Directory.Exists(config.Watch.HotFolder))
         {
             // 扫描深度取自 include_subdirectories：FSW 按这个键建监听，越界扫到的子目录文件规则引擎并不过滤。
             var searchOption = config.Watch.IncludeSubdirectories
                 ? SearchOption.AllDirectories
                 : SearchOption.TopDirectoryOnly;
-            foreach (var file in Directory.EnumerateFiles(config.Watch.HotFolder, "*", searchOption))
+            var fullSweep = scopeChanged || !debounceWindowUnchanged;
+            // 非全量补扫时只捞拆卸窗口内新建的文件：它们没有 FSW 事件，又会被新轮询的初始快照当成既有文件。
+            // 时间戳粒度有差异（FAT 到 2 s），往前留余量；多捞到的已处理文件由去重表兜住。
+            var handoffFloorUtc = handoffStartUtc.AddSeconds(-2);
+            foreach (var path in Directory.EnumerateFiles(config.Watch.HotFolder, "*", searchOption))
             {
-                EnqueueIfNeeded(file);
+                if (fullSweep || File.GetLastWriteTimeUtc(path) >= handoffFloorUtc)
+                {
+                    EnqueueIfNeeded(path);
+                }
             }
         }
 
