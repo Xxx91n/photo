@@ -215,6 +215,14 @@ public sealed class WorkerReloadConfigRegressionTests
         await worker.StartAsync(CancellationToken.None);
         try
         {
+            var processedPath = Path.Combine(audit, "processed.ndjson");
+            // 先等运行时就位再投放：processed.ndjson 由启动期建 store 生成，再静置 500 ms 确保写入落在
+            // 启动首扫与 _watcher.Start() 之后——否则可能靠启动扫描入队，把被测的在途窗口掩盖掉。
+            Assert.True(
+                await WaitForFileAsync(processedPath, TimeSpan.FromSeconds(30)),
+                "启动期未创建处理记录表：用例前提不成立");
+            await Task.Delay(500);
+
             await File.WriteAllTextAsync(Path.Combine(hot, "in-flight.jpg"), "in-flight");
             await Task.Delay(300);
 
@@ -222,7 +230,6 @@ public sealed class WorkerReloadConfigRegressionTests
             await worker.ReloadConfigAsync();
             Assert.Equal(hot, worker.CurrentWatchDirectory);
 
-            var processedPath = Path.Combine(audit, "processed.ndjson");
             Assert.True(
                 await WaitForProcessedRecordForAsync(processedPath, "in-flight.jpg", TimeSpan.FromSeconds(30)),
                 "去抖窗口内的在途文件被重载拆卸丢弃，此后永不再报（#100）");
