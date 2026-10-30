@@ -678,21 +678,16 @@ public sealed class MetadataCleanerWorker : BackgroundService
     // Design(#82): 重载重建失败必须回滚到上一份生效配置（#112），不得停在「活着但不再监控」形态。
     private async Task RebuildRuntimeAsync(AppConfig config, CancellationToken token)
     {
-        // 拆卸窗口的起点：旧 watcher 一停，这期间新建的文件既不会有 FSW 事件，又会落进新轮询兜底的
-        // 初始快照，只能靠补扫捞回来。回滚复用同一个起点——失败尝试本身可能耗数秒（桥停机最长 4 s），
-        // 若回滚另取「回滚开始 - 2 s」作下限，失败窗口内落地的文件会落在下限之外，从此漏处理。
-        var handoffStartUtc = DateTime.UtcNow;
-
         var previousConfig = _currentConfig;
         if (previousConfig is null)
         {
-            await BuildRuntimeAsync(config, handoffStartUtc, rebuildDebounceState: false, token);
+            await BuildRuntimeAsync(config, rebuildDebounceState: false, token);
             return;
         }
 
         try
         {
-            await BuildRuntimeAsync(config, handoffStartUtc, rebuildDebounceState: false, token);
+            await BuildRuntimeAsync(config, rebuildDebounceState: false, token);
         }
         catch (Exception ex)
         {
@@ -701,7 +696,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
             // 旧窗口里的在途路径。重建队列同时触发全量补扫，由旧的去重表挡住已处理文件。
             try
             {
-                await BuildRuntimeAsync(previousConfig, handoffStartUtc, rebuildDebounceState: true, token);
+                await BuildRuntimeAsync(previousConfig, rebuildDebounceState: true, token);
             }
             catch (Exception rollbackEx)
             {
@@ -711,7 +706,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
                     ex.Message,
                     rollbackEx.Message));
                 throw new AggregateException(
-                    "重载失败，且用上一份生效配置回滚失败；worker 已无可用运行时，需再次重载或重启"
+                    "重载失败，且用上一份生效配置回滚未完成；worker 可能已无可用运行时，需再次重载或重启确认"
                     + $"（原错误：{ex.Message}；回滚错误：{rollbackEx.Message}）",
                     ex,
                     rollbackEx);
@@ -724,10 +719,13 @@ public sealed class MetadataCleanerWorker : BackgroundService
 
     private async Task BuildRuntimeAsync(
         AppConfig config,
-        DateTime handoffStartUtc,
         bool rebuildDebounceState,
         CancellationToken token)
     {
+        // 拆卸窗口的起点：旧 watcher 一停，这期间新建的文件既不会有 FSW 事件，又会落进新轮询兜底的
+        // 初始快照，只能靠补扫捞回来。
+        var handoffStartUtc = DateTime.UtcNow;
+
         // 首扫判定看「上一个完整建成的范围」：重建中途抛异常时收口目录已切到新目录，只看收口目录
         // 会让下一次重载同目录跳过首扫，那目录里的既有文件就永远漏扫。深度键也算范围——
         // false→true 时必须补扫新放开的子目录，否则那些既有文件永远不会被处理。
@@ -845,7 +843,8 @@ public sealed class MetadataCleanerWorker : BackgroundService
         _watcher.Start();
 
         // 其余重载不整目录补扫：审计目录一改，新的去重记录表是空的，把既有文件全排一遍就会重处理，
-        // fixed_directory 产物可被覆盖。
+        // fixed_directory 产物可被覆盖。例外是回滚（rebuildDebounceState）：失败尝试可能已耗数秒，
+        // 只捞 mtime 余量会漏掉窗口内落地的文件，故回滚一律全量补扫——用旧的去重表挡住已处理文件。
         // Design(#100): 重载首扫只在「监控范围被启用」或队列被重建（在途去抖项已随旧队列丢弃）时全量补扫。
         if (Directory.Exists(config.Watch.HotFolder))
         {

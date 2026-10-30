@@ -611,6 +611,9 @@ public sealed class WorkerReloadConfigRegressionTests
             File.SetLastWriteTimeUtc(inFlight, DateTime.UtcNow.AddSeconds(-10));
             // 1.2 s 足够事件进入旧队列，又远小于 8 s 窗口——重载发生时它仍未处理。
             await Task.Delay(1200);
+            Assert.False(
+                HasProcessedRecordFor(fixture.ProcessedPath, "in-flight-before-failed-reload.jpg"),
+                "在途文件在重载前已被处理：用例前提不成立");
 
             var brokenAudit = Path.Combine(fixture.Root, "audit-broken");
             Directory.CreateDirectory(Path.Combine(brokenAudit, "processed.ndjson"));
