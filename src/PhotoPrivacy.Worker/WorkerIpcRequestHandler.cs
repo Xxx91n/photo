@@ -43,7 +43,8 @@ public sealed class WorkerIpcRequestHandler
     /// Handle IPC request. Returns (response, shouldShutdown).
     /// Shutdown is only allowed in CLI mode. Service/Background rejects it.
     /// ReloadConfig 先校验再应用：校验失败不触碰运行期组件（旧配置保留）；应用阶段失败如实回
-    /// <c>ok:false</c> 并带原因（此时重建可能已拆解旧组件，需下一次成功重载或重启恢复）。
+    /// <c>ok:false</c> 并带原因，worker 侧已回滚到上一份生效配置（#112）；只有回滚本身也失败时
+    /// 才需下一次成功重载或重启恢复。
     /// Response includes protocol version V field.
     /// </summary>
     public async Task<(WorkerIpcResponse response, bool shouldShutdown)> HandleAsync(

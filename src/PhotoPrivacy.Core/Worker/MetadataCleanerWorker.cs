@@ -666,7 +666,53 @@ public sealed class MetadataCleanerWorker : BackgroundService
         }
     }
 
+    /// <summary>
+    /// 重建运行期组件；重建失败时用上一份已生效配置把旧运行时建回来（#112）。
+    ///
+    /// 拆卸（停 watcher、释放 store/audit）发生在重建之前，因此进入拆卸之后的任何抛错都会让
+    /// worker 停在「进程活着但不再监控原目录」的形态。失败必须回滚：旧配置当时能建成，重建它
+    /// 通常也能成功；回滚成功再把原异常上抛为 <c>reload_failed</c>（IPC 契约不变）。
+    /// 不能改成「先建新运行时再切换」：新旧 store/audit 对同一 processed.ndjson 与审计文件各持
+    /// 写句柄，旧实例未释放时新建必然自我冲突（#85 根因），事务化需要改存储共享模型，不在本票。
+    /// </summary>
     private async Task RebuildRuntimeAsync(AppConfig config, CancellationToken token)
+    {
+        var previousConfig = _currentConfig;
+        if (previousConfig is null)
+        {
+            await BuildRuntimeAsync(config, token);
+            return;
+        }
+
+        try
+        {
+            await BuildRuntimeAsync(config, token);
+        }
+        catch (Exception ex)
+        {
+            // Design(#112): 重载重建失败必须用上一份已生效配置回滚，不得停在「活着但不再监控」形态。
+            try
+            {
+                await BuildRuntimeAsync(previousConfig, token);
+            }
+            catch (Exception rollbackEx)
+            {
+                SafeLog.Try(() => _logger.LogError(
+                    rollbackEx,
+                    "配置重载失败且回滚到上一份生效配置也失败：{Message}",
+                    ex.Message));
+                throw new AggregateException(
+                    "重载失败，且用上一份生效配置回滚失败；worker 已无可用运行时，需再次重载或重启",
+                    ex,
+                    rollbackEx);
+            }
+
+            SafeLog.Try(() => _logger.LogWarning(ex, "配置重载失败，已回滚到上一份生效配置"));
+            throw new InvalidOperationException($"{ex.Message}（已回滚到上一份生效配置）", ex);
+        }
+    }
+
+    private async Task BuildRuntimeAsync(AppConfig config, CancellationToken token)
     {
         // 拆卸窗口的起点：旧 watcher 一停，这期间新建的文件既不会有 FSW 事件，又会落进新轮询兜底的
         // 初始快照，只能靠补扫捞回来（见下方 handoff 兜底）。

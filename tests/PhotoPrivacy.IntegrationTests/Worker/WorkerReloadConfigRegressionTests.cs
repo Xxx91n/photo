@@ -31,6 +31,9 @@ namespace PhotoPrivacy.IntegrationTests.Worker;
 ///   service/background，逐形态断言，防止后台形态被服务形态的断言顺带掩盖；
 /// - 端点级（Fact）：后台形态的 ReloadConfig 走真实传输绑定 + accept 循环 + 帧协议往返，
 ///   不再只是直连 handler——WorkerIpcServerHostedService 的形态端点绑定路径同样被覆盖。
+///
+/// 另含 #112 的两条失败路径：不可用监控目录（拆卸前拒绝）与拆卸后重建失败（回滚到上一份生效配置），
+/// 两者都必须回 <c>ok:false</c> 且旧目录继续处理新文件。
 /// </summary>
 public sealed class WorkerReloadConfigRegressionTests
 {
@@ -504,6 +507,85 @@ public sealed class WorkerReloadConfigRegressionTests
                 await transport.DisposeAsync();
             }
 
+            await StopAndDeleteAsync(fixture);
+        }
+    }
+
+    [Fact]
+    public async Task Reload_With_Unusable_Watch_Folder_Should_Keep_The_Old_Folder_Monitored()
+    {
+        // 防的具体回潮形态：重载到「指向已存在文件的目录」时抛错，旧 watcher 已停、新运行时未建，
+        // worker 活着却不再监控原目录——此后新文件永远不被处理（#112 票面场景）。
+        // 该错误目前在拆卸之前就被校验拒绝；本用例同时锁「拒绝后旧运行时原样保留」与「IPC 不静默回 ok」。
+        // 关联 issue #112。
+        var fixture = await StartProcessingWorkerAsync();
+
+        try
+        {
+            // 目标监控目录是个文件：Directory.CreateDirectory 必抛。
+            var blocker = Path.Combine(fixture.Root, "blocker-file");
+            await File.WriteAllTextAsync(blocker, "not-a-directory");
+            await File.WriteAllTextAsync(
+                Path.Combine(fixture.Root, "config.json"),
+                BuildConfigJson(blocker, fixture.AuditDirectory));
+
+            var handler = CreateHandler(fixture, RuntimeMode.Background);
+            var (response, shouldShutdown) = await handler
+                .HandleAsync(new WorkerIpcRequest(WorkerIpcMethods.ReloadConfig, "reload-bad-folder"), CancellationToken.None)
+                .WaitAsync(TimeSpan.FromSeconds(30));
+
+            Assert.False(response.Ok, "重载到不可用目录必须回 ok:false，不得静默回 ok（#112）");
+            Assert.False(shouldShutdown);
+            Assert.Contains("配置验证失败", response.Message ?? string.Empty, StringComparison.Ordinal);
+            Assert.Equal(fixture.Hot, fixture.Worker.CurrentWatchDirectory);
+
+            // 旧目录仍被监控：新文件必须继续被处理，否则「回 ok:false」只是假象。
+            await AssertReloadKeepsProcessingAsync(fixture, "after-bad-folder-reload.jpg");
+        }
+        finally
+        {
+            await StopAndDeleteAsync(fixture);
+        }
+    }
+
+    [Fact]
+    public async Task Reload_That_Fails_After_Teardown_Should_Roll_Back_And_Keep_The_Old_Folder_Monitored()
+    {
+        // 防的具体回潮形态：拆卸（停 watcher、释放 store/audit）之后重建抛错，异常一路抛到 IPC，
+        // 旧运行时没有建回来——worker 活着但不再监控原目录，要等下一次成功重载或重启才恢复（#112）。
+        // 用「审计目录里放一个名为 processed.ndjson 的目录」确定性触发拆卸后失败：校验与建目录都通过，
+        // FileProcessedRecordStore 打开 processed.ndjson 时才抛，正好落在拆卸之后。
+        // 关联 issue #112。
+        var fixture = await StartProcessingWorkerAsync();
+
+        try
+        {
+            var brokenAudit = Path.Combine(fixture.Root, "audit-broken");
+            Directory.CreateDirectory(Path.Combine(brokenAudit, "processed.ndjson"));
+            await File.WriteAllTextAsync(
+                Path.Combine(fixture.Root, "config.json"),
+                BuildConfigJson(fixture.Hot, brokenAudit));
+
+            var handler = CreateHandler(fixture, RuntimeMode.Background);
+            var (response, shouldShutdown) = await handler
+                .HandleAsync(new WorkerIpcRequest(WorkerIpcMethods.ReloadConfig, "reload-teardown-fail"), CancellationToken.None)
+                .WaitAsync(TimeSpan.FromSeconds(30));
+
+            Assert.False(response.Ok, "拆卸后重建失败必须回 ok:false，不得静默回 ok（#112）");
+            Assert.False(shouldShutdown);
+            Assert.StartsWith("reload_failed:", response.Message ?? string.Empty, StringComparison.Ordinal);
+            Assert.Contains("已回滚", response.Message ?? string.Empty, StringComparison.Ordinal);
+            Assert.Equal(fixture.Hot, fixture.Worker.CurrentWatchDirectory);
+
+            // 回滚判据：旧目录继续处理新文件。未回滚时 watcher 已停、pipeline 已拆，文件不会被处理。
+            await File.WriteAllTextAsync(Path.Combine(fixture.Hot, "after-failed-reload.jpg"), "after-failed-reload");
+            Assert.True(
+                await WaitForProcessedRecordForAsync(
+                    fixture.ProcessedPath, "after-failed-reload.jpg", TimeSpan.FromSeconds(30)),
+                "重载失败后旧目录不再处理新文件：worker 停在「活着但不再监控」形态（#112）");
+        }
+        finally
+        {
             await StopAndDeleteAsync(fixture);
         }
     }
