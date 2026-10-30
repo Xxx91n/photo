@@ -10,9 +10,10 @@ use crate::service_page::{ServiceCommand, ServiceFeedback, ServiceSnapshot};
 use crate::theme::{self, Theme, ThemeMode};
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, App, Context, CursorStyle, Div, FocusHandle, FontWeight, IntoElement, KeyBinding,
-    KeyDownEvent, MouseButton, PathPromptOptions, Render, Rgba, Stateful, StyleRefinement, Styled,
-    Subscription, UniformListScrollHandle, Window, actions, div, px, uniform_list,
+    AnyElement, App, BoxShadow, Context, CursorStyle, Div, FocusHandle, FontWeight, IntoElement,
+    KeyBinding, KeyDownEvent, MouseButton, PathPromptOptions, Render, Rgba, Stateful,
+    StyleRefinement, Styled, Subscription, UniformListScrollHandle, Window, actions, div, px,
+    uniform_list,
 };
 use photoprivacy_ipc::{ConnectionSnapshot, ConnectionState, ServiceReachability, WorkerMode};
 use photoprivacy_logs::{AuditRecord, EventTone, LevelFilter, LogBuffer};
@@ -43,11 +44,16 @@ pub(crate) fn bind_focus_keys(cx: &mut App) {
     ]);
 }
 
-/// 焦点轮廓的描边样式：2px 高亮框。默认传 `theme.accent`；
+/// 焦点轮廓的描边样式：元素外扩 2px 实边光环。用阴影而不是 border——border 宽度变化会撑动
+/// 布局，Tab 遍历时内容抖动；阴影只画在元素外侧、不参与布局。默认传 `theme.accent`；
 /// 实心强调色底控件（主按钮、选中 chip、保存按钮）传 `theme.on_accent`，
 /// 避免强调色描边淹没在同色底里看不清。
 pub(crate) fn focus_ring(ring: Rgba) -> impl FnOnce(StyleRefinement) -> StyleRefinement {
-    move |style| style.border_2().border_color(ring)
+    move |style| {
+        style.shadow(vec![
+            BoxShadow::new(px(0.), px(0.), ring.into()).spread_radius(px(2.)),
+        ])
+    }
 }
 
 /// 日志页跨窗口重建保留的状态：托盘驻守时窗口会销毁/重建，日志缓冲不能随视图一起丢。
@@ -2794,6 +2800,43 @@ mod tests {
             .update(&mut cx, |view, _, _| view.theme_mode.get())
             .unwrap();
         assert_eq!(mode, ThemeMode::Light, "Space 应切换选中的主题平铺选项");
+    }
+
+    /// 聚焦在开关型平铺选项行上，Space 与 Enter 都能触发切换（AC3 的两键矩阵补全）。
+    #[test]
+    fn enter_and_space_toggle_switch_row() {
+        let (mut cx, window) = setup();
+        let any_window: AnyWindowHandle = window.into();
+        // 进配置页（第二个导航项）
+        press_tab(&mut cx, any_window, true);
+        press_tab(&mut cx, any_window, true);
+        press_activation_key(&mut cx, any_window, "enter");
+        draw(&mut cx, any_window);
+        assert_eq!(
+            window.update(&mut cx, |view, _, _| view.page).unwrap(),
+            Page::Config,
+            "应先进入配置页"
+        );
+        let before = window
+            .update(&mut cx, |view, _, _| view.config.backup.enabled)
+            .unwrap();
+        // 配置页 tab stop：5 导航 + 3 主题选项 + 4 个路径控件（字段/浏览 ×2），
+        // 第 13 个是「启用备份」开关行；当前焦点在第 2 个（配置导航），再走 11 跳。
+        for _ in 0..11 {
+            press_tab(&mut cx, any_window, true);
+        }
+        press_activation_key(&mut cx, any_window, "space");
+        draw(&mut cx, any_window);
+        let after_space = window
+            .update(&mut cx, |view, _, _| view.config.backup.enabled)
+            .unwrap();
+        assert_ne!(before, after_space, "Space 应切换聚焦的开关行");
+        press_activation_key(&mut cx, any_window, "enter");
+        draw(&mut cx, any_window);
+        let after_enter = window
+            .update(&mut cx, |view, _, _| view.config.backup.enabled)
+            .unwrap();
+        assert_eq!(after_enter, before, "Enter 应把开关行切回原状态");
     }
 
     /// 聚焦在按钮上按 Enter 触发点击：日志页清空按钮（AC3）。

@@ -23,8 +23,8 @@ serde.workspace = true
 [dev-dependencies]
 # 配置服务的防抖/轮询测试用 tokio 的暂停时钟，避免 real sleep 造成慢测与抖动。
 tokio = { workspace = true, features = ["test-util"] }
-# Design(#101): FocusHandle/Tab 导航单测需要 gpui 测试台（TestAppContext）；test-support 只在
-# test 构建启用，发布二进制不带测试代码。版本仍走 workspace 的 =0.3.10 锁定（Design(#49)）。
+# Design(#101): gpui 的 test-support 只允许出现在 dev-dependencies——测试台只进 test 构建，
+# 发布二进制不得携带；版本仍随 workspace 锁 =0.3.10（Design(#49)）。
 gpui = { workspace = true, features = ["test-support"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
