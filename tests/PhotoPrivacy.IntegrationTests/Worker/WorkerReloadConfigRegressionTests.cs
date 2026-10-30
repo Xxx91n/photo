@@ -500,9 +500,14 @@ public sealed class WorkerReloadConfigRegressionTests
     /// 由同文件的 <see cref="EmptyWatchFolder_Should_Stay_Resident_Until_Reload_Starts_Monitoring"/>
     /// 以正向证据承担，本用例不重复认领。
     ///
-    /// 覆盖边界（勿当作 #100 崩溃路径的替身）：夹具沿用本类既有的 <c>dry_run = true</c>，
-    /// 而 <c>AppConfigValidator.Validate</c> 在 dry-run 分支整体早退，所以 exiftool 路径存在性、
-    /// quarantine/audit 目录这些**只有非 dry-run 才会走**的校验不在本用例射程内——那正是 #108 的台面
+    /// 前提屏障：首拍前先等 worker 走完配置加载（<c>LoadEffectiveConfig</c> 建的审计目录出现为止）。
+    /// <c>CurrentWatchDirectory</c> 在「配置还没加载」时同样回空串，没有这道屏障，回包的空目录
+    /// 可能只是「什么都还没发生」。
+    ///
+    /// 覆盖边界（勿当作 #100 崩溃路径的替身）：<c>AppConfigValidator.Validate</c> 有两道早退——
+    /// <c>dry_run</c> 一条、空 <c>hot_folder</c> 一条（后者正是 #100 的改动），任一命中就走不到
+    /// exiftool 路径存在性、quarantine/audit 目录这些后续校验；本夹具两条都命中，所以就算把
+    /// <c>dry_run</c> 改成 false 也带不进那些校验。那条「非 dry-run 的待机链路」归 #108 裁定
     /// （裸机发布包不含 ExifTool，空监控目录又让校验整体 fail-open），本票不替它把行为钉进 CI 门禁。
     /// </summary>
     [Fact]
@@ -512,9 +517,10 @@ public sealed class WorkerReloadConfigRegressionTests
         var audit = Path.Combine(root, "audit");
         var configPath = Path.Combine(root, "config.json");
         Directory.CreateDirectory(root);
-        // 监控目录留空（发版包 config/config.json 的出厂形态）。审计目录给真实路径但不预建——
-        // 另注意 LoadEffectiveConfig 在返回配置前就会把已配置的 hot/audit/quarantine 目录建出来，
-        // 所以「目录存在与否」不能用来判待机。
+        // 监控目录留空（发版包 config/config.json 的出厂形态）。审计目录给真实路径但**不**预建：
+        // LoadEffectiveConfig 在返回配置前会把已配置的 hot/audit/quarantine 目录建出来，
+        // 于是「审计目录出现」成了 worker 已走完配置加载的正向屏障（见下面的 Wait）——
+        // 目录存在本身不能判「待机」（配置一加载就成立），判待机靠的是回包与兄弟用例。
         await File.WriteAllTextAsync(configPath, BuildConfigJson(string.Empty, audit));
 
         // 夹具自检：worker 启动路径对配置校验失败会直接 Environment.Exit(1)（杀死整个测试进程），
@@ -542,6 +548,13 @@ public sealed class WorkerReloadConfigRegressionTests
 
         try
         {
+            // 就绪屏障：worker 的 CurrentWatchDirectory 在「配置还没加载」与「已进待机」两种状态下
+            // 都回空串，少了这一步首拍可能靠空串假绿。审计目录由 LoadEffectiveConfig 建出来，
+            // 它出现即证明 worker 已走完配置加载，此后回包的空目录才说明「待机」。
+            Assert.True(
+                await WaitForDirectoryAsync(audit, TimeSpan.FromSeconds(30)),
+                "worker 未走完配置加载（审计目录没被建出来）：用例前提不成立");
+
             transport = IpcTransportFactory.CreateServer(ResolveBackgroundTestEndpoint(root), isServiceMode: false);
             // 与生产宿主同接线：watchDirectory 直接取 worker.CurrentWatchDirectory，
             // 待机态的「空目录 + 已连接」必须由这条真实回包链路呈现给 UI。
@@ -794,12 +807,19 @@ public sealed class WorkerReloadConfigRegressionTests
         return JsonSerializer.Serialize(payload);
     }
 
-    private static async Task<bool> WaitForFileAsync(string path, TimeSpan budget)
+    private static Task<bool> WaitForFileAsync(string path, TimeSpan budget)
+        => WaitForPresenceAsync(() => File.Exists(path), budget);
+
+    /// <summary>待机用例的就绪屏障用：审计目录由 <c>LoadEffectiveConfig</c> 建出来，出现即说明配置已加载。</summary>
+    private static Task<bool> WaitForDirectoryAsync(string path, TimeSpan budget)
+        => WaitForPresenceAsync(() => Directory.Exists(path), budget);
+
+    private static async Task<bool> WaitForPresenceAsync(Func<bool> exists, TimeSpan budget)
     {
         var deadline = DateTime.UtcNow + budget;
         while (DateTime.UtcNow < deadline)
         {
-            if (File.Exists(path))
+            if (exists())
             {
                 return true;
             }
@@ -807,7 +827,7 @@ public sealed class WorkerReloadConfigRegressionTests
             await Task.Delay(50);
         }
 
-        return File.Exists(path);
+        return exists();
     }
 
     /// <summary>
