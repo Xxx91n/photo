@@ -22,6 +22,7 @@ internal sealed class ProtocolLevelFakeExifToolProcess : IExifToolProcess
     private readonly List<string> _writes = [];
     private readonly List<string> _stdoutLines = [];
     private readonly object _stdoutLinesLock = new();
+    private readonly SemaphoreSlim _blockProcessingGate = new(1, 1);
     private int _activeStartCalls;
 
     public event Action<string>? StdoutLine;
@@ -133,6 +134,7 @@ internal sealed class ProtocolLevelFakeExifToolProcess : IExifToolProcess
     /// <summary>
     /// 按 stay_open 语义回放一个写入的命令块：先 <c>-echo1</c> 回显、再按块类型产出版本号/JSON、
     /// 最后 <c>{ready}</c>。进程已停或注入静默时不产出任何 stdout。
+    /// 带延迟的块经单线程处理队列产出：一次只处理一块，一块的回显到 {ready} 之间不插别块的行。
     /// </summary>
     public Task WriteStdinAsync(string text, CancellationToken cancellationToken)
     {
@@ -170,7 +172,7 @@ internal sealed class ProtocolLevelFakeExifToolProcess : IExifToolProcess
             ? FileInputParseDelayMs
             : (isVersionBlock ? VersionResponseDelayMs : (isJsonBlock ? 0 : HealthResponseDelayMs));
 
-        void EmitBlock()
+        void EmitBlockBody()
         {
             // ExifTool 真实语义：-echo1 把其后的文本原样回显到 stdout（先于文件处理输出）。
             foreach (var echo in ExtractEchoTexts(lines))
@@ -188,31 +190,52 @@ internal sealed class ProtocolLevelFakeExifToolProcess : IExifToolProcess
             {
                 EmitStdout(VersionText);
             }
-
-            if (lateReadyMs > 0)
-            {
-                // 写盘块的结束信号迟到：回显与数据已按真实时序先出，{ready} 才是「本块处理完」的那一句。
-                _ = Task.Run(async () =>
-                {
-                    await Task.Delay(lateReadyMs);
-                    EmitStdout("{ready}");
-                });
-                return;
-            }
-
-            EmitStdout("{ready}");
         }
 
-        if (delayMs <= 0)
+        // 既无块内开销也无迟到 {ready} 的块保持「写入即整块产出」，与既有用例的形状一致。
+        if (delayMs <= 0 && lateReadyMs <= 0)
         {
-            EmitBlock();
+            EmitBlockBody();
+            EmitStdout("{ready}");
             return Task.CompletedTask;
         }
 
+        // 有延迟的块走单线程处理队列：真实 stay_open 一次只处理一块，一块的回显→数据→{ready}
+        // 是原子的，中间插不进别块的行。迟到用例依赖的正是这个形状——若各块并发产出，探针块的
+        // {ready} 会插进擦除块的回显与其 {ready} 之间，那是真进程做不到的时序。
         _ = Task.Run(async () =>
         {
-            await Task.Delay(delayMs);
-            EmitBlock();
+            await _blockProcessingGate.WaitAsync();
+            try
+            {
+                if (delayMs > 0)
+                {
+                    await Task.Delay(delayMs);
+                }
+
+                if (!IsRunning)
+                {
+                    return;
+                }
+
+                EmitBlockBody();
+
+                if (lateReadyMs > 0)
+                {
+                    // 写盘块的结束信号迟到：回显与数据已按真实时序先出，{ready} 才是「本块处理完」的那一句。
+                    await Task.Delay(lateReadyMs);
+                    if (!IsRunning)
+                    {
+                        return;
+                    }
+                }
+
+                EmitStdout("{ready}");
+            }
+            finally
+            {
+                _blockProcessingGate.Release();
+            }
         });
 
         return Task.CompletedTask;

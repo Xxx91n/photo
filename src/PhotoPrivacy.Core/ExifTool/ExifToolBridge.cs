@@ -15,6 +15,8 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
     private readonly ILogger<ExifToolBridge> _logger;
     private readonly Func<ExifToolLifecycleEvent, CancellationToken, ValueTask>? _lifecycleSink;
     private readonly ConcurrentDictionary<string, PendingBlock> _pending = new();
+    // 最近一句被认领的 marker 回显。只有 stdout pump 线程读写，无需额外同步；它给 {ready} 提供归属位置。
+    private string? _lastPendingMarkerEchoed;
     private readonly SemaphoreSlim _startLock = new(1, 1);
     private readonly SemaphoreSlim _stdinGate = new(1, 1);
     private readonly TimeSpan _startupTimeout;
@@ -384,7 +386,7 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
 
         var wipeMarker = $"TASK_DONE_{id}";
         var wipeTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        // Design(#39): 擦除块的完成判定取本块的 {ready}（块结束），-echo1 回显只当「进入该块」的锚点、不作完成信号（#97）；判定依赖「块按写入顺序整块处理、回显与 {ready} 一一对应」，这一 stdin 顺序假设仍未实测，风险登记在 #39。
+        // Design(#39): 擦除块的完成判定取本块的 {ready}（块结束），-echo1 回显只当「进入该块」的锚点、不作完成信号；判定依赖「块按写入顺序整块处理、回显与 {ready} 一一对应」，这一 stdin 顺序假设仍未实测，风险登记在 #39。
         _pending[wipeMarker] = new PendingBlock(wipeTcs, PendingCompletion.BlockReady);
 
         FileInfo? beforeInfo = null;
@@ -812,7 +814,7 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
 
         /// <summary>
         /// 回显 marker 到达时刻（<see cref="Environment.TickCount64"/> 毫秒），0 = 本块还没开始处理。
-        /// 由 stdout pump 线程置位，其他线程只读；它既是归属判据也是诊断锚点，不是完成信号。
+        /// 由 stdout pump 线程置位、其他线程只读；它不是完成信号，只作「已开始、但等不到 {ready}」的判据与诊断锚点。
         /// </summary>
         public long MarkerEchoedAt;
     }
@@ -822,26 +824,35 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
         // {ready} 是 ExifTool 的块结束信号：本块的输出与写盘到此才保证完成。
         if (line.StartsWith("{ready", StringComparison.Ordinal))
         {
-            CompleteOneStartedBlock();
+            CompleteBlockJustEchoed();
             return;
         }
 
         foreach (var entry in _pending)
         {
-            // 整行相等才算命中：marker 之间互为前缀（TASK_DONE_1 与 TASK_DONE_12），
-            // 用 Contains 会把别的块的回显记到自己头上，「本块的 {ready}」就名不副实。
-            if (!string.Equals(line.Trim(), entry.Key, StringComparison.Ordinal))
-            {
-                continue;
-            }
-
             if (entry.Value.Completion == PendingCompletion.BlockReady)
             {
-                // 回显只说明「本块已开始处理」，完成判定留给本块的 {ready}（#97）。
+                // 整行相等才算命中：擦除 id 之间互为前缀（TASK_DONE_1 与 TASK_DONE_12），
+                // 用 Contains 会把别的块的回显记到自己头上，「本块的 {ready}」就名不副实。
+                if (!string.Equals(line.Trim(), entry.Key, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                // 回显只说明「本块已开始处理」，完成判定留给紧跟其后的那句 {ready}（#97）。
                 Interlocked.CompareExchange(ref entry.Value.MarkerEchoedAt, Environment.TickCount64, 0);
+                _lastPendingMarkerEchoed = entry.Key;
                 continue;
             }
 
+            // 存活探针的 marker 是 HEALTH_{Guid}，不存在互为前缀，按原有 Contains 口径匹配：
+            // 这条路径的失败模式是「探不到健康 → 重启」，不承担写盘完成判定，不值得收紧。
+            if (!line.Contains(entry.Key, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            _lastPendingMarkerEchoed = entry.Key;
             if (_pending.TryRemove(entry.Key, out var pending))
             {
                 pending.Tcs.TrySetResult(true);
@@ -850,38 +861,24 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
     }
 
     /// <summary>
-    /// 一次 <c>{ready}</c> 只结清一个已开始处理的擦除块，取最早回显的那块。
+    /// <c>{ready}</c> 只结清「紧挨在它前面那句回显」所属的擦除块。
     ///
-    /// <c>{ready}</c> 行本身不带块身份，归属只能按位置来：真实 stay_open 单线程按块处理，一块的回显
-    /// 紧挨着它自己的 <c>{ready}</c>，中间插不进别块的行，因此同一时刻最多只有一块「已回显、未结束」。
-    /// 这个「块按顺序整块处理」正是 #39 登记为未实测的假设。
-    ///
-    /// 故意不把所有已回显的一次结清：假设破了的时候，多出来的等待继续等下一句 <c>{ready}</c> 或被进程
-    /// 退出判失败，而不是被一次广播全顶成已清理——宁可慢，不可假成功（#97）。
+    /// <c>{ready}</c> 行本身不带块身份，能依据的只有位置：真实 stay_open 单线程按块处理，一块的回显与
+    /// 它自己的 <c>{ready}</c> 中间插不进别块的行。插得进就说明这句 <c>{ready}</c> 属于别的块（#39 登记的
+    /// stdin 顺序假设破了），此时让擦除等待继续等自己那块、或由进程退出判失败，也不能把它结清成已清理。
     /// </summary>
-    private void CompleteOneStartedBlock()
+    private void CompleteBlockJustEchoed()
     {
-        string? oldestMarker = null;
-        var oldestEchoedAt = long.MaxValue;
-
-        foreach (var entry in _pending)
+        var marker = _lastPendingMarkerEchoed;
+        if (marker is null
+            || !_pending.TryGetValue(marker, out var block)
+            || block.Completion != PendingCompletion.BlockReady
+            || Volatile.Read(ref block.MarkerEchoedAt) == 0)
         {
-            if (entry.Value.Completion != PendingCompletion.BlockReady)
-            {
-                continue;
-            }
-
-            var echoedAt = Volatile.Read(ref entry.Value.MarkerEchoedAt);
-            if (echoedAt == 0 || echoedAt >= oldestEchoedAt)
-            {
-                continue;
-            }
-
-            oldestMarker = entry.Key;
-            oldestEchoedAt = echoedAt;
+            return;
         }
 
-        if (oldestMarker is not null && _pending.TryRemove(oldestMarker, out var finished))
+        if (_pending.TryRemove(marker, out var finished))
         {
             finished.Tcs.TrySetResult(true);
         }

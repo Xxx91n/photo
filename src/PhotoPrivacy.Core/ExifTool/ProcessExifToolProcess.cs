@@ -70,18 +70,19 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
             startInfo.ArgumentList.Add(arg);
         }
 
-        _exitSignaled = 0;
+        Volatile.Write(ref _exitSignaled, 0);
         _process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
         _process.Start();
         _jobObject.Assign(_process);
+        var generation = _process;
 
         // Subscribe to Exited event for zombie reap on Unix
         // Process.EnableRaisingEvents is already true above; this ensures we reap the child.
-        _process.Exited += (_, _) =>
+        generation.Exited += (_, _) =>
         {
-            try { _ = _process?.WaitForExit(0); } catch { /* already exited */ }
+            try { _ = generation.WaitForExit(0); } catch { /* already exited */ }
 
-            SignalExited();
+            SignalExited(generation);
         };
 
         _stdin = _process.StandardInput;
@@ -102,7 +103,7 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
                     if (line is null)
                     {
                         // stdout EOF：子进程的写端已关闭，协议流不会再有 {ready}。
-                        SignalExited();
+                        SignalExited(generation);
                         break;
                     }
 
@@ -152,7 +153,8 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        if (_process is null)
+        var stopped = Volatile.Read(ref _process);
+        if (stopped is null)
         {
             _jobObject?.Dispose();
             _jobObject = null;
@@ -179,16 +181,16 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(exitCts.Token, cancellationToken);
         try
         {
-            await _process.WaitForExitAsync(linked.Token);
+            await stopped.WaitForExitAsync(linked.Token);
         }
         catch (OperationCanceledException)
         {
             // Timed out or caller cancelled — force-kill the process.
-            try { _process.Kill(entireProcessTree: true); } catch { /* already gone */ }
+            try { stopped.Kill(entireProcessTree: true); } catch { /* already gone */ }
         }
 
         // 停机到此已确定进程没了。不依赖 Process.Exited 是否已派发（Dispose 之后它可能永远不会来）。
-        SignalExited();
+        SignalExited(stopped);
 
         // 3. Cancel the pump loops and wait with a short hard timeout.
         if (_pumpCts is not null)
@@ -227,7 +229,7 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
         // 5. Clean up remaining resources.
         _stdin?.Dispose();
         _pumpCts?.Dispose();
-        _process.Dispose();
+        stopped.Dispose();
 
         _stdin = null;
         _pumpCts = null;
@@ -241,8 +243,15 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
     /// 每一代进程最多上报一次退出。来源有三：stdout EOF、<c>Process.Exited</c>、本类 <c>StopAsync</c>
     /// 收尾——它们说的都是同一件事：这一代的进程已经没了，协议流不会再有 {ready}。
     /// </summary>
-    private void SignalExited()
+    private void SignalExited(Process generation)
     {
+        // 只认当代那个进程对象：上一代的 Exited/EOF 回调可能在新一代已经跑起来之后才派发，
+        // 照它发信号会把新一代正在正常处理的擦除判成「进程没了」。
+        if (!ReferenceEquals(Volatile.Read(ref _process), generation))
+        {
+            return;
+        }
+
         if (Interlocked.Exchange(ref _exitSignaled, 1) != 0)
         {
             return;
