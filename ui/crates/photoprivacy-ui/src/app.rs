@@ -1956,14 +1956,16 @@ impl AppView {
                             let Some(entry) = state.logs.get(entry_index) else {
                                 continue;
                             };
-                            entries.push((index, entry.clone()));
+                            // 用 entry_index（日志缓冲中的稳定位置）而非可见列表位置，
+                            // 避免过滤/清空后同一按钮 ID 映射到不同条目。
+                            entries.push((entry_index, entry.clone()));
                         }
                         entries
                     };
                     let mut rows = Vec::with_capacity(entries.len());
-                    for (index, entry) in &entries {
+                    for (entry_index, entry) in &entries {
                         rows.push(
-                            this.log_row(*index, entry, &row_theme, row_rtl, cx)
+                            this.log_row(*entry_index, entry, &row_theme, row_rtl, cx)
                                 .into_any_element(),
                         );
                     }
@@ -2043,7 +2045,7 @@ impl AppView {
 
     fn log_row(
         &self,
-        index: usize,
+        entry_index: usize,
         entry: &AuditRecord,
         theme: &Theme,
         rtl: bool,
@@ -2054,7 +2056,7 @@ impl AppView {
             "[{}] {} {} {}",
             entry.time_text, entry.display_event, entry.source_path_masked, entry.message
         );
-        let button_id = format!("copy-log-{index}");
+        let button_id = format!("copy-log-{entry_index}");
         div()
             .h(px(40.))
             .w_full()
