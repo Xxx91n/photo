@@ -648,6 +648,12 @@ public sealed class MetadataCleanerWorker : BackgroundService
 
     private async Task RebuildRuntimeAsync(AppConfig config, CancellationToken token)
     {
+        // 全量首扫只在「监控目录被启用」时跑（待机转有效目录、或换了一个目录）。其余重载不重扫整目录：
+        // 审计目录一改，新的去重记录表是空的，重扫即把既有文件重处理一遍，fixed_directory 产物可被覆盖。
+        // Design(#100): 重载首扫限定于监控目录变更，目录未变的重载不得整目录重扫。
+        var previousHotFolder = _currentConfig?.Watch.HotFolder ?? string.Empty;
+        var watchFolderChanged = !string.Equals(previousHotFolder, config.Watch.HotFolder, StringComparison.OrdinalIgnoreCase);
+
         _watcher?.Stop();
         _watcher = null;
         _cleanupTimer?.Dispose();
@@ -732,15 +738,23 @@ public sealed class MetadataCleanerWorker : BackgroundService
             logger: _logger);
 
         _autoExcludedSubdirectories = _watcher.GetAutoExcludedSubdirectories();
-        if (Directory.Exists(config.Watch.HotFolder))
+
+        // 先起 watcher 再扫描：扫描期间新建的文件若没被 FSW 盯住，会落进轮询兜底的初始快照，从此永不上报。
+        // Design(#100): 重载首扫之前必须先起 watcher。
+        _watcher.Start();
+
+        if (watchFolderChanged && Directory.Exists(config.Watch.HotFolder))
         {
-            foreach (var file in Directory.EnumerateFiles(config.Watch.HotFolder, "*", SearchOption.AllDirectories))
+            // 扫描深度取自 include_subdirectories：FSW 按这个键建监听，越界扫到的子目录文件规则引擎并不过滤。
+            var searchOption = config.Watch.IncludeSubdirectories
+                ? SearchOption.AllDirectories
+                : SearchOption.TopDirectoryOnly;
+            foreach (var file in Directory.EnumerateFiles(config.Watch.HotFolder, "*", searchOption))
             {
                 EnqueueIfNeeded(file);
             }
         }
 
-        _watcher.Start();
         _currentConfig = config;
     }
 
