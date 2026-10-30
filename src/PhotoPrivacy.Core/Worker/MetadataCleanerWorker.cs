@@ -162,6 +162,9 @@ public sealed class MetadataCleanerWorker : BackgroundService
             return;
         }
 
+        // 待机分支已在上面返回：只有真正启用监控才创建目录（#124）。
+        EnsureConfiguredDirectories(config);
+
         _audit = new JsonLineAuditLogger(config.Audit.LogDirectory, config.Audit.RetainDays, config.Audit.DiagnosticMode, AuditLevelParser.Parse(config.Audit.LogLevel));
         IAuditLogger auditLogger = _audit is not null ? _audit : new NoopAuditLogger();
         // 启动路径的软告警落点（排除清单不可匹配/未支持模式）。
@@ -474,6 +477,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
         }
     }
 
+    // Design(#82): 配置加载纯读——LoadEffectiveConfig 不在返回前创建 hot/audit/quarantine；目录只在运行时真正启用监控时创建。
     private AppConfig LoadEffectiveConfig()
     {
         var configPath = GetValue("config")
@@ -532,22 +536,28 @@ public sealed class MetadataCleanerWorker : BackgroundService
            };
        }
 
-       // ponytail: empty config paths (config.sample.json defaults to "") would throw
-       // ArgumentException on Directory.CreateDirectory — skip if blank.
-       if (!string.IsNullOrWhiteSpace(config.Watch.HotFolder))
-       {
-           Directory.CreateDirectory(config.Watch.HotFolder);
-       }
-       if (!string.IsNullOrWhiteSpace(config.Audit.LogDirectory))
-       {
-           Directory.CreateDirectory(config.Audit.LogDirectory);
-       }
-       if (!string.IsNullOrWhiteSpace(config.Quarantine.Directory))
-       {
-           Directory.CreateDirectory(config.Quarantine.Directory);
-       }
-
        return config;
+    }
+
+    /// <summary>
+    /// 只在运行时真正启用监控时创建配置里的目录（#124）：待机态不写盘。
+    /// </summary>
+    private static void EnsureConfiguredDirectories(AppConfig config)
+    {
+        // ponytail: empty config paths (config.sample.json defaults to "") would throw
+        // ArgumentException on Directory.CreateDirectory — skip if blank.
+        if (!string.IsNullOrWhiteSpace(config.Watch.HotFolder))
+        {
+            Directory.CreateDirectory(config.Watch.HotFolder);
+        }
+        if (!string.IsNullOrWhiteSpace(config.Audit.LogDirectory))
+        {
+            Directory.CreateDirectory(config.Audit.LogDirectory);
+        }
+        if (!string.IsNullOrWhiteSpace(config.Quarantine.Directory))
+        {
+            Directory.CreateDirectory(config.Quarantine.Directory);
+        }
     }
 
     private IExifToolBridge CreateBridge(AppConfig config, IAuditLogger audit)
@@ -728,21 +738,6 @@ public sealed class MetadataCleanerWorker : BackgroundService
         DisposeQuietly(retiredStore);
         DisposeQuietly(retiredAudit);
 
-        // ponytail: empty config paths (config.sample.json defaults to "") would throw
-        // ArgumentException on Directory.CreateDirectory — skip if blank.
-        if (!string.IsNullOrWhiteSpace(config.Watch.HotFolder))
-        {
-            Directory.CreateDirectory(config.Watch.HotFolder);
-        }
-        if (!string.IsNullOrWhiteSpace(config.Audit.LogDirectory))
-        {
-            Directory.CreateDirectory(config.Audit.LogDirectory);
-        }
-        if (!string.IsNullOrWhiteSpace(config.Quarantine.Directory))
-        {
-            Directory.CreateDirectory(config.Quarantine.Directory);
-        }
-
        if (string.IsNullOrWhiteSpace(config.Watch.HotFolder))
        {
            _autoExcludedSubdirectories = Array.Empty<string>();
@@ -750,6 +745,9 @@ public sealed class MetadataCleanerWorker : BackgroundService
            _currentConfig = config;
            return;
        }
+
+       // 待机分支已返回：启用监控才创建目录（#124）。
+       EnsureConfiguredDirectories(config);
 
        _cleanupTimer = new Timer(_ => PerformPeriodicCleanup(config), null, TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(10));
         if (!debounceWindowUnchanged)

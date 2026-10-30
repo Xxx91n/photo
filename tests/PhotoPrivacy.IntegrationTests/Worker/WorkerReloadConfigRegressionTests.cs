@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using PhotoPrivacy.Core.Configuration;
 using PhotoPrivacy.Core.Runtime;
@@ -502,9 +503,9 @@ public sealed class WorkerReloadConfigRegressionTests
     /// 不影响回包的形态，都不在本用例的射程内（后者由
     /// <see cref="EmptyWatchFolder_Should_Stay_Resident_Until_Reload_Starts_Monitoring"/> 的正向证据把关）。
     ///
-    /// 前提屏障：首拍前先等 worker 走完配置加载（<c>LoadEffectiveConfig</c> 建的审计目录出现为止）。
+    /// 前提屏障：首拍前先等 worker 打出待机日志（「no watch folder is configured」）。
     /// <c>CurrentWatchDirectory</c> 在「配置还没加载」时同样回空串，没有这道屏障，回包的空目录
-    /// 可能只是「什么都还没发生」。
+    /// 可能只是「什么都还没发生」；而配置加载已是纯读路径（#124），不能再靠「审计目录被建出来」当屏障。
     ///
     /// 覆盖边界（勿当作 #100 崩溃路径的替身）：<c>AppConfigValidator.Validate</c> 有两道早退——
     /// <c>dry_run</c> 一条、空 <c>hot_folder</c> 一条（后者正是 #100 的改动），任一命中就走不到
@@ -520,10 +521,7 @@ public sealed class WorkerReloadConfigRegressionTests
         var configPath = Path.Combine(root, "config.json");
         Directory.CreateDirectory(root);
         // 监控目录留空（发版包 config/config.json 的出厂形态）。审计目录给真实路径但**不**预建：
-        // LoadEffectiveConfig 在返回配置前会把已配置的 hot/audit/quarantine 目录建出来，
-        // 于是「审计目录出现」成了 worker 已走完配置加载的正向屏障（见 try 开头的 Wait）。
-        // 屏障只证明配置加载走完，不证明「已进待机」；回包也只证明连通与空目录。
-        // 「worker 是否真的待在待机里」由同文件上方的兄弟用例以正向判据承担。
+        // 配置加载不再有建目录副作用（#124），待机就绪改由 worker 的待机日志证明（见 try 开头的 Wait）。
         await File.WriteAllTextAsync(configPath, BuildConfigJson(string.Empty, audit));
 
         // 夹具自检：worker 启动路径对配置校验失败会直接 Environment.Exit(1)（杀死整个测试进程），
@@ -537,9 +535,10 @@ public sealed class WorkerReloadConfigRegressionTests
             .AddInMemoryCollection(new Dictionary<string, string?> { ["config"] = configPath })
             .Build();
         var runtimeControl = new RuntimeControl();
+        var standbyLogger = new StandbySignalLogger();
         var worker = new MetadataCleanerWorker(
             configuration,
-            NullLogger<MetadataCleanerWorker>.Instance,
+            standbyLogger,
             new NullApplicationLifetime(),
             runtimeControl);
 
@@ -552,12 +551,11 @@ public sealed class WorkerReloadConfigRegressionTests
         try
         {
             // 就绪屏障：worker 的 CurrentWatchDirectory 在「配置还没加载」与「已进待机」两种状态下
-            // 都回空串，少了这一步首拍可能靠空串假绿。审计目录由 LoadEffectiveConfig 建出来，
-            // 它出现只证明「配置加载走完了」——本用例证的是这条链通不通、回包给的是不是空目录，
-            // 「worker 是否真待在待机里」不在射程（见上面的射程声明），由兄弟用例的正向判据把关。
+            // 都回空串，少了这一步首拍可能靠空串假绿。待机日志只在 ExecuteAsync 走完配置加载/校验、
+            // 决定进入空监控目录等待之后才写（#124 收走了原「审计目录出现」的建目录副作用）。
             Assert.True(
-                await WaitForDirectoryAsync(audit, TimeSpan.FromSeconds(30)),
-                "worker 未走完配置加载（审计目录没被建出来）：用例前提不成立");
+                await WaitForStandbyAsync(standbyLogger, TimeSpan.FromSeconds(30)),
+                "worker 未进入空监控目录待机（未见到待机日志）：用例前提不成立");
 
             transport = IpcTransportFactory.CreateServer(ResolveBackgroundTestEndpoint(root), isServiceMode: false);
             // 与生产宿主同接线：watchDirectory 直接取 worker.CurrentWatchDirectory，
@@ -617,6 +615,147 @@ public sealed class WorkerReloadConfigRegressionTests
             // #117 修好后，把这里改回「断言 StopAsync 在预算内完成」（那条红测挂在 #117）。
             using var stopCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             await worker.StopAsync(stopCts.Token);
+            TryDelete(root);
+        }
+    }
+
+    /// <summary>
+    /// 待机态不得产生目录副作用（#124 AC1）：空 <c>hot_folder</c> 时 worker 只加载配置并待命，
+    /// 不得在磁盘上建出配置里的 audit/quarantine 目录（发版包默认路径落在安装目录下的
+    /// <c>hot/_audit</c>、<c>hot/_quarantine</c>）。
+    /// </summary>
+    [Fact]
+    public async Task Standby_Should_Not_Create_Configured_Directories()
+    {
+        // 防：LoadEffectiveConfig 在返回配置前就 Directory.CreateDirectory——配置加载这条纯读路径
+        // 带写副作用，待机态也凭空长出 hot/_audit、hot/_quarantine（#124）。
+        var root = Path.Combine(Path.GetTempPath(), "pp-124-standby-" + Guid.NewGuid().ToString("N"));
+        // 目录形状对齐安装目录：config.json 与 hot/_audit、hot/_quarantine 同根。
+        var installRoot = Path.Combine(root, "install");
+        var audit = Path.Combine(installRoot, "hot", "_audit");
+        var quarantine = Path.Combine(installRoot, "hot", "_quarantine");
+        var configPath = Path.Combine(installRoot, "config.json");
+        Directory.CreateDirectory(installRoot);
+        await File.WriteAllTextAsync(
+            configPath, BuildConfigJson(string.Empty, audit, quarantineDirectory: quarantine));
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["config"] = configPath })
+            .Build();
+        var standbyLogger = new StandbySignalLogger();
+        var worker = new MetadataCleanerWorker(
+            configuration,
+            standbyLogger,
+            new NullApplicationLifetime(),
+            new RuntimeControl());
+
+        await worker.StartAsync(CancellationToken.None);
+        try
+        {
+            Assert.True(
+                await WaitForStandbyAsync(standbyLogger, TimeSpan.FromSeconds(30)),
+                "worker 未进入空监控目录待机：用例前提不成立");
+            Assert.Equal(string.Empty, worker.CurrentWatchDirectory);
+            Assert.False(
+                Directory.Exists(Path.Combine(installRoot, "hot")),
+                "待机态在安装目录下建出了 hot 子树（hot/_audit、hot/_quarantine）：配置加载仍有写副作用（#124）");
+            Assert.False(Directory.Exists(audit));
+            Assert.False(Directory.Exists(quarantine));
+        }
+        finally
+        {
+            using var stopCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await worker.StopAsync(stopCts.Token);
+            TryDelete(root);
+        }
+    }
+
+    /// <summary>
+    /// 只读/不可写安装目录形态的受测降级路径（#124 AC2）：配置里的目录连创建都会抛
+    /// <see cref="IOException"/> 时，待机态必须照常起来——因为配置加载与待机分支都不再写盘。
+    /// 安装到 <c>Program Files</c> 或以受限账户运行时，这正是旧实现抛
+    /// <see cref="UnauthorizedAccessException"/>／<see cref="IOException"/> 并让服务停机的形态。
+    /// </summary>
+    [Fact]
+    public async Task Standby_Should_Survive_Uncreatable_Configured_Directories()
+    {
+        // 防：把目录创建留在配置加载/待机路径——不可写安装目录下 worker 启动即抛，待机态连不上 IPC（#124）。
+        var root = Path.Combine(Path.GetTempPath(), "pp-124-readonly-" + Guid.NewGuid().ToString("N"));
+        var blocker = Path.Combine(root, "blocker");
+        var audit = Path.Combine(blocker, "audit");
+        var quarantine = Path.Combine(blocker, "quarantine");
+        var configPath = Path.Combine(root, "config.json");
+        Directory.CreateDirectory(root);
+        // 父路径是普通文件：任何 Directory.CreateDirectory(audit/quarantine) 必抛 IOException。
+        await File.WriteAllTextAsync(blocker, "not a directory");
+        await File.WriteAllTextAsync(
+            configPath, BuildConfigJson(string.Empty, audit, quarantineDirectory: quarantine));
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["config"] = configPath })
+            .Build();
+        var standbyLogger = new StandbySignalLogger();
+        var worker = new MetadataCleanerWorker(
+            configuration,
+            standbyLogger,
+            new NullApplicationLifetime(),
+            new RuntimeControl());
+
+        await worker.StartAsync(CancellationToken.None);
+        try
+        {
+            Assert.True(
+                await WaitForStandbyAsync(standbyLogger, TimeSpan.FromSeconds(30)),
+                "不可写目录形态下 worker 未进入待机：目录副作用仍在配置加载路径上（#124）");
+            Assert.Equal(string.Empty, worker.CurrentWatchDirectory);
+            Assert.False(Directory.Exists(audit));
+            Assert.False(Directory.Exists(quarantine));
+        }
+        finally
+        {
+            using var stopCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await worker.StopAsync(stopCts.Token);
+            TryDelete(root);
+        }
+    }
+
+    /// <summary>
+    /// 目录创建搬到运行时后，启用监控的启动仍必须建目录（#124 回归）：已配置的 hot/audit/quarantine
+    /// 在启动时不存在，worker 也把它们建出来并进入监控。
+    /// </summary>
+    [Fact]
+    public async Task Configured_Startup_Should_Create_Runtime_Directories()
+    {
+        // 防：把创建挪出 LoadEffectiveConfig 时顺手删掉，已配置监控目录的启动不再建目录（#124）。
+        var root = Path.Combine(Path.GetTempPath(), "pp-124-startup-" + Guid.NewGuid().ToString("N"));
+        var hot = Path.Combine(root, "hot");
+        var audit = Path.Combine(root, "audit");
+        var quarantine = Path.Combine(root, "quarantine");
+        var configPath = Path.Combine(root, "config.json");
+        Directory.CreateDirectory(root);
+        await File.WriteAllTextAsync(
+            configPath, BuildConfigJson(hot, audit, quarantineDirectory: quarantine));
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["config"] = configPath })
+            .Build();
+        var worker = new MetadataCleanerWorker(
+            configuration,
+            NullLogger<MetadataCleanerWorker>.Instance,
+            new NullApplicationLifetime(),
+            new RuntimeControl());
+
+        await worker.StartAsync(CancellationToken.None);
+        try
+        {
+            Assert.True(await WaitForDirectoryAsync(hot, TimeSpan.FromSeconds(30)), "启用监控后未创建监控目录（#124）");
+            Assert.True(await WaitForDirectoryAsync(audit, TimeSpan.FromSeconds(30)), "启用监控后未创建审计目录（#124）");
+            Assert.True(await WaitForDirectoryAsync(quarantine, TimeSpan.FromSeconds(30)), "启用监控后未创建隔离目录（#124）");
+            Assert.Equal(hot, worker.CurrentWatchDirectory);
+        }
+        finally
+        {
+            await worker.StopAsync(CancellationToken.None);
             TryDelete(root);
         }
     }
@@ -752,7 +891,8 @@ public sealed class WorkerReloadConfigRegressionTests
         string auditDirectory,
         bool includeSubdirectories = true,
         int debounceMs = 100,
-        int pollingSeconds = 1)
+        int pollingSeconds = 1,
+        string? quarantineDirectory = null)
     {
         // 全量键位对齐 config.sample.json；dry_run=true 让 validator 走早退分支
         // （不需要真实 exiftool.exe 与 exiftool_files 目录）。
@@ -796,7 +936,11 @@ public sealed class WorkerReloadConfigRegressionTests
                 max_size_mb = 100,
                 retain_days = 30
             },
-            quarantine = new { enabled = false, directory = string.Empty },
+            quarantine = new
+            {
+                enabled = quarantineDirectory is not null,
+                directory = quarantineDirectory ?? string.Empty
+            },
             audit = new
             {
                 log_directory = auditDirectory,
@@ -812,9 +956,26 @@ public sealed class WorkerReloadConfigRegressionTests
     private static Task<bool> WaitForFileAsync(string path, TimeSpan budget)
         => WaitForPresenceAsync(() => File.Exists(path), budget);
 
-    /// <summary>待机用例的就绪屏障用：审计目录由 <c>LoadEffectiveConfig</c> 建出来，出现即说明配置已加载。</summary>
+    /// <summary>运行时建目录用例用：目录是否已出现。</summary>
     private static Task<bool> WaitForDirectoryAsync(string path, TimeSpan budget)
         => WaitForPresenceAsync(() => Directory.Exists(path), budget);
+
+    /// <summary>
+    /// 待机就绪屏障：等 <see cref="StandbySignalLogger"/> 收到空监控目录的待机日志。
+    /// 不依赖配置加载的建目录副作用（#124 已移除）。
+    /// </summary>
+    private static async Task<bool> WaitForStandbyAsync(StandbySignalLogger logger, TimeSpan budget)
+    {
+        try
+        {
+            await logger.StandbyEntered.WaitAsync(budget);
+            return true;
+        }
+        catch (TimeoutException)
+        {
+            return false;
+        }
+    }
 
     private static async Task<bool> WaitForPresenceAsync(Func<bool> exists, TimeSpan budget)
     {
@@ -949,6 +1110,36 @@ public sealed class WorkerReloadConfigRegressionTests
         catch
         {
             // best-effort：FSW 句柄释放有延迟，临时目录残留不影响断言。
+        }
+    }
+
+    /// <summary>
+    /// 待机就绪信号：收 Worker 的「no watch folder is configured」告警。该日志只在 ExecuteAsync
+    /// 走完配置加载/校验并决定进入空监控目录等待之后才写，是待机态的正向屏障（#124）。
+    /// </summary>
+    private sealed class StandbySignalLogger : ILogger<MetadataCleanerWorker>
+    {
+        private readonly TaskCompletionSource<bool> _standby =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task StandbyEntered => _standby.Task;
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            if (logLevel == LogLevel.Warning
+                && formatter(state, exception).Contains("no watch folder is configured", StringComparison.Ordinal))
+            {
+                _standby.TrySetResult(true);
+            }
         }
     }
 
