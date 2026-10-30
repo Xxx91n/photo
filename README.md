@@ -122,11 +122,13 @@ sudo bash scripts/install-systemd-service.sh --install-dir /opt/photoprivacy --c
 
 ## 配置说明
 
+发布模板默认将 `watch.hot_folder` 留空。Worker 会保持 IPC 连接并进入待机状态，UI 会提示前往配置页选择监控目录；保存有效目录后通过配置热重载启动监控，无需重启 Worker。发布包中的 `config/README.md` 也包含这段首次配置说明。
+
 ### `watch` 监听配置
 
 | 字段 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `hot_folder` | string | `D:\hot` | 监听目录 |
+| `hot_folder` | string | `""` | 监听目录；留空时 Worker 待机并等待配置 |
 | `include_subdirectories` | bool | `true` | 递归监听子目录 |
 | `debounce_ms` | int | `800` | 文件事件去抖毫秒 |
 | `internal_buffer_size` | int | `65536` | FSW 内部缓冲区（字节） |
