@@ -38,6 +38,7 @@
     "tray_running": "الدرج قيد التشغيل",
     "pause_service_unavailable": "إيقاف مؤقت (غير متاح في وضع الخدمة)",
     "connected": "متصل",
+    "configure_watch_folder": "يرجى الانتقال إلى الإعدادات لتعيين مجلد المراقبة",
     "reconnecting": "إعادة الاتصال",
     "disconnected": "غير متصل",
     "saving": "جارٍ الحفظ…",

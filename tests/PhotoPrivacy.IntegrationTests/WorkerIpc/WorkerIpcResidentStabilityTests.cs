@@ -184,6 +184,21 @@ public sealed class WorkerIpcResidentStabilityTests
         Assert.False(nullRequest.Ok);
     }
 
+    [Fact]
+    public async Task Handler_Should_Report_Empty_Watch_Directory_For_Connected_Standby()
+    {
+        // 防：Worker 空目录待机时 IPC 状态被误报为断线，UI 无法引导用户完成首次配置（#100）。
+        var runtime = new FakeWorkerIpcRuntime { WatchDirectory = string.Empty };
+        var handler = new WorkerIpcRequestHandler(runtime, NullLogger<WorkerIpcRequestHandler>.Instance);
+
+        var (response, _) = await handler.HandleAsync(
+            new WorkerIpcRequest(WorkerIpcMethods.GetStatus),
+            CancellationToken.None);
+
+        Assert.True(response.Ok);
+        Assert.Equal(string.Empty, response.Data!.WatchDirectory);
+    }
+
     /// <summary>状态快照为 unknown 时必须驱动一次版本补探（#86 回归）。</summary>
     [Fact]
     public async Task Handler_Should_Trigger_ExifTool_Version_Resolution_When_Status_Reports_Unknown()

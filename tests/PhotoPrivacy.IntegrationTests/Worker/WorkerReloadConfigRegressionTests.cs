@@ -34,6 +34,52 @@ namespace PhotoPrivacy.IntegrationTests.Worker;
 /// </summary>
 public sealed class WorkerReloadConfigRegressionTests
 {
+    [Fact]
+    public async Task EmptyWatchFolder_Should_Stay_Resident_Until_Reload_Starts_Monitoring()
+    {
+        // 防：默认空目录让 ExecuteAsync 退出或阻断后续 ReloadConfig，导致 Worker 无法完成首次配置（#100）。
+        var root = Path.Combine(Path.GetTempPath(), "pp-100-" + Guid.NewGuid().ToString("N"));
+        var hot = Path.Combine(root, "hot");
+        var audit = Path.Combine(hot, "_audit");
+        var configPath = Path.Combine(root, "config.json");
+        Directory.CreateDirectory(root);
+        await File.WriteAllTextAsync(configPath, BuildConfigJson(string.Empty, audit));
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["config"] = configPath })
+            .Build();
+        var worker = new MetadataCleanerWorker(
+            configuration,
+            NullLogger<MetadataCleanerWorker>.Instance,
+            new NullApplicationLifetime(),
+            new RuntimeControl());
+
+        await worker.StartAsync(CancellationToken.None);
+        try
+        {
+            await Task.Delay(100);
+            Assert.Equal(string.Empty, worker.CurrentWatchDirectory);
+
+            Directory.CreateDirectory(hot);
+            await File.WriteAllTextAsync(configPath, BuildConfigJson(hot, audit));
+            await worker.ReloadConfigAsync();
+
+            Assert.Equal(hot, worker.CurrentWatchDirectory);
+            Assert.True(
+                await WaitForFileAsync(Path.Combine(audit, "processed.ndjson"), TimeSpan.FromSeconds(30)),
+                "空目录待机后 ReloadConfig 未启动监控运行时");
+            await File.WriteAllTextAsync(Path.Combine(hot, "after-standby.jpg"), "after-standby");
+            Assert.True(
+                await WaitForProcessedRecordsAsync(Path.Combine(audit, "processed.ndjson"), expectedAtLeast: 1, TimeSpan.FromSeconds(30)),
+                "空目录待机后 ReloadConfig 未恢复文件监控处理");
+        }
+        finally
+        {
+            await worker.StopAsync(CancellationToken.None);
+            TryDelete(root);
+        }
+    }
+
     [Theory]
     [InlineData(RuntimeMode.Service, "service")]
     [InlineData(RuntimeMode.Background, "background")]

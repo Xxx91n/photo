@@ -38,6 +38,7 @@
     "tray_running": "Bandeja en ejecución",
     "pause_service_unavailable": "Pausar (no disponible en modo servicio)",
     "connected": "Conectado",
+    "configure_watch_folder": "Ve a Configuración para establecer la carpeta de seguimiento",
     "reconnecting": "Reconectando",
     "disconnected": "Desconectado",
     "saving": "Guardando…",

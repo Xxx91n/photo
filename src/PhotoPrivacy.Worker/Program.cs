@@ -132,11 +132,10 @@ builder.Services.AddSingleton(services =>
 {
     var configuration = services.GetRequiredService<IConfiguration>();
     var configPath = configuration["config"] ?? Path.Combine(AppContext.BaseDirectory, "config", "config.json");
-    var watchDirectory = ResolveWatchDirectory(configPath, configuration["hot-folder"] ?? configuration["hot_folder"]);
     return new WorkerRuntimeContext(
         runtimeControl: services.GetRequiredService<IRuntimeControl>(),
         worker: services.GetRequiredService<MetadataCleanerWorker>(),
-        watchDirectoryAccessor: () => watchDirectory,
+        watchDirectoryAccessor: () => services.GetRequiredService<MetadataCleanerWorker>().CurrentWatchDirectory,
         mode: mode,
         auditLogDirectoryAccessor: () => ResolveAuditLogDirectory(configPath, configuration["audit-folder"] ?? configuration["audit_folder"]));
 });
@@ -185,26 +184,6 @@ UnregisterBestEffortShutdown(cancelKeyHandler, processExitHandler);
 posixHooks.Dispose();
 Log.CloseAndFlush();
 return Environment.ExitCode;
-
-static string ResolveWatchDirectory(string configPath, string? hotFolderArg)
-{
-    if (!string.IsNullOrWhiteSpace(hotFolderArg))
-    {
-        return hotFolderArg;
-    }
-
-    try
-    {
-        var cfg = File.Exists(configPath)
-            ? AppConfigLoader.Load(configPath)
-            : AppConfig.Default;
-        return cfg.Watch.HotFolder;
-    }
-    catch
-    {
-        return AppConfig.Default.Watch.HotFolder;
-    }
-}
 
 static void RegisterBestEffortShutdown(
     ShutdownCoordinator coordinator,

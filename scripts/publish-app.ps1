@@ -113,6 +113,7 @@ New-Item -ItemType Directory -Force -Path $configDir | Out-Null
 Copy-Item (Join-Path $repoRoot "config" | Join-Path -ChildPath "config.sample.json") (Join-Path $configDir "config.sample.json") -Force
 # Copy config.sample.json as config.json so the release has a working default config
 Copy-Item (Join-Path $repoRoot "config" | Join-Path -ChildPath "config.sample.json") (Join-Path $configDir "config.json") -Force
+Copy-Item (Join-Path $repoRoot "config" | Join-Path -ChildPath "README.md") (Join-Path $configDir "README.md") -Force
 Copy-Item (Join-Path $repoRoot "README.md") (Join-Path $targetDir "README.md") -Force
 
 if (Test-Path $workerPublishDir) {

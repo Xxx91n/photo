@@ -40,11 +40,11 @@ public static class AppConfigValidator
             return;
         }
 
-        // Hot folder must be configured for non-dry-run mode, otherwise
-        // the worker cannot scan/enqueue files and silently does nothing.
+        // An empty hot folder is a valid first-run standby state. The worker
+        // remains available over IPC until the user chooses a directory.
         if (string.IsNullOrWhiteSpace(config.Watch.HotFolder))
         {
-            throw new AppConfigValidationException("watch.hot_folder 未配置。请先设置监控目录。");
+            return;
         }
 
         // 空串回落是 loader 层的责任（AppConfigLoader 已兜底），

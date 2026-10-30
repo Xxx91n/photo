@@ -38,6 +38,7 @@
     "tray_running": "Icône en cours d'exécution",
     "pause_service_unavailable": "Pause indisponible en mode service",
     "connected": "Connecté",
+    "configure_watch_folder": "Ouvrez les paramètres pour définir le dossier surveillé",
     "reconnecting": "Reconnexion",
     "disconnected": "Déconnecté",
     "saving": "Enregistrement…",

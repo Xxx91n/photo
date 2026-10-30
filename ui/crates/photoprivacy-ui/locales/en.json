@@ -38,6 +38,7 @@
     "tray_running": "Tray running",
     "pause_service_unavailable": "Pause (unavailable in service mode)",
     "connected": "Connected",
+    "configure_watch_folder": "Go to Settings to set the watch folder",
     "reconnecting": "Reconnecting",
     "disconnected": "Disconnected",
     "saving": "Saving…",

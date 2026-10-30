@@ -38,6 +38,7 @@
     "tray_running": "Трей запущен",
     "pause_service_unavailable": "Пауза (недоступна в режиме сервиса)",
     "connected": "Подключено",
+    "configure_watch_folder": "Откройте настройки, чтобы выбрать папку наблюдения",
     "reconnecting": "Переподключение",
     "disconnected": "Отключено",
     "saving": "Сохранение…",

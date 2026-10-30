@@ -213,6 +213,7 @@ pub mod keys {
     pub const BTN_BROWSE: &str = "btn.browse";
     pub const COMMON_NONE: &str = "common.none";
     pub const STATUS_CONNECTED: &str = "status.connected";
+    pub const STATUS_CONFIGURE_WATCH_FOLDER: &str = "status.configure_watch_folder";
     pub const STATUS_CONNECTING: &str = "status.connecting";
     pub const STATUS_RECONNECTING: &str = "status.reconnecting";
     pub const STATUS_DISCONNECTED: &str = "status.disconnected";
