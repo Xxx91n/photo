@@ -778,7 +778,11 @@ public sealed class MetadataCleanerWorker : BackgroundService
 
     private void EnqueueIfNeeded(string path)
     {
-        if (_debounceQueue is null || _recentFingerprintCache is null)
+        // 取一次本地引用再用：重载拆卸会把这两个字段置空，而 FSW/轮询回调是 fire-and-forget，
+        // 守门与使用之间被置空就会抛 NullReferenceException——那个异常吞在未观察的任务里，文件从此不再入队。
+        var queue = _debounceQueue;
+        var fingerprintCache = _recentFingerprintCache;
+        if (queue is null || fingerprintCache is null)
         {
             return;
         }
@@ -796,12 +800,12 @@ public sealed class MetadataCleanerWorker : BackgroundService
 
         var info = new FileInfo(path);
         var fingerprint = new FileFingerprint(info.Length, info.LastWriteTimeUtc);
-        if (_recentFingerprintCache.ShouldSuppress(path, fingerprint, TimeSpan.FromSeconds(2)))
+        if (fingerprintCache.ShouldSuppress(path, fingerprint, TimeSpan.FromSeconds(2)))
         {
             return;
         }
 
-        _debounceQueue.Enqueue(path);
+        queue.Enqueue(path);
     }
 
     private async Task DrainOnceAsync(CancellationToken cancellationToken)
