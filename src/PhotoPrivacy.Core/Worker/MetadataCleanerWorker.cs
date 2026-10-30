@@ -39,6 +39,13 @@ public sealed class MetadataCleanerWorker : BackgroundService
 
     private Timer? _cleanupTimer;
     private AppConfig? _currentConfig;
+
+    /// <summary>
+    /// 当前在跑的运行时（watcher/队列）归属哪个监控目录。拆卸期间旧 watcher 与轮询兜底仍可能回调，
+    /// 入队一律按这个目录收口，避免用户已经放弃的目录里的文件被新 pipeline 清除。
+    /// </summary>
+    private string _activeWatchFolder = string.Empty;
+
     private IReadOnlyList<string> _autoExcludedSubdirectories = Array.Empty<string>();
 
     public string CurrentExifToolVersion => _bridge?.VersionText ?? ExifToolVersionText.Unknown;
@@ -101,6 +108,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
         // 校验通过即登记当前配置：GetStatus 的 watchDirectory 由此立刻反映真实目录，
         // 不再在建目录/首次扫描期间把已配置好的 Worker 误报成「监控目录待配置」。
         _currentConfig = config;
+        _activeWatchFolder = config.Watch.HotFolder;
 
         var printEffectiveConfig = ParseBool(GetValue("print-effective-config", "print_effective_config"));
         if (printEffectiveConfig)
@@ -655,17 +663,18 @@ public sealed class MetadataCleanerWorker : BackgroundService
 
     private async Task RebuildRuntimeAsync(AppConfig config, CancellationToken token)
     {
-        // 换目录时必须丢弃旧目录的在途去抖路径：那些文件已不在监控范围内，复用队列会让它们被新 pipeline
-        // 照常清除元数据（EnqueueIfNeeded/DrainReadyItemsAsync 都不按热目录过滤）。判定按大小写不敏感相等，
-        // 误判成「变了」只多扫一次，误判成「没变」才会漏扫。
-        var watchFolderChanged = !string.Equals(
-            _currentConfig?.Watch.HotFolder ?? string.Empty, config.Watch.HotFolder, StringComparison.OrdinalIgnoreCase);
+        // 换目录时必须丢弃旧目录的在途去抖路径：那些文件已不在监控范围内，复用队列会让它们被新
+        // pipeline 照常清除元数据。判定误报成「变了」只多扫一次，误报成「没变」才会漏扫或漏丢。
+        var watchFolderChanged = !SamePath(_activeWatchFolder, config.Watch.HotFolder);
 
-        // 去抖窗口未变则复用同一队列：#85 只护住「已弹队」那一段，拆卸时若把队列连同窗口内的
+        // 去抖窗口未变才复用同一队列：#85 只护住「已弹队」那一段，拆卸时若把队列连同窗口内的
         // 在途路径一起丢掉，新 watcher 的轮询初始快照会把这些文件当既有文件，从此永不再报。
         var debounceWindowUnchanged = _debounceQueue is not null
             && !watchFolderChanged
             && _currentConfig?.Watch.DebounceMs == config.Watch.DebounceMs;
+
+        // 收口目录先切到新配置：此后旧 watcher 与轮询兜底的在途回调都按新目录过滤，不会漏进新队列。
+        _activeWatchFolder = config.Watch.HotFolder;
 
         _watcher?.Stop();
         _watcher = null;
@@ -792,6 +801,15 @@ public sealed class MetadataCleanerWorker : BackgroundService
             return;
         }
 
+        // 只收当前监控目录内的路径：拆卸下来的旧 watcher 与轮询兜底不会等回调跑完就返回，
+        // 用户已经放弃的目录若继续入队，新 pipeline 会照常清除范围外的文件。
+        var activeWatchFolder = _activeWatchFolder;
+        if (!string.IsNullOrWhiteSpace(activeWatchFolder)
+            && !WatchPathFilter.IsSameOrSubPath(path, activeWatchFolder))
+        {
+            return;
+        }
+
         if (!File.Exists(path))
         {
             return;
@@ -812,6 +830,13 @@ public sealed class MetadataCleanerWorker : BackgroundService
 
         queue.Enqueue(path);
     }
+
+    /// <summary>
+    /// 目录是否同一处。Windows 大小写不敏感、类 Unix 大小写敏感——这里比较的是「要不要重扫/要不要丢弃在途路径」，
+    /// 平台判错会少扫一次或把一个目录的文件当成另一个目录的。
+    /// </summary>
+    private static bool SamePath(string left, string right)
+        => string.Equals(left, right, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
 
     private async Task DrainOnceAsync(CancellationToken cancellationToken)
     {
