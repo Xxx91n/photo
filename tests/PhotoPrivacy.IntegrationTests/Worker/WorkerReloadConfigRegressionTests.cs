@@ -800,6 +800,7 @@ public sealed class WorkerReloadConfigRegressionTests
                 BuildConfigJson(string.Empty, auditAfterReload, quarantineDirectory: quarantineAfterReload));
             await worker.ReloadConfigAsync();
 
+            // ReloadConfigAsync 已同步走完重建，回到待机才返回；这里不需要启动态那样再留一拍。
             Assert.Equal(string.Empty, worker.CurrentWatchDirectory);
             Assert.False(
                 Directory.Exists(auditAfterReload),
