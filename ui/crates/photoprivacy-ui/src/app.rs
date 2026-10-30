@@ -584,6 +584,12 @@ impl AppView {
                             }
                             changed = true;
                         }
+                        if let Some((_, deadline)) = &this.copy_feedback
+                            && Instant::now() >= *deadline
+                        {
+                            this.copy_feedback = None;
+                            changed = true;
+                        }
                         if changed {
                             cx.notify();
                         }
