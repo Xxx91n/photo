@@ -434,7 +434,8 @@ pub struct AppView {
     pub(crate) rules: Rc<RefCell<RulesEditor>>,
     i18n: Rc<Catalog>,
     /// 复制反馈的截止时间：Some 时显示"已复制"，到期自动清除。
-    copy_feedback_deadline: Option<Instant>,
+    /// 同时记录被复制的文本，用于区分是哪个按钮触发的反馈。
+    copy_feedback: Option<(String, Instant)>,
     _appearance_subscription: Subscription,
 }
 
@@ -499,7 +500,7 @@ impl AppView {
             fields,
             rules,
             i18n,
-            copy_feedback_deadline: None,
+            copy_feedback: None,
             _appearance_subscription: appearance_subscription,
         };
         view.spawn_updates(window, cx);
@@ -639,14 +640,15 @@ impl AppView {
     /// 复制文本到系统剪贴板，并触发 2 秒的"已复制"反馈。
     fn copy_to_clipboard(&mut self, text: &str, cx: &mut Context<Self>) {
         cx.write_to_clipboard(ClipboardItem::new_string(text.to_string()));
-        self.copy_feedback_deadline = Some(Instant::now() + COPY_FEEDBACK_TTL);
+        self.copy_feedback = Some((text.to_string(), Instant::now() + COPY_FEEDBACK_TTL));
         cx.notify();
     }
 
-    /// 返回复制反馈文案（"已复制"）；反馈过期或未触发时返回 None。
-    fn copy_feedback_text(&self) -> Option<String> {
-        self.copy_feedback_deadline
-            .filter(|deadline| Instant::now() < *deadline)
+    /// 返回指定文本的复制反馈文案（"已复制"）；仅当该文本是最近复制的内容且反馈未过期时返回。
+    fn copy_feedback_for(&self, text: &str) -> Option<String> {
+        self.copy_feedback
+            .as_ref()
+            .filter(|(copied, deadline)| copied == text && Instant::now() < *deadline)
             .map(|_| self.t(k::TOAST_COPIED))
     }
 
@@ -1760,26 +1762,7 @@ impl AppView {
                             .text_color(theme.danger)
                             .child(error.clone()),
                     )
-                    .child(
-                        div()
-                            .id("copy-error")
-                            .px(px(8.))
-                            .py(px(2.))
-                            .rounded(px(6.))
-                            .border_1()
-                            .border_color(theme.border)
-                            .text_size(px(11.))
-                            .text_color(theme.text_muted)
-                            .hover(|element| element.bg(theme.surface_raised).text_color(theme.text))
-                            .cursor_pointer()
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.copy_to_clipboard(&error, cx);
-                            }))
-                            .child(
-                                self.copy_feedback_text()
-                                    .unwrap_or_else(|| self.t(k::STATUS_COPY_ERROR)),
-                            ),
-                    )
+                    .child(self.copy_button("copy-error", &error, k::STATUS_COPY_ERROR, theme, cx))
             }))
             .children(
                 (state == ConnectionState::Connected
@@ -2055,7 +2038,6 @@ impl AppView {
             "[{}] {} {} {}",
             entry.time_text, entry.display_event, entry.source_path_masked, entry.message
         );
-        let copy_feedback = self.copy_feedback_text();
         div()
             .h(px(40.))
             .w_full()
@@ -2106,23 +2088,35 @@ impl AppView {
                     .text_color(theme.text)
                     .child(entry.message.clone()),
             )
-            .child(
-                div()
-                    .id("copy-log")
-                    .px(px(8.))
-                    .py(px(2.))
-                    .rounded(px(6.))
-                    .border_1()
-                    .border_color(theme.border)
-                    .text_size(px(11.))
-                    .text_color(theme.text_muted)
-                    .hover(|element| element.bg(theme.surface_raised).text_color(theme.text))
-                    .cursor_pointer()
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.copy_to_clipboard(&copy_text, cx);
-                    }))
-                    .child(copy_feedback.unwrap_or_else(|| self.t(k::LOG_BTN_COPY))),
-            )
+            .child(self.copy_button("copy-log", &copy_text, k::LOG_BTN_COPY, theme, cx))
+    }
+
+    /// 构造统一风格的复制按钮：点击后复制 `text` 到剪贴板，反馈期间按钮文字变为"已复制"。
+    fn copy_button(
+        &self,
+        id: &'static str,
+        text: &str,
+        label_key: &str,
+        theme: &Theme,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let copy_text = text.to_string();
+        let feedback = self.copy_feedback_for(text);
+        div()
+            .id(id)
+            .px(px(8.))
+            .py(px(2.))
+            .rounded(px(6.))
+            .border_1()
+            .border_color(theme.border)
+            .text_size(px(11.))
+            .text_color(theme.text_muted)
+            .hover(|element| element.bg(theme.surface_raised).text_color(theme.text))
+            .cursor_pointer()
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.copy_to_clipboard(&copy_text, cx);
+            }))
+            .child(feedback.unwrap_or_else(|| self.t(label_key)))
     }
 
     fn empty_state(&self, title: String, description: String, theme: &Theme) -> Div {
