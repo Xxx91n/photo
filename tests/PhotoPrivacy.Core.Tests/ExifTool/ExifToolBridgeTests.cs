@@ -36,6 +36,34 @@ public sealed class ExifToolBridgeTests
     }
 
     [Fact]
+    public async Task WipeMetadataAsync_Should_Not_Return_Cleaned_Before_Block_Ready_Signal()
+    {
+        // 防的具体回潮形态（issue #97）：桥一匹配 TASK_DONE_ 回显就完成等待——回显是 ExifTool 在
+        // 参数解析阶段打的，磁盘写入要到本块 {ready} 才保证完成，于是擦除会在还没写盘时就返回
+        // Cleaned_Modified（进程随后被杀即静默漏清理）。这里让回显照常先出、把块结束信号推迟：
+        // 修复后返回必须发生在该块的 {ready} 之后。关联 issue #97。
+        var process = new ProtocolLevelFakeExifToolProcess
+        {
+            LateReadySignalMs = 800
+        };
+        var bridge = new ExifToolBridge(process, Config);
+        await bridge.StartAsync(CancellationToken.None);
+
+        var wipe = Task.Run(() => bridge.WipeMetadataAsync(
+            Path.Combine(Path.GetTempPath(), "pp-bridge", "late-ready.jpg"),
+            CancellationToken.None));
+
+        // fake 先派发再入列，因此看到这一行时桥的 stdout 处理器已经把 TASK_DONE_ 回显消费掉了。
+        await WaitUntilStdoutLineAsync(process, "TASK_DONE_");
+        await Task.Delay(150);
+
+        Assert.False(wipe.IsCompleted);
+
+        Assert.Equal(WipeResult.Cleaned_Modified, await wipe);
+        Assert.Equal(0, bridge.PendingCount);
+    }
+
+    [Fact]
     public async Task WipeMetadataAsync_Should_Timeout_And_Remove_Pending_Task_When_Marker_Missing()
     {
         var process = new ProtocolLevelFakeExifToolProcess
@@ -608,6 +636,26 @@ public sealed class ExifToolBridgeTests
         Assert.Equal(WipeResult.Cleaned_NoOp, result);
         Assert.Equal(0, bridge.PendingCount);
         Assert.DoesNotContain(process.Writes, w => w.Contains("TASK_DONE_", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// 等到 fake 产出以前缀开头的 stdout 行。fake 是先派发后入列，故返回时桥的 stdout
+    /// 处理器已消费该行——用它定位「协议里的某一句确实已经到了」，而不是靠固定等待赌时序。
+    /// </summary>
+    private static async Task WaitUntilStdoutLineAsync(ProtocolLevelFakeExifToolProcess process, string prefix)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (process.StdoutLines.Any(l => l.StartsWith(prefix, StringComparison.Ordinal)))
+            {
+                return;
+            }
+
+            await Task.Delay(10);
+        }
+
+        throw new TimeoutException($"未等到 fake 产出的 {prefix}* stdout 行。");
     }
 
     private sealed class ListLogger<T> : ILogger<T>
