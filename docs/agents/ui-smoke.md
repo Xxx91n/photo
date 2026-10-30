@@ -131,7 +131,7 @@
 | T4 | `ui.hide_main_window_on_startup=true` 时启动仅托盘不弹窗 | 通过 | 2026-10-28 实机：hide=true 启动后无 PhotoPrivacy 主窗（`MainWindowTitle` 仅托盘辅助窗）、进程与 Worker 正常 |
 | T5 | 二次启动不重开：第二实例退出并唤起既有窗口（`Global\PhotoPrivacyUi_Instance`） | 通过 | 2026-10-28 实机 ×3：第二实例 6s 内退出（exit code 0），第一实例存活且主窗可见（title=PhotoPrivacy） |
 
-### 首次配置待机 4 项（#100 定形 → #113 核销）
+### 首次配置待机 4 项（#100 定形，#113 补自动化并交人工目检）
 
 > 场景：发版包的 `config/config.json` 是 `config.sample.json` 的拷贝（`scripts/publish-app.ps1`），
 > 出厂 `watch.hot_folder: ""`。Worker 按 #100 保持驻守待命，UI 状态栏引导用户完成首次配置。
@@ -184,8 +184,12 @@
 
 - 产物：Release workflow run [41073704339](https://github.com/Xxx91n/photo/actions/runs/41073704339)
   （ref `issue-113-standby-ipc-verify`，head `67aa17e4`，version `0.1.0-verify113`，`create_release=false`）
-  的 `release-win-x64` artifact，已下载解压到本机私有目录 `D:\Aworker\photo-smoke-113\`。
-  该 head 与文档提交 `681eca46` 之间只差 `tests/`+`docs/`，产品二进制与 main 同。
+  的 `release-win-x64` artifact，已下载并解压到本机私有目录 `D:\Aworker\photo-smoke-113\`，
+  双击入口 `D:\Aworker\photo-smoke-113\win-x64\PhotoPrivacy.exe`。
+  该 head 与本票后续提交之间只差 `tests/`+`docs/`（`src/`、`ui/` 未动），产品二进制等价。
+- 包内实测（出厂原样，未改）：`config/config.json` 的 `watch.hot_folder` 为 `""`、
+  `exiftool.dry_run` 为 `false`、`exiftool.path` 指向 `C:\Program Files\ExifTool\exiftool.exe`——
+  K4 的 #108 阻断就来自后两项。
 - 结果：K1-K4 全部**未探活**——gpui 窗口的界面呈现本窗口读不到（UIA descendant=0、`PrintWindow` 黑帧），
   按「无证据不虚构」不填任何通过项。自动化侧只到上文那条真实传输级待机连通用例。
 
