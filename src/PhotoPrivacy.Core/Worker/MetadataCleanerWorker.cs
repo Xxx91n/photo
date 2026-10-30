@@ -650,12 +650,21 @@ public sealed class MetadataCleanerWorker : BackgroundService
 
     private async Task RebuildRuntimeAsync(AppConfig config, CancellationToken token)
     {
+        // 去抖窗口未变则复用同一队列：#85 只护住「已弹队」那一段，拆卸时若把队列连同窗口内的
+        // 在途路径一起丢掉，新 watcher 的轮询初始快照会把这些文件当既有文件，从此永不再报。
+        var debounceWindowUnchanged = _debounceQueue is not null
+            && _currentConfig?.Watch.DebounceMs == config.Watch.DebounceMs;
+
         _watcher?.Stop();
         _watcher = null;
         _cleanupTimer?.Dispose();
         _cleanupTimer = null;
-        _debounceQueue = null;
-        _recentFingerprintCache = null;
+
+        if (!debounceWindowUnchanged)
+        {
+            _debounceQueue = null;
+            _recentFingerprintCache = null;
+        }
 
         if (_bridge is not null)
         {
@@ -709,8 +718,11 @@ public sealed class MetadataCleanerWorker : BackgroundService
        }
 
        _cleanupTimer = new Timer(_ => PerformPeriodicCleanup(config), null, TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(10));
-       _debounceQueue = new DebounceQueue(TimeSpan.FromMilliseconds(config.Watch.DebounceMs), () => DateTimeOffset.UtcNow);
-       _recentFingerprintCache = new RecentFingerprintCache(() => DateTimeOffset.UtcNow);
+        if (!debounceWindowUnchanged)
+        {
+            _debounceQueue = new DebounceQueue(TimeSpan.FromMilliseconds(config.Watch.DebounceMs), () => DateTimeOffset.UtcNow);
+            _recentFingerprintCache = new RecentFingerprintCache(() => DateTimeOffset.UtcNow);
+        }
        _audit = new JsonLineAuditLogger(config.Audit.LogDirectory, config.Audit.RetainDays, config.Audit.DiagnosticMode, AuditLevelParser.Parse(config.Audit.LogLevel));
         IAuditLogger auditLogger = _audit is not null ? _audit : new NoopAuditLogger();
         _bridge = CreateBridge(config, auditLogger);
@@ -741,10 +753,10 @@ public sealed class MetadataCleanerWorker : BackgroundService
 
         // 其余重载不重扫整目录：审计目录一改，新的去重记录表是空的，重扫即把既有文件重处理一遍，
         // fixed_directory 产物可被覆盖。判定按大小写不敏感相等，误判成「变了」只多扫一次，误判成「没变」才会漏扫。
-        // Design(#100): 重载首扫只在「监控目录被启用」时跑（待机转有效目录、或换了一个目录）。
+        // Design(#100): 重载首扫只在「监控目录被启用」或队列被重建（在途去抖项已随旧队列丢弃）时跑。
         var watchFolderChanged = !string.Equals(
             _currentConfig?.Watch.HotFolder ?? string.Empty, config.Watch.HotFolder, StringComparison.OrdinalIgnoreCase);
-        if (watchFolderChanged && Directory.Exists(config.Watch.HotFolder))
+        if ((watchFolderChanged || !debounceWindowUnchanged) && Directory.Exists(config.Watch.HotFolder))
         {
             // 扫描深度取自 include_subdirectories：FSW 按这个键建监听，越界扫到的子目录文件规则引擎并不过滤。
             var searchOption = config.Watch.IncludeSubdirectories
