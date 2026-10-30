@@ -677,30 +677,36 @@ public sealed class MetadataCleanerWorker : BackgroundService
     /// </summary>
     private async Task RebuildRuntimeAsync(AppConfig config, CancellationToken token)
     {
+        // 拆卸窗口的起点：旧 watcher 一停，这期间新建的文件既不会有 FSW 事件，又会落进新轮询兜底的
+        // 初始快照，只能靠补扫捞回来。回滚复用同一个起点——失败尝试本身可能耗数秒（桥停机最长 4 s），
+        // 若回滚另取「回滚开始 - 2 s」作下限，失败窗口内落地的文件会落在下限之外，从此漏处理。
+        var handoffStartUtc = DateTime.UtcNow;
+
         var previousConfig = _currentConfig;
         if (previousConfig is null)
         {
-            await BuildRuntimeAsync(config, token);
+            await BuildRuntimeAsync(config, handoffStartUtc, token);
             return;
         }
 
         try
         {
-            await BuildRuntimeAsync(config, token);
+            await BuildRuntimeAsync(config, handoffStartUtc, token);
         }
         catch (Exception ex)
         {
             // Design(#112): 重载重建失败必须用上一份已生效配置回滚，不得停在「活着但不再监控」形态。
             try
             {
-                await BuildRuntimeAsync(previousConfig, token);
+                await BuildRuntimeAsync(previousConfig, handoffStartUtc, token);
             }
             catch (Exception rollbackEx)
             {
                 SafeLog.Try(() => _logger.LogError(
                     rollbackEx,
-                    "配置重载失败且回滚到上一份生效配置也失败：{Message}",
-                    ex.Message));
+                    "配置重载失败且回滚到上一份生效配置也失败：原错误={ReloadError}；回滚错误={RollbackError}",
+                    ex.Message,
+                    rollbackEx.Message));
                 throw new AggregateException(
                     "重载失败，且用上一份生效配置回滚失败；worker 已无可用运行时，需再次重载或重启",
                     ex,
@@ -712,12 +718,8 @@ public sealed class MetadataCleanerWorker : BackgroundService
         }
     }
 
-    private async Task BuildRuntimeAsync(AppConfig config, CancellationToken token)
+    private async Task BuildRuntimeAsync(AppConfig config, DateTime handoffStartUtc, CancellationToken token)
     {
-        // 拆卸窗口的起点：旧 watcher 一停，这期间新建的文件既不会有 FSW 事件，又会落进新轮询兜底的
-        // 初始快照，只能靠补扫捞回来（见下方 handoff 兜底）。
-        var handoffStartUtc = DateTime.UtcNow;
-
         // 首扫判定看「上一个完整建成的范围」：重建中途抛异常时收口目录已切到新目录，只看收口目录
         // 会让下一次重载同目录跳过首扫，那目录里的既有文件就永远漏扫。深度键也算范围——
         // false→true 时必须补扫新放开的子目录，否则那些既有文件永远不会被处理。

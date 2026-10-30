@@ -516,7 +516,8 @@ public sealed class WorkerReloadConfigRegressionTests
     {
         // 防的具体回潮形态：重载到「指向已存在文件的目录」时抛错，旧 watcher 已停、新运行时未建，
         // worker 活着却不再监控原目录——此后新文件永远不被处理（#112 票面场景）。
-        // 该错误目前在拆卸之前就被校验拒绝；本用例同时锁「拒绝后旧运行时原样保留」与「IPC 不静默回 ok」。
+        // 该错误目前在应用前的校验步骤（LoadEffectiveConfig 建目录）就被拒，尚未进入拆卸；
+        // 本用例同时锁「拒绝后旧运行时原样保留」与「IPC 不静默回 ok」。
         // 关联 issue #112。
         var fixture = await StartProcessingWorkerAsync();
 
