@@ -117,6 +117,36 @@ public sealed class ExifToolBridgeTests
     }
 
     [Fact]
+    public async Task WipeMetadataAsync_Should_Fail_Not_Report_Cleaned_When_HealthCheck_Restarts_Process_During_Wipe()
+    {
+        // 防的具体回潮形态（issue #97 影响段第一条杀手路径）：文件处理路径自己的健康检查超时→重启，
+        // 在途擦除的 marker 就此失去归属。原实现要么已经按回显返回了 Cleaned_Modified，要么挂到
+        // 调用方取消；重启后新进程的第一个 {ready} 还可能被旧等待方读成自己那块结束了。
+        var process = new ProtocolLevelFakeExifToolProcess
+        {
+            LateReadySignalMs = 5000
+        };
+        var bridge = new ExifToolBridge(process, Config);
+        await bridge.StartAsync(CancellationToken.None);
+
+        var wipe = Task.Run(() => bridge.WipeMetadataAsync(
+            Path.Combine(Path.GetTempPath(), "pp-bridge", "restarted-mid-wipe.jpg"),
+            CancellationToken.None));
+
+        await WaitUntilStdoutLineAsync(process, "TASK_DONE_");
+
+        // 活着的进程应答比 500 ms 健康预算慢 → 健康检查超时 → 重启（Stop 后 Start）。
+        process.HealthResponseDelayMs = 900;
+        await bridge.EnsureStartedAsync(CancellationToken.None);
+
+        var ex = await Assert.ThrowsAnyAsync<InvalidOperationException>(
+            () => wipe.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Contains("TASK_DONE_", ex.Message, StringComparison.Ordinal);
+        Assert.True(process.StartCalls >= 2, "健康检查超时必须走过重启");
+        Assert.Equal(0, bridge.PendingCount);
+    }
+
+    [Fact]
     public async Task WipeMetadataAsync_Should_Keep_One_Wipe_Block_Per_File_When_Waiting_For_Ready_Signal()
     {
         // 防的具体回潮形态（issue #97 AC3）：为等块结束信号再补发一个「问写完没有」的命令块，
@@ -721,15 +751,18 @@ public sealed class ExifToolBridgeTests
     }
 
     /// <summary>
-    /// 等到 fake 产出以前缀开头的 stdout 行。fake 是先派发后入列，故返回时桥的 stdout
-    /// 处理器已消费该行——用它定位「协议里的某一句确实已经到了」，而不是靠固定等待赌时序。
+    /// 等到 fake 累计产出 count 行以前缀开头的 stdout。fake 是先派发后入列，故返回时桥的 stdout
+    /// 处理器已消费这些行——用它定位「协议里的某几句确实已经到了」，而不是靠固定等待赌时序。
     /// </summary>
-    private static async Task WaitUntilStdoutLineAsync(ProtocolLevelFakeExifToolProcess process, string prefix)
+    private static async Task WaitUntilStdoutLineAsync(
+        ProtocolLevelFakeExifToolProcess process,
+        string prefix,
+        int count = 1)
     {
         var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
         while (DateTime.UtcNow < deadline)
         {
-            if (process.StdoutLines.Any(l => l.StartsWith(prefix, StringComparison.Ordinal)))
+            if (process.StdoutLines.Count(l => l.StartsWith(prefix, StringComparison.Ordinal)) >= count)
             {
                 return;
             }
@@ -737,7 +770,7 @@ public sealed class ExifToolBridgeTests
             await Task.Delay(10);
         }
 
-        throw new TimeoutException($"未等到 fake 产出的 {prefix}* stdout 行。");
+        throw new TimeoutException($"未等到 fake 产出第 {count} 行 {prefix}* stdout。");
     }
 
     private sealed class ListLogger<T> : ILogger<T>

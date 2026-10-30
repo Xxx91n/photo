@@ -384,7 +384,7 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
 
         var wipeMarker = $"TASK_DONE_{id}";
         var wipeTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        // Design(#97): 擦除完成判定取本命令块的 {ready}（块结束），-echo1 回显只当「进入该块」的锚点不作完成信号；「块按写入顺序整块处理、回显与 {ready} 一一对应」这一 stdin 顺序假设的未实测风险登记在 #39。
+        // Design(#39): 擦除块的完成判定取本块的 {ready}（块结束），-echo1 回显只当「进入该块」的锚点、不作完成信号（#97）；判定依赖「块按写入顺序整块处理、回显与 {ready} 一一对应」，这一 stdin 顺序假设仍未实测，风险登记在 #39。
         _pending[wipeMarker] = new PendingBlock(wipeTcs, PendingCompletion.BlockReady);
 
         FileInfo? beforeInfo = null;
@@ -811,9 +811,10 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
         public PendingCompletion Completion { get; }
 
         /// <summary>
-        /// 回显 marker 已到达，即本块已进入处理。由 stdout pump 线程置位，退出判定线程读取。
+        /// 回显 marker 到达时刻（<see cref="Environment.TickCount64"/> 毫秒），0 = 本块还没开始处理。
+        /// 由 stdout pump 线程置位，其他线程只读；它既是归属判据也是诊断锚点，不是完成信号。
         /// </summary>
-        public volatile bool MarkerEchoed;
+        public long MarkerEchoedAt;
     }
 
     private void OnStdoutLine(string line)
@@ -821,23 +822,14 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
         // {ready} 是 ExifTool 的块结束信号：本块的输出与写盘到此才保证完成。
         if (line.StartsWith("{ready", StringComparison.Ordinal))
         {
-            foreach (var entry in _pending)
-            {
-                if (entry.Value.Completion == PendingCompletion.BlockReady
-                    && entry.Value.MarkerEchoed
-                    && _pending.TryRemove(entry.Key, out var finished))
-                {
-                    finished.Tcs.TrySetResult(true);
-                }
-            }
-
+            CompleteOneStartedBlock();
             return;
         }
 
         foreach (var entry in _pending)
         {
             // 整行相等才算命中：marker 之间互为前缀（TASK_DONE_1 与 TASK_DONE_12），
-            // 用 Contains 会把别的块的回显记到自己头上，AC1 要的「本块的 {ready}」就名不副实。
+            // 用 Contains 会把别的块的回显记到自己头上，「本块的 {ready}」就名不副实。
             if (!string.Equals(line.Trim(), entry.Key, StringComparison.Ordinal))
             {
                 continue;
@@ -846,7 +838,7 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
             if (entry.Value.Completion == PendingCompletion.BlockReady)
             {
                 // 回显只说明「本块已开始处理」，完成判定留给本块的 {ready}（#97）。
-                entry.Value.MarkerEchoed = true;
+                Interlocked.CompareExchange(ref entry.Value.MarkerEchoedAt, Environment.TickCount64, 0);
                 continue;
             }
 
@@ -854,6 +846,44 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
             {
                 pending.Tcs.TrySetResult(true);
             }
+        }
+    }
+
+    /// <summary>
+    /// 一次 <c>{ready}</c> 只结清一个已开始处理的擦除块，取最早回显的那块。
+    ///
+    /// <c>{ready}</c> 行本身不带块身份，归属只能按位置来：真实 stay_open 单线程按块处理，一块的回显
+    /// 紧挨着它自己的 <c>{ready}</c>，中间插不进别块的行，因此同一时刻最多只有一块「已回显、未结束」。
+    /// 这个「块按顺序整块处理」正是 #39 登记为未实测的假设。
+    ///
+    /// 故意不把所有已回显的一次结清：假设破了的时候，多出来的等待继续等下一句 <c>{ready}</c> 或被进程
+    /// 退出判失败，而不是被一次广播全顶成已清理——宁可慢，不可假成功（#97）。
+    /// </summary>
+    private void CompleteOneStartedBlock()
+    {
+        string? oldestMarker = null;
+        var oldestEchoedAt = long.MaxValue;
+
+        foreach (var entry in _pending)
+        {
+            if (entry.Value.Completion != PendingCompletion.BlockReady)
+            {
+                continue;
+            }
+
+            var echoedAt = Volatile.Read(ref entry.Value.MarkerEchoedAt);
+            if (echoedAt == 0 || echoedAt >= oldestEchoedAt)
+            {
+                continue;
+            }
+
+            oldestMarker = entry.Key;
+            oldestEchoedAt = echoedAt;
+        }
+
+        if (oldestMarker is not null && _pending.TryRemove(oldestMarker, out var finished))
+        {
+            finished.Tcs.TrySetResult(true);
         }
     }
 
@@ -876,9 +906,10 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
                 continue;
             }
 
-            var stage = pending.MarkerEchoed
-                ? "-echo1 was echoed but this block never reached {ready}"
-                : "the command block never started";
+            var echoedAt = Volatile.Read(ref pending.MarkerEchoedAt);
+            var stage = echoedAt == 0
+                ? "the command block never started"
+                : $"-echo1 was echoed {Environment.TickCount64 - echoedAt} ms earlier but this block never reached {{ready}}";
             pending.Tcs.TrySetException(new InvalidOperationException(
                 $"ExifTool process exited before command block '{entry.Key}' completed: {stage}."));
         }
