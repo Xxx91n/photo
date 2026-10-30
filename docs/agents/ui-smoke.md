@@ -138,8 +138,8 @@
 > 自动化侧（#113 AC1）：`WorkerReloadConfigRegressionTests`
 > `.Standby_GetStatus_Through_Background_Endpoint_Should_Reply_With_Empty_Watch_Directory`
 > 在真实传输绑定 + accept 环 + 帧协议往返下断言空配置回 `ok:true` 且 `watchDirectory=""`。
-> **取证口径**：CI 的 dotnet `test` job 在本票 head 绿（最新 run `41080657590`，另有 6 个 head 各自绿过，
-> 外加 Release run `41073704339` 的独立一次）；整条 run 仍显示红，红的是 `markers` job——
+> **取证口径**：CI 的 dotnet `test` job 在本票各 head 均绿（run 号见 PR 正文）；
+> 整条 run 仍显示红，红的是 `markers` job——
 > src 里两条存量 `Design(#100)` 标记指向 #100 关闭后的死号，门禁脚本在 main 工作树上同样红，
 > 与 K 组和本用例无关，已单独记在 #118，别把它读成 AC1 未达。
 > **口径提醒**：CI 的 dotnet test 只跑 ubuntu，本用例在 CI 走 Unix socket 分支；
