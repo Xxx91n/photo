@@ -300,6 +300,7 @@ public sealed class WorkerReloadConfigRegressionTests
             Assert.True(
                 await WaitForProcessedRecordsAsync(processedPath, expectedAtLeast: 1, TimeSpan.FromSeconds(30)),
                 "启动态未处理热文件夹里的文件：用例前提不成立");
+            Assert.Equal(hot, worker.CurrentWatchDirectory);
 
             return new ReloadFixture(root, hot, audit, processedPath, worker);
         }
