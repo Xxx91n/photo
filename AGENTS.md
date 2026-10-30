@@ -22,7 +22,7 @@ PhotoPrivacy：批量清理照片/视频/文档隐私元数据的跨平台桌面
 - ExifTool 必须 stay_open 长驻，禁每文件 spawn；备份镜像相对路径、同内容跳过、分歧写旁路版本、原子写；IPC 认证以 OS 身份为边界；UI 线程与后台线程禁 sync-over-async；未知格式立即跳过；新 UI 视觉与主题消费 theme.rs（排版先行、弱边框），观感以 #49 T4 六锚与 docs/agents/ui-smoke.md 为准。
 - 改 IPC 客户端或新 UI 连接代码前读 `docs/agents/ipc-contract.md`（帧、超时、端点、重试、认证边界的事实源指针）。
 - 改规则页或 `rules.json` 读写前读 `docs/agents/rules-contract.md`（五族×六组键名、缺键回退、原子写的事实源指针）；新 UI 手工冒烟与视觉证据口径见 `docs/agents/ui-smoke.md`。
-- `GitButler Workspace Commit`（作者 `gitbutler@gitbutler.com`）无配置开关（`but config`/`but config feature` 均无此项），只能改用非 workspace 分支提交：0.23+ 只 applied 一条分支时不生成，多条仍生成。从它起的提交会把包装提交带进 main（2026-10-27 `c6f0b028` 先例）。新分支先 `git fetch`，`git worktree add --no-track -b <branch> <path> origin/main`（漏 `--no-track` 会把上游设成 `origin/main`），提交后 `git log --author=gitbutler@gitbutler.com origin/main..<branch>` 须为空。
+- `GitButler Workspace Commit`（作者 `gitbutler@gitbutler.com`）是 GitButler 的集成提交，HEAD 上是它时按 `git log` / 提交数判断会失真。无配置开关（`but config`、`but config feature` 均无此项）；GitButler 0.23 发布说明称只 applied 一条分支时不再生成、多分支仍生成。别从它起新分支——包装提交会随 PR 落到 main（先例 `c6f0b028`），新分支从 `origin/main` 起。
 
 ## Agent skills
 
