@@ -492,10 +492,15 @@ public sealed class WorkerReloadConfigRegressionTests
     /// 真实传输绑定 + accept 循环 + 帧协议往返在待机态从没被走过，而 #100 的实机形态正是「UI 连不上、
     /// 只剩管道超时（os error 2）」。
     ///
-    /// 防的具体回潮形态：
-    /// ① 待机分支被去掉、空目录也去建监控运行时（处理记录表断言变红——只断言 <c>watchDirectory</c>
-    ///    为空区分不了「待机」与「压根没启动」，未配置时 <c>CurrentWatchDirectory</c> 同样回空串）；
-    /// ② 待机态的 accept 环没起来，或状态回包把待机读成断线（首拍往返直接红）。
+    /// 防的具体回潮形态（本用例的射程只到这里，别再往上加判据）：
+    /// ① 待机态的 accept 环没起来，或状态回包把待机读成断线（首拍 GetStatus 往返直接红）；
+    ///    UI 的心跳是「一条连接一个请求」的轮询，所以第二拍 Ping 与 accept 环未退出也在射程内。
+    /// ② 待机分支被去掉、空目录也去建监控运行时——本用例只以「处理记录表没被建出来」当**支撑**判据：
+    ///    正确实现下它恒成立（不会假红），但回潮方向不保证抓到（<c>EmitConfigWarningsAsync</c> 在
+    ///    <c>FileProcessedRecordStore</c> 构造之前，落空的那一拍可能就是假绿）。
+    ///    「待机 → 重载后文件确实被处理」这条**正向**证据由
+    ///    <see cref="EmptyWatchFolder_Should_Stay_Resident_Until_Reload_Starts_Monitoring"/> 承担，
+    ///    本用例不单独背这个责。
     ///
     /// 覆盖边界（勿当作 #100 崩溃路径的替身）：夹具沿用本类既有的 <c>dry_run = true</c>，
     /// 而 <c>AppConfigValidator.Validate</c> 在 dry-run 分支早退，因此 #100 当年真正抛的
@@ -509,7 +514,9 @@ public sealed class WorkerReloadConfigRegressionTests
         var audit = Path.Combine(root, "audit");
         var configPath = Path.Combine(root, "config.json");
         Directory.CreateDirectory(root);
-        // 监控目录留空（发版包 config/config.json 的出厂形态）；审计目录给一个死路径，待机态不该去建它。
+        // 监控目录留空（发版包 config/config.json 的出厂形态）。审计目录给真实路径但**不**预建：
+        // 注意 LoadEffectiveConfig 在返回配置前就会把已配置的 hot/audit/quarantine 目录建出来
+        // （CI run 41071253276 实锤），所以「目录存在与否」不能用来判待机。
         await File.WriteAllTextAsync(configPath, BuildConfigJson(string.Empty, audit));
 
         // 夹具自检：worker 启动路径对配置校验失败会直接 Environment.Exit(1)（杀死整个测试进程），

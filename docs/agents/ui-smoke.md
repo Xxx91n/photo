@@ -140,6 +140,8 @@
 > 在真实传输绑定 + accept 环 + 帧协议往返下断言空配置回 `ok:true` 且 `watchDirectory=""`。
 > **口径提醒**：CI 的 dotnet test 只跑 ubuntu，本用例在 CI 走 Unix socket 分支；
 > Windows 命名管道分支（实机形态）与下面四项的界面呈现一样，只能实机验证。
+> 另：该用例沿用本类既有夹具的 `exiftool.dry_run = true`，而发版包出厂是 `false`——
+> 非 dry-run 的待机链路不在它射程内，归 #108。
 
 | # | 操作 | 结果 | 证据 |
 |---|---|---|---|
@@ -162,13 +164,12 @@
 > gpui 窗口在本机 UIA descendant count=0、RDP/GPU 会话下 `PrintWindow` 只回黑帧（#56 起的既有限制），
 > 四项的界面呈现只能由人眼判；自动化侧只覆盖到上文那条真实传输级待机连通。
 
-1. **取产物**：Release workflow（`create_release=false`）跑本票 head 的 `release-win-x64` artifact，
-   解压到私有目录（本轮：run `41073704339`，version `0.1.0-verify113`，解压至 `D:\Aworker\photo-smoke-113\`）。
-   并行窗口共用发布链时不要把产物拷进 `ui/target` 之类的共享构建目录。
+1. **取产物**：用 Release workflow（`create_release=false`）跑目标 head 的 `release-win-x64` artifact，
+   解压到一个私有目录。并行窗口共用发布链时不要把产物拷进 `ui/target` 之类的共享构建目录。
 2. **造出待机态**：保持包内 `config/config.json` 出厂原样（`"watch.hot_folder": ""`）。
    若这台机器之前验过别的票、目录已填过，先把 `config.json` 删掉再从同目录的 `config.sample.json` 拷一份——
    残留的有效目录会让 Worker 直接进监控，待机引导根本不出现。
-3. **K1**：双击 `PhotoPrivacy.exe`（首次运行会附带一个控制台黑窗，见 #103 相关记录）→ 看概览/状态栏连接态是否「已连接」。
+3. **K1**：双击 `PhotoPrivacy.exe`（首次运行会附带一个控制台黑窗，见下文伴随发现第 2 条）→ 看概览/状态栏连接态是否「已连接」。
 4. **K2**：同一屏找 warning 色提示「请前往配置页设置监控目录」；切一次语言（配置页语言组）确认该文案随 locale 变。
 5. **K3**：点该提示文本，是否直接落到配置页（不是只高亮、也不是无响应）。
 6. **K4**：在配置页选一个有效目录并保存 → 提示应消失、监控应启动；往该目录放一张带元数据的照片 →
@@ -176,6 +177,14 @@
 7. **回填**：逐行把 K1-K4 的「结果」改成 通过 / 失败 / 未探活，并在「证据」列写 `日期 + 实机目检 + 看到的具体现象`；
    截图只作辅助（黑帧问题下不得当证据），**无证据不虚构**。
 
+#### K 组产物记录（2026-10-30，#113 窗口：已备好产物，人工验收未执行）
+
+- 产物：Release workflow run [41073704339](https://github.com/Xxx91n/photo/actions/runs/41073704339)
+  （ref `issue-113-standby-ipc-verify`，head `67aa17e4`，version `0.1.0-verify113`，`create_release=false`）
+  的 `release-win-x64` artifact，已下载解压到本机私有目录 `D:\Aworker\photo-smoke-113\`。
+  该 head 与文档提交 `681eca46` 之间只差 `tests/`+`docs/`，产品二进制与 main 同。
+- 结果：K1-K4 全部**未探活**——gpui 窗口的界面呈现本窗口读不到（UIA descendant=0、`PrintWindow` 黑帧），
+  按「无证据不虚构」不填任何通过项。自动化侧只到上文那条真实传输级待机连通用例。
 
 ### 切换日实机执行记录（2026-10-28，#61 实现窗口）
 
