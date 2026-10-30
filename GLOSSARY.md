@@ -25,7 +25,7 @@
 **Schema Version**：配置 schema 版本（当前 1），缺失字段用 DTO 默认值兜底，不主动回写。
 **Config Reload Validation**：重载配置前校验 schema 与 ExifTool 路径，失败保留旧配置。
 **Format Rules Store**：自定义清理规则持久化到 `config/rules.json`。
-**Hot Folder Guard**：非 dry-run 模式下 hot_folder 为空不再阻断启动，Worker 改入 Standby（待机）。
+**Hot Folder Guard**：非 dry-run 模式下 hot_folder 为空不再阻断启动，Worker 改入 Standby（待机）；例外是 `--mode cli --once true`，它必须拿到有效目录，否则以退出码 1 结束。
 **Standby（待机）**：hot_folder 为空时 Worker 的常驻就绪态——IPC 已连通但不监控任何目录；配置页保存有效目录后经 `ReloadConfig` 启用监控，无需重启 Worker。
 **Expert Mode Gate**：危险元数据组的专家模式开关与确认。
 **Wipe Strategy Resolver**：按扩展名格式族选择清理策略，未知格式拒绝处理。
