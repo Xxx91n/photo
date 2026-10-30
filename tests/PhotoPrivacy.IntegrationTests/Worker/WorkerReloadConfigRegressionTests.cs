@@ -25,12 +25,14 @@ namespace PhotoPrivacy.IntegrationTests.Worker;
 /// 新文件仍被处理」区分新旧实现：旧形态重载在新建 store 时就抛（被吞掉），旧 watcher 已停、
 /// 新 watcher 从未创建——文件不再被处理，必红。
 ///
-/// 两层覆盖：
+/// 三层覆盖：
 /// - handler 级（Theory）：服务与后台（托盘）两种运行形态各自单列（#85 AC「后台管道同方法
 ///   无回归」），重载链路两种形态共用同一 handler/worker，但响应 <c>Mode</c> 字段按形态回
 ///   service/background，逐形态断言，防止后台形态被服务形态的断言顺带掩盖；
 /// - 端点级（Fact）：后台形态的 ReloadConfig 走真实传输绑定 + accept 循环 + 帧协议往返，
-///   不再只是直连 handler——WorkerIpcServerHostedService 的形态端点绑定路径同样被覆盖。
+///   不再只是直连 handler——WorkerIpcServerHostedService 的形态端点绑定路径同样被覆盖；
+/// - 待机端点级（Fact）：空 <c>hot_folder</c> 的首次配置待机态同样走真实传输 + accept +
+///   帧协议（#113 AC1，补齐 #100 关闭时留下的证据缺口）。
 /// </summary>
 public sealed class WorkerReloadConfigRegressionTests
 {
@@ -414,15 +416,7 @@ public sealed class WorkerReloadConfigRegressionTests
 
         try
         {
-            // Windows 管道名是内核对象名。Unix socket 落点：Linux 用夹具临时目录（固定路径
-            // /run/photoprivacy 需 root）；macOS 的 sun_path 上限 104 字节，夹具目录路径太长，
-            // 改用临时目录下的短文件名（GetTempPath() 约 49 字节 + 约 21 字节 < 104），
-            // socket 文件由 transport.DisposeAsync（端点属主）负责删除。
-            var endpoint = OperatingSystem.IsWindows()
-                ? "pp85-bg-" + Guid.NewGuid().ToString("N")
-                : OperatingSystem.IsMacOS()
-                    ? Path.Combine(Path.GetTempPath(), "pp85-bg-" + Guid.NewGuid().ToString("N")[..8] + ".sock")
-                    : Path.Combine(fixture.Root, "worker-background.sock");
+            var endpoint = ResolveBackgroundTestEndpoint(fixture.Root);
 
             // 形态→端点选择映射（WorkerIpcServerHostedService 内同一调用的 background 分支）逐 OS 钉住；
             // 兜底失败防止未知 OS 上断言静默跳过。真实固定端点在 CI 无法绑定（Linux /run/photoprivacy
@@ -460,28 +454,11 @@ public sealed class WorkerReloadConfigRegressionTests
 
             for (var attempt = 1; attempt <= 2; attempt++)
             {
-                var request = new WorkerIpcRequest(WorkerIpcMethods.ReloadConfig, "reload-endpoint-" + attempt);
-
-                await using var stream = await transport
-                    .ConnectAsync(TimeSpan.FromSeconds(10), CancellationToken.None)
-                    .WaitAsync(TimeSpan.FromSeconds(30));
-                var requestBytes = Encoding.UTF8.GetBytes(
-                    JsonSerializer.Serialize(request, WorkerIpcJsonContext.Default.WorkerIpcRequest) + "\n");
-                await stream.WriteAsync(requestBytes, CancellationToken.None);
-                await stream.FlushAsync(CancellationToken.None);
-
-                // 响应无结尾换行、以连接关闭（EOF）定界；读侧复用唯一的有界行读实现。
-                var line = await IpcLineReader
-                    .ReadBoundedLineAsync(stream, maxBytes: 64 * 1024, CancellationToken.None)
-                    .WaitAsync(TimeSpan.FromSeconds(30));
-                Assert.NotNull(line);
-
-                var response = JsonSerializer.Deserialize(line!, WorkerIpcJsonContext.Default.WorkerIpcResponse);
-                Assert.NotNull(response);
-                Assert.True(response!.Ok, $"第 {attempt} 次重载必须经后台端点回 ok：{response.Message}");
+                var response = await RequestOverTransportAsync(
+                    transport, new WorkerIpcRequest(WorkerIpcMethods.ReloadConfig, "reload-endpoint-" + attempt));
+                Assert.True(response.Ok, $"第 {attempt} 次重载必须经后台端点回 ok：{response.Message}");
                 Assert.Equal("background", response.Data!.Mode);
                 Assert.Equal(WorkerIpcProtocol.Version, response.V);
-                Assert.Equal(request.Id, response.Id);
             }
 
             // 重载真正生效的判据与 handler 级用例一致：watcher/pipeline 已重建并在跑。
@@ -506,6 +483,151 @@ public sealed class WorkerReloadConfigRegressionTests
 
             await StopAndDeleteAsync(fixture);
         }
+    }
+
+    /// <summary>
+    /// 待机端点级用例（#113 AC1，补 #100 关闭时留下的证据缺口）：默认 <c>hot_folder: ""</c> 的首次配置
+    /// 待机态此前只有两层覆盖——handler 级假运行时（<c>WorkerIpcResidentStabilityTests</c>）与进程内
+    /// <c>worker.StartAsync</c>（<see cref="EmptyWatchFolder_Should_Stay_Resident_Until_Reload_Starts_Monitoring"/>），
+    /// 真实传输绑定 + accept 循环 + 帧协议往返在待机态从没被走过，而 #100 的实机形态正是「UI 连不上、
+    /// 只剩管道超时（os error 2）」。
+    ///
+    /// 防的具体回潮形态：
+    /// ① 启动校验对空 hot_folder 直接 <c>Environment.Exit(1)</c>（测试进程消失即红）；
+    /// ② 待机分支没把 accept 环带起来，或状态回包把待机读成断线（首拍往返直接红）；
+    /// ③ 待机守卫失效、空目录也去建监控运行时（审计落点断言变红——只断言 <c>watchDirectory</c>
+    ///    为空区分不了「待机」与「压根没启动」，未配置时 <c>CurrentWatchDirectory</c> 同样回空串）。
+    /// </summary>
+    [Fact]
+    public async Task Standby_GetStatus_Through_Background_Endpoint_Should_Reply_With_Empty_Watch_Directory()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "pp-113-" + Guid.NewGuid().ToString("N"));
+        var audit = Path.Combine(root, "audit");
+        var configPath = Path.Combine(root, "config.json");
+        Directory.CreateDirectory(root);
+        // 监控目录留空（发版包 config/config.json 的出厂形态）；审计目录给一个死路径，待机态不该去建它。
+        await File.WriteAllTextAsync(configPath, BuildConfigJson(string.Empty, audit));
+
+        // 夹具自检：worker 启动路径对配置校验失败会直接 Environment.Exit(1)（杀死整个测试进程），
+        // 所以先在测试侧校验一遍——配置夹具漂移要以断言失败暴露，而不是让 CI 只看到进程消失。
+        var parsed = AppConfigLoader.Load(configPath);
+        AppConfigValidator.Validate(parsed);
+        Assert.Equal(string.Empty, parsed.Watch.HotFolder);
+        Assert.True(parsed.ExifTool.DryRun, "夹具必须是 dry-run：否则会去 spawn ExifTool");
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["config"] = configPath })
+            .Build();
+        var runtimeControl = new RuntimeControl();
+        var worker = new MetadataCleanerWorker(
+            configuration,
+            NullLogger<MetadataCleanerWorker>.Instance,
+            new NullApplicationLifetime(),
+            runtimeControl);
+
+        await worker.StartAsync(CancellationToken.None);
+
+        var loopStop = new CancellationTokenSource();
+        IIpcTransport? transport = null;
+        Task loopTask = Task.CompletedTask;
+
+        try
+        {
+            transport = IpcTransportFactory.CreateServer(ResolveBackgroundTestEndpoint(root), isServiceMode: false);
+            // 与生产宿主同接线：watchDirectory 直接取 worker.CurrentWatchDirectory，
+            // 待机态的「空目录 + 已连接」必须由这条真实回包链路呈现给 UI。
+            var handler = new WorkerIpcRequestHandler(
+                new WorkerRuntimeContext(
+                    runtimeControl,
+                    worker,
+                    () => worker.CurrentWatchDirectory,
+                    RuntimeMode.Background,
+                    () => audit),
+                NullLogger<WorkerIpcRequestHandler>.Instance);
+
+            var loop = new WorkerIpcServerLoop(NullLogger<WorkerIpcServerLoop>.Instance);
+            // 与宿主同序：先绑定端点再进 accept 循环。
+            await transport.ListenAsync(loopStop.Token);
+            loopTask = loop.RunAsync(transport, handler.HandleAsync, requestShutdown: () => { }, loopStop.Token);
+
+            var request = new WorkerIpcRequest(WorkerIpcMethods.GetStatus, "standby-status");
+            var status = await RequestOverTransportAsync(transport, request);
+
+            Assert.True(status.Ok, $"待机态 GetStatus 必须经后台端点回 ok：{status.Message}");
+            Assert.Equal(string.Empty, status.Data!.WatchDirectory);
+            Assert.Equal("background", status.Data.Mode);
+            Assert.Equal(WorkerIpcProtocol.Version, status.V);
+
+            // UI 侧是 1 s 心跳轮询（多条连接）：同一 accept 环必须继续服务第二拍。
+            var ping = await RequestOverTransportAsync(transport, new WorkerIpcRequest(WorkerIpcMethods.Ping, "standby-ping"));
+            Assert.True(ping.Ok, "待机态第二拍 Ping 必须仍被服务");
+            Assert.Equal(string.Empty, ping.Data!.WatchDirectory);
+            Assert.False(loopTask.IsCompleted, "accept 环不得在待机首拍之后退出");
+
+            // 待机 ≠ 已起运行时。
+            Assert.False(
+                Directory.Exists(audit),
+                "待机态创建了审计目录：空 hot_folder 也进了监控运行时（#100 待机守卫失效）");
+            Assert.Equal(string.Empty, worker.CurrentWatchDirectory);
+        }
+        finally
+        {
+            loopStop.Cancel();
+            try
+            {
+                await loopTask.WaitAsync(TimeSpan.FromSeconds(10));
+            }
+            catch
+            {
+                // 循环停不下来只说明停机路径有缺陷，不得掩盖上面的断言失败。
+            }
+
+            if (transport is not null)
+            {
+                await transport.DisposeAsync();
+            }
+
+            await worker.StopAsync(CancellationToken.None);
+            TryDelete(root);
+        }
+    }
+
+    /// <summary>
+    /// 端点级用例的临时后台端点。Windows 管道名是内核对象名。Unix socket 落点：Linux 用夹具临时目录
+    /// （固定路径 <c>/run/photoprivacy</c> 需 root，CI 绑不了）；macOS 的 <c>sun_path</c> 上限 104 字节，
+    /// 夹具目录路径太长，改用临时目录下的短文件名（<c>GetTempPath()</c> 约 49 字节 + 约 21 字节 &lt; 104），
+    /// socket 文件由 <c>transport.DisposeAsync</c>（端点属主）负责删除。
+    /// </summary>
+    private static string ResolveBackgroundTestEndpoint(string root)
+        => OperatingSystem.IsWindows()
+            ? "pp-bg-" + Guid.NewGuid().ToString("N")
+            : OperatingSystem.IsMacOS()
+                ? Path.Combine(Path.GetTempPath(), "pp-bg-" + Guid.NewGuid().ToString("N")[..8] + ".sock")
+                : Path.Combine(root, "worker-background.sock");
+
+    /// <summary>
+    /// 经真实传输做一次「一连接一消息」的帧协议往返：写请求行，读以连接关闭（EOF）定界的响应行
+    /// （响应无结尾换行，读侧复用唯一的有界行读实现）。
+    /// </summary>
+    private static async Task<WorkerIpcResponse> RequestOverTransportAsync(IIpcTransport transport, WorkerIpcRequest request)
+    {
+        await using var stream = await transport
+            .ConnectAsync(TimeSpan.FromSeconds(10), CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(30));
+        var requestBytes = Encoding.UTF8.GetBytes(
+            JsonSerializer.Serialize(request, WorkerIpcJsonContext.Default.WorkerIpcRequest) + "\n");
+        await stream.WriteAsync(requestBytes, CancellationToken.None);
+        await stream.FlushAsync(CancellationToken.None);
+
+        var line = await IpcLineReader
+            .ReadBoundedLineAsync(stream, maxBytes: 64 * 1024, CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(30));
+        Assert.NotNull(line);
+
+        var response = JsonSerializer.Deserialize(line!, WorkerIpcJsonContext.Default.WorkerIpcResponse);
+        Assert.NotNull(response);
+        Assert.Equal(request.Id, response!.Id);
+        return response;
     }
 
     private static WorkerIpcRequestHandler CreateHandler(ReloadFixture fixture, RuntimeMode runtimeMode)
