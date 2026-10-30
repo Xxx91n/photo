@@ -492,20 +492,18 @@ public sealed class WorkerReloadConfigRegressionTests
     /// 真实传输绑定 + accept 循环 + 帧协议往返在待机态从没被走过，而 #100 的实机形态正是「UI 连不上、
     /// 只剩管道超时（os error 2）」。
     ///
-    /// 防的具体回潮形态（本用例的射程只到这里，别再往上加判据）：
-    /// ① 待机态的 accept 环没起来，或状态回包把待机读成断线（首拍 GetStatus 往返直接红）；
-    ///    UI 的心跳是「一条连接一个请求」的轮询，所以第二拍 Ping 与 accept 环未退出也在射程内。
-    /// ② 待机分支被去掉、空目录也去建监控运行时——本用例只以「处理记录表没被建出来」当**支撑**判据：
-    ///    正确实现下它恒成立（不会假红），但回潮方向不保证抓到（<c>EmitConfigWarningsAsync</c> 在
-    ///    <c>FileProcessedRecordStore</c> 构造之前，落空的那一拍可能就是假绿）。
-    ///    「待机 → 重载后文件确实被处理」这条**正向**证据由
-    ///    <see cref="EmptyWatchFolder_Should_Stay_Resident_Until_Reload_Starts_Monitoring"/> 承担，
-    ///    本用例不单独背这个责。
+    /// 防的具体回潮形态（本用例的射程就是「待机态的 IPC 连通」，不认领别的）：
+    /// ① 待机分支没把 accept 环带起来，或状态回包把待机读成断线（首拍 GetStatus 往返直接红）；
+    /// ② 待机态只服务得了一拍（UI 心跳是每 1 s 一次 GetStatus、一条连接一个请求，见 monitor.rs 的
+    ///    Design(#49)；第二拍同方法往返 + accept 环未退出挡这条回潮）。
+    /// 「空 hot_folder 也去建监控运行时」「待机 → 重载后文件确实被处理」这类**运行时有没有启动**的判据，
+    /// 由同文件的 <see cref="EmptyWatchFolder_Should_Stay_Resident_Until_Reload_Starts_Monitoring"/>
+    /// 以正向证据承担，本用例不重复认领。
     ///
     /// 覆盖边界（勿当作 #100 崩溃路径的替身）：夹具沿用本类既有的 <c>dry_run = true</c>，
-    /// 而 <c>AppConfigValidator.Validate</c> 在 dry-run 分支早退，因此 #100 当年真正抛的
-    /// 「空 hot_folder 未配置」那条校验**不在本用例的射程内**。非 dry-run 的待机链路归 #108——
-    /// 那里还没裁定「空监控目录整体 fail-open」要不要收窄，本票不替它把行为钉进 CI 门禁。
+    /// 而 <c>AppConfigValidator.Validate</c> 在 dry-run 分支整体早退，所以 exiftool 路径存在性、
+    /// quarantine/audit 目录这些**只有非 dry-run 才会走**的校验不在本用例射程内——那正是 #108 的台面
+    /// （裸机发布包不含 ExifTool，空监控目录又让校验整体 fail-open），本票不替它把行为钉进 CI 门禁。
     /// </summary>
     [Fact]
     public async Task Standby_GetStatus_Through_Background_Endpoint_Should_Reply_With_Empty_Watch_Directory()
@@ -514,9 +512,9 @@ public sealed class WorkerReloadConfigRegressionTests
         var audit = Path.Combine(root, "audit");
         var configPath = Path.Combine(root, "config.json");
         Directory.CreateDirectory(root);
-        // 监控目录留空（发版包 config/config.json 的出厂形态）。审计目录给真实路径但**不**预建：
-        // 注意 LoadEffectiveConfig 在返回配置前就会把已配置的 hot/audit/quarantine 目录建出来
-        // （CI run 41071253276 实锤），所以「目录存在与否」不能用来判待机。
+        // 监控目录留空（发版包 config/config.json 的出厂形态）。审计目录给真实路径但不预建——
+        // 另注意 LoadEffectiveConfig 在返回配置前就会把已配置的 hot/audit/quarantine 目录建出来，
+        // 所以「目录存在与否」不能用来判待机。
         await File.WriteAllTextAsync(configPath, BuildConfigJson(string.Empty, audit));
 
         // 夹具自检：worker 启动路径对配置校验失败会直接 Environment.Exit(1)（杀死整个测试进程），
@@ -569,18 +567,14 @@ public sealed class WorkerReloadConfigRegressionTests
             Assert.Equal("background", status.Data.Mode);
             Assert.Equal(WorkerIpcProtocol.Version, status.V);
 
-            // UI 侧是 1 s 心跳轮询（多条连接）：同一 accept 环必须继续服务第二拍。
-            var ping = await RequestOverTransportAsync(transport, new WorkerIpcRequest(WorkerIpcMethods.Ping, "standby-ping"));
-            Assert.True(ping.Ok, "待机态第二拍 Ping 必须仍被服务");
-            Assert.Equal(string.Empty, ping.Data!.WatchDirectory);
+            // UI 的心跳是「每 1 s 一次 GetStatus、一条连接一个请求」的轮询
+            // （monitor.rs 的 Design(#49)：探针固定 GetStatus，不用 Ping）——第二拍必须是同方法，
+            // accept 环若在首拍之后退出，这里就红。
+            var secondBeat = await RequestOverTransportAsync(transport, new WorkerIpcRequest(WorkerIpcMethods.GetStatus, "standby-status-2"));
+            Assert.True(secondBeat.Ok, "待机态第二拍 GetStatus 必须仍被服务");
+            Assert.Equal(string.Empty, secondBeat.Data!.WatchDirectory);
             Assert.False(loopTask.IsCompleted, "accept 环不得在待机首拍之后退出");
 
-            // 待机 ≠ 已起运行时：处理记录表由 FileProcessedRecordStore 构造时创建，待机分支够不到它。
-            // （不能用「审计目录不存在」判待机——LoadEffectiveConfig 在返回配置前就把
-            // hot/audit/quarantine 三个已配置目录建出来了，CI run 41071253276 实锤。）
-            Assert.False(
-                File.Exists(Path.Combine(audit, "processed.ndjson")),
-                "待机态建立了处理记录表：空 hot_folder 也进了监控运行时（#100 待机守卫失效）");
             Assert.Equal(string.Empty, worker.CurrentWatchDirectory);
         }
         finally
@@ -600,11 +594,12 @@ public sealed class WorkerReloadConfigRegressionTests
                 await transport.DisposeAsync();
             }
 
-            // 停机必须有界，但本用例不在这里断言它停得下来：finally 里抛出的异常会顶掉 try 内的
-            // 真实断言失败，把「连通性没验过」伪装成「只是停不下来」（#113 CI run 41069856888 实锤）。
-            // 仍在待机态就 StopAsync 会挂住是独立缺陷（新票），基类 StopAsync 只受调用方 token 约束，
+            // 停机必须有界，但本用例不在这里断言它停得下来：finally 里抛出的异常会顶掉 try 内的真实
+            // 断言失败，把「连通性没验过」伪装成「只是停不下来」。
+            // 仍在待机态就 StopAsync 会挂住是 #117 登记的独立缺陷；基类 StopAsync 只受调用方 token 约束，
             // 挂住会一路吃到 test.runsettings 的 1 h TestSessionTimeout——CI 只剩一条无名的红。
             // 5 s 有界停机：拿不到结果也只降级继续，ExecuteAsync 那条任务留给进程退出收口。
+            // #117 修好后，把这里改回「断言 StopAsync 在预算内完成」（那条红测挂在 #117）。
             using var stopCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             await worker.StopAsync(stopCts.Token);
             TryDelete(root);
