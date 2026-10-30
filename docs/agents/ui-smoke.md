@@ -154,8 +154,11 @@
   Worker 待机时回包把「已连接 + 空目录」一起交给 UI，UI 才谈引导。
 - **K4 有已知阻断（#108）**：发布包不含 ExifTool 且模板 `exiftool.path` 指向 `C:\Program Files\ExifTool\exiftool.exe`、`dry_run: false`，
   裸机保存有效目录后 `ReloadConfig` 会因 `exiftool.path not found` 校验失败、监控起不来。
-  验 K4 时若命中这条，属 #108 已登记的缺陷，不按 #113 AC3 另开票；要拿「监控确实启动」的正面证据，
-  需先把该包 `config.json` 的 `exiftool.dry_run` 置 true（或本机装好 ExifTool）再走 K4。
+  验 K4 时若命中这条，属 #108 已登记的缺陷，不按 #113 AC3 另开票。
+  **两条取证口径要分清**：票面 K4 说的是「出厂包双击」——手改包内 `exiftool.dry_run` 为 true 之后拿到的
+  「监控启动、文件被处理」不是 K4 本体证据（dry-run 不写真文件），只能作为「待机 → 重载唤醒」这条链路的
+  旁证记在证据列并注明改过什么；正面证据要等 #108 落地（包内自带 ExifTool）后在出厂原样包上取。
+  本机装好 ExifTool 并把 `exiftool.path` 指过去，则仍是非出厂形态，同样要在证据列写明。
 - **别把 #117 算进 K 组**：验完 K1-K4 关掉 UI / 停服务时，仍在待机态的 `StopAsync` 会挂住，
   表现为退出要等满 10 s（`HostOptions.ShutdownTimeout`）甚至留下未拆干净的任务——那是 #117，不是 K 组判据。
 
