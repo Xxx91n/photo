@@ -650,12 +650,6 @@ public sealed class MetadataCleanerWorker : BackgroundService
 
     private async Task RebuildRuntimeAsync(AppConfig config, CancellationToken token)
     {
-        // 全量首扫只在「监控目录被启用」时跑（待机转有效目录、或换了一个目录）。其余重载不重扫整目录：
-        // 审计目录一改，新的去重记录表是空的，重扫即把既有文件重处理一遍，fixed_directory 产物可被覆盖。
-        // Design(#100): 重载首扫限定于监控目录变更，目录未变的重载不得整目录重扫。
-        var previousHotFolder = _currentConfig?.Watch.HotFolder ?? string.Empty;
-        var watchFolderChanged = !string.Equals(previousHotFolder, config.Watch.HotFolder, StringComparison.OrdinalIgnoreCase);
-
         _watcher?.Stop();
         _watcher = null;
         _cleanupTimer?.Dispose();
@@ -745,6 +739,11 @@ public sealed class MetadataCleanerWorker : BackgroundService
         // Design(#100): 重载首扫之前必须先起 watcher。
         _watcher.Start();
 
+        // 其余重载不重扫整目录：审计目录一改，新的去重记录表是空的，重扫即把既有文件重处理一遍，
+        // fixed_directory 产物可被覆盖。判定按大小写不敏感相等，误判成「变了」只多扫一次，误判成「没变」才会漏扫。
+        // Design(#100): 重载首扫只在「监控目录被启用」时跑（待机转有效目录、或换了一个目录）。
+        var watchFolderChanged = !string.Equals(
+            _currentConfig?.Watch.HotFolder ?? string.Empty, config.Watch.HotFolder, StringComparison.OrdinalIgnoreCase);
         if (watchFolderChanged && Directory.Exists(config.Watch.HotFolder))
         {
             // 扫描深度取自 include_subdirectories：FSW 按这个键建监听，越界扫到的子目录文件规则引擎并不过滤。
