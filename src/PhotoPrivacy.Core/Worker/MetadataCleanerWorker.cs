@@ -107,6 +107,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
             return;
         }
 
+        CleanupStaleTempFiles();
         var once = ParseBool(GetValue("once"));
         if (string.IsNullOrWhiteSpace(config.Watch.HotFolder))
         {
@@ -141,7 +142,6 @@ public sealed class MetadataCleanerWorker : BackgroundService
             return;
         }
 
-        CleanupStaleTempFiles();
         _audit = new JsonLineAuditLogger(config.Audit.LogDirectory, config.Audit.RetainDays, config.Audit.DiagnosticMode, AuditLevelParser.Parse(config.Audit.LogLevel));
         IAuditLogger auditLogger = _audit is not null ? _audit : new NoopAuditLogger();
         // 启动路径的软告警落点（排除清单不可匹配/未支持模式）。

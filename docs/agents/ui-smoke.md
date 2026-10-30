@@ -176,6 +176,6 @@
 - 伴随发现与勘误记录：
   1. **清单文案勘误**：原清单中关于主题、语言、日志级别的“下拉菜单”表述为推测失真；实机均为平铺选项组（Segmented/Radio-like buttons），无原生下拉框，本轮已在清单中更正。
   2. **终端黑框弹出**：`photoprivacy-ui` 的入口 `main.rs` 未声明 `#![windows_subsystem = "windows"]`，双击启动时系统默认分配控制台黑窗口，随后弹出 GUI。
-  3. **初始配置导致 Worker 崩溃与连接失败**：打包附带的 `config/config.json` 默认 `"watch.hot_folder": ""` 为空，Worker 启动时配置校验失败抛出 `AppConfigValidationException` 立即退出；UI 等待 3s 管道超时，Windows 报 `系统找不到指定的文件 (os error 2)`。配置有效 `hot_folder` 目录后 Worker 正常拉起并常驻。
+  3. **初始配置待机行为（#100 已修复）**：打包附带的 `config/config.json` 默认 `"watch.hot_folder": ""` 为空时，Worker 会保持 IPC 连接并待机；UI 引导用户前往配置页选择监控目录。保存有效目录后通过热重载启动监控，无需重启 Worker。
   4. **GUI 文本不可划选复制**：gpui 纯文本展示未支持鼠标划选高亮与系统剪贴板复制，报错无法直接复制排障。
   5. **主题设置入口冗余**：右上角快捷切换与设置页平铺切换并存，交互体验重叠。
