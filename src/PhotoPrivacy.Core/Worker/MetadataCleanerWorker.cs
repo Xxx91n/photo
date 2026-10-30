@@ -705,9 +705,9 @@ public sealed class MetadataCleanerWorker : BackgroundService
                     "配置重载失败且回滚到上一份生效配置也失败：原错误={ReloadError}；回滚错误={RollbackError}",
                     ex.Message,
                     rollbackEx.Message));
+                // AggregateException.Message 会追加内层异常消息，再手拼会让 IPC 文案重复两段。
                 throw new AggregateException(
-                    "重载失败，且用上一份生效配置回滚未完成；worker 可能已无可用运行时，需再次重载或重启确认"
-                    + $"（原错误：{ex.Message}；回滚错误：{rollbackEx.Message}）",
+                    "重载失败，且用上一份生效配置回滚未完成；worker 可能已无可用运行时，需再次重载或重启确认",
                     ex,
                     rollbackEx);
             }
