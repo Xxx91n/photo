@@ -372,6 +372,7 @@ public sealed class WorkerReloadConfigRegressionTests
         await File.WriteAllTextAsync(configPath, BuildConfigJson(hot, audit, pollingSeconds: 0));
         // 前提文件在启动首扫里就被处理，不依赖 FSW 在 CI 上报得及时。
         await File.WriteAllTextAsync(Path.Combine(hot, "pre-existing.jpg"), "pre-existing");
+        AssertViableFixtureConfig(configPath);
 
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> { ["config"] = configPath })
@@ -421,8 +422,9 @@ public sealed class WorkerReloadConfigRegressionTests
     public async Task Reload_Into_A_Changed_Audit_Directory_Should_Not_Reprocess_A_File_Changed_Before_The_Window()
     {
         // 防的具体回潮形态：拆卸窗口按 mtime 余量回收，多捞到的已处理文件要靠去重表挡住——同一次重载换了
-        // 审计目录时新的 FileProcessedRecordStore 记录为空，那些文件会被重新处理，fixed_directory 模式下
-        // 覆盖输出目录里用户的改动（#114 残余 1）。
+        // 审计目录时新的 FileProcessedRecordStore 记录为空，那些文件会被重新处理（#114 残余 1）。
+        // 夹具是 same_as_source，所以本用例只验「不重处理」；票面点在 fixed_directory 下覆盖输出目录的后果
+        // 由同文件既有的换目录用例承担。
         var root = Path.Combine(Path.GetTempPath(), "pp-114-dedup-" + Guid.NewGuid().ToString("N"));
         var hot = Path.Combine(root, "hot");
         var auditBefore = Path.Combine(hot, "_audit-a");
@@ -432,6 +434,7 @@ public sealed class WorkerReloadConfigRegressionTests
         var sourcePath = Path.Combine(hot, "already-done.jpg");
         await File.WriteAllTextAsync(configPath, BuildConfigJson(hot, auditBefore));
         await File.WriteAllTextAsync(sourcePath, "first-pass");
+        AssertViableFixtureConfig(configPath);
 
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> { ["config"] = configPath })
@@ -451,15 +454,17 @@ public sealed class WorkerReloadConfigRegressionTests
                 await WaitForProcessedRecordForAsync(beforePath, "already-done.jpg", TimeSpan.FromSeconds(30)),
                 "启动态未处理既有文件：用例前提不成立");
 
-            // 重载前刚被原地改写并处理过一次（清洗落盘就是这个形态）——但改写发生在窗口之前。
-            await File.WriteAllTextAsync(sourcePath, "second-pass-content");
+            // 把 mtime 拨新，复刻清洗落盘后的可观测形态（长度没变、mtime 变新），并等旧运行时按这个新指纹
+            // 再处理一次——到这儿「窗口之前刚被处理过」这条前提就落定了。
+            File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddSeconds(3));
             Assert.True(
                 await WaitForProcessedRecordsAsync(beforePath, expectedAtLeast: 2, TimeSpan.FromSeconds(30)),
                 "改写后的文件未被旧运行时处理：用例前提不成立");
 
-            // 把拆卸窗口撑到 2.5 s：旧实现里这段时间足够「刚入队」的指纹抑制（2 s）过期，而 mtime 仍在
-            // 窗口起点前 2 s 的余量内——正是它会多捞一条、把已处理文件重新排一遍的形态。
-            worker.TeardownWindowHookAsync = () => Task.Delay(TimeSpan.FromMilliseconds(2500));
+            // 窗口撑到 5 s：改动在窗口之前，但 mtime 拨到 +3 s，让它仍留在旧实现「起点前 2 s」的余量里，
+            // 而「刚入队」的 2 s 指纹抑制此时早已过期——那是旧实现唯一会多捞一条的时序，两头都留了秒级余量，
+            // 不靠 CI 快慢碰运气。新实现看差集，与这两头都不相干。
+            worker.TeardownWindowHookAsync = () => Task.Delay(TimeSpan.FromSeconds(5));
 
             await File.WriteAllTextAsync(configPath, BuildConfigJson(hot, auditAfter));
             await worker.ReloadConfigAsync();
@@ -674,11 +679,7 @@ public sealed class WorkerReloadConfigRegressionTests
         Directory.CreateDirectory(hot);
         await File.WriteAllTextAsync(configPath, BuildConfigJson(hot, audit));
 
-        // 夹具自检：worker 的启动路径对配置校验失败会直接 Environment.Exit(1)（杀死整个测试进程），
-        // 所以先在测试侧校验一遍——配置夹具漂移要以断言失败暴露，而不是让 CI 只看到进程消失。
-        var parsed = AppConfigLoader.Load(configPath);
-        AppConfigValidator.Validate(parsed);
-        Assert.True(parsed.ExifTool.DryRun, "夹具必须是 dry-run：否则会去 spawn ExifTool");
+        AssertViableFixtureConfig(configPath);
 
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> { ["config"] = configPath })
@@ -722,6 +723,17 @@ public sealed class WorkerReloadConfigRegressionTests
     {
         await fixture.Worker.StopAsync(CancellationToken.None);
         TryDelete(fixture.Root);
+    }
+
+    /// <summary>
+    /// 夹具自检：worker 启动路径对配置校验失败会直接 <c>Environment.Exit(1)</c>（杀死整个测试进程），
+    /// 所以先在测试侧校验一遍——配置夹具漂移要以断言失败暴露，而不是让 CI 只看到进程消失。
+    /// </summary>
+    private static void AssertViableFixtureConfig(string configPath)
+    {
+        var parsed = AppConfigLoader.Load(configPath);
+        AppConfigValidator.Validate(parsed);
+        Assert.True(parsed.ExifTool.DryRun, "夹具必须是 dry-run：否则会去 spawn ExifTool");
     }
 
     private static string BuildConfigJson(
