@@ -178,8 +178,17 @@ fn launch_background_worker(worker: &Path, config: Option<&Path>) -> std::io::Re
 }
 
 fn background_worker_command(worker: &Path, config: Option<&Path>) -> std::process::Command {
+    let allowed_name = if cfg!(windows) {
+        "PhotoPrivacyWorker.exe"
+    } else {
+        "PhotoPrivacyWorker"
+    };
+    let safe_worker = worker
+        .parent()
+        .map(|dir| dir.join(allowed_name))
+        .unwrap_or_else(|| PathBuf::from(allowed_name));
     #[allow(unused_mut)]
-    let mut command = std::process::Command::new(worker);
+    let mut command = std::process::Command::new(&safe_worker);
     command.arg("--mode").arg("background");
     if let Some(config) = config {
         command.arg("--config").arg(config);
