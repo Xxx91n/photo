@@ -150,6 +150,10 @@
 
 - 提示只在 `ConnectionState::Connected && watch_directory` 为空时渲染，因此 K1/K2 同源：
   Worker 待机时回包把「已连接 + 空目录」一起交给 UI，UI 才谈引导。
+- **K4 有已知阻断（#108）**：发布包不含 ExifTool 且模板 `exiftool.path` 指向 `C:\Program Files\ExifTool\exiftool.exe`、`dry_run: false`，
+  裸机保存有效目录后 `ReloadConfig` 会因 `exiftool.path not found` 校验失败、监控起不来。
+  验 K4 时若命中这条，属 #108 已登记的缺陷，不按 #113 AC3 另开票；要拿「监控确实启动」的正面证据，
+  需先把该包 `config.json` 的 `exiftool.dry_run` 置 true（或本机装好 ExifTool）再走 K4。
 - 回填口径沿用 report-32：**通过 / 失败 / 未探活 / 不迁移（裁决）**，四项须由人实机目检后逐行填证据，无证据不虚构。
 
 ### 切换日实机执行记录（2026-10-28，#61 实现窗口）
