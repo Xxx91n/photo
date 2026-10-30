@@ -824,13 +824,11 @@ public sealed class WorkerReloadConfigRegressionTests
         Directory.CreateDirectory(root);
         await File.WriteAllTextAsync(configPath, BuildConfigJson(string.Empty, string.Empty));
 
-        // 同进程里其它监控态用例可能已在 <BaseDirectory>/hot 下留下目录：先清一次测试残留，
-        // 让本用例尽量从「不存在」起跑；清理失败（句柄延迟释放）时退回「前后存在性不变」的断言，
-        // 仍能抓住待机分支新增目录。
+        // 同进程里其它监控态用例可能已在 <BaseDirectory>/hot 下留下目录：断言「待机前后存在性不变」
+        // 而不是绝对不存在，避免把用例间残留误判成回归，也不删除共享的 <BaseDirectory>/hot。
         var defaultHot = DefaultPaths.DefaultHotFolder;
         var defaultAudit = DefaultPaths.DefaultAuditLogDirectory;
         var defaultQuarantine = DefaultPaths.DefaultQuarantineDirectory;
-        TryDelete(defaultHot);
         var hotBefore = Directory.Exists(defaultHot);
         var auditBefore = Directory.Exists(defaultAudit);
         var quarantineBefore = Directory.Exists(defaultQuarantine);
