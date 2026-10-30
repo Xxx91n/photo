@@ -433,8 +433,7 @@ pub struct AppView {
     fields: HashMap<FieldId, FieldState>,
     pub(crate) rules: Rc<RefCell<RulesEditor>>,
     i18n: Rc<Catalog>,
-    /// 复制反馈的截止时间：Some 时显示"已复制"，到期自动清除。
-    /// 同时记录被复制的文本，用于区分是哪个按钮触发的反馈。
+    /// 复制反馈：记录触发反馈的按钮 ID 与截止时间，仅该按钮显示"已复制"。
     copy_feedback: Option<(String, Instant)>,
     _appearance_subscription: Subscription,
 }
@@ -637,18 +636,18 @@ impl AppView {
         }
     }
 
-    /// 复制文本到系统剪贴板，并触发 2 秒的"已复制"反馈。
-    fn copy_to_clipboard(&mut self, text: &str, cx: &mut Context<Self>) {
+    /// 复制文本到系统剪贴板，并触发 2 秒的"已复制"反馈（绑定到指定按钮 ID）。
+    fn copy_to_clipboard(&mut self, button_id: &str, text: &str, cx: &mut Context<Self>) {
         cx.write_to_clipboard(ClipboardItem::new_string(text.to_string()));
-        self.copy_feedback = Some((text.to_string(), Instant::now() + COPY_FEEDBACK_TTL));
+        self.copy_feedback = Some((button_id.to_string(), Instant::now() + COPY_FEEDBACK_TTL));
         cx.notify();
     }
 
-    /// 返回指定文本的复制反馈文案（"已复制"）；仅当该文本是最近复制的内容且反馈未过期时返回。
-    fn copy_feedback_for(&self, text: &str) -> Option<String> {
+    /// 返回指定按钮的复制反馈文案（"已复制"）；仅当该按钮是最近触发的且反馈未过期时返回。
+    fn copy_feedback_for(&self, button_id: &str) -> Option<String> {
         self.copy_feedback
             .as_ref()
-            .filter(|(copied, deadline)| copied == text && Instant::now() < *deadline)
+            .filter(|(id, deadline)| id == button_id && Instant::now() < *deadline)
             .map(|_| self.t(k::TOAST_COPIED))
     }
 
@@ -1762,7 +1761,7 @@ impl AppView {
                             .text_color(theme.danger)
                             .child(error.clone()),
                     )
-                    .child(self.copy_button("copy-error", &error, k::STATUS_COPY_ERROR, theme, cx))
+                    .child(self.copy_button("copy-error".to_string(), &error, k::STATUS_COPY_ERROR, theme, cx))
             }))
             .children(
                 (state == ConnectionState::Connected
@@ -1934,7 +1933,7 @@ impl AppView {
                 "audit-log",
                 visible_len,
                 cx.processor(move |this, range: std::ops::Range<usize>, _window, cx| {
-                    let entries: Vec<AuditRecord> = {
+                    let entries: Vec<(usize, AuditRecord)> = {
                         let state = this.log_state.borrow();
                         let mut entries = Vec::with_capacity(range.len());
                         for index in range {
@@ -1944,13 +1943,16 @@ impl AppView {
                             let Some(entry) = state.logs.get(entry_index) else {
                                 continue;
                             };
-                            entries.push(entry.clone());
+                            entries.push((index, entry.clone()));
                         }
                         entries
                     };
                     let mut rows = Vec::with_capacity(entries.len());
-                    for entry in &entries {
-                        rows.push(this.log_row(entry, &row_theme, row_rtl, cx).into_any_element());
+                    for (index, entry) in &entries {
+                        rows.push(
+                            this.log_row(*index, entry, &row_theme, row_rtl, cx)
+                                .into_any_element(),
+                        );
                     }
                     rows
                 }),
@@ -2028,6 +2030,7 @@ impl AppView {
 
     fn log_row(
         &self,
+        index: usize,
         entry: &AuditRecord,
         theme: &Theme,
         rtl: bool,
@@ -2038,6 +2041,7 @@ impl AppView {
             "[{}] {} {} {}",
             entry.time_text, entry.display_event, entry.source_path_masked, entry.message
         );
+        let button_id = format!("copy-log-{index}");
         div()
             .h(px(40.))
             .w_full()
@@ -2088,20 +2092,22 @@ impl AppView {
                     .text_color(theme.text)
                     .child(entry.message.clone()),
             )
-            .child(self.copy_button("copy-log", &copy_text, k::LOG_BTN_COPY, theme, cx))
+            .child(self.copy_button(button_id, &copy_text, k::LOG_BTN_COPY, theme, cx))
     }
 
     /// 构造统一风格的复制按钮：点击后复制 `text` 到剪贴板，反馈期间按钮文字变为"已复制"。
+    /// `id` 同时用作 gpui 元素 ID 和反馈归属判定，须保证同帧内唯一。
     fn copy_button(
         &self,
-        id: &'static str,
+        id: String,
         text: &str,
         label_key: &str,
         theme: &Theme,
         cx: &mut Context<Self>,
     ) -> Div {
         let copy_text = text.to_string();
-        let feedback = self.copy_feedback_for(text);
+        let feedback = self.copy_feedback_for(&id);
+        let button_id = id.clone();
         div()
             .id(id)
             .px(px(8.))
@@ -2114,7 +2120,7 @@ impl AppView {
             .hover(|element| element.bg(theme.surface_raised).text_color(theme.text))
             .cursor_pointer()
             .on_click(cx.listener(move |this, _, _, cx| {
-                this.copy_to_clipboard(&copy_text, cx);
+                this.copy_to_clipboard(&button_id, &copy_text, cx);
             }))
             .child(feedback.unwrap_or_else(|| self.t(label_key)))
     }
