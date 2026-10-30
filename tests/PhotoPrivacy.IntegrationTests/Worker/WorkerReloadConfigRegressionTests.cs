@@ -492,13 +492,15 @@ public sealed class WorkerReloadConfigRegressionTests
     /// 真实传输绑定 + accept 循环 + 帧协议往返在待机态从没被走过，而 #100 的实机形态正是「UI 连不上、
     /// 只剩管道超时（os error 2）」。
     ///
-    /// 防的具体回潮形态（本用例的射程就是「待机态的 IPC 连通」，不认领别的）：
-    /// ① 待机分支没把 accept 环带起来，或状态回包把待机读成断线（首拍 GetStatus 往返直接红）；
+    /// 防的具体回潮形态（本用例的射程就是「待机态下的 IPC 连通」，不认领别的）：
+    /// ① 待机态走不通「绑定 → accept 环 → 帧协议 → handler 回包」这条链，或回包把待机读成断线
+    ///    （首拍 GetStatus 往返直接红）；
     /// ② 待机态只服务得了一拍（UI 心跳是每 1 s 一次 GetStatus、一条连接一个请求，见 monitor.rs 的
     ///    Design(#49)；第二拍同方法往返 + accept 环未退出挡这条回潮）。
-    /// 「空 hot_folder 也去建监控运行时」「待机 → 重载后文件确实被处理」这类**运行时有没有启动**的判据，
-    /// 由同文件的 <see cref="EmptyWatchFolder_Should_Stay_Resident_Until_Reload_Starts_Monitoring"/>
-    /// 以正向证据承担，本用例不重复认领。
+    /// 两条射程的边界与同文件端点用例相同：绑定与 accept 环由用例按宿主同序自己搭，
+    /// <c>WorkerIpcServerHostedService</c> 的形态端点接线、以及「worker 在待机就退出」这种
+    /// 不影响回包的形态，都不在本用例的射程内（后者由
+    /// <see cref="EmptyWatchFolder_Should_Stay_Resident_Until_Reload_Starts_Monitoring"/> 的正向证据把关）。
     ///
     /// 前提屏障：首拍前先等 worker 走完配置加载（<c>LoadEffectiveConfig</c> 建的审计目录出现为止）。
     /// <c>CurrentWatchDirectory</c> 在「配置还没加载」时同样回空串，没有这道屏障，回包的空目录
@@ -550,7 +552,7 @@ public sealed class WorkerReloadConfigRegressionTests
         {
             // 就绪屏障：worker 的 CurrentWatchDirectory 在「配置还没加载」与「已进待机」两种状态下
             // 都回空串，少了这一步首拍可能靠空串假绿。审计目录由 LoadEffectiveConfig 建出来，
-            // 它出现即证明 worker 已走完配置加载，此后回包的空目录才说明「待机」。
+            // 它出现只证明「配置加载走完了」——是否真进待机靠上面的回包，运行时误起由兄弟用例挡。
             Assert.True(
                 await WaitForDirectoryAsync(audit, TimeSpan.FromSeconds(30)),
                 "worker 未走完配置加载（审计目录没被建出来）：用例前提不成立");
@@ -581,14 +583,12 @@ public sealed class WorkerReloadConfigRegressionTests
             Assert.Equal(WorkerIpcProtocol.Version, status.V);
 
             // UI 的心跳是「每 1 s 一次 GetStatus、一条连接一个请求」的轮询
-            // （monitor.rs 的 Design(#49)：探针固定 GetStatus，不用 Ping）——第二拍必须是同方法，
-            // accept 环若在首拍之后退出，这里就红。
-            var secondBeat = await RequestOverTransportAsync(transport, new WorkerIpcRequest(WorkerIpcMethods.GetStatus, "standby-status-2"));
+            // （monitor.rs 的 Design(#49)：探针固定 GetStatus，不用 Ping）——第二拍必须是同方法。
+            var secondBeatRequest = new WorkerIpcRequest(WorkerIpcMethods.GetStatus, "standby-status-2");
+            var secondBeat = await RequestOverTransportAsync(transport, secondBeatRequest);
             Assert.True(secondBeat.Ok, "待机态第二拍 GetStatus 必须仍被服务");
             Assert.Equal(string.Empty, secondBeat.Data!.WatchDirectory);
             Assert.False(loopTask.IsCompleted, "accept 环不得在待机首拍之后退出");
-
-            Assert.Equal(string.Empty, worker.CurrentWatchDirectory);
         }
         finally
         {
