@@ -587,7 +587,13 @@ public sealed class WorkerReloadConfigRegressionTests
                 await transport.DisposeAsync();
             }
 
-            await worker.StopAsync(CancellationToken.None);
+            // 停机必须有界（#113）：本用例是唯一「仍在待机态就 StopAsync」的形态，其余用例都在重载离开
+            // 待机之后才停。基类 StopAsync 只受调用方 token 约束，挂住会一路吃到 test.runsettings 的
+            // 1 h TestSessionTimeout——CI 只剩一条无名的红。这里把「停不下来」变成可读的断言失败。
+            var stopTask = worker.StopAsync(CancellationToken.None);
+            var winner = await Task.WhenAny(stopTask, Task.Delay(TimeSpan.FromSeconds(15)));
+            Assert.True(stopTask == winner, "待机态 StopAsync 未在 15 s 内完成：首次配置待机的停机路径挂住（#113）");
+            await stopTask;
             TryDelete(root);
         }
     }
