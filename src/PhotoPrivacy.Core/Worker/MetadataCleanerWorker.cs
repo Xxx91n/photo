@@ -215,6 +215,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
         }
 
         _watcher.Start();
+        _currentConfig = config;
 
         // Log inotify limits on Linux (non-blocking diagnostic)
         var inotifyDiag = InotifyMonitor.CheckAndWarn(_logger);
