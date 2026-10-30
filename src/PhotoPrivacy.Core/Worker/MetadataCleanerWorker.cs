@@ -648,7 +648,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
     /// 拆卸前快照没建成、本次重载退回整目录补扫这件事的留痕（不变量①④：降级不许只进日志）。
     /// 写失败只记日志，不反噬重建——重建半途而废的代价比少一条告警大得多（#85 口径）。
     /// </summary>
-    private async Task EmitHandoffDegradedAsync(AppConfig config, string reason, CancellationToken token)
+    private async Task EmitHandoffDegradedAsync(AppConfig config, string reason)
     {
         var audit = _audit;
         if (audit is null)
@@ -658,7 +658,9 @@ public sealed class MetadataCleanerWorker : BackgroundService
 
         try
         {
-            using var bounded = new CancellationTokenSource(TimeSpan.FromSeconds(2), token);
+            // 与停机留痕同口径：2 s 有界等待，等不到就降级成只记日志。重载路径传进来的 token 恒为
+            // CancellationToken.None（ReloadConfigAsync / SIGHUP 都不带停机令牌），这里不必再链一个。
+            using var bounded = new CancellationTokenSource(TimeSpan.FromSeconds(2));
             await audit.WriteAsync(
                 new AuditEvent(
                     EventType: "config_warning",
@@ -744,7 +746,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
                 // （审计目录同批改时新表为空，会重处理）。选它是因为另一头漏捞等于元数据静默留存。
                 _logger.LogWarning(ex, "重载拆卸前的目录快照未建成，本次重载改走整目录补扫。");
                 fullSweep = true;
-                await EmitHandoffDegradedAsync(config, ex.Message, token);
+                await EmitHandoffDegradedAsync(config, ex.Message);
             }
         }
 
