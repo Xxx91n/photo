@@ -658,6 +658,12 @@ public sealed class MetadataCleanerWorker : BackgroundService
         // reload 路径的软告警落点（写进当前生效的审计日志）。
         await EmitConfigWarningsAsync(config, token);
 
+        // 目录创建是启用监控的前置写操作（#124）：放在拆卸/回滚之前，失败时旧运行时原样保留。
+        if (!string.IsNullOrWhiteSpace(config.Watch.HotFolder))
+        {
+            EnsureConfiguredDirectories(config);
+        }
+
         // 拆卸与重建期间持 drain 闸（#85）：等在途一轮处理结束，避免在途 HandleAsync 用到已释放的
         // store/audit；也避免 PopReady 已弹出的路径因 _pipeline 被置空而丢失（该路径不重入队）。
         // 等待有界：超时即放弃本次重载（旧配置与组件保持原样），不带着在途处理强拆。
@@ -751,13 +757,6 @@ public sealed class MetadataCleanerWorker : BackgroundService
             && _debounceQueue is not null
             && SamePath(_activeWatchFolder, config.Watch.HotFolder)
             && _currentConfig?.Watch.DebounceMs == config.Watch.DebounceMs;
-
-        // 先在拆卸旧运行期之前建目录（#124）：创建失败时旧 watcher/audit/pipeline 保持原样，
-        // 与旧 LoadEffectiveConfig 的失败边界一致（旧实现也在拆卸前抛错）；待机重载跳过创建。
-        if (!string.IsNullOrWhiteSpace(config.Watch.HotFolder))
-        {
-            EnsureConfiguredDirectories(config);
-        }
 
         // 收口目录先切到新配置：此后旧 watcher 与轮询兜底的在途回调都按新目录过滤，不会漏进新队列。
         _activeWatchFolder = config.Watch.HotFolder;

@@ -495,9 +495,10 @@ public sealed class WorkerReloadConfigRegressionTests
     {
         // 防的具体回潮形态：重载到「指向已存在文件的目录」时抛错，旧 watcher 已停、新运行时未建，
         // worker 活着却不再监控原目录——此后新文件永远不被处理（#112 票面场景）。
-        // 该错误目前在应用前的校验步骤（LoadEffectiveConfig 建目录）就被拒，尚未进入拆卸；
+        // #124 把目录创建移出配置加载后，这个错误在 ApplyConfigAsync 的启用前置步骤暴露（仍在拆卸/回滚之前），
+        // 由 handler 统一回 reload_failed；旧运行时原样保留。
         // 本用例同时锁「拒绝后旧运行时原样保留」与「IPC 不静默回 ok」。
-        // 关联 issue #112。
+        // 关联 issue #112 / #124。
         var fixture = await StartProcessingWorkerAsync();
 
         try
@@ -516,7 +517,7 @@ public sealed class WorkerReloadConfigRegressionTests
 
             Assert.False(response.Ok, "重载到不可用目录必须回 ok:false，不得静默回 ok（#112）");
             Assert.False(shouldShutdown);
-            Assert.Contains("配置验证失败", response.Message ?? string.Empty, StringComparison.Ordinal);
+            Assert.StartsWith("reload_failed:", response.Message ?? string.Empty, StringComparison.Ordinal);
             Assert.Equal(fixture.Hot, fixture.Worker.CurrentWatchDirectory);
 
             // 旧目录仍被监控：新文件必须继续被处理，否则「回 ok:false」只是假象。
@@ -1016,7 +1017,7 @@ public sealed class WorkerReloadConfigRegressionTests
     [Fact]
     public async Task Failed_Reload_On_Directory_Creation_Should_Keep_The_Old_Runtime()
     {
-        // 防：EnsureConfiguredDirectories 放在 RebuildRuntimeAsync 的拆卸之后——脏目录重载失败时
+        // 防：EnsureConfiguredDirectories 放在拆卸之后（BuildRuntimeAsync 内）——脏目录重载失败时
         // 旧 watcher 已停、pipeline 已拆，监控从此静默停摆（#124）。
         var root = Path.Combine(Path.GetTempPath(), "pp-124-reload-fail-" + Guid.NewGuid().ToString("N"));
         var hot = Path.Combine(root, "hot");
