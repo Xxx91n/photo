@@ -796,7 +796,9 @@ public sealed class MetadataCleanerWorker : BackgroundService
                 : SearchOption.TopDirectoryOnly;
             var fullSweep = scopeChanged || !debounceWindowUnchanged;
             // 非全量补扫时只捞拆卸窗口内新建的文件：它们没有 FSW 事件，又会被新轮询的初始快照当成既有文件。
-            // 时间戳粒度有差异（FAT 到 2 s），往前留余量；多捞到的已处理文件由去重表兜住。
+            // 时间戳粒度有差异（FAT 到 2 s），往前留余量——漏捞等于元数据静默留存，宁可多捞。
+            // 余量窗口内已处理的文件通常被去重记录挡住；但同一次重载若换了审计目录，去重表是空的，
+            // 它们会被重处理（fixed_directory 下可能覆盖输出）。保留 mtime 的写入也会被余量跳过。残余见 #114。
             var handoffFloorUtc = handoffStartUtc.AddSeconds(-2);
             foreach (var path in Directory.EnumerateFiles(config.Watch.HotFolder, "*", searchOption))
             {
