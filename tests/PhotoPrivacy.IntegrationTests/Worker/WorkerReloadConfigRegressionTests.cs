@@ -655,6 +655,8 @@ public sealed class WorkerReloadConfigRegressionTests
             Assert.True(
                 await WaitForStandbyAsync(standbyLogger, TimeSpan.FromSeconds(30)),
                 "worker 未进入空监控目录待机：用例前提不成立");
+            // 待机日志之后仍给一拍：若回归把建目录放到待机分支的后半段，也能被抓到。
+            await Task.Delay(200);
             Assert.Equal(string.Empty, worker.CurrentWatchDirectory);
             Assert.False(
                 Directory.Exists(Path.Combine(installRoot, "hot")),
@@ -707,9 +709,8 @@ public sealed class WorkerReloadConfigRegressionTests
             Assert.True(
                 await WaitForStandbyAsync(standbyLogger, TimeSpan.FromSeconds(30)),
                 "不可写目录形态下 worker 未进入待机：目录副作用仍在配置加载路径上（#124）");
-            Assert.Equal(string.Empty, worker.CurrentWatchDirectory);
-            Assert.False(Directory.Exists(audit));
-            Assert.False(Directory.Exists(quarantine));
+            // 判据只有「进入待机」这一条：旧实现会在 StartAsync 内抛 IOException，走不到这条日志；
+            // 父路径是普通文件时 Directory.Exists 恒假，不能再拿它当断言（无区分力）。
         }
         finally
         {
@@ -756,6 +757,61 @@ public sealed class WorkerReloadConfigRegressionTests
         finally
         {
             await worker.StopAsync(CancellationToken.None);
+            TryDelete(root);
+        }
+    }
+
+    /// <summary>
+    /// 重载回待机同样零目录副作用（#124 AC1）：从启用监控重载到空 <c>hot_folder</c> 时，
+    /// <c>RebuildRuntimeAsync</c> 必须在创建目录之前早退，不得把新配置里的 audit/quarantine 建出来。
+    /// </summary>
+    [Fact]
+    public async Task Reload_To_Standby_Should_Not_Create_Directories()
+    {
+        // 防：目录创建留在 RebuildRuntimeAsync 的空 hot 早退之前——重载回待机仍会建目录（#124）。
+        var root = Path.Combine(Path.GetTempPath(), "pp-124-reload-standby-" + Guid.NewGuid().ToString("N"));
+        var hot = Path.Combine(root, "hot");
+        var auditWhileRunning = Path.Combine(root, "audit-running");
+        var auditAfterReload = Path.Combine(root, "audit-standby");
+        var quarantineAfterReload = Path.Combine(root, "quarantine-standby");
+        var configPath = Path.Combine(root, "config.json");
+        Directory.CreateDirectory(root);
+        await File.WriteAllTextAsync(configPath, BuildConfigJson(hot, auditWhileRunning));
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["config"] = configPath })
+            .Build();
+        var worker = new MetadataCleanerWorker(
+            configuration,
+            NullLogger<MetadataCleanerWorker>.Instance,
+            new NullApplicationLifetime(),
+            new RuntimeControl());
+
+        await worker.StartAsync(CancellationToken.None);
+        try
+        {
+            Assert.True(
+                await WaitForDirectoryAsync(auditWhileRunning, TimeSpan.FromSeconds(30)),
+                "启用监控的启动未建审计目录：用例前提不成立");
+            Assert.Equal(hot, worker.CurrentWatchDirectory);
+
+            await File.WriteAllTextAsync(
+                configPath,
+                BuildConfigJson(string.Empty, auditAfterReload, quarantineDirectory: quarantineAfterReload));
+            await worker.ReloadConfigAsync();
+
+            Assert.Equal(string.Empty, worker.CurrentWatchDirectory);
+            Assert.False(
+                Directory.Exists(auditAfterReload),
+                "重载回待机创建了审计目录：RebuildRuntimeAsync 仍在空 hot 早退前建目录（#124）");
+            Assert.False(
+                Directory.Exists(quarantineAfterReload),
+                "重载回待机创建了隔离目录：RebuildRuntimeAsync 仍在空 hot 早退前建目录（#124）");
+        }
+        finally
+        {
+            using var stopCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await worker.StopAsync(stopCts.Token);
             TryDelete(root);
         }
     }
