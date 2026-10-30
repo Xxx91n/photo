@@ -644,6 +644,38 @@ public sealed class MetadataCleanerWorker : BackgroundService
         }
     }
 
+    /// <summary>
+    /// 拆卸前快照没建成、本次重载退回整目录补扫这件事的留痕（不变量①④：降级不许只进日志）。
+    /// 写失败只记日志，不反噬重建——重建半途而废的代价比少一条告警大得多（#85 口径）。
+    /// </summary>
+    private async Task EmitHandoffDegradedAsync(AppConfig config, string reason, CancellationToken token)
+    {
+        var audit = _audit;
+        if (audit is null)
+        {
+            return;
+        }
+
+        try
+        {
+            using var bounded = new CancellationTokenSource(TimeSpan.FromSeconds(2), token);
+            await audit.WriteAsync(
+                new AuditEvent(
+                    EventType: "config_warning",
+                    Level: AuditLevel.Warn,
+                    TimestampUtc: DateTimeOffset.UtcNow,
+                    TaskId: Guid.NewGuid().ToString("N"),
+                    SourcePath: config.Watch.HotFolder,
+                    Message: $"重载拆卸前的目录快照未建成（{reason}），本次改走整目录补扫：已处理文件可能被重处理。",
+                    Data: null),
+                bounded.Token);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "拆卸快照降级的审计事件未写出。");
+        }
+    }
+
     private async Task ApplyConfigAsync(AppConfig config, CancellationToken token)
     {
         try
@@ -712,6 +744,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
                 // （审计目录同批改时新表为空，会重处理）。选它是因为另一头漏捞等于元数据静默留存。
                 _logger.LogWarning(ex, "重载拆卸前的目录快照未建成，本次重载改走整目录补扫。");
                 fullSweep = true;
+                await EmitHandoffDegradedAsync(config, ex.Message, token);
             }
         }
 
