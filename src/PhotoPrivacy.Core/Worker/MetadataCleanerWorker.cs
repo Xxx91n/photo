@@ -839,13 +839,13 @@ public sealed class MetadataCleanerWorker : BackgroundService
         _autoExcludedSubdirectories = _watcher.GetAutoExcludedSubdirectories();
 
         // 先起 watcher 再扫描：扫描期间新建的文件若没被 FSW 盯住，会落进轮询兜底的初始快照，从此永不上报。
-        // Design(#100): 重载首扫之前必须先起 watcher。
+        // Design(#82): 重载首扫之前必须先起 watcher（#100）。
         _watcher.Start();
 
         // 其余重载不整目录补扫：审计目录一改，新的去重记录表是空的，把既有文件全排一遍就会重处理，
         // fixed_directory 产物可被覆盖。例外是回滚（rebuildDebounceState）：失败尝试可能已耗数秒，
         // 只捞 mtime 余量会漏掉窗口内落地的文件，故回滚一律全量补扫——用旧的去重表挡住已处理文件。
-        // Design(#100): 重载首扫只在「监控范围被启用」或队列被重建（在途去抖项已随旧队列丢弃）时全量补扫。
+        // Design(#82): 重载首扫只在「监控范围被启用」或队列被重建（在途去抖项已随旧队列丢弃）时全量补扫（#100）。
         if (Directory.Exists(config.Watch.HotFolder))
         {
             // 扫描深度取自 include_subdirectories：FSW 按这个键建监听，越界扫到的子目录文件规则引擎并不过滤。
