@@ -142,15 +142,13 @@ public sealed class MetadataCleanerWorker : BackgroundService
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
                 // Normal shutdown while the worker is waiting for first-run configuration.
+                return;
             }
             catch (ObjectDisposedException)
             {
                 // StopAsync disposes the signal before the host cancels; re-entering the wait after that
-                // throws synchronously. Treat it as the same normal shutdown the cancellation means.
-            }
-
-            if (stoppingToken.IsCancellationRequested)
-            {
+                // throws synchronously. That is shutdown too — must not fall through into the processing
+                // loop, which would spin against a torn-down runtime until the cancellation lands.
                 return;
             }
 
