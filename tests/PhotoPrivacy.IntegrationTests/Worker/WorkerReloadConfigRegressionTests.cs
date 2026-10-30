@@ -625,7 +625,8 @@ public sealed class WorkerReloadConfigRegressionTests
                 debounce_ms = debounceMs,
                 internal_buffer_size = 65536,
                 auto_excluded_directories = Array.Empty<string>(),
-                // 1 s 轮询兜底：CI 上 FSW 事件可能丢失，轮询让「文件被处理」这条断言可重复。
+                // 轮询兜底（默认 1 s）：CI 上 FSW 事件可能丢失，轮询让「文件被处理」这类断言可重复；
+                // 传 0 关掉，用于只让 FSW 这一条通路生效的用例。
                 polling_interval_seconds = pollingSeconds
             },
             rules = new
