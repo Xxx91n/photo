@@ -675,6 +675,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
     /// 不能改成「先建新运行时再切换」：新旧 store/audit 对同一 processed.ndjson 与审计文件各持
     /// 写句柄，旧实例未释放时新建必然自我冲突（#85 根因），事务化需要改存储共享模型，不在本票。
     /// </summary>
+    // Design(#82): 重载重建失败必须回滚到上一份生效配置（#112），不得停在「活着但不再监控」形态。
     private async Task RebuildRuntimeAsync(AppConfig config, CancellationToken token)
     {
         // 拆卸窗口的起点：旧 watcher 一停，这期间新建的文件既不会有 FSW 事件，又会落进新轮询兜底的
@@ -685,20 +686,22 @@ public sealed class MetadataCleanerWorker : BackgroundService
         var previousConfig = _currentConfig;
         if (previousConfig is null)
         {
-            await BuildRuntimeAsync(config, handoffStartUtc, token);
+            await BuildRuntimeAsync(config, handoffStartUtc, rebuildDebounceState: false, token);
             return;
         }
 
         try
         {
-            await BuildRuntimeAsync(config, handoffStartUtc, token);
+            await BuildRuntimeAsync(config, handoffStartUtc, rebuildDebounceState: false, token);
         }
         catch (Exception ex)
         {
-            // Design(#112): 重载重建失败必须用上一份已生效配置回滚，不得停在「活着但不再监控」形态。
+            // 回滚强制重建去抖队列/指纹缓存：失败尝试可能已按新配置的 DebounceMs 换过队列，
+            // 「队列非空」不代表它属于上一份配置；复用会让回滚后的窗口变成新配置的值，并丢掉
+            // 旧窗口里的在途路径。重建队列同时触发全量补扫，由旧的去重表挡住已处理文件。
             try
             {
-                await BuildRuntimeAsync(previousConfig, handoffStartUtc, token);
+                await BuildRuntimeAsync(previousConfig, handoffStartUtc, rebuildDebounceState: true, token);
             }
             catch (Exception rollbackEx)
             {
@@ -708,7 +711,8 @@ public sealed class MetadataCleanerWorker : BackgroundService
                     ex.Message,
                     rollbackEx.Message));
                 throw new AggregateException(
-                    "重载失败，且用上一份生效配置回滚失败；worker 已无可用运行时，需再次重载或重启",
+                    "重载失败，且用上一份生效配置回滚失败；worker 已无可用运行时，需再次重载或重启"
+                    + $"（原错误：{ex.Message}；回滚错误：{rollbackEx.Message}）",
                     ex,
                     rollbackEx);
             }
@@ -718,7 +722,11 @@ public sealed class MetadataCleanerWorker : BackgroundService
         }
     }
 
-    private async Task BuildRuntimeAsync(AppConfig config, DateTime handoffStartUtc, CancellationToken token)
+    private async Task BuildRuntimeAsync(
+        AppConfig config,
+        DateTime handoffStartUtc,
+        bool rebuildDebounceState,
+        CancellationToken token)
     {
         // 首扫判定看「上一个完整建成的范围」：重建中途抛异常时收口目录已切到新目录，只看收口目录
         // 会让下一次重载同目录跳过首扫，那目录里的既有文件就永远漏扫。深度键也算范围——
@@ -729,7 +737,10 @@ public sealed class MetadataCleanerWorker : BackgroundService
         // 去抖队列的复用看「当前收口目录」：换了目录必须丢弃旧目录压在窗口内的在途路径，否则它们会被
         // 新 pipeline 照常清除元数据。窗口未变才复用——#85 只护住「已弹队」那一段，拆卸时若把队列连同
         // 窗口内的路径一起丢掉，新 watcher 的轮询初始快照会把这些文件当既有文件，从此永不再报。
-        var debounceWindowUnchanged = _debounceQueue is not null
+        // 回滚（rebuildDebounceState）一律重建：失败尝试可能已把队列换成新配置的窗口，复用它会让
+        // 回滚后的去抖窗口仍是新值，旧窗口里的在途路径也不会被补扫回来。
+        var debounceWindowUnchanged = !rebuildDebounceState
+            && _debounceQueue is not null
             && SamePath(_activeWatchFolder, config.Watch.HotFolder)
             && _currentConfig?.Watch.DebounceMs == config.Watch.DebounceMs;
 
