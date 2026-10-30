@@ -493,10 +493,14 @@ public sealed class WorkerReloadConfigRegressionTests
     /// 只剩管道超时（os error 2）」。
     ///
     /// 防的具体回潮形态：
-    /// ① 启动校验对空 hot_folder 直接 <c>Environment.Exit(1)</c>（测试进程消失即红）；
-    /// ② 待机分支没把 accept 环带起来，或状态回包把待机读成断线（首拍往返直接红）；
-    /// ③ 待机守卫失效、空目录也去建监控运行时（审计落点断言变红——只断言 <c>watchDirectory</c>
-    ///    为空区分不了「待机」与「压根没启动」，未配置时 <c>CurrentWatchDirectory</c> 同样回空串）。
+    /// ① 待机分支被去掉、空目录也去建监控运行时（审计落点断言变红——只断言 <c>watchDirectory</c>
+    ///    为空区分不了「待机」与「压根没启动」，未配置时 <c>CurrentWatchDirectory</c> 同样回空串）；
+    /// ② 待机态的 accept 环没起来，或状态回包把待机读成断线（首拍往返直接红）。
+    ///
+    /// 覆盖边界（勿当作 #100 崩溃路径的替身）：夹具沿用本类既有的 <c>dry_run = true</c>，
+    /// 而 <c>AppConfigValidator.Validate</c> 在 dry-run 分支早退，因此 #100 当年真正抛的
+    /// 「空 hot_folder 未配置」那条校验**不在本用例的射程内**。非 dry-run 的待机链路归 #108——
+    /// 那里还没裁定「空监控目录整体 fail-open」要不要收窄，本票不替它把行为钉进 CI 门禁。
     /// </summary>
     [Fact]
     public async Task Standby_GetStatus_Through_Background_Endpoint_Should_Reply_With_Empty_Watch_Directory()
@@ -587,13 +591,13 @@ public sealed class WorkerReloadConfigRegressionTests
                 await transport.DisposeAsync();
             }
 
-            // 停机必须有界（#113）：本用例是唯一「仍在待机态就 StopAsync」的形态，其余用例都在重载离开
-            // 待机之后才停。基类 StopAsync 只受调用方 token 约束，挂住会一路吃到 test.runsettings 的
-            // 1 h TestSessionTimeout——CI 只剩一条无名的红。这里把「停不下来」变成可读的断言失败。
-            var stopTask = worker.StopAsync(CancellationToken.None);
-            var winner = await Task.WhenAny(stopTask, Task.Delay(TimeSpan.FromSeconds(15)));
-            Assert.True(stopTask == winner, "待机态 StopAsync 未在 15 s 内完成：首次配置待机的停机路径挂住（#113）");
-            await stopTask;
+            // 停机必须有界，但本用例不在这里断言它停得下来：finally 里抛出的异常会顶掉 try 内的
+            // 真实断言失败，把「连通性没验过」伪装成「只是停不下来」（#113 CI run 41069856888 实锤）。
+            // 仍在待机态就 StopAsync 会挂住是独立缺陷（新票），基类 StopAsync 只受调用方 token 约束，
+            // 挂住会一路吃到 test.runsettings 的 1 h TestSessionTimeout——CI 只剩一条无名的红。
+            // 5 s 有界停机：拿不到结果也只降级继续，ExecuteAsync 那条任务留给进程退出收口。
+            using var stopCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await worker.StopAsync(stopCts.Token);
             TryDelete(root);
         }
     }
