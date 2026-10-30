@@ -521,9 +521,9 @@ public sealed class WorkerReloadConfigRegressionTests
         Directory.CreateDirectory(root);
         // 监控目录留空（发版包 config/config.json 的出厂形态）。审计目录给真实路径但**不**预建：
         // LoadEffectiveConfig 在返回配置前会把已配置的 hot/audit/quarantine 目录建出来，
-        // 于是「审计目录出现」成了 worker 已走完配置加载的正向屏障（见下面的 Wait）。
+        // 于是「审计目录出现」成了 worker 已走完配置加载的正向屏障（见 try 开头的 Wait）。
         // 屏障只证明配置加载走完，不证明「已进待机」；回包也只证明连通与空目录。
-        // 「worker 是否真的待在待机里」由下面的兄弟用例以正向判据承担。
+        // 「worker 是否真的待在待机里」由同文件上方的兄弟用例以正向判据承担。
         await File.WriteAllTextAsync(configPath, BuildConfigJson(string.Empty, audit));
 
         // 夹具自检：worker 启动路径对配置校验失败会直接 Environment.Exit(1)（杀死整个测试进程），
