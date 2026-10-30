@@ -28,6 +28,13 @@ impl LogService {
     pub fn clear(&self, generation: u64) {
         let _ = self.commands.send(LogCommand::Clear { generation });
     }
+
+    /// 测试用：不接后台协调者的空控制面（发送静默失败即可，UI 单测不验证日志落盘）。
+    #[cfg(test)]
+    pub(crate) fn detached() -> Self {
+        let (commands, _command_rx) = mpsc::unbounded_channel();
+        Self { commands }
+    }
 }
 
 /// 启动日志尾部与 backfill 两条后台通道。

@@ -3,7 +3,7 @@
 //! 本页不复刻（预览若做必须由 C# WipeRuleEngine 出值，避免双真相源）。
 //! 文案经 `AppView::t` 按当前语言取词（#60），键常量集中在 `crate::i18n::keys`。
 
-use crate::app::{AppView, MirrorRow};
+use crate::app::{AppView, MirrorRow, focus_ring};
 use crate::i18n::keys as k;
 use crate::theme::Theme;
 use gpui::prelude::*;
@@ -117,6 +117,9 @@ pub(crate) fn render(app: &AppView, theme: &Theme, cx: &mut Context<AppView>) ->
                 .items_center()
                 .gap(px(8.))
                 .cursor_pointer()
+                .focusable()
+                .tab_stop(true)
+                .focus(focus_ring(theme.accent))
                 .on_click(cx.listener(|this, _, _, cx| {
                     let next = !this.rules.borrow().expert_mode();
                     this.rules.borrow_mut().set_expert_mode(next);
@@ -259,6 +262,9 @@ fn family_row(
                 .items_center()
                 .justify_center()
                 .cursor_pointer()
+                .focusable()
+                .tab_stop(true)
+                .focus(focus_ring(theme.accent))
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.rules.borrow_mut().toggle(family, group);
                     cx.notify();
@@ -316,6 +322,10 @@ fn save_button(app: &AppView, cx: &mut Context<AppView>, theme: &Theme) -> impl 
         .font_weight(FontWeight::MEDIUM)
         .cursor_pointer()
         .hover(|element| element.opacity(0.9))
+        .focusable()
+        .tab_stop(true)
+        // 实心强调色底，描边取 on_accent 反色。
+        .focus(focus_ring(theme.on_accent))
         .on_click(cx.listener(|this, _, _, cx| {
             this.rules.borrow_mut().save();
             cx.notify();
@@ -334,6 +344,9 @@ fn reset_button(app: &AppView, cx: &mut Context<AppView>, theme: &Theme) -> impl
         .text_size(px(12.))
         .cursor_pointer()
         .hover(|element| element.bg(theme.surface))
+        .focusable()
+        .tab_stop(true)
+        .focus(focus_ring(theme.accent))
         .on_click(cx.listener(|this, _, _, cx| {
             this.rules.borrow_mut().reset();
             cx.notify();

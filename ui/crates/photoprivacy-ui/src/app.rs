@@ -10,9 +10,9 @@ use crate::service_page::{ServiceCommand, ServiceFeedback, ServiceSnapshot};
 use crate::theme::{self, Theme, ThemeMode};
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, Context, CursorStyle, Div, FocusHandle, FontWeight, IntoElement, KeyDownEvent,
-    MouseButton, PathPromptOptions, Render, Rgba, Stateful, Styled, Subscription,
-    UniformListScrollHandle, Window, div, px, uniform_list,
+    AnyElement, App, Context, CursorStyle, Div, FocusHandle, FontWeight, IntoElement, KeyBinding,
+    KeyDownEvent, MouseButton, PathPromptOptions, Render, Rgba, Stateful, StyleRefinement, Styled,
+    Subscription, UniformListScrollHandle, Window, actions, div, px, uniform_list,
 };
 use photoprivacy_ipc::{ConnectionSnapshot, ConnectionState, ServiceReachability, WorkerMode};
 use photoprivacy_logs::{AuditRecord, EventTone, LevelFilter, LogBuffer};
@@ -29,6 +29,26 @@ const SNAPSHOT_POLL_INTERVAL: Duration = Duration::from_millis(200);
 const CONTROL_WIDTH: f32 = 430.0;
 /// 旧 UI 的 SaveStatus 3 秒后自动清空（MainWindow.ScheduleSaveStatusClear）。
 const SAVE_STATUS_TTL: Duration = Duration::from_secs(3);
+
+// Design(#101): Tab/Shift+Tab 绑定到焦点遍历动作，动作回调只调 window.focus_next/prev；
+// Enter/Space 激活沿用 gpui 内建的合成点击（focusable + on_click 控件），不再自管按键。
+actions!(photoprivacy_ui, [FocusNext, FocusPrev]);
+
+/// 登记焦点遍历按键。必须只在 app 启动时调用一次：重复登记会让同一按键重复派发动作，
+/// 一次 Tab 跳过多个控件。
+pub(crate) fn bind_focus_keys(cx: &mut App) {
+    cx.bind_keys([
+        KeyBinding::new("tab", FocusNext, None),
+        KeyBinding::new("shift-tab", FocusPrev, None),
+    ]);
+}
+
+/// 焦点轮廓的描边样式：2px 高亮框。默认传 `theme.accent`；
+/// 实心强调色底控件（主按钮、选中 chip、保存按钮）传 `theme.on_accent`，
+/// 避免强调色描边淹没在同色底里看不清。
+pub(crate) fn focus_ring(ring: Rgba) -> impl FnOnce(StyleRefinement) -> StyleRefinement {
+    move |style| style.border_2().border_color(ring)
+}
 
 /// 日志页跨窗口重建保留的状态：托盘驻守时窗口会销毁/重建，日志缓冲不能随视图一起丢。
 pub struct LogState {
@@ -409,6 +429,8 @@ enum ButtonKind {
 
 pub struct AppView {
     page: Page,
+    /// 根聚焦句柄：启动时占住焦点，Tab/Shift+Tab 从这里进入控件链；自身不是 tab stop。
+    focus_root: FocusHandle,
     snapshot: ConnectionSnapshot,
     snapshots: watch::Receiver<ConnectionSnapshot>,
     /// 主题、日志与服务快照都跨窗口重建保留（关窗驻守后托盘会重建窗口）。
@@ -468,13 +490,18 @@ impl AppView {
             fields.insert(
                 id,
                 FieldState {
-                    focus: cx.focus_handle(),
+                    // Design(#101): 输入框句柄登记为 tab stop，Tab/Shift+Tab 依序经过全部字段。
+                    focus: cx.focus_handle().tab_stop(true),
                     cursor: field_value(&config, id).len(),
                 },
             );
         }
+        let focus_root = cx.focus_handle();
+        // 启动即聚焦根句柄：无焦点时按键无人认领，Tab 进不了控件链（焦点可见示例同款做法）。
+        window.focus(&focus_root, cx);
         let view = Self {
             page: Page::Overview,
+            focus_root,
             snapshot,
             snapshots,
             theme_mode,
@@ -514,6 +541,16 @@ impl AppView {
     /// 当前草稿语言是否 RTL；布局镜像按页在渲染层做（gpui 0.3.10 无段落级方向 API）。
     pub(crate) fn rtl(&self) -> bool {
         i18n::is_rtl(&self.config.ui.locale)
+    }
+
+    /// Tab：焦点移到下一个 tab stop（依渲染顺序循环）。
+    fn on_focus_next(&mut self, _action: &FocusNext, window: &mut Window, cx: &mut Context<Self>) {
+        window.focus_next(cx);
+    }
+
+    /// Shift+Tab：焦点移到上一个 tab stop（反向循环）。
+    fn on_focus_prev(&mut self, _action: &FocusPrev, window: &mut Window, cx: &mut Context<Self>) {
+        window.focus_prev(cx);
     }
 
     /// Worker 快照从 tokio 线程来；这里在 UI 线程轮询，避免跨线程触碰 gpui 状态。
@@ -909,6 +946,9 @@ impl AppView {
                     .when(!active, |element| element.text_color(theme.text_muted))
                     .hover(|element| element.bg(theme.surface))
                     .cursor_pointer()
+                    .focusable()
+                    .tab_stop(true)
+                    .focus(focus_ring(theme.accent))
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.set_theme_mode(candidate, cx);
                     }))
@@ -975,6 +1015,9 @@ impl AppView {
         self.row_base(label, description, Self::toggle_switch(on, theme), theme)
             .id(id)
             .cursor_pointer()
+            .focusable()
+            .tab_stop(true)
+            .focus(focus_ring(theme.accent))
             .on_click(cx.listener(move |this, _, _, cx| toggle(this, cx)))
             .into_any_element()
     }
@@ -1022,6 +1065,14 @@ impl AppView {
             })
             .hover(|element| element.text_color(theme.text))
             .cursor_pointer()
+            .focusable()
+            .tab_stop(true)
+            // 选中 chip 是实心强调色底，描边取 on_accent 反色才看得清。
+            .focus(focus_ring(if active {
+                theme.on_accent
+            } else {
+                theme.accent
+            }))
             .on_click(cx.listener(move |this, _, window, cx| select(this, window, cx)))
             .child(label)
             .into_any_element()
@@ -1087,10 +1138,11 @@ impl AppView {
             .px(px(10.))
             .bg(theme.surface)
             .border_1()
-            .border_color(if focused { theme.accent } else { theme.border })
+            .border_color(theme.border)
             .rounded(px(7.))
             .cursor(CursorStyle::IBeam)
             .track_focus(&focus)
+            .focus(focus_ring(theme.accent))
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(move |this, _, window, cx| {
@@ -1117,6 +1169,9 @@ impl AppView {
             .text_color(theme.text_muted)
             .hover(|element| element.bg(theme.surface_raised))
             .cursor_pointer()
+            .focusable()
+            .tab_stop(true)
+            .focus(focus_ring(theme.accent))
             .on_click(cx.listener(move |this, _, window, cx| {
                 this.pick_path(id, window, cx);
             }))
@@ -1450,6 +1505,9 @@ impl AppView {
                                 .text_color(theme.text_muted)
                                 .hover(|element| element.text_color(theme.danger))
                                 .cursor_pointer()
+                                .focusable()
+                                .tab_stop(true)
+                                .focus(focus_ring(theme.accent))
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     if let Some(position) = this
                                         .config
@@ -1484,6 +1542,9 @@ impl AppView {
                 .text_color(theme.text_muted)
                 .hover(|element| element.bg(theme.surface_raised))
                 .cursor_pointer()
+                .focusable()
+                .tab_stop(true)
+                .focus(focus_ring(theme.accent))
                 .on_click(cx.listener(|this, _, window, cx| {
                     this.add_excluded_directory(window, cx);
                 }))
@@ -1609,6 +1670,9 @@ impl AppView {
             .when(!active, |element| element.text_color(theme.text_muted))
             .hover(|element| element.bg(theme.surface))
             .cursor_pointer()
+            .focusable()
+            .tab_stop(true)
+            .focus(focus_ring(theme.accent))
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.page = page;
                 cx.notify();
@@ -1650,6 +1714,9 @@ impl AppView {
                     .when(!active, |element| element.text_color(theme.text_muted))
                     .hover(|element| element.bg(theme.surface))
                     .cursor_pointer()
+                    .focusable()
+                    .tab_stop(true)
+                    .focus(focus_ring(theme.accent))
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.log_state.borrow_mut().level_filter = candidate;
                         this.rebuild_visible();
@@ -1750,6 +1817,9 @@ impl AppView {
                         .id("configure-watch-folder")
                         .cursor_pointer()
                         .hover(|element| element.text_color(theme.text))
+                        .focusable()
+                        .tab_stop(true)
+                        .focus(focus_ring(theme.accent))
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.page = Page::Config;
                             cx.notify();
@@ -1861,6 +1931,9 @@ impl AppView {
                     .text_color(theme.text_muted)
                     .hover(|element| element.bg(theme.surface_raised).text_color(theme.text))
                     .cursor_pointer()
+                    .focusable()
+                    .tab_stop(true)
+                    .focus(focus_ring(theme.accent))
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.clear_logs();
                         cx.notify();
@@ -2155,7 +2228,18 @@ impl AppView {
         let on_click = cx.listener(move |_, _, _, _| {
             let _ = commands.send(command);
         });
-        let button = button.cursor_pointer().on_click(on_click);
+        // 实心底（主/危险）描边用 on_accent 反色；幽灵按钮底是 surface，用默认强调色轮廓。
+        let ring = if matches!(kind, ButtonKind::Ghost) {
+            theme.accent
+        } else {
+            theme.on_accent
+        };
+        let button = button
+            .cursor_pointer()
+            .focusable()
+            .tab_stop(true)
+            .focus(focus_ring(ring))
+            .on_click(on_click);
         if matches!(kind, ButtonKind::Ghost) {
             button.hover(|element| element.bg(theme.surface))
         } else {
@@ -2505,6 +2589,9 @@ impl Render for AppView {
 
         div()
             .size_full()
+            .track_focus(&self.focus_root)
+            .on_action(cx.listener(Self::on_focus_next))
+            .on_action(cx.listener(Self::on_focus_prev))
             .bg(theme.bg)
             .text_color(theme.text)
             .flex()
@@ -2518,6 +2605,10 @@ impl Render for AppView {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gpui::{
+        AnyWindowHandle, AppContext, InputEvent, KeyUpEvent, Keystroke, TestAppContext,
+        WindowHandle,
+    };
 
     #[test]
     fn field_ids_and_specs_stay_aligned() {
@@ -2534,5 +2625,244 @@ mod tests {
         element_ids.sort_unstable();
         element_ids.dedup();
         assert_eq!(element_ids.len(), FIELD_SPECS.len(), "element_id 不可重复");
+    }
+
+    /// 最小 AppDeps：不接 Worker/服务/配置后台，只支撑渲染与焦点链。
+    fn test_deps() -> AppDeps {
+        let (_, snapshots) = watch::channel(ConnectionSnapshot::connecting());
+        let (_, service_snapshots) = watch::channel(ServiceSnapshot::default());
+        let (service_commands, _) = mpsc::unbounded_channel();
+        let (config_commands, _) = mpsc::unbounded_channel();
+        AppDeps {
+            snapshots,
+            theme_mode: Rc::new(Cell::new(ThemeMode::System)),
+            log_state: Rc::new(RefCell::new(LogState::new(LevelFilter::Info))),
+            log_service: LogService::detached(),
+            service_snapshots,
+            service_commands,
+            config_state: Rc::new(RefCell::new(ConfigUiState::new(None))),
+            config_commands,
+            config_path: PathBuf::from("config.json"),
+            rules: Rc::new(RefCell::new(RulesEditor::open(
+                std::env::temp_dir().join("photoprivacy-ui-focus-tests-rules.json"),
+            ))),
+            i18n: Rc::new(Catalog::embedded()),
+        }
+    }
+
+    fn setup() -> (TestAppContext, WindowHandle<AppView>) {
+        let mut cx = TestAppContext::single();
+        cx.update(bind_focus_keys);
+        let window = cx.add_window(move |window, cx| AppView::new(window, cx, test_deps()));
+        cx.run_until_parked();
+        draw(&mut cx, window.into());
+        (cx, window)
+    }
+
+    fn draw(cx: &mut TestAppContext, window: AnyWindowHandle) {
+        cx.update_window(window, |_, window, cx| {
+            window.draw(cx).clear(cx);
+        })
+        .unwrap();
+    }
+
+    fn focused(cx: &mut TestAppContext, window: AnyWindowHandle) -> Option<FocusHandle> {
+        cx.update_window(window, |_, window, cx| window.focused(cx))
+            .unwrap()
+    }
+
+    /// 按一次 Tab（forward）或 Shift+Tab（reverse）：焦点动作在按键派发时命中绑定，
+    /// 随后重画让新焦点控件登记按键监听（Enter/Space 合成点击依赖此帧）。
+    fn press_tab(cx: &mut TestAppContext, window: AnyWindowHandle, forward: bool) {
+        let os = cx.read(|cx| cx.platform_info().os);
+        let keystroke =
+            Keystroke::parse_with_os(if forward { "tab" } else { "shift-tab" }, os).unwrap();
+        cx.dispatch_keystroke(window, keystroke);
+        cx.run_until_parked();
+        draw(cx, window);
+    }
+
+    /// 按下并松开 Enter 或 Space：gpui 的合成点击要求 keydown 记账 + keyup 触发，
+    /// 两次派发之间焦点不得移动（focus_generation 不变）。
+    fn press_activation_key(cx: &mut TestAppContext, window: AnyWindowHandle, key: &str) {
+        let os = cx.read(|cx| cx.platform_info().os);
+        let keystroke = Keystroke::parse_with_os(key, os).unwrap();
+        cx.update_window(window, |_, window, cx| {
+            window.dispatch_event(
+                KeyDownEvent {
+                    keystroke: keystroke.clone(),
+                    is_held: false,
+                    prefer_character_input: false,
+                }
+                .to_platform_input(),
+                cx,
+            );
+        })
+        .unwrap();
+        cx.run_until_parked();
+        cx.update_window(window, |_, window, cx| {
+            window.dispatch_event(KeyUpEvent { keystroke }.to_platform_input(), cx);
+        })
+        .unwrap();
+        cx.run_until_parked();
+    }
+
+    /// Tab 依渲染顺序循环遍历可聚焦控件，走完一圈后回绕到第一个（AC1）。
+    /// Overview 页的 tab stop：5 个导航项 + 3 个主题平铺选项。
+    #[test]
+    fn tab_cycles_focusable_controls_in_render_order_and_wraps() {
+        let (mut cx, window) = setup();
+        let window: AnyWindowHandle = window.into();
+        let mut seen = Vec::new();
+        for _ in 0..8 {
+            press_tab(&mut cx, window, true);
+            seen.push(focused(&mut cx, window).expect("Tab 之后应有控件获得焦点"));
+        }
+        for (i, first) in seen.iter().enumerate() {
+            for (j, second) in seen.iter().enumerate().skip(i + 1) {
+                assert_ne!(
+                    first,
+                    second,
+                    "第 {} 次与第 {} 次 Tab 落在同一个句柄上",
+                    i + 1,
+                    j + 1
+                );
+            }
+        }
+        press_tab(&mut cx, window, true);
+        assert_eq!(
+            focused(&mut cx, window),
+            Some(seen[0].clone()),
+            "走完一圈后 Tab 应回绕到第一个控件"
+        );
+    }
+
+    /// Shift+Tab 反向遍历，并从第一个控件反向回绕到最后一个（AC1）。
+    #[test]
+    fn shift_tab_traverses_focus_in_reverse() {
+        let (mut cx, window) = setup();
+        let window: AnyWindowHandle = window.into();
+        press_tab(&mut cx, window, true);
+        press_tab(&mut cx, window, true);
+        press_tab(&mut cx, window, true);
+        let third = focused(&mut cx, window).expect("第三个控件应获得焦点");
+
+        press_tab(&mut cx, window, false);
+        let second = focused(&mut cx, window).expect("反向应退回第二个控件");
+        press_tab(&mut cx, window, false);
+        let first = focused(&mut cx, window).expect("反向应退回第一个控件");
+        assert_ne!(first, second);
+        assert_ne!(second, third);
+
+        // 第一个再反向 → 回绕到最后一个（第 8 个 tab stop）
+        press_tab(&mut cx, window, false);
+        let last = focused(&mut cx, window).expect("反向回绕应落到末位控件");
+        assert_ne!(last, first);
+        press_tab(&mut cx, window, true);
+        assert_eq!(
+            focused(&mut cx, window),
+            Some(first),
+            "从末位正向 Tab 应回到第一个控件"
+        );
+    }
+
+    /// 聚焦在导航按钮上按 Enter 触发点击：切到配置页（AC3）。
+    #[test]
+    fn enter_activates_focused_nav_button() {
+        let (mut cx, window) = setup();
+        let any_window: AnyWindowHandle = window.into();
+        press_tab(&mut cx, any_window, true);
+        press_tab(&mut cx, any_window, true);
+        press_activation_key(&mut cx, any_window, "enter");
+        draw(&mut cx, any_window);
+        let page = window.update(&mut cx, |view, _, _| view.page).unwrap();
+        assert_eq!(page, Page::Config, "Enter 应点击第二个导航项进入配置页");
+    }
+
+    /// 聚焦在平铺选项上按 Space 触发切换：主题切到 Light（AC3）。
+    #[test]
+    fn space_toggles_focused_tile_option() {
+        let (mut cx, window) = setup();
+        let any_window: AnyWindowHandle = window.into();
+        // 5 个导航项之后是主题选项组：System → Light → Dark，第 7 个 tab stop 是 Light。
+        for _ in 0..7 {
+            press_tab(&mut cx, any_window, true);
+        }
+        press_activation_key(&mut cx, any_window, "space");
+        draw(&mut cx, any_window);
+        let mode = window
+            .update(&mut cx, |view, _, _| view.theme_mode.get())
+            .unwrap();
+        assert_eq!(mode, ThemeMode::Light, "Space 应切换选中的主题平铺选项");
+    }
+
+    /// 聚焦在按钮上按 Enter 触发点击：日志页清空按钮（AC3）。
+    #[test]
+    fn enter_activates_focused_clear_logs_button() {
+        let (mut cx, window) = setup();
+        let any_window: AnyWindowHandle = window.into();
+        // 切到日志页（第 4 个导航项）
+        for _ in 0..4 {
+            press_tab(&mut cx, any_window, true);
+        }
+        press_activation_key(&mut cx, any_window, "enter");
+        draw(&mut cx, any_window);
+        let generation_before = window
+            .update(&mut cx, |view, _, _| view.log_state.borrow().generation)
+            .unwrap();
+        // 日志页 tab stop：5 导航 + 3 主题选项 + 5 级别过滤选项 + 清空按钮 = 14 个。
+        // 当前焦点停在第 4 个（日志导航），再走 10 跳到第 14 个（清空按钮）。
+        for _ in 0..10 {
+            press_tab(&mut cx, any_window, true);
+        }
+        press_activation_key(&mut cx, any_window, "enter");
+        draw(&mut cx, any_window);
+        let generation_after = window
+            .update(&mut cx, |view, _, _| view.log_state.borrow().generation)
+            .unwrap();
+        assert_ne!(
+            generation_before, generation_after,
+            "Enter 应触发清空按钮的点击处理"
+        );
+    }
+
+    /// 输入框的 FocusHandle 接管焦点态，且作为 tab stop 进出不陷获（AC2/AC4）。
+    #[test]
+    fn text_field_focus_handle_drives_focus_state() {
+        let (mut cx, window) = setup();
+        let any_window: AnyWindowHandle = window.into();
+        // 进配置页（第二个导航项）
+        press_tab(&mut cx, any_window, true);
+        press_tab(&mut cx, any_window, true);
+        press_activation_key(&mut cx, any_window, "enter");
+        draw(&mut cx, any_window);
+
+        let field_focus = window
+            .update(&mut cx, |view, _, _| {
+                view.fields[&FieldId::ExifToolPath].focus.clone()
+            })
+            .unwrap();
+
+        cx.update_window(any_window, |_, window, cx| window.focus(&field_focus, cx))
+            .unwrap();
+        draw(&mut cx, any_window);
+        let focused_flag = cx
+            .update_window(any_window, |_, window, _| field_focus.is_focused(window))
+            .unwrap();
+        assert!(focused_flag, "字段句柄应报告已聚焦（驱动焦点轮廓）");
+
+        // Tab 离开字段（下一跳是同排的浏览按钮），Shift+Tab 再回到字段：字段在 tab stop 链上。
+        press_tab(&mut cx, any_window, true);
+        assert_ne!(
+            focused(&mut cx, any_window),
+            Some(field_focus.clone()),
+            "Tab 应离开输入框而不是陷获在字段内"
+        );
+        press_tab(&mut cx, any_window, false);
+        assert_eq!(
+            focused(&mut cx, any_window),
+            Some(field_focus),
+            "Shift+Tab 应回到输入框"
+        );
     }
 }

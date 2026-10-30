@@ -184,6 +184,8 @@ fn main() -> anyhow::Result<()> {
     };
 
     application().run(move |cx: &mut App| {
+        // Tab/Shift+Tab 焦点遍历键全局登记一次（#101）；重复登记会一次按键跳多个控件。
+        app::bind_focus_keys(cx);
         // 启动语言取盘上 config 的 ui.locale（缺失/为空时 config.rs 已回落 zh-CN）。
         let startup_locale = deps.config_state.borrow().config.ui.locale.clone();
         let show_tray_icon = tray::should_show_tray_icon(
