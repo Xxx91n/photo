@@ -44,7 +44,8 @@
     "saving": "Saving…",
     "saved_reloaded": "Saved · Worker reloaded",
     "saved_worker_down": "Saved · Worker not reloaded: {0}",
-    "config_error": "config.json error: {0}"
+    "config_error": "config.json error: {0}",
+    "copy_error": "Copy error"
   },
   "mode": {
     "tray": "Tray Mode",
@@ -254,7 +255,8 @@
       "logs": "Logs"
     },
     "btn": {
-      "clear": "Clear"
+      "clear": "Clear",
+      "copy": "Copy"
     },
     "empty": "No audit entries yet — waiting for file watch events",
     "empty_desc": "Audit events appear here as files are processed.",
@@ -357,7 +359,8 @@
     "service_failed": "Service operation failed",
     "service_cancelled": "Operation cancelled",
     "service_skipped": "Operation skipped",
-    "dismiss": "Dismiss"
+    "dismiss": "Dismiss",
+    "copied": "Copied"
   },
   "common": {
     "none": "None"

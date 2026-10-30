@@ -221,6 +221,7 @@ pub mod keys {
     pub const STATUS_SAVED_RELOADED: &str = "status.saved_reloaded";
     pub const STATUS_SAVED_WORKER_DOWN: &str = "status.saved_worker_down";
     pub const STATUS_CONFIG_ERROR: &str = "status.config_error";
+    pub const STATUS_COPY_ERROR: &str = "status.copy_error";
     pub const STATUS_AUTO_DETECTED: &str = "status.auto_detected";
     pub const MSG_SAVE_FAILED_EXCEPTION: &str = "msg.save_failed_exception";
     pub const CONFIG_SECTION_PATH: &str = "config.section.path";
@@ -273,6 +274,7 @@ pub mod keys {
     pub const LOGLEVEL_CHIP_ERROR: &str = "loglevel.chip.error";
     pub const LOG_SUBTITLE: &str = "log.subtitle";
     pub const LOG_BTN_CLEAR: &str = "log.btn.clear";
+    pub const LOG_BTN_COPY: &str = "log.btn.copy";
     pub const LOG_EMPTY_TITLE: &str = "log.empty_title";
     pub const LOG_EMPTY_DESC: &str = "log.empty_desc";
     pub const LOG_EMPTY_FILTERED_TITLE: &str = "log.empty_filtered_title";
@@ -340,6 +342,7 @@ pub mod keys {
     pub const RULES_BTN_RESET: &str = "rules.btn.reset";
     pub const TOAST_RULES_SAVED: &str = "toast.rules_saved";
     pub const TOAST_RULES_RESET: &str = "toast.rules_reset";
+    pub const TOAST_COPIED: &str = "toast.copied";
     pub const RULES_COL_FAMILY: &str = "rules.col.family";
     pub const RULES_COL_EXTENSIONS: &str = "rules.col.extensions";
     pub const RULES_COL_WARNING: &str = "rules.col.warning";
@@ -500,6 +503,7 @@ mod tests {
             keys::STATUS_SAVED_RELOADED,
             keys::STATUS_SAVED_WORKER_DOWN,
             keys::STATUS_CONFIG_ERROR,
+            keys::STATUS_COPY_ERROR,
             keys::STATUS_AUTO_DETECTED,
             keys::MSG_SAVE_FAILED_EXCEPTION,
             keys::CONFIG_SECTION_PATH,
@@ -552,6 +556,7 @@ mod tests {
             keys::LOGLEVEL_CHIP_ERROR,
             keys::LOG_SUBTITLE,
             keys::LOG_BTN_CLEAR,
+            keys::LOG_BTN_COPY,
             keys::LOG_EMPTY_TITLE,
             keys::LOG_EMPTY_DESC,
             keys::LOG_EMPTY_FILTERED_TITLE,
@@ -619,6 +624,7 @@ mod tests {
             keys::RULES_BTN_RESET,
             keys::TOAST_RULES_SAVED,
             keys::TOAST_RULES_RESET,
+            keys::TOAST_COPIED,
             keys::RULES_COL_FAMILY,
             keys::RULES_COL_EXTENSIONS,
             keys::RULES_COL_WARNING,

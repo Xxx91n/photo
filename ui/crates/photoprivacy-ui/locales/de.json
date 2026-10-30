@@ -44,7 +44,8 @@
     "saving": "Speichern…",
     "saved_reloaded": "Gespeichert · Worker neu geladen",
     "saved_worker_down": "Gespeichert · Worker nicht neu geladen: {0}",
-    "config_error": "config.json-Fehler: {0}"
+    "config_error": "config.json-Fehler: {0}",
+    "copy_error": "Fehler kopieren"
   },
   "mode": {
     "tray": "Systemablage-Modus",
@@ -254,7 +255,8 @@
       "logs": "Protokolle"
     },
     "btn": {
-      "clear": "Bereinigen"
+      "clear": "Bereinigen",
+      "copy": "Kopieren"
     },
     "empty": "Noch keine Prüfprotokolle — warte auf Dateiüberwachungsereignisse",
     "empty_desc": "Audit-Ereignisse erscheinen hier, sobald Dateien verarbeitet werden.",
@@ -357,7 +359,8 @@
     "service_failed": "Dienstvorgang fehlgeschlagen",
     "service_cancelled": "Vorgang abgebrochen",
     "service_skipped": "Vorgang übersprungen",
-    "dismiss": "Schließen"
+    "dismiss": "Schließen",
+    "copied": "Kopiert"
   },
   "common": {
     "none": "Keine"
