@@ -44,14 +44,17 @@ pub(crate) fn bind_focus_keys(cx: &mut App) {
     ]);
 }
 
-/// 焦点轮廓的描边样式：元素外扩 2px 实边光环。用阴影而不是 border——border 宽度变化会撑动
-/// 布局，Tab 遍历时内容抖动；阴影只画在元素外侧、不参与布局。默认传 `theme.accent`；
-/// 实心强调色底控件（主按钮、选中 chip、保存按钮）传 `theme.on_accent`，
-/// 避免强调色描边淹没在同色底里看不清。
+/// 焦点轮廓：元素内侧边缘 2px 实边环（inset 阴影）。不能用 border——宽度变化撑动布局，
+/// Tab 遍历时内容抖动；也不能用外扩阴影——无底色控件（未激活导航/开关行/复选格）
+/// 的内区会被整块填充而非环形。inset 环不参与布局，透明/实心底上都只出环。
+/// 默认传 `theme.accent`；实心强调色底控件（主按钮、选中 chip、保存按钮）传
+/// `theme.on_accent`，避免强调色环淹没在同色底里看不清。
 pub(crate) fn focus_ring(ring: Rgba) -> impl FnOnce(StyleRefinement) -> StyleRefinement {
     move |style| {
         style.shadow(vec![
-            BoxShadow::new(px(0.), px(0.), ring.into()).spread_radius(px(2.)),
+            BoxShadow::new(px(0.), px(0.), ring.into())
+                .spread_radius(px(2.))
+                .inset(),
         ])
     }
 }
@@ -2713,6 +2716,20 @@ mod tests {
         cx.run_until_parked();
     }
 
+    /// Tab 两跳到「配置」导航项并按 Enter 进入，断言落地配置页。
+    fn open_config_page(cx: &mut TestAppContext, window: WindowHandle<AppView>) {
+        let any_window: AnyWindowHandle = window.into();
+        press_tab(cx, any_window, true);
+        press_tab(cx, any_window, true);
+        press_activation_key(cx, any_window, "enter");
+        draw(cx, any_window);
+        assert_eq!(
+            window.update(cx, |view, _, _| view.page).unwrap(),
+            Page::Config,
+            "应先进入配置页"
+        );
+    }
+
     /// Tab 依渲染顺序循环遍历可聚焦控件，走完一圈后回绕到第一个（AC1）。
     /// Overview 页的 tab stop：5 个导航项 + 3 个主题平铺选项。
     #[test]
@@ -2807,16 +2824,7 @@ mod tests {
     fn enter_and_space_toggle_switch_row() {
         let (mut cx, window) = setup();
         let any_window: AnyWindowHandle = window.into();
-        // 进配置页（第二个导航项）
-        press_tab(&mut cx, any_window, true);
-        press_tab(&mut cx, any_window, true);
-        press_activation_key(&mut cx, any_window, "enter");
-        draw(&mut cx, any_window);
-        assert_eq!(
-            window.update(&mut cx, |view, _, _| view.page).unwrap(),
-            Page::Config,
-            "应先进入配置页"
-        );
+        open_config_page(&mut cx, window);
         let before = window
             .update(&mut cx, |view, _, _| view.config.backup.enabled)
             .unwrap();
@@ -2874,11 +2882,7 @@ mod tests {
     fn text_field_focus_handle_drives_focus_state() {
         let (mut cx, window) = setup();
         let any_window: AnyWindowHandle = window.into();
-        // 进配置页（第二个导航项）
-        press_tab(&mut cx, any_window, true);
-        press_tab(&mut cx, any_window, true);
-        press_activation_key(&mut cx, any_window, "enter");
-        draw(&mut cx, any_window);
+        open_config_page(&mut cx, window);
 
         let field_focus = window
             .update(&mut cx, |view, _, _| {
