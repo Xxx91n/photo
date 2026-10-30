@@ -61,9 +61,10 @@ public sealed class MetadataCleanerWorker : BackgroundService
     /// 测试缝：在「拆卸窗口」内执行一段代码（旧 watcher 已停、新 watcher 未起）。
     ///
     /// 这段窗口真实耗时只有毫秒级，靠时间投放文件撞不中；handoff 兜底要可重复地验，
-    /// 必须有个确定的落点（#114）。生产路径不赋值，为 null 时不产生任何行为。
+    /// 必须有个确定的落点（#114）。两种用法：往窗口里投放文件，或把窗口撑长。
+    /// 生产路径不赋值，为 null 时不产生任何行为。
     /// </summary>
-    // Design(#114): 拆卸窗口由注入钩子撑开，测试不得用 sleep/延时去撞毫秒级窗口。
+    // Design(#114): 拆卸窗口的起止由注入钩子划定（生产不赋值），测试不得靠 sleep 猜窗口边界。
     public Func<Task>? TeardownWindowHookAsync { get; set; }
 
     /// <summary>
@@ -694,8 +695,10 @@ public sealed class MetadataCleanerWorker : BackgroundService
 
         // 非全量补扫的重载只回收「拆卸窗口内发生变化」的文件：快照必须在旧 watcher 停下之前取——一停就没有
         // FSW 事件，新轮询兜底的初始快照又会把窗口内的文件当成既有文件，从此永不上报。
+        // 差集比的是 (长度, mtime)：只看 mtime 余量的话，保留源时间戳的写入躲得过判定，判定多捞到的已处理
+        // 文件又只能靠去重表挡住——同一次重载换了审计目录时新表是空的，多捞的就是重处理。
         // 空基准只是「本次走全量补扫」的占位：差集判定只在非全量补扫那条分支上才发生。
-        // Design(#114): handoff 兜底按拆卸前后的目录快照差集判定，不看 mtime 余量——保留 mtime 的写入躲得过余量，而余量多捞的已处理文件要靠去重表挡住，同一次重载换了审计目录时新表是空的，会被重处理。
+        // Design(#114): handoff 兜底的回收判据是拆卸前后的目录快照差集，不用 mtime 余量，也不得靠去重表兜多捞。
         var handoffBaseline = new Dictionary<string, FileFingerprint>(StringComparer.OrdinalIgnoreCase);
         if (!fullSweep)
         {
@@ -705,8 +708,8 @@ public sealed class MetadataCleanerWorker : BackgroundService
             }
             catch (Exception ex)
             {
-                // 差集没有基准可用：退回整目录补扫。多捞的已处理文件由去重表挡住（审计目录没换时），
-                // 漏捞等于元数据静默留存——两者后果不对称，这里宁可多捞。
+                // 记录的取舍：差集没有基准可用，退回整目录补扫——多捞的已处理文件此时只能靠去重表兜
+                // （审计目录同批改时新表为空，会重处理）。选它是因为另一头漏捞等于元数据静默留存。
                 _logger.LogWarning(ex, "重载拆卸前的目录快照未建成，本次重载改走整目录补扫。");
                 fullSweep = true;
             }
@@ -720,7 +723,9 @@ public sealed class MetadataCleanerWorker : BackgroundService
         _cleanupTimer?.Dispose();
         _cleanupTimer = null;
 
-        // 拆卸窗口从这里开始，到下面 _watcher.Start() 结束——窗口内的变化只有差集能看见。
+        // 拆卸窗口（旧 watcher 已停、新 watcher 未起）从这里开始，到下面 _watcher.Start() 结束。
+        // 基准比窗口起点取得更早，所以「基准→Stop」之间落地的改动会被 FSW 与差集各报一次，
+        // 由去重队列与 2 s 指纹抑制压掉重复——多报一次无所谓，漏报等于元数据静默留存。
         if (TeardownWindowHookAsync is { } teardownHook)
         {
             await teardownHook();
