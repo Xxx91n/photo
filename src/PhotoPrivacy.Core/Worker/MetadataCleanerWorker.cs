@@ -28,6 +28,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
     private FswFolderWatcher? _watcher;
     private int _maxParallelDrain = 1;
     private readonly SemaphoreSlim _reloadGate = new(1, 1);
+    private readonly SemaphoreSlim _standbySignal = new(0, 1);
 
     /// <summary>
     /// 串行化「drain 一轮」与「拆卸重建」（#85）：重载在拆卸 store/audit 前必须先等当前一轮 drain 结束，
@@ -106,19 +107,37 @@ public sealed class MetadataCleanerWorker : BackgroundService
             return;
         }
 
-        _currentConfig = config;
+        var once = ParseBool(GetValue("once"));
         if (string.IsNullOrWhiteSpace(config.Watch.HotFolder))
         {
+            if (once)
+            {
+                _logger.LogError("The --once mode requires a configured watch folder");
+                Environment.ExitCode = 1;
+                _applicationLifetime.StopApplication();
+                return;
+            }
+
+            _currentConfig = config;
             _logger.LogWarning("Worker is ready but no watch folder is configured; waiting for configuration reload");
             try
             {
-                await Task.Delay(Timeout.InfiniteTimeSpan, stoppingToken);
+                while (string.IsNullOrWhiteSpace(_currentConfig?.Watch.HotFolder))
+                {
+                    await _standbySignal.WaitAsync(stoppingToken);
+                }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
                 // Normal shutdown while the worker is waiting for first-run configuration.
             }
 
+            if (stoppingToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            await RunProcessingLoopAsync(stoppingToken);
             return;
         }
 
@@ -188,7 +207,6 @@ public sealed class MetadataCleanerWorker : BackgroundService
             }
         }
 
-        var once = ParseBool(GetValue("once"));
         if (once)
         {
             await DrainOnceAsync(stoppingToken);
@@ -214,6 +232,11 @@ public sealed class MetadataCleanerWorker : BackgroundService
                 stoppingToken);
         }
 
+        await RunProcessingLoopAsync(stoppingToken);
+    }
+
+    private async Task RunProcessingLoopAsync(CancellationToken stoppingToken)
+    {
         // Main loop with exponential backoff on transient failures.
         // Unrecoverable exceptions (config, bridge start) still propagate and stop the host.
         const int maxConsecutiveFailures = 10;
@@ -354,6 +377,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
         }
 
         _reloadGate.Dispose();
+        _standbySignal.Dispose();
 
         await base.StopAsync(cancellationToken);
     }
@@ -526,8 +550,11 @@ public sealed class MetadataCleanerWorker : BackgroundService
         try
         {
             var config = LoadEffectiveConfig();
-            _currentConfig = config;
             await ApplyConfigAsync(config, CancellationToken.None);
+            if (_standbySignal.CurrentCount == 0)
+            {
+                _standbySignal.Release();
+            }
         }
         finally
         {
@@ -621,6 +648,11 @@ public sealed class MetadataCleanerWorker : BackgroundService
     private async Task RebuildRuntimeAsync(AppConfig config, CancellationToken token)
     {
         _watcher?.Stop();
+        _watcher = null;
+        _cleanupTimer?.Dispose();
+        _cleanupTimer = null;
+        _debounceQueue = null;
+        _recentFingerprintCache = null;
 
         if (_bridge is not null)
         {
@@ -673,8 +705,9 @@ public sealed class MetadataCleanerWorker : BackgroundService
            return;
        }
 
-       _debounceQueue ??= new DebounceQueue(TimeSpan.FromMilliseconds(config.Watch.DebounceMs), () => DateTimeOffset.UtcNow);
-       _recentFingerprintCache ??= new RecentFingerprintCache(() => DateTimeOffset.UtcNow);
+       _cleanupTimer = new Timer(_ => PerformPeriodicCleanup(config), null, TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(10));
+       _debounceQueue = new DebounceQueue(TimeSpan.FromMilliseconds(config.Watch.DebounceMs), () => DateTimeOffset.UtcNow);
+       _recentFingerprintCache = new RecentFingerprintCache(() => DateTimeOffset.UtcNow);
        _audit = new JsonLineAuditLogger(config.Audit.LogDirectory, config.Audit.RetainDays, config.Audit.DiagnosticMode, AuditLevelParser.Parse(config.Audit.LogLevel));
         IAuditLogger auditLogger = _audit is not null ? _audit : new NoopAuditLogger();
         _bridge = CreateBridge(config, auditLogger);
@@ -698,6 +731,14 @@ public sealed class MetadataCleanerWorker : BackgroundService
             logger: _logger);
 
         _autoExcludedSubdirectories = _watcher.GetAutoExcludedSubdirectories();
+        if (Directory.Exists(config.Watch.HotFolder))
+        {
+            foreach (var file in Directory.EnumerateFiles(config.Watch.HotFolder, "*", SearchOption.AllDirectories))
+            {
+                EnqueueIfNeeded(file);
+            }
+        }
+
         _watcher.Start();
         _currentConfig = config;
     }

@@ -1736,20 +1736,22 @@ impl AppView {
                     .text_color(theme.danger)
                     .child(error)
             }))
-            .children((state == ConnectionState::Connected
-                && self
-                    .snapshot
-                    .watch_directory
-                    .as_deref()
-                    .unwrap_or_default()
-                    .trim()
-                    .is_empty())
+            .children(
+                (state == ConnectionState::Connected
+                    && self
+                        .snapshot
+                        .watch_directory
+                        .as_deref()
+                        .unwrap_or_default()
+                        .trim()
+                        .is_empty())
                 .then(|| {
                     div()
                         .text_size(px(12.))
                         .text_color(theme.warning)
                         .child(self.t(k::STATUS_CONFIGURE_WATCH_FOLDER))
-                }));
+                }),
+            );
 
         let rows = [
             (self.t(k::OVERVIEW_WORKER_MODE), mode.clone()),
