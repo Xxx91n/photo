@@ -493,7 +493,7 @@ public sealed class WorkerReloadConfigRegressionTests
     /// 只剩管道超时（os error 2）」。
     ///
     /// 防的具体回潮形态：
-    /// ① 待机分支被去掉、空目录也去建监控运行时（审计落点断言变红——只断言 <c>watchDirectory</c>
+    /// ① 待机分支被去掉、空目录也去建监控运行时（处理记录表断言变红——只断言 <c>watchDirectory</c>
     ///    为空区分不了「待机」与「压根没启动」，未配置时 <c>CurrentWatchDirectory</c> 同样回空串）；
     /// ② 待机态的 accept 环没起来，或状态回包把待机读成断线（首拍往返直接红）。
     ///
@@ -568,10 +568,12 @@ public sealed class WorkerReloadConfigRegressionTests
             Assert.Equal(string.Empty, ping.Data!.WatchDirectory);
             Assert.False(loopTask.IsCompleted, "accept 环不得在待机首拍之后退出");
 
-            // 待机 ≠ 已起运行时。
+            // 待机 ≠ 已起运行时：处理记录表由 FileProcessedRecordStore 构造时创建，待机分支够不到它。
+            // （不能用「审计目录不存在」判待机——LoadEffectiveConfig 在返回配置前就把
+            // hot/audit/quarantine 三个已配置目录建出来了，CI run 41071253276 实锤。）
             Assert.False(
-                Directory.Exists(audit),
-                "待机态创建了审计目录：空 hot_folder 也进了监控运行时（#100 待机守卫失效）");
+                File.Exists(Path.Combine(audit, "processed.ndjson")),
+                "待机态建立了处理记录表：空 hot_folder 也进了监控运行时（#100 待机守卫失效）");
             Assert.Equal(string.Empty, worker.CurrentWatchDirectory);
         }
         finally
