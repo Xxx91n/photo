@@ -46,6 +46,12 @@ public sealed class MetadataCleanerWorker : BackgroundService
     /// </summary>
     private string _activeWatchFolder = string.Empty;
 
+    /// <summary>
+    /// 上一个「完整建成」的监控目录。重建中途抛异常时 <see cref="_activeWatchFolder"/> 已经切到新目录
+    /// 而这里仍是旧目录，下一次重载同一个目录因此会重跑首扫，不至于把没建完的目录永远漏扫。
+    /// </summary>
+    private string _appliedWatchFolder = string.Empty;
+
     private IReadOnlyList<string> _autoExcludedSubdirectories = Array.Empty<string>();
 
     public string CurrentExifToolVersion => _bridge?.VersionText ?? ExifToolVersionText.Unknown;
@@ -229,6 +235,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
         }
 
         _watcher.Start();
+        _appliedWatchFolder = config.Watch.HotFolder;
 
         // Log inotify limits on Linux (non-blocking diagnostic)
         var inotifyDiag = InotifyMonitor.CheckAndWarn(_logger);
@@ -661,14 +668,15 @@ public sealed class MetadataCleanerWorker : BackgroundService
 
     private async Task RebuildRuntimeAsync(AppConfig config, CancellationToken token)
     {
-        // 换目录时必须丢弃旧目录的在途去抖路径：那些文件已不在监控范围内，复用队列会让它们被新
-        // pipeline 照常清除元数据。判定误报成「变了」只多扫一次，误报成「没变」才会漏扫或漏丢。
-        var watchFolderChanged = !SamePath(_activeWatchFolder, config.Watch.HotFolder);
+        // 首扫判定看「上一个完整建成的目录」：重建中途抛异常时收口目录已切到新目录，只看收口目录
+        // 会让下一次重载同目录跳过首扫，那目录里的既有文件就永远漏扫。
+        var watchFolderChanged = !SamePath(_appliedWatchFolder, config.Watch.HotFolder);
 
-        // 去抖窗口未变才复用同一队列：#85 只护住「已弹队」那一段，拆卸时若把队列连同窗口内的
-        // 在途路径一起丢掉，新 watcher 的轮询初始快照会把这些文件当既有文件，从此永不再报。
+        // 去抖队列的复用看「当前收口目录」：换了目录必须丢弃旧目录压在窗口内的在途路径，否则它们会被
+        // 新 pipeline 照常清除元数据。窗口未变才复用——#85 只护住「已弹队」那一段，拆卸时若把队列连同
+        // 窗口内的路径一起丢掉，新 watcher 的轮询初始快照会把这些文件当既有文件，从此永不再报。
         var debounceWindowUnchanged = _debounceQueue is not null
-            && !watchFolderChanged
+            && SamePath(_activeWatchFolder, config.Watch.HotFolder)
             && _currentConfig?.Watch.DebounceMs == config.Watch.DebounceMs;
 
         // 收口目录先切到新配置：此后旧 watcher 与轮询兜底的在途回调都按新目录过滤，不会漏进新队列。
@@ -732,6 +740,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
        if (string.IsNullOrWhiteSpace(config.Watch.HotFolder))
        {
            _autoExcludedSubdirectories = Array.Empty<string>();
+           _appliedWatchFolder = string.Empty;
            _currentConfig = config;
            return;
        }
@@ -786,6 +795,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
         }
 
         _currentConfig = config;
+        _appliedWatchFolder = config.Watch.HotFolder;
     }
 
     private void EnqueueIfNeeded(string path)
