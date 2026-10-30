@@ -23,7 +23,7 @@ public sealed class ExifToolBridgeTests
     }
 
     [Fact]
-    public async Task WipeMetadataAsync_Should_Complete_When_TaskDone_Line_Arrives()
+    public async Task WipeMetadataAsync_Should_Complete_When_Block_Ready_Line_Arrives()
     {
         var process = new ProtocolLevelFakeExifToolProcess();
         var bridge = new ExifToolBridge(process, Config);
@@ -41,7 +41,7 @@ public sealed class ExifToolBridgeTests
         // 防的具体回潮形态（issue #97）：桥一匹配 TASK_DONE_ 回显就完成等待——回显是 ExifTool 在
         // 参数解析阶段打的，磁盘写入要到本块 {ready} 才保证完成，于是擦除会在还没写盘时就返回
         // Cleaned_Modified（进程随后被杀即静默漏清理）。这里让回显照常先出、把块结束信号推迟：
-        // 修复后返回必须发生在该块的 {ready} 之后。关联 issue #97。
+        // 修复后返回必须发生在该块的 {ready} 之后。
         var process = new ProtocolLevelFakeExifToolProcess
         {
             LateReadySignalMs = 800
@@ -55,6 +55,9 @@ public sealed class ExifToolBridgeTests
 
         // fake 先派发再入列，因此看到这一行时桥的 stdout 处理器已经把 TASK_DONE_ 回显消费掉了。
         await WaitUntilStdoutLineAsync(process, "TASK_DONE_");
+
+        // 结清窗口 150 ms 远小于 {ready} 的 800 ms 迟到量：它不赌回显何时到（回显由上一行等），
+        // 只给「一回显就结清」那条旧路径的续跑留出落地时间，旧实现必红。
         await Task.Delay(150);
 
         Assert.False(wipe.IsCompleted);
@@ -135,7 +138,8 @@ public sealed class ExifToolBridgeTests
 
         await WaitUntilStdoutLineAsync(process, "TASK_DONE_");
 
-        // 活着的进程应答比 500 ms 健康预算慢 → 健康检查超时 → 重启（Stop 后 Start）。
+        // 活进程应答比 500 ms 健康预算慢：经 EnsureStartedAsync（擦除每文件都走的健康检查入口）
+        // 探到不健康 → 重启（先 Stop 再 Start）。Stop 那一刻就是本用例要盯的杀死时点。
         process.HealthResponseDelayMs = 900;
         await bridge.EnsureStartedAsync(CancellationToken.None);
 
