@@ -14,7 +14,7 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
     private readonly IReadOnlyDictionary<string, bool>? _wipeRules;
     private readonly ILogger<ExifToolBridge> _logger;
     private readonly Func<ExifToolLifecycleEvent, CancellationToken, ValueTask>? _lifecycleSink;
-    private readonly ConcurrentDictionary<string, TaskCompletionSource<bool>> _pending = new();
+    private readonly ConcurrentDictionary<string, PendingBlock> _pending = new();
     private readonly SemaphoreSlim _startLock = new(1, 1);
     private readonly SemaphoreSlim _stdinGate = new(1, 1);
     private readonly TimeSpan _startupTimeout;
@@ -55,6 +55,7 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
         _lifecycleSink = lifecycleSink;
         _startupTimeout = healthTimeout ?? TimeSpan.FromSeconds(3);
         _process.StdoutLine += OnStdoutLine;
+        _process.ProcessExited += OnProcessExited;
     }
 
     public int PendingCount => _pending.Count;
@@ -82,9 +83,9 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
 
             foreach (var marker in _pending.Keys)
             {
-                if (_pending.TryRemove(marker, out var tcs))
+                if (_pending.TryRemove(marker, out var pending))
                 {
-                    tcs.TrySetCanceled(cancellationToken);
+                    pending.Tcs.TrySetCanceled(cancellationToken);
                 }
             }
 
@@ -274,7 +275,8 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
 
     /// <summary>
     /// 清理单个文件的元数据：未知扩展名立即跳过；否则 stay_open 探测 → 判定是否有可清除字段 →
-    /// 按规则生成擦除块并等待 <c>TASK_DONE_</c> marker。返回值即该文件的处理结论。
+    /// 按规则生成擦除块，并等到该命令块的 <c>{ready}</c>（块结束才代表写盘完成）为止；
+    /// <c>TASK_DONE_</c> 回显只作「进入该块」的锚点。返回值即该文件的处理结论。
     /// </summary>
     public async Task<WipeResult> WipeMetadataAsync(string targetPath, CancellationToken cancellationToken)
     {
@@ -382,7 +384,8 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
 
         var wipeMarker = $"TASK_DONE_{id}";
         var wipeTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _pending[wipeMarker] = wipeTcs;
+        // Design(#97): 擦除完成判定取本命令块的 {ready}（块结束），-echo1 回显只当「进入该块」的锚点不作完成信号；「块按写入顺序整块处理、回显与 {ready} 一一对应」这一 stdin 顺序假设的未实测风险登记在 #39。
+        _pending[wipeMarker] = new PendingBlock(wipeTcs, PendingCompletion.BlockReady);
 
         FileInfo? beforeInfo = null;
         long beforeLength = -1;
@@ -541,7 +544,8 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
 
         var marker = $"HEALTH_{Guid.NewGuid():N}";
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _pending[marker] = tcs;
+        // 存活探针不写盘，回显即证明解析器还活着——完成信号保持回显，不套用擦除块的 {ready} 判定。
+        _pending[marker] = new PendingBlock(tcs, PendingCompletion.EchoMarker);
 
         try
         {
@@ -782,21 +786,104 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
             Data: null);
     }
 
+    /// <summary>
+    /// 一个 stay_open 命令块等待方判定「结束」所取的信号。
+    /// </summary>
+    private enum PendingCompletion
+    {
+        /// <summary>由 <c>-echo1</c> 回显行完成——不写盘的探针只要证明解析器还在。</summary>
+        EchoMarker,
+
+        /// <summary>由本命令块的 <c>{ready}</c> 完成——回显早于写盘，块结束才算写完（#97）。</summary>
+        BlockReady
+    }
+
+    private sealed class PendingBlock
+    {
+        public PendingBlock(TaskCompletionSource<bool> tcs, PendingCompletion completion)
+        {
+            Tcs = tcs;
+            Completion = completion;
+        }
+
+        public TaskCompletionSource<bool> Tcs { get; }
+
+        public PendingCompletion Completion { get; }
+
+        /// <summary>
+        /// 回显 marker 已到达，即本块已进入处理。由 stdout pump 线程置位，退出判定线程读取。
+        /// </summary>
+        public volatile bool MarkerEchoed;
+    }
+
     private void OnStdoutLine(string line)
     {
-        foreach (var marker in _pending.Keys)
+        // {ready} 是 ExifTool 的块结束信号：本块的输出与写盘到此才保证完成。
+        if (line.StartsWith("{ready", StringComparison.Ordinal))
         {
-            if (!line.Contains(marker, StringComparison.Ordinal))
+            foreach (var entry in _pending)
+            {
+                if (entry.Value.Completion == PendingCompletion.BlockReady
+                    && entry.Value.MarkerEchoed
+                    && _pending.TryRemove(entry.Key, out var finished))
+                {
+                    finished.Tcs.TrySetResult(true);
+                }
+            }
+
+            return;
+        }
+
+        foreach (var entry in _pending)
+        {
+            // 整行相等才算命中：marker 之间互为前缀（TASK_DONE_1 与 TASK_DONE_12），
+            // 用 Contains 会把别的块的回显记到自己头上，AC1 要的「本块的 {ready}」就名不副实。
+            if (!string.Equals(line.Trim(), entry.Key, StringComparison.Ordinal))
             {
                 continue;
             }
 
-            if (_pending.TryRemove(marker, out var tcs))
+            if (entry.Value.Completion == PendingCompletion.BlockReady)
             {
-                tcs.TrySetResult(true);
+                // 回显只说明「本块已开始处理」，完成判定留给本块的 {ready}（#97）。
+                entry.Value.MarkerEchoed = true;
+                continue;
+            }
+
+            if (_pending.TryRemove(entry.Key, out var pending))
+            {
+                pending.Tcs.TrySetResult(true);
             }
         }
     }
+
+    /// <summary>
+    /// 进程没了：在途擦除块永远不会再有自己的 <c>{ready}</c>，等待方就地判失败，理由进异常消息。
+    ///
+    /// 这条不能省：否则①外部崩溃/健康检查重启时调用方挂到取消为止；②更糟的是新进程的第一个
+    /// <c>{ready}</c> 会被旧进程留下的等待方读成「自己那块结束了」，把没写完的文件报成已清理（#97）。
+    ///
+    /// 只判 <see cref="PendingCompletion.BlockReady"/> 这一类：回显型等待（存活探针）本来就带自己的
+    /// 超时预算，不需要额外信号。
+    /// </summary>
+    private void OnProcessExited()
+    {
+        foreach (var entry in _pending)
+        {
+            if (entry.Value.Completion != PendingCompletion.BlockReady
+                || !_pending.TryRemove(entry.Key, out var pending))
+            {
+                continue;
+            }
+
+            var stage = pending.MarkerEchoed
+                ? "-echo1 was echoed but this block never reached {ready}"
+                : "the command block never started";
+            pending.Tcs.TrySetException(new InvalidOperationException(
+                $"ExifTool process exited before command block '{entry.Key}' completed: {stage}."));
+        }
+    }
+
     public void Dispose()
     {
         _startLock.Dispose();

@@ -21,6 +21,12 @@ public interface IExifToolProcess
 {
     event Action<string>? StdoutLine;
 
+    /// <summary>
+    /// 子进程已退出（崩溃、被杀或停机）时触发一次。进程没了以后 stdout 再也不会出现 <c>{ready}</c>，
+    /// 桥据此把在途命令块的等待判成显式失败，而不是挂到调用方取消为止（#97）。
+    /// </summary>
+    event Action? ProcessExited;
+
     bool IsRunning { get; }
 
     string? LastStderrLine { get; }

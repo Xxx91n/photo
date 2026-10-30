@@ -11,6 +11,7 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
     private Task? _stderrPumpTask;
     private CancellationTokenSource? _pumpCts;
     private string? _lastStderrLine;
+    private int _exitSignaled;
 
     public ProcessExifToolProcess()
         : this(CreateDefaultProcessJobObject())
@@ -33,6 +34,8 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
     }
 
     public event Action<string>? StdoutLine;
+
+    public event Action? ProcessExited;
 
     public bool IsRunning => _process is { HasExited: false };
 
@@ -67,6 +70,7 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
             startInfo.ArgumentList.Add(arg);
         }
 
+        _exitSignaled = 0;
         _process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
         _process.Start();
         _jobObject.Assign(_process);
@@ -76,6 +80,8 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
         _process.Exited += (_, _) =>
         {
             try { _ = _process?.WaitForExit(0); } catch { /* already exited */ }
+
+            SignalExited();
         };
 
         _stdin = _process.StandardInput;
@@ -95,6 +101,8 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
                     var line = await _process.StandardOutput.ReadLineAsync(pumpToken);
                     if (line is null)
                     {
+                        // stdout EOF：子进程的写端已关闭，协议流不会再有 {ready}。
+                        SignalExited();
                         break;
                     }
 
@@ -179,6 +187,9 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
             try { _process.Kill(entireProcessTree: true); } catch { /* already gone */ }
         }
 
+        // 停机到此已确定进程没了。不依赖 Process.Exited 是否已派发（Dispose 之后它可能永远不会来）。
+        SignalExited();
+
         // 3. Cancel the pump loops and wait with a short hard timeout.
         if (_pumpCts is not null)
         {
@@ -224,5 +235,19 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
         _stdoutPumpTask = null;
         _stderrPumpTask = null;
         _lastStderrLine = null;
+    }
+
+    /// <summary>
+    /// 每一代进程最多上报一次退出。来源有三：stdout EOF、<c>Process.Exited</c>、本类 <c>StopAsync</c>
+    /// 收尾——它们说的都是同一件事：这一代的进程已经没了，协议流不会再有 {ready}。
+    /// </summary>
+    private void SignalExited()
+    {
+        if (Interlocked.Exchange(ref _exitSignaled, 1) != 0)
+        {
+            return;
+        }
+
+        ProcessExited?.Invoke();
     }
 }
