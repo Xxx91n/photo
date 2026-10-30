@@ -44,7 +44,8 @@
     "saving": "保存中…",
     "saved_reloaded": "已保存 · Worker 已重载",
     "saved_worker_down": "已保存 · Worker 未重载：{0}",
-    "config_error": "config.json 错误：{0}"
+    "config_error": "config.json 错误：{0}",
+    "copy_error": "复制错误"
   },
   "mode": {
     "tray": "托盘模式",
@@ -254,7 +255,8 @@
       "logs": "日志"
     },
     "btn": {
-      "clear": "清空"
+      "clear": "清空",
+      "copy": "复制"
     },
     "empty": "暂无审计日志 — 等待文件监控事件",
     "empty_desc": "审计事件（清理 / 跳过 / 隔离）产生后会显示在这里。",
@@ -357,7 +359,8 @@
     "service_failed": "服务操作失败",
     "service_cancelled": "操作已取消",
     "service_skipped": "操作已跳过",
-    "dismiss": "关闭"
+    "dismiss": "关闭",
+    "copied": "已复制"
   },
   "common": {
     "none": "无"

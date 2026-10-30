@@ -44,7 +44,8 @@
     "saving": "جارٍ الحفظ…",
     "saved_reloaded": "تم الحفظ · أعيد تحميل Worker",
     "saved_worker_down": "تم الحفظ · لم يُعَد تحميل Worker: {0}",
-    "config_error": "خطأ في config.json: {0}"
+    "config_error": "خطأ في config.json: {0}",
+    "copy_error": "نسخ الخطأ"
   },
   "mode": {
     "tray": "وضع الدرج",
@@ -158,7 +159,8 @@
       "logs": "السجلات"
     },
     "btn": {
-      "clear": "مسح"
+      "clear": "مسح",
+      "copy": "نسخ"
     },
     "empty": "لا توجد سجلات تدقيق بعد — في انتظار أحداث مراقبة الملفات",
     "empty_desc": "تظهر أحداث التدقيق هنا عند معالجة الملفات.",
@@ -357,7 +359,8 @@
     "service_failed": "فشلت عملية الخدمة",
     "service_cancelled": "تم إلغاء العملية",
     "service_skipped": "تم تخطي العملية",
-    "dismiss": "إغلاق"
+    "dismiss": "إغلاق",
+    "copied": "تم النسخ"
   },
   "common": {
     "none": "لا شيء"

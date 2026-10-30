@@ -10,8 +10,8 @@ use crate::service_page::{ServiceCommand, ServiceFeedback, ServiceSnapshot};
 use crate::theme::{self, Theme, ThemeMode};
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, Context, CursorStyle, Div, FocusHandle, FontWeight, IntoElement, KeyDownEvent,
-    MouseButton, PathPromptOptions, Render, Rgba, Stateful, Styled, Subscription,
+    AnyElement, ClipboardItem, Context, CursorStyle, Div, FocusHandle, FontWeight, IntoElement,
+    KeyDownEvent, MouseButton, PathPromptOptions, Render, Rgba, Stateful, Styled, Subscription,
     UniformListScrollHandle, Window, div, px, uniform_list,
 };
 use photoprivacy_ipc::{ConnectionSnapshot, ConnectionState, ServiceReachability, WorkerMode};
@@ -29,6 +29,8 @@ const SNAPSHOT_POLL_INTERVAL: Duration = Duration::from_millis(200);
 const CONTROL_WIDTH: f32 = 430.0;
 /// 旧 UI 的 SaveStatus 3 秒后自动清空（MainWindow.ScheduleSaveStatusClear）。
 const SAVE_STATUS_TTL: Duration = Duration::from_secs(3);
+/// 复制反馈显示时长。
+const COPY_FEEDBACK_TTL: Duration = Duration::from_secs(2);
 
 /// 日志页跨窗口重建保留的状态：托盘驻守时窗口会销毁/重建，日志缓冲不能随视图一起丢。
 pub struct LogState {
@@ -431,6 +433,8 @@ pub struct AppView {
     fields: HashMap<FieldId, FieldState>,
     pub(crate) rules: Rc<RefCell<RulesEditor>>,
     i18n: Rc<Catalog>,
+    /// 复制反馈的截止时间：Some 时显示"已复制"，到期自动清除。
+    copy_feedback_deadline: Option<Instant>,
     _appearance_subscription: Subscription,
 }
 
@@ -495,6 +499,7 @@ impl AppView {
             fields,
             rules,
             i18n,
+            copy_feedback_deadline: None,
             _appearance_subscription: appearance_subscription,
         };
         view.spawn_updates(window, cx);
@@ -629,6 +634,20 @@ impl AppView {
             EventTone::Warning => theme.warning,
             EventTone::Danger => theme.danger,
         }
+    }
+
+    /// 复制文本到系统剪贴板，并触发 2 秒的"已复制"反馈。
+    fn copy_to_clipboard(&mut self, text: &str, cx: &mut Context<Self>) {
+        cx.write_to_clipboard(ClipboardItem::new_string(text.to_string()));
+        self.copy_feedback_deadline = Some(Instant::now() + COPY_FEEDBACK_TTL);
+        cx.notify();
+    }
+
+    /// 返回复制反馈文案（"已复制"）；反馈过期或未触发时返回 None。
+    fn copy_feedback_text(&self) -> Option<String> {
+        self.copy_feedback_deadline
+            .filter(|deadline| Instant::now() < *deadline)
+            .map(|_| self.t(k::TOAST_COPIED))
     }
 
     fn mark_dirty(&mut self, cx: &mut Context<Self>) {
@@ -1732,9 +1751,35 @@ impl AppView {
             )
             .children(self.snapshot.last_error.clone().map(|error| {
                 div()
-                    .text_size(px(12.))
-                    .text_color(theme.danger)
-                    .child(error)
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .child(
+                        div()
+                            .text_size(px(12.))
+                            .text_color(theme.danger)
+                            .child(error.clone()),
+                    )
+                    .child(
+                        div()
+                            .id("copy-error")
+                            .px(px(8.))
+                            .py(px(2.))
+                            .rounded(px(6.))
+                            .border_1()
+                            .border_color(theme.border)
+                            .text_size(px(11.))
+                            .text_color(theme.text_muted)
+                            .hover(|element| element.bg(theme.surface_raised).text_color(theme.text))
+                            .cursor_pointer()
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.copy_to_clipboard(&error, cx);
+                            }))
+                            .child(
+                                self.copy_feedback_text()
+                                    .unwrap_or_else(|| self.t(k::STATUS_COPY_ERROR)),
+                            ),
+                    )
             }))
             .children(
                 (state == ConnectionState::Connected
@@ -1905,17 +1950,24 @@ impl AppView {
             let list = uniform_list(
                 "audit-log",
                 visible_len,
-                cx.processor(move |this, range: std::ops::Range<usize>, _window, _cx| {
-                    let state = this.log_state.borrow();
-                    let mut rows = Vec::with_capacity(range.len());
-                    for index in range {
-                        let Some(entry_index) = state.visible_indices.get(index).copied() else {
-                            continue;
-                        };
-                        let Some(entry) = state.logs.get(entry_index) else {
-                            continue;
-                        };
-                        rows.push(Self::log_row(entry, &row_theme, row_rtl).into_any_element());
+                cx.processor(move |this, range: std::ops::Range<usize>, _window, cx| {
+                    let entries: Vec<AuditRecord> = {
+                        let state = this.log_state.borrow();
+                        let mut entries = Vec::with_capacity(range.len());
+                        for index in range {
+                            let Some(entry_index) = state.visible_indices.get(index).copied() else {
+                                continue;
+                            };
+                            let Some(entry) = state.logs.get(entry_index) else {
+                                continue;
+                            };
+                            entries.push(entry.clone());
+                        }
+                        entries
+                    };
+                    let mut rows = Vec::with_capacity(entries.len());
+                    for entry in &entries {
+                        rows.push(this.log_row(entry, &row_theme, row_rtl, cx).into_any_element());
                     }
                     rows
                 }),
@@ -1991,8 +2043,19 @@ impl AppView {
             .child(div().flex_1().child(self.t(k::LOG_COL_MESSAGE)))
     }
 
-    fn log_row(entry: &AuditRecord, theme: &Theme, rtl: bool) -> Div {
+    fn log_row(
+        &self,
+        entry: &AuditRecord,
+        theme: &Theme,
+        rtl: bool,
+        cx: &mut Context<Self>,
+    ) -> Div {
         let tone = Self::tone_color(entry.tone, theme);
+        let copy_text = format!(
+            "[{}] {} {} {}",
+            entry.time_text, entry.display_event, entry.source_path_masked, entry.message
+        );
+        let copy_feedback = self.copy_feedback_text();
         div()
             .h(px(40.))
             .w_full()
@@ -2042,6 +2105,23 @@ impl AppView {
                     .text_size(px(12.))
                     .text_color(theme.text)
                     .child(entry.message.clone()),
+            )
+            .child(
+                div()
+                    .id("copy-log")
+                    .px(px(8.))
+                    .py(px(2.))
+                    .rounded(px(6.))
+                    .border_1()
+                    .border_color(theme.border)
+                    .text_size(px(11.))
+                    .text_color(theme.text_muted)
+                    .hover(|element| element.bg(theme.surface_raised).text_color(theme.text))
+                    .cursor_pointer()
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.copy_to_clipboard(&copy_text, cx);
+                    }))
+                    .child(copy_feedback.unwrap_or_else(|| self.t(k::LOG_BTN_COPY))),
             )
     }
 
