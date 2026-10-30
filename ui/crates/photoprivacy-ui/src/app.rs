@@ -1747,6 +1747,7 @@ impl AppView {
                         .is_empty())
                 .then(|| {
                     div()
+                        .id("configure-watch-folder")
                         .cursor_pointer()
                         .hover(|element| element.text_color(theme.text))
                         .on_click(cx.listener(|this, _, _, cx| {
