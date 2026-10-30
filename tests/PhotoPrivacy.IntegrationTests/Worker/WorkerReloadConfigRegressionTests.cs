@@ -5,6 +5,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using PhotoPrivacy.Core.Configuration;
+using PhotoPrivacy.Core.Constants;
 using PhotoPrivacy.Core.Runtime;
 using PhotoPrivacy.Core.Worker;
 using PhotoPrivacy.Ipc;
@@ -663,6 +664,60 @@ public sealed class WorkerReloadConfigRegressionTests
                 "待机态在安装目录下建出了 hot 子树（hot/_audit、hot/_quarantine）：配置加载仍有写副作用（#124）");
             Assert.False(Directory.Exists(audit));
             Assert.False(Directory.Exists(quarantine));
+        }
+        finally
+        {
+            using var stopCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await worker.StopAsync(stopCts.Token);
+            TryDelete(root);
+        }
+    }
+
+    /// <summary>
+    /// 出厂包「三条空串」形态（#124 AC1）：<c>hot_folder</c> / <c>audit.log_directory</c> /
+    /// <c>quarantine.directory</c> 全空时，loader 会把 audit/quarantine 回落到
+    /// <c>&lt;BaseDirectory&gt;/hot/...</c>；待机态不得把这些回落路径建出来。
+    /// </summary>
+    [Fact]
+    public async Task Standby_With_Factory_Empty_Paths_Should_Not_Create_Default_Directories()
+    {
+        // 防：只把显式路径的创建挪走、却把创建塞回 loader 的空串回落分支——出厂包形态仍会长出
+        // <BaseDirectory>/hot、hot/_audit、hot/_quarantine（#124）。
+        var root = Path.Combine(Path.GetTempPath(), "pp-124-factory-" + Guid.NewGuid().ToString("N"));
+        var configPath = Path.Combine(root, "config.json");
+        Directory.CreateDirectory(root);
+        await File.WriteAllTextAsync(configPath, BuildConfigJson(string.Empty, string.Empty));
+
+        // 同进程里其它监控态用例可能已在 <BaseDirectory>/hot 下留下目录：断言「待机没有新增」
+        // 而不是绝对不存在，避免用例间残留把断言变成假绿或假红。
+        var defaultHot = DefaultPaths.DefaultHotFolder;
+        var defaultAudit = DefaultPaths.DefaultAuditLogDirectory;
+        var defaultQuarantine = DefaultPaths.DefaultQuarantineDirectory;
+        var hotBefore = Directory.Exists(defaultHot);
+        var auditBefore = Directory.Exists(defaultAudit);
+        var quarantineBefore = Directory.Exists(defaultQuarantine);
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["config"] = configPath })
+            .Build();
+        var standbyLogger = new StandbySignalLogger();
+        var worker = new MetadataCleanerWorker(
+            configuration,
+            standbyLogger,
+            new NullApplicationLifetime(),
+            new RuntimeControl());
+
+        await worker.StartAsync(CancellationToken.None);
+        try
+        {
+            Assert.True(
+                await WaitForStandbyAsync(standbyLogger, TimeSpan.FromSeconds(30)),
+                "worker 未进入空监控目录待机：用例前提不成立");
+            await Task.Delay(200);
+            Assert.Equal(string.Empty, worker.CurrentWatchDirectory);
+            Assert.Equal(hotBefore, Directory.Exists(defaultHot));
+            Assert.Equal(auditBefore, Directory.Exists(defaultAudit));
+            Assert.Equal(quarantineBefore, Directory.Exists(defaultQuarantine));
         }
         finally
         {
