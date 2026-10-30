@@ -44,8 +44,12 @@ UI 侧并发探测（#59）：新 UI 另起短连接预算客户端（连接 250
 处理器自身未产出响应对象时，连接循环兜底回 `{ok:false,message:"internal_error",id,v}`（不改变任何既有字段语义）。
 请求行无法反序列化时回 `{ok:false,message:"invalid_request",v}`；超长行与空行仍按帧规则丢弃、不回包。
 
-重建阶段失败的后果（D7 禁新字段，故不以状态位上报）：watcher 已停、`_pipeline`/`_bridge` 已拆，
-`GetStatus` 仍可应答但不保证在监视——客户端需再次 `ReloadConfig` 或重启 Worker 恢复。
+重建阶段失败必须回滚（#112）：拆卸后重建抛错时，worker 用上一份已生效配置把旧运行时（watcher/pipeline/
+store/audit）建回来，再按上述契约回 `ok:false`（重建失败带 `reload_failed: …（已回滚到上一份生效配置）`）。
+回滚会按上一份配置重建去抖队列并全量补扫旧目录（已处理文件由去重表挡住），拆卸窗口内在途、
+未处理的文件不会因失败尝试而丢失。回滚成功时恢复到上一份已生效配置：`GetStatus.data.watchDirectory`
+仍是原监控目录，旧目录继续处理新文件（上一份是空目录待机时回到待机）；只有回滚本身也失败，worker
+才可能进入「可应答但无运行时」的降级态，需再次 `ReloadConfig` 或重启恢复。协议字段与状态位不变（D7）。
 重载与「一轮文件处理」互斥：若正在处理文件，重载最多等 8 s；超时回 `ok:false` 并带 `reload_busy`，
 此时旧配置与组件保持原样（不做半拆）。
 

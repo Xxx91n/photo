@@ -33,6 +33,9 @@ namespace PhotoPrivacy.IntegrationTests.Worker;
 ///   不再只是直连 handler——WorkerIpcServerHostedService 的形态端点绑定路径同样被覆盖；
 /// - 待机端点级（Fact）：空 <c>hot_folder</c> 的首次配置待机态同样走真实传输 + accept +
 ///   帧协议（#113 AC1，补齐 #100 关闭时留下的证据缺口）。
+///
+/// 另含 #112 的失败路径：不可用监控目录（拆卸前拒绝）、拆卸后重建失败（回滚到上一份生效配置），
+/// 以及回滚必须重建去抖队列（失败尝试已按新配置换过队列）。三者都必须回 <c>ok:false</c> 且旧目录继续工作。
 /// </summary>
 public sealed class WorkerReloadConfigRegressionTests
 {
@@ -485,6 +488,138 @@ public sealed class WorkerReloadConfigRegressionTests
         }
     }
 
+    [Fact]
+    public async Task Reload_With_Unusable_Watch_Folder_Should_Keep_The_Old_Folder_Monitored()
+    {
+        // 防的具体回潮形态：重载到「指向已存在文件的目录」时抛错，旧 watcher 已停、新运行时未建，
+        // worker 活着却不再监控原目录——此后新文件永远不被处理（#112 票面场景）。
+        // 该错误目前在应用前的校验步骤（LoadEffectiveConfig 建目录）就被拒，尚未进入拆卸；
+        // 本用例同时锁「拒绝后旧运行时原样保留」与「IPC 不静默回 ok」。
+        // 关联 issue #112。
+        var fixture = await StartProcessingWorkerAsync();
+
+        try
+        {
+            // 目标监控目录是个文件：Directory.CreateDirectory 必抛。
+            var blocker = Path.Combine(fixture.Root, "blocker-file");
+            await File.WriteAllTextAsync(blocker, "not-a-directory");
+            await File.WriteAllTextAsync(
+                Path.Combine(fixture.Root, "config.json"),
+                BuildConfigJson(blocker, fixture.AuditDirectory));
+
+            var handler = CreateHandler(fixture, RuntimeMode.Background);
+            var (response, shouldShutdown) = await handler
+                .HandleAsync(new WorkerIpcRequest(WorkerIpcMethods.ReloadConfig, "reload-bad-folder"), CancellationToken.None)
+                .WaitAsync(TimeSpan.FromSeconds(30));
+
+            Assert.False(response.Ok, "重载到不可用目录必须回 ok:false，不得静默回 ok（#112）");
+            Assert.False(shouldShutdown);
+            Assert.Contains("配置验证失败", response.Message ?? string.Empty, StringComparison.Ordinal);
+            Assert.Equal(fixture.Hot, fixture.Worker.CurrentWatchDirectory);
+
+            // 旧目录仍被监控：新文件必须继续被处理，否则「回 ok:false」只是假象。
+            await AssertReloadKeepsProcessingAsync(fixture, "after-bad-folder-reload.jpg");
+        }
+        finally
+        {
+            await StopAndDeleteAsync(fixture);
+        }
+    }
+
+    [Fact]
+    public async Task Reload_That_Fails_After_Teardown_Should_Roll_Back_And_Keep_The_Old_Folder_Monitored()
+    {
+        // 防的具体回潮形态：拆卸（停 watcher、释放 store/audit）之后重建抛错，异常一路抛到 IPC，
+        // 旧运行时没有建回来——worker 活着但不再监控原目录，要等下一次成功重载或重启才恢复（#112）。
+        // 用「审计目录里放一个名为 processed.ndjson 的目录」确定性触发拆卸后失败：校验与建目录都通过，
+        // FileProcessedRecordStore 打开 processed.ndjson 时才抛，正好落在拆卸之后。
+        // 关联 issue #112。
+        var fixture = await StartProcessingWorkerAsync();
+
+        try
+        {
+            var brokenAudit = Path.Combine(fixture.Root, "audit-broken");
+            Directory.CreateDirectory(Path.Combine(brokenAudit, "processed.ndjson"));
+            await File.WriteAllTextAsync(
+                Path.Combine(fixture.Root, "config.json"),
+                BuildConfigJson(fixture.Hot, brokenAudit));
+
+            var handler = CreateHandler(fixture, RuntimeMode.Background);
+            var (response, shouldShutdown) = await handler
+                .HandleAsync(new WorkerIpcRequest(WorkerIpcMethods.ReloadConfig, "reload-teardown-fail"), CancellationToken.None)
+                .WaitAsync(TimeSpan.FromSeconds(30));
+
+            Assert.False(response.Ok, "拆卸后重建失败必须回 ok:false，不得静默回 ok（#112）");
+            Assert.False(shouldShutdown);
+            Assert.StartsWith("reload_failed:", response.Message ?? string.Empty, StringComparison.Ordinal);
+            Assert.Contains("已回滚", response.Message ?? string.Empty, StringComparison.Ordinal);
+            Assert.Equal(fixture.Hot, fixture.Worker.CurrentWatchDirectory);
+
+            // 回滚判据：旧目录继续处理新文件。未回滚时 watcher 已停、pipeline 已拆，文件不会被处理。
+            await File.WriteAllTextAsync(Path.Combine(fixture.Hot, "after-failed-reload.jpg"), "after-failed-reload");
+            Assert.True(
+                await WaitForProcessedRecordForAsync(
+                    fixture.ProcessedPath, "after-failed-reload.jpg", TimeSpan.FromSeconds(30)),
+                "重载失败后旧目录不再处理新文件：worker 停在「活着但不再监控」形态（#112）");
+        }
+        finally
+        {
+            await StopAndDeleteAsync(fixture);
+        }
+    }
+
+    [Fact]
+    public async Task Reload_That_Fails_After_Changing_The_Debounce_Window_Should_Reprocess_The_In_Flight_File()
+    {
+        // 防的具体回潮形态：失败尝试按新 DebounceMs 换掉去抖队列后抛错，回滚直接复用这条队列——
+        // 回滚后的去抖窗口仍是新配置的值，旧窗口里的在途路径既不补扫也不在新队列里，文件静默漏处理
+        // （#112 回滚路径上的 #85 形态）。前提：文件的 mtime 早于回滚补扫的下限（拆卸起点 - 2 s），
+        // 只有「回滚重建队列 + 全量补扫」能把它捞回来。
+        // 关联 issue #112。
+        var fixture = await StartProcessingWorkerAsync(debounceMs: 8000);
+
+        try
+        {
+            await Task.Delay(500);
+
+            var inFlight = Path.Combine(fixture.Hot, "in-flight-before-failed-reload.jpg");
+            await File.WriteAllTextAsync(inFlight, "in-flight");
+            // mtime 拨到 10 s 前：排除回滚的 handoff 余量窗口，只剩全量补扫能捞回它。
+            File.SetLastWriteTimeUtc(inFlight, DateTime.UtcNow.AddSeconds(-10));
+            // 1.2 s 足够事件进入旧队列，又远小于 8 s 窗口——重载发生时它仍未处理。
+            await Task.Delay(1200);
+            Assert.False(
+                HasProcessedRecordFor(fixture.ProcessedPath, "in-flight-before-failed-reload.jpg"),
+                "在途文件在重载前已被处理：用例前提不成立");
+
+            var brokenAudit = Path.Combine(fixture.Root, "audit-broken");
+            Directory.CreateDirectory(Path.Combine(brokenAudit, "processed.ndjson"));
+            await File.WriteAllTextAsync(
+                Path.Combine(fixture.Root, "config.json"),
+                BuildConfigJson(fixture.Hot, brokenAudit, debounceMs: 100));
+
+            var handler = CreateHandler(fixture, RuntimeMode.Background);
+            var (response, shouldShutdown) = await handler
+                .HandleAsync(new WorkerIpcRequest(WorkerIpcMethods.ReloadConfig, "reload-debounce-change"), CancellationToken.None)
+                .WaitAsync(TimeSpan.FromSeconds(60));
+
+            Assert.False(response.Ok, "拆卸后重建失败必须回 ok:false，不得静默回 ok（#112）");
+            Assert.False(shouldShutdown);
+            Assert.StartsWith("reload_failed:", response.Message ?? string.Empty, StringComparison.Ordinal);
+
+            Assert.True(
+                await WaitForProcessedRecordForAsync(
+                    fixture.ProcessedPath,
+                    "in-flight-before-failed-reload.jpg",
+                    TimeSpan.FromSeconds(40)),
+                "回滚复用了失败尝试按新配置重建的去抖队列，旧窗口内的在途文件没有被补扫（#112）");
+        }
+        finally
+        {
+            await StopAndDeleteAsync(fixture);
+        }
+    }
+
     /// <summary>
     /// 待机端点级用例（#113 AC1，补 #100 关闭时留下的证据缺口）：默认 <c>hot_folder: ""</c> 的首次配置
     /// 待机态此前只有两层覆盖——handler 级假运行时（<c>WorkerIpcResidentStabilityTests</c>）与进程内
@@ -687,7 +822,7 @@ public sealed class WorkerReloadConfigRegressionTests
     /// processed.ndjson 出现至少 1 条记录。此后测试续做重载断言；结束统一走
     /// <see cref="StopAndDeleteAsync"/>。
     /// </summary>
-    private static async Task<ReloadFixture> StartProcessingWorkerAsync()
+    private static async Task<ReloadFixture> StartProcessingWorkerAsync(int debounceMs = 100)
     {
         var root = Path.Combine(Path.GetTempPath(), "pp-85-" + Guid.NewGuid().ToString("N"));
         var hot = Path.Combine(root, "hot");
@@ -695,7 +830,7 @@ public sealed class WorkerReloadConfigRegressionTests
         var configPath = Path.Combine(root, "config.json");
 
         Directory.CreateDirectory(hot);
-        await File.WriteAllTextAsync(configPath, BuildConfigJson(hot, audit));
+        await File.WriteAllTextAsync(configPath, BuildConfigJson(hot, audit, debounceMs: debounceMs));
 
         // 夹具自检：worker 的启动路径对配置校验失败会直接 Environment.Exit(1)（杀死整个测试进程），
         // 所以先在测试侧校验一遍——配置夹具漂移要以断言失败暴露，而不是让 CI 只看到进程消失。
