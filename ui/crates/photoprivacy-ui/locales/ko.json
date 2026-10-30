@@ -44,7 +44,8 @@
     "saving": "저장 중…",
     "saved_reloaded": "저장됨 · Worker 다시 로드됨",
     "saved_worker_down": "저장됨 · Worker 다시 로드 안 됨: {0}",
-    "config_error": "config.json 오류: {0}"
+    "config_error": "config.json 오류: {0}",
+    "copy_error": "오류 복사"
   },
   "mode": {
     "tray": "트레이 모드",
@@ -254,7 +255,8 @@
       "logs": "로그"
     },
     "btn": {
-      "clear": "지우기"
+      "clear": "지우기",
+      "copy": "복사"
     },
     "empty": "감사 로그가 아직 없습니다 — 파일 감시 이벤트 대기 중",
     "empty_desc": "파일이 처리되면 감사 이벤트가 여기에 표시됩니다.",
@@ -357,7 +359,8 @@
     "service_failed": "서비스 작업 실패",
     "service_cancelled": "작업이 취소됨",
     "service_skipped": "작업 건너뜀",
-    "dismiss": "닫기"
+    "dismiss": "닫기",
+    "copied": "복사됨"
   },
   "common": {
     "none": "없음"

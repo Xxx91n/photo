@@ -10,8 +10,8 @@ use crate::service_page::{ServiceCommand, ServiceFeedback, ServiceSnapshot};
 use crate::theme::{self, Theme, ThemeMode};
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, Context, CursorStyle, Div, FocusHandle, FontWeight, IntoElement, KeyDownEvent,
-    MouseButton, PathPromptOptions, Render, Rgba, Stateful, Styled, Subscription,
+    AnyElement, ClipboardItem, Context, CursorStyle, Div, FocusHandle, FontWeight, IntoElement,
+    KeyDownEvent, MouseButton, PathPromptOptions, Render, Rgba, Stateful, Styled, Subscription,
     UniformListScrollHandle, Window, div, px, uniform_list,
 };
 use photoprivacy_ipc::{ConnectionSnapshot, ConnectionState, ServiceReachability, WorkerMode};
@@ -29,6 +29,8 @@ const SNAPSHOT_POLL_INTERVAL: Duration = Duration::from_millis(200);
 const CONTROL_WIDTH: f32 = 430.0;
 /// 旧 UI 的 SaveStatus 3 秒后自动清空（MainWindow.ScheduleSaveStatusClear）。
 const SAVE_STATUS_TTL: Duration = Duration::from_secs(3);
+/// 复制反馈显示时长。
+const COPY_FEEDBACK_TTL: Duration = Duration::from_secs(2);
 
 /// 日志页跨窗口重建保留的状态：托盘驻守时窗口会销毁/重建，日志缓冲不能随视图一起丢。
 pub struct LogState {
@@ -431,6 +433,8 @@ pub struct AppView {
     fields: HashMap<FieldId, FieldState>,
     pub(crate) rules: Rc<RefCell<RulesEditor>>,
     i18n: Rc<Catalog>,
+    /// 复制反馈：记录触发反馈的按钮 ID 与截止时间，仅该按钮显示"已复制"。
+    copy_feedback: Option<(String, Instant)>,
     _appearance_subscription: Subscription,
 }
 
@@ -495,6 +499,7 @@ impl AppView {
             fields,
             rules,
             i18n,
+            copy_feedback: None,
             _appearance_subscription: appearance_subscription,
         };
         view.spawn_updates(window, cx);
@@ -579,6 +584,12 @@ impl AppView {
                             }
                             changed = true;
                         }
+                        if let Some((_, deadline)) = &this.copy_feedback
+                            && Instant::now() >= *deadline
+                        {
+                            this.copy_feedback = None;
+                            changed = true;
+                        }
                         if changed {
                             cx.notify();
                         }
@@ -629,6 +640,21 @@ impl AppView {
             EventTone::Warning => theme.warning,
             EventTone::Danger => theme.danger,
         }
+    }
+
+    /// 复制文本到系统剪贴板，并触发 2 秒的"已复制"反馈（绑定到指定按钮 ID）。
+    fn copy_to_clipboard(&mut self, button_id: &str, text: &str, cx: &mut Context<Self>) {
+        cx.write_to_clipboard(ClipboardItem::new_string(text.to_string()));
+        self.copy_feedback = Some((button_id.to_string(), Instant::now() + COPY_FEEDBACK_TTL));
+        cx.notify();
+    }
+
+    /// 返回指定按钮的复制反馈文案（"已复制"）；仅当该按钮是最近触发的且反馈未过期时返回。
+    fn copy_feedback_for(&self, button_id: &str) -> Option<String> {
+        self.copy_feedback
+            .as_ref()
+            .filter(|(id, deadline)| id == button_id && Instant::now() < *deadline)
+            .map(|_| self.t(k::TOAST_COPIED))
     }
 
     fn mark_dirty(&mut self, cx: &mut Context<Self>) {
@@ -1732,9 +1758,22 @@ impl AppView {
             )
             .children(self.snapshot.last_error.clone().map(|error| {
                 div()
-                    .text_size(px(12.))
-                    .text_color(theme.danger)
-                    .child(error)
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .child(
+                        div()
+                            .text_size(px(12.))
+                            .text_color(theme.danger)
+                            .child(error.clone()),
+                    )
+                    .child(self.copy_button(
+                        "copy-error".to_string(),
+                        &error,
+                        k::STATUS_COPY_ERROR,
+                        theme,
+                        cx,
+                    ))
             }))
             .children(
                 (state == ConnectionState::Connected
@@ -1905,17 +1944,30 @@ impl AppView {
             let list = uniform_list(
                 "audit-log",
                 visible_len,
-                cx.processor(move |this, range: std::ops::Range<usize>, _window, _cx| {
-                    let state = this.log_state.borrow();
-                    let mut rows = Vec::with_capacity(range.len());
-                    for index in range {
-                        let Some(entry_index) = state.visible_indices.get(index).copied() else {
-                            continue;
-                        };
-                        let Some(entry) = state.logs.get(entry_index) else {
-                            continue;
-                        };
-                        rows.push(Self::log_row(entry, &row_theme, row_rtl).into_any_element());
+                cx.processor(move |this, range: std::ops::Range<usize>, _window, cx| {
+                    let entries: Vec<(usize, AuditRecord)> = {
+                        let state = this.log_state.borrow();
+                        let mut entries = Vec::with_capacity(range.len());
+                        for index in range {
+                            let Some(entry_index) = state.visible_indices.get(index).copied()
+                            else {
+                                continue;
+                            };
+                            let Some(entry) = state.logs.get(entry_index) else {
+                                continue;
+                            };
+                            // 用 entry_index（日志缓冲中的稳定位置）而非可见列表位置，
+                            // 避免过滤/清空后同一按钮 ID 映射到不同条目。
+                            entries.push((entry_index, entry.clone()));
+                        }
+                        entries
+                    };
+                    let mut rows = Vec::with_capacity(entries.len());
+                    for (entry_index, entry) in &entries {
+                        rows.push(
+                            this.log_row(*entry_index, entry, &row_theme, row_rtl, cx)
+                                .into_any_element(),
+                        );
                     }
                     rows
                 }),
@@ -1991,8 +2043,20 @@ impl AppView {
             .child(div().flex_1().child(self.t(k::LOG_COL_MESSAGE)))
     }
 
-    fn log_row(entry: &AuditRecord, theme: &Theme, rtl: bool) -> Div {
+    fn log_row(
+        &self,
+        entry_index: usize,
+        entry: &AuditRecord,
+        theme: &Theme,
+        rtl: bool,
+        cx: &mut Context<Self>,
+    ) -> Div {
         let tone = Self::tone_color(entry.tone, theme);
+        let copy_text = format!(
+            "[{}] {} {} {}",
+            entry.time_text, entry.display_event, entry.source_path_masked, entry.message
+        );
+        let button_id = format!("copy-log-{entry_index}");
         div()
             .h(px(40.))
             .w_full()
@@ -2043,6 +2107,37 @@ impl AppView {
                     .text_color(theme.text)
                     .child(entry.message.clone()),
             )
+            .child(self.copy_button(button_id, &copy_text, k::LOG_BTN_COPY, theme, cx))
+    }
+
+    /// 构造统一风格的复制按钮：点击后复制 `text` 到剪贴板，反馈期间按钮文字变为"已复制"。
+    /// `id` 同时用作 gpui 元素 ID 和反馈归属判定，须保证同帧内唯一。
+    fn copy_button(
+        &self,
+        id: String,
+        text: &str,
+        label_key: &str,
+        theme: &Theme,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        let copy_text = text.to_string();
+        let feedback = self.copy_feedback_for(&id);
+        let button_id = id.clone();
+        div()
+            .id(id)
+            .px(px(8.))
+            .py(px(2.))
+            .rounded(px(6.))
+            .border_1()
+            .border_color(theme.border)
+            .text_size(px(11.))
+            .text_color(theme.text_muted)
+            .hover(|element| element.bg(theme.surface_raised).text_color(theme.text))
+            .cursor_pointer()
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.copy_to_clipboard(&button_id, &copy_text, cx);
+            }))
+            .child(feedback.unwrap_or_else(|| self.t(label_key)))
     }
 
     fn empty_state(&self, title: String, description: String, theme: &Theme) -> Div {

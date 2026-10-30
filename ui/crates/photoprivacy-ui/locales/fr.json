@@ -44,7 +44,8 @@
     "saving": "Enregistrement…",
     "saved_reloaded": "Enregistré · Worker rechargé",
     "saved_worker_down": "Enregistré · Worker non rechargé : {0}",
-    "config_error": "Erreur config.json : {0}"
+    "config_error": "Erreur config.json : {0}",
+    "copy_error": "Copier l'erreur"
   },
   "mode": {
     "tray": "Mode Icône",
@@ -254,7 +255,8 @@
       "logs": "Journaux"
     },
     "btn": {
-      "clear": "Effacer"
+      "clear": "Effacer",
+      "copy": "Copier"
     },
     "empty": "Aucun journal d'audit pour l'instant — en attente d'événements de surveillance",
     "empty_desc": "Les événements d'audit apparaissent ici au fur et à mesure du traitement des fichiers.",
@@ -357,7 +359,8 @@
     "service_failed": "Échec de l'opération",
     "service_cancelled": "Opération annulée",
     "service_skipped": "Opération ignorée",
-    "dismiss": "Fermer"
+    "dismiss": "Fermer",
+    "copied": "Copié"
   },
   "common": {
     "none": "Aucun"

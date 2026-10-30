@@ -25,12 +25,14 @@ namespace PhotoPrivacy.IntegrationTests.Worker;
 /// 新文件仍被处理」区分新旧实现：旧形态重载在新建 store 时就抛（被吞掉），旧 watcher 已停、
 /// 新 watcher 从未创建——文件不再被处理，必红。
 ///
-/// 两层覆盖：
+/// 三层覆盖：
 /// - handler 级（Theory）：服务与后台（托盘）两种运行形态各自单列（#85 AC「后台管道同方法
 ///   无回归」），重载链路两种形态共用同一 handler/worker，但响应 <c>Mode</c> 字段按形态回
 ///   service/background，逐形态断言，防止后台形态被服务形态的断言顺带掩盖；
 /// - 端点级（Fact）：后台形态的 ReloadConfig 走真实传输绑定 + accept 循环 + 帧协议往返，
-///   不再只是直连 handler——WorkerIpcServerHostedService 的形态端点绑定路径同样被覆盖。
+///   不再只是直连 handler——WorkerIpcServerHostedService 的形态端点绑定路径同样被覆盖；
+/// - 待机端点级（Fact）：空 <c>hot_folder</c> 的首次配置待机态同样走真实传输 + accept +
+///   帧协议（#113 AC1，补齐 #100 关闭时留下的证据缺口）。
 ///
 /// 另含 #112 的失败路径：不可用监控目录（拆卸前拒绝）、拆卸后重建失败（回滚到上一份生效配置），
 /// 以及回滚必须重建去抖队列（失败尝试已按新配置换过队列）。三者都必须回 <c>ok:false</c> 且旧目录继续工作。
@@ -417,15 +419,7 @@ public sealed class WorkerReloadConfigRegressionTests
 
         try
         {
-            // Windows 管道名是内核对象名。Unix socket 落点：Linux 用夹具临时目录（固定路径
-            // /run/photoprivacy 需 root）；macOS 的 sun_path 上限 104 字节，夹具目录路径太长，
-            // 改用临时目录下的短文件名（GetTempPath() 约 49 字节 + 约 21 字节 < 104），
-            // socket 文件由 transport.DisposeAsync（端点属主）负责删除。
-            var endpoint = OperatingSystem.IsWindows()
-                ? "pp85-bg-" + Guid.NewGuid().ToString("N")
-                : OperatingSystem.IsMacOS()
-                    ? Path.Combine(Path.GetTempPath(), "pp85-bg-" + Guid.NewGuid().ToString("N")[..8] + ".sock")
-                    : Path.Combine(fixture.Root, "worker-background.sock");
+            var endpoint = ResolveBackgroundTestEndpoint(fixture.Root);
 
             // 形态→端点选择映射（WorkerIpcServerHostedService 内同一调用的 background 分支）逐 OS 钉住；
             // 兜底失败防止未知 OS 上断言静默跳过。真实固定端点在 CI 无法绑定（Linux /run/photoprivacy
@@ -463,28 +457,11 @@ public sealed class WorkerReloadConfigRegressionTests
 
             for (var attempt = 1; attempt <= 2; attempt++)
             {
-                var request = new WorkerIpcRequest(WorkerIpcMethods.ReloadConfig, "reload-endpoint-" + attempt);
-
-                await using var stream = await transport
-                    .ConnectAsync(TimeSpan.FromSeconds(10), CancellationToken.None)
-                    .WaitAsync(TimeSpan.FromSeconds(30));
-                var requestBytes = Encoding.UTF8.GetBytes(
-                    JsonSerializer.Serialize(request, WorkerIpcJsonContext.Default.WorkerIpcRequest) + "\n");
-                await stream.WriteAsync(requestBytes, CancellationToken.None);
-                await stream.FlushAsync(CancellationToken.None);
-
-                // 响应无结尾换行、以连接关闭（EOF）定界；读侧复用唯一的有界行读实现。
-                var line = await IpcLineReader
-                    .ReadBoundedLineAsync(stream, maxBytes: 64 * 1024, CancellationToken.None)
-                    .WaitAsync(TimeSpan.FromSeconds(30));
-                Assert.NotNull(line);
-
-                var response = JsonSerializer.Deserialize(line!, WorkerIpcJsonContext.Default.WorkerIpcResponse);
-                Assert.NotNull(response);
-                Assert.True(response!.Ok, $"第 {attempt} 次重载必须经后台端点回 ok：{response.Message}");
+                var response = await RequestOverTransportAsync(
+                    transport, new WorkerIpcRequest(WorkerIpcMethods.ReloadConfig, "reload-endpoint-" + attempt));
+                Assert.True(response.Ok, $"第 {attempt} 次重载必须经后台端点回 ok：{response.Message}");
                 Assert.Equal("background", response.Data!.Mode);
                 Assert.Equal(WorkerIpcProtocol.Version, response.V);
-                Assert.Equal(request.Id, response.Id);
             }
 
             // 重载真正生效的判据与 handler 级用例一致：watcher/pipeline 已重建并在跑。
@@ -643,6 +620,180 @@ public sealed class WorkerReloadConfigRegressionTests
         }
     }
 
+    /// <summary>
+    /// 待机端点级用例（#113 AC1，补 #100 关闭时留下的证据缺口）：默认 <c>hot_folder: ""</c> 的首次配置
+    /// 待机态此前只有两层覆盖——handler 级假运行时（<c>WorkerIpcResidentStabilityTests</c>）与进程内
+    /// <c>worker.StartAsync</c>（<see cref="EmptyWatchFolder_Should_Stay_Resident_Until_Reload_Starts_Monitoring"/>），
+    /// 真实传输绑定 + accept 循环 + 帧协议往返在待机态从没被走过，而 #100 的实机形态正是「UI 连不上、
+    /// 只剩管道超时（os error 2）」。
+    ///
+    /// 防的具体回潮形态（本用例的射程就是「待机态下的 IPC 连通」，不认领别的）：
+    /// ① 待机态走不通「绑定 → accept 环 → 帧协议 → handler 回包」这条链，或回包把待机读成断线
+    ///    （首拍 GetStatus 往返直接红）；
+    /// ② 待机态只服务得了一拍（UI 心跳是每 1 s 一次 GetStatus、一条连接一个请求，见 monitor.rs 的
+    ///    Design(#49)；第二拍同方法往返 + accept 环未退出挡这条回潮）。
+    /// 两条射程的边界与同文件端点用例相同：绑定与 accept 环由用例按宿主同序自己搭，
+    /// <c>WorkerIpcServerHostedService</c> 的形态端点接线、以及「worker 在待机就退出」这种
+    /// 不影响回包的形态，都不在本用例的射程内（后者由
+    /// <see cref="EmptyWatchFolder_Should_Stay_Resident_Until_Reload_Starts_Monitoring"/> 的正向证据把关）。
+    ///
+    /// 前提屏障：首拍前先等 worker 走完配置加载（<c>LoadEffectiveConfig</c> 建的审计目录出现为止）。
+    /// <c>CurrentWatchDirectory</c> 在「配置还没加载」时同样回空串，没有这道屏障，回包的空目录
+    /// 可能只是「什么都还没发生」。
+    ///
+    /// 覆盖边界（勿当作 #100 崩溃路径的替身）：<c>AppConfigValidator.Validate</c> 有两道早退——
+    /// <c>dry_run</c> 一条、空 <c>hot_folder</c> 一条（后者正是 #100 的改动），任一命中就走不到
+    /// exiftool 路径存在性、quarantine/audit 目录这些后续校验；本夹具两条都命中，所以就算把
+    /// <c>dry_run</c> 改成 false 也带不进那些校验。那条「非 dry-run 的待机链路」归 #108 裁定
+    /// （裸机发布包不含 ExifTool，空监控目录又让校验整体 fail-open），本票不替它把行为钉进 CI 门禁。
+    /// </summary>
+    [Fact]
+    public async Task Standby_GetStatus_Through_Background_Endpoint_Should_Reply_With_Empty_Watch_Directory()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "pp-113-" + Guid.NewGuid().ToString("N"));
+        var audit = Path.Combine(root, "audit");
+        var configPath = Path.Combine(root, "config.json");
+        Directory.CreateDirectory(root);
+        // 监控目录留空（发版包 config/config.json 的出厂形态）。审计目录给真实路径但**不**预建：
+        // LoadEffectiveConfig 在返回配置前会把已配置的 hot/audit/quarantine 目录建出来，
+        // 于是「审计目录出现」成了 worker 已走完配置加载的正向屏障（见 try 开头的 Wait）。
+        // 屏障只证明配置加载走完，不证明「已进待机」；回包也只证明连通与空目录。
+        // 「worker 是否真的待在待机里」由同文件上方的兄弟用例以正向判据承担。
+        await File.WriteAllTextAsync(configPath, BuildConfigJson(string.Empty, audit));
+
+        // 夹具自检：worker 启动路径对配置校验失败会直接 Environment.Exit(1)（杀死整个测试进程），
+        // 所以先在测试侧校验一遍——配置夹具漂移要以断言失败暴露，而不是让 CI 只看到进程消失。
+        var parsed = AppConfigLoader.Load(configPath);
+        AppConfigValidator.Validate(parsed);
+        Assert.Equal(string.Empty, parsed.Watch.HotFolder);
+        Assert.True(parsed.ExifTool.DryRun, "夹具必须是 dry-run：否则会去 spawn ExifTool");
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["config"] = configPath })
+            .Build();
+        var runtimeControl = new RuntimeControl();
+        var worker = new MetadataCleanerWorker(
+            configuration,
+            NullLogger<MetadataCleanerWorker>.Instance,
+            new NullApplicationLifetime(),
+            runtimeControl);
+
+        await worker.StartAsync(CancellationToken.None);
+
+        var loopStop = new CancellationTokenSource();
+        IIpcTransport? transport = null;
+        Task loopTask = Task.CompletedTask;
+
+        try
+        {
+            // 就绪屏障：worker 的 CurrentWatchDirectory 在「配置还没加载」与「已进待机」两种状态下
+            // 都回空串，少了这一步首拍可能靠空串假绿。审计目录由 LoadEffectiveConfig 建出来，
+            // 它出现只证明「配置加载走完了」——本用例证的是这条链通不通、回包给的是不是空目录，
+            // 「worker 是否真待在待机里」不在射程（见上面的射程声明），由兄弟用例的正向判据把关。
+            Assert.True(
+                await WaitForDirectoryAsync(audit, TimeSpan.FromSeconds(30)),
+                "worker 未走完配置加载（审计目录没被建出来）：用例前提不成立");
+
+            transport = IpcTransportFactory.CreateServer(ResolveBackgroundTestEndpoint(root), isServiceMode: false);
+            // 与生产宿主同接线：watchDirectory 直接取 worker.CurrentWatchDirectory，
+            // 待机态的「空目录 + 已连接」必须由这条真实回包链路呈现给 UI。
+            var handler = new WorkerIpcRequestHandler(
+                new WorkerRuntimeContext(
+                    runtimeControl,
+                    worker,
+                    () => worker.CurrentWatchDirectory,
+                    RuntimeMode.Background,
+                    () => audit),
+                NullLogger<WorkerIpcRequestHandler>.Instance);
+
+            var loop = new WorkerIpcServerLoop(NullLogger<WorkerIpcServerLoop>.Instance);
+            // 与宿主同序：先绑定端点再进 accept 循环。
+            await transport.ListenAsync(loopStop.Token);
+            loopTask = loop.RunAsync(transport, handler.HandleAsync, requestShutdown: () => { }, loopStop.Token);
+
+            var request = new WorkerIpcRequest(WorkerIpcMethods.GetStatus, "standby-status");
+            var status = await RequestOverTransportAsync(transport, request);
+
+            Assert.True(status.Ok, $"待机态 GetStatus 必须经后台端点回 ok：{status.Message}");
+            Assert.Equal(string.Empty, status.Data!.WatchDirectory);
+            Assert.Equal("background", status.Data.Mode);
+            Assert.Equal(WorkerIpcProtocol.Version, status.V);
+
+            // UI 的心跳是「每 1 s 一次 GetStatus、一条连接一个请求」的轮询
+            // （monitor.rs 的 Design(#49)：探针固定 GetStatus，不用 Ping）——第二拍必须是同方法。
+            var secondBeatRequest = new WorkerIpcRequest(WorkerIpcMethods.GetStatus, "standby-status-2");
+            var secondBeat = await RequestOverTransportAsync(transport, secondBeatRequest);
+            Assert.True(secondBeat.Ok, "待机态第二拍 GetStatus 必须仍被服务");
+            Assert.Equal(string.Empty, secondBeat.Data!.WatchDirectory);
+            Assert.False(loopTask.IsCompleted, "accept 环不得在待机首拍之后退出");
+        }
+        finally
+        {
+            loopStop.Cancel();
+            try
+            {
+                await loopTask.WaitAsync(TimeSpan.FromSeconds(10));
+            }
+            catch
+            {
+                // 循环停不下来只说明停机路径有缺陷，不得掩盖上面的断言失败。
+            }
+
+            if (transport is not null)
+            {
+                await transport.DisposeAsync();
+            }
+
+            // 停机必须有界，但本用例不在这里断言它停得下来：finally 里抛出的异常会顶掉 try 内的真实
+            // 断言失败，把「连通性没验过」伪装成「只是停不下来」。
+            // 仍在待机态就 StopAsync 会挂住是 #117 登记的独立缺陷；基类 StopAsync 只受调用方 token 约束，
+            // 挂住会一路吃到 test.runsettings 的 1 h TestSessionTimeout——CI 只剩一条无名的红。
+            // 5 s 有界停机：拿不到结果也只降级继续，ExecuteAsync 那条任务留给进程退出收口。
+            // #117 修好后，把这里改回「断言 StopAsync 在预算内完成」（那条红测挂在 #117）。
+            using var stopCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await worker.StopAsync(stopCts.Token);
+            TryDelete(root);
+        }
+    }
+
+    /// <summary>
+    /// 端点级用例的临时后台端点。Windows 管道名是内核对象名。Unix socket 落点：Linux 用夹具临时目录
+    /// （固定路径 <c>/run/photoprivacy</c> 需 root，CI 绑不了）；macOS 的 <c>sun_path</c> 上限 104 字节，
+    /// 夹具目录路径太长，改用临时目录下的短文件名（<c>GetTempPath()</c> 约 49 字节 + 约 21 字节 &lt; 104），
+    /// socket 文件由 <c>transport.DisposeAsync</c>（端点属主）负责删除。
+    /// </summary>
+    private static string ResolveBackgroundTestEndpoint(string root)
+        => OperatingSystem.IsWindows()
+            ? "pp-bg-" + Guid.NewGuid().ToString("N")
+            : OperatingSystem.IsMacOS()
+                ? Path.Combine(Path.GetTempPath(), "pp-bg-" + Guid.NewGuid().ToString("N")[..8] + ".sock")
+                : Path.Combine(root, "worker-background.sock");
+
+    /// <summary>
+    /// 经真实传输做一次「一连接一消息」的帧协议往返：写请求行，读以连接关闭（EOF）定界的响应行
+    /// （响应无结尾换行，读侧复用唯一的有界行读实现）。
+    /// </summary>
+    private static async Task<WorkerIpcResponse> RequestOverTransportAsync(IIpcTransport transport, WorkerIpcRequest request)
+    {
+        await using var stream = await transport
+            .ConnectAsync(TimeSpan.FromSeconds(10), CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(30));
+        var requestBytes = Encoding.UTF8.GetBytes(
+            JsonSerializer.Serialize(request, WorkerIpcJsonContext.Default.WorkerIpcRequest) + "\n");
+        await stream.WriteAsync(requestBytes, CancellationToken.None);
+        await stream.FlushAsync(CancellationToken.None);
+
+        var line = await IpcLineReader
+            .ReadBoundedLineAsync(stream, maxBytes: 64 * 1024, CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(30));
+        Assert.NotNull(line);
+
+        var response = JsonSerializer.Deserialize(line!, WorkerIpcJsonContext.Default.WorkerIpcResponse);
+        Assert.NotNull(response);
+        Assert.Equal(request.Id, response!.Id);
+        return response;
+    }
+
     private static WorkerIpcRequestHandler CreateHandler(ReloadFixture fixture, RuntimeMode runtimeMode)
     {
         var runtime = new WorkerRuntimeContext(
@@ -793,12 +944,19 @@ public sealed class WorkerReloadConfigRegressionTests
         return JsonSerializer.Serialize(payload);
     }
 
-    private static async Task<bool> WaitForFileAsync(string path, TimeSpan budget)
+    private static Task<bool> WaitForFileAsync(string path, TimeSpan budget)
+        => WaitForPresenceAsync(() => File.Exists(path), budget);
+
+    /// <summary>待机用例的就绪屏障用：审计目录由 <c>LoadEffectiveConfig</c> 建出来，出现即说明配置已加载。</summary>
+    private static Task<bool> WaitForDirectoryAsync(string path, TimeSpan budget)
+        => WaitForPresenceAsync(() => Directory.Exists(path), budget);
+
+    private static async Task<bool> WaitForPresenceAsync(Func<bool> exists, TimeSpan budget)
     {
         var deadline = DateTime.UtcNow + budget;
         while (DateTime.UtcNow < deadline)
         {
-            if (File.Exists(path))
+            if (exists())
             {
                 return true;
             }
@@ -806,7 +964,7 @@ public sealed class WorkerReloadConfigRegressionTests
             await Task.Delay(50);
         }
 
-        return File.Exists(path);
+        return exists();
     }
 
     /// <summary>

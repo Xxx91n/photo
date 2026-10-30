@@ -131,6 +131,74 @@
 | T4 | `ui.hide_main_window_on_startup=true` 时启动仅托盘不弹窗 | 通过 | 2026-10-28 实机：hide=true 启动后无 PhotoPrivacy 主窗（`MainWindowTitle` 仅托盘辅助窗）、进程与 Worker 正常 |
 | T5 | 二次启动不重开：第二实例退出并唤起既有窗口（`Global\PhotoPrivacyUi_Instance`） | 通过 | 2026-10-28 实机 ×3：第二实例 6s 内退出（exit code 0），第一实例存活且主窗可见（title=PhotoPrivacy） |
 
+### 首次配置待机 4 项（#100 定形，#113 补自动化并交人工目检）
+
+> 场景：发版包的 `config/config.json` 是 `config.sample.json` 的拷贝（`scripts/publish-app.ps1`），
+> 出厂 `watch.hot_folder: ""`。Worker 按 #100 保持驻守待命，UI 状态栏引导用户完成首次配置。
+> 自动化侧（#113 AC1）：`WorkerReloadConfigRegressionTests`
+> `.Standby_GetStatus_Through_Background_Endpoint_Should_Reply_With_Empty_Watch_Directory`
+> 在真实传输绑定 + accept 环 + 帧协议往返下断言空配置回 `ok:true` 且 `watchDirectory=""`。
+> **取证口径**：CI 的 dotnet `test` job 在本票各 head 均绿（run 号见 PR 正文）；
+> 整条 run 仍显示红，红的是 `markers` job——
+> src 里两条存量 `Design(#100)` 标记指向 #100 关闭后的死号，门禁脚本在 main 工作树上同样红，
+> 与 K 组和本用例无关，已单独记在 #118，别把它读成 AC1 未达。
+> **口径提醒**：CI 的 dotnet test 只跑 ubuntu，本用例在 CI 走 Unix socket 分支；
+> Windows 命名管道分支（实机形态）与下面四项的界面呈现一样，只能实机验证。
+> 另：该用例沿用本类既有夹具的 `exiftool.dry_run = true`，而发版包出厂是 `false`——
+> 非 dry-run 的待机链路不在它射程内，归 #108。
+
+| # | 操作 | 结果 | 证据 |
+|---|---|---|---|
+| K1 | 双击 `PhotoPrivacy.exe`（出厂空 `hot_folder`）→ 状态栏连接态显示「已连接」，不是「连接中/已断开」 | 未探活 | — |
+| K2 | 状态栏出现 warning 色提示「请前往配置页设置监控目录」（`status.configure_watch_folder`，切 locale 后各自可见） | 未探活 | — |
+| K3 | 点该提示 → 直接进配置页（`app.rs` 的 `configure-watch-folder` on_click 置 `Page::Config`） | 未探活 | — |
+| K4 | 选有效目录保存 → 提示消失、监控启动；放入照片被处理（日志页出条目、审计目录 `processed.ndjson` 增长） | 未探活 | — |
+
+- 提示只在 `ConnectionState::Connected && watch_directory` 为空时渲染，因此 K1/K2 同源：
+  Worker 待机时回包把「已连接 + 空目录」一起交给 UI，UI 才谈引导。
+- **K4 有已知阻断（#108）**：发布包不含 ExifTool 且模板 `exiftool.path` 指向 `C:\Program Files\ExifTool\exiftool.exe`、`dry_run: false`，
+  裸机保存有效目录后 `ReloadConfig` 会因 `exiftool.path not found` 校验失败、监控起不来。
+  验 K4 时若命中这条，属 #108 已登记的缺陷，不按 #113 AC3 另开票。
+  **两条取证口径要分清**：票面 K4 说的是「出厂包双击」——手改包内 `exiftool.dry_run` 为 true 之后拿到的
+  「监控启动、文件被处理」不是 K4 本体证据（dry-run 不写真文件），只能作为「待机 → 重载唤醒」这条链路的
+  旁证记在证据列并注明改过什么；正面证据要等 #108 落地（包内自带 ExifTool）后在出厂原样包上取。
+  本机装好 ExifTool 并把 `exiftool.path` 指过去，则仍是非出厂形态，同样要在证据列写明。
+- **别把 #117 算进 K 组**：验完 K1-K4 关掉 UI / 停服务时，仍在待机态的 `StopAsync` 会挂住，
+  表现为退出要等满 10 s（`HostOptions.ShutdownTimeout`）甚至留下未拆干净的任务——那是 #117，不是 K 组判据。
+
+### K 组人工验收指引（#113 定形，交人工目检）
+
+> gpui 窗口在本机 UIA descendant count=0、RDP/GPU 会话下 `PrintWindow` 只回黑帧（#56 起的既有限制），
+> 四项的界面呈现只能由人眼判；自动化侧只覆盖到上文那条真实传输级待机连通。
+
+1. **取产物**：用 Release workflow（`create_release=false`）跑目标 head 的 `release-win-x64` artifact，
+   解压到一个私有目录。并行窗口共用发布链时不要把产物拷进 `ui/target` 之类的共享构建目录。
+2. **造出待机态**：保持包内 `config/config.json` 出厂原样（`"watch.hot_folder": ""`）。
+   若这台机器之前验过别的票、目录已填过，先把 `config.json` 删掉再从同目录的 `config.sample.json` 拷一份——
+   残留的有效目录会让 Worker 直接进监控，待机引导根本不出现。
+3. **K1**：双击 `PhotoPrivacy.exe` → 看概览/状态栏连接态是否「已连接」。
+   （不应再有控制台黑窗：#99 之后 release 构建带 `windows_subsystem = "windows"`，
+   看到黑窗说明拿的是 debug 产物或旧包，先别往下验。）
+4. **K2**：同一屏找 warning 色提示「请前往配置页设置监控目录」；切一次语言（配置页语言组）确认该文案随 locale 变。
+5. **K3**：点该提示文本，是否直接落到配置页（不是只高亮、也不是无响应）。
+6. **K4**：在配置页选一个有效目录并保存 → 提示应消失、监控应启动；往该目录放一张带元数据的照片 →
+   日志页出现处理条目、审计目录生成 `processed.ndjson` 且新增记录。命中 #108 的校验失败按 #108 记，不重复开票。
+7. **回填**：逐行把 K1-K4 的「结果」改成 通过 / 失败 / 未探活，并在「证据」列写 `日期 + 实机目检 + 看到的具体现象`；
+   截图只作辅助（黑帧问题下不得当证据），**无证据不虚构**。
+
+#### K 组产物记录（2026-10-30，#113 窗口：已备好产物，人工验收未执行）
+
+- 产物：Release workflow run [41073704339](https://github.com/Xxx91n/photo/actions/runs/41073704339)
+  （ref `issue-113-standby-ipc-verify`，head `67aa17e4`，version `0.1.0-verify113`，`create_release=false`）
+  的 `release-win-x64` artifact，已下载并解压到本机私有目录 `D:\Aworker\photo-smoke-113\`，
+  双击入口 `D:\Aworker\photo-smoke-113\win-x64\PhotoPrivacy.exe`。
+  该 head 与本票后续提交之间只差 `tests/`+`docs/`（`src/`、`ui/` 未动），产品二进制等价。
+- 包内实测（出厂原样，未改）：`config/config.json` 的 `watch.hot_folder` 为 `""`、
+  `exiftool.dry_run` 为 `false`、`exiftool.path` 指向 `C:\Program Files\ExifTool\exiftool.exe`——
+  K4 的 #108 阻断就来自后两项。
+- 结果：K1-K4 全部**未探活**——gpui 窗口的界面呈现本窗口读不到（UIA descendant=0、`PrintWindow` 黑帧），
+  按「无证据不虚构」不填任何通过项。自动化侧只到上文那条真实传输级待机连通用例。
+
 ### 切换日实机执行记录（2026-10-28，#61 实现窗口）
 
 - 产物：本票 `cargo build --release --locked --target x86_64-pc-windows-gnu -p photoprivacy-ui`
@@ -175,7 +243,7 @@
     - `#57` AC2（大批量日志滚动/浏览不卡顿）：**未探活**（本次目检仅验证小批量即时处理与清空，未灌入大批量日志流，该项 AC 保持未探活，留待后续专项验证，不提前宣布完整通过）。
 - 伴随发现与勘误记录：
   1. **清单文案勘误**：原清单中关于主题、语言、日志级别的“下拉菜单”表述为推测失真；实机均为平铺选项组（Segmented/Radio-like buttons），无原生下拉框，本轮已在清单中更正。
-  2. **终端黑框弹出**：`photoprivacy-ui` 的入口 `main.rs` 未声明 `#![windows_subsystem = "windows"]`，双击启动时系统默认分配控制台黑窗口，随后弹出 GUI。
-  3. **初始配置待机行为（#100，代码已实现，实机未探活）**：打包附带的 `config/config.json` 默认 `"watch.hot_folder": ""` 为空时，Worker 按 #100 起保持 IPC 连接并待机，UI 引导前往配置页选择监控目录，保存有效目录后经热重载启用监控。本条目前只有代码与集成测试口径，尚无实机目检证据，复验前不得记作通过。
+  2. **终端黑框弹出**：`photoprivacy-ui` 的入口 `main.rs` 未声明 `#![windows_subsystem = "windows"]`，双击启动时系统默认分配控制台黑窗口，随后弹出 GUI。（勘误，2026-10-30：该形态已随 #99/PR #106 修复，release 构建现在带 `windows_subsystem = "windows"`；本条只作历史记录。）
+  3. **初始配置待机行为（#100，代码已实现，实机未探活）**：打包附带的 `config/config.json` 默认 `"watch.hot_folder": ""` 为空时，Worker 按 #100 起保持 IPC 连接并待机，UI 引导前往配置页选择监控目录，保存有效目录后经热重载启用监控。本条目前只有代码与集成测试口径，尚无实机目检证据，复验前不得记作通过。#113 已把这条路径定形为上文的 K1-K4 四项（实机仍未探活），并把「真实传输级待机连通」补成进 CI 门禁的自动化用例。
   4. **GUI 文本不可划选复制**：gpui 纯文本展示未支持鼠标划选高亮与系统剪贴板复制，报错无法直接复制排障。
   5. **主题设置入口冗余**：右上角快捷切换与设置页平铺切换并存，交互体验重叠。
