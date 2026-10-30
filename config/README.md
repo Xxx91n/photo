@@ -1,3 +1,3 @@
-# Configuration
+# 配置说明
 
-The release template starts with an empty `watch.hot_folder` on purpose. The Worker remains connected in standby and the UI prompts you to choose a monitoring directory in Settings. Save the configuration after choosing a valid directory to start monitoring without restarting the Worker.
+发布模板会有意将 `watch.hot_folder` 留空。Worker 会保持 IPC 连接并进入待机状态，UI 会提示你前往配置页选择监控目录。选择有效目录并保存配置后，Worker 会通过热重载启动监控，无需重启。
