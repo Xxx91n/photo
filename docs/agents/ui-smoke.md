@@ -131,6 +131,27 @@
 | T4 | `ui.hide_main_window_on_startup=true` 时启动仅托盘不弹窗 | 通过 | 2026-10-28 实机：hide=true 启动后无 PhotoPrivacy 主窗（`MainWindowTitle` 仅托盘辅助窗）、进程与 Worker 正常 |
 | T5 | 二次启动不重开：第二实例退出并唤起既有窗口（`Global\PhotoPrivacyUi_Instance`） | 通过 | 2026-10-28 实机 ×3：第二实例 6s 内退出（exit code 0），第一实例存活且主窗可见（title=PhotoPrivacy） |
 
+### 首次配置待机 4 项（#100 定形 → #113 核销）
+
+> 场景：发版包的 `config/config.json` 是 `config.sample.json` 的拷贝（`scripts/publish-app.ps1`），
+> 出厂 `watch.hot_folder: ""`。Worker 按 #100 保持驻守待命，UI 状态栏引导用户完成首次配置。
+> 自动化侧（#113 AC1，已进 CI 门禁）：`WorkerReloadConfigRegressionTests`
+> `.Standby_GetStatus_Through_Background_Endpoint_Should_Reply_With_Empty_Watch_Directory`
+> 在真实传输绑定 + accept 环 + 帧协议往返下断言空配置回 `ok:true` 且 `watchDirectory=""`。
+> **口径提醒**：CI 的 dotnet test 只跑 ubuntu，本用例在 CI 走 Unix socket 分支；
+> Windows 命名管道分支（实机形态）与下面四项的界面呈现一样，只能实机验证。
+
+| # | 操作 | 结果 | 证据 |
+|---|---|---|---|
+| K1 | 双击 `PhotoPrivacy.exe`（出厂空 `hot_folder`）→ 状态栏连接态显示「已连接」，不是「连接中/已断开」 | 未探活 | — |
+| K2 | 状态栏出现 warning 色提示「请前往配置页设置监控目录」（`status.configure_watch_folder`，切 locale 后各自可见） | 未探活 | — |
+| K3 | 点该提示 → 直接进配置页（`app.rs` 的 `configure-watch-folder` on_click 置 `Page::Config`） | 未探活 | — |
+| K4 | 选有效目录保存 → 提示消失、监控启动；放入照片被处理（日志页出条目、审计目录 `processed.ndjson` 增长） | 未探活 | — |
+
+- 提示只在 `ConnectionState::Connected && watch_directory` 为空时渲染，因此 K1/K2 同源：
+  Worker 待机时回包把「已连接 + 空目录」一起交给 UI，UI 才谈引导。
+- 回填口径沿用 report-32：**通过 / 失败 / 未探活 / 不迁移（裁决）**，四项须由人实机目检后逐行填证据，无证据不虚构。
+
 ### 切换日实机执行记录（2026-10-28，#61 实现窗口）
 
 - 产物：本票 `cargo build --release --locked --target x86_64-pc-windows-gnu -p photoprivacy-ui`
@@ -176,6 +197,6 @@
 - 伴随发现与勘误记录：
   1. **清单文案勘误**：原清单中关于主题、语言、日志级别的“下拉菜单”表述为推测失真；实机均为平铺选项组（Segmented/Radio-like buttons），无原生下拉框，本轮已在清单中更正。
   2. **终端黑框弹出**：`photoprivacy-ui` 的入口 `main.rs` 未声明 `#![windows_subsystem = "windows"]`，双击启动时系统默认分配控制台黑窗口，随后弹出 GUI。
-  3. **初始配置待机行为（#100，代码已实现，实机未探活）**：打包附带的 `config/config.json` 默认 `"watch.hot_folder": ""` 为空时，Worker 按 #100 起保持 IPC 连接并待机，UI 引导前往配置页选择监控目录，保存有效目录后经热重载启用监控。本条目前只有代码与集成测试口径，尚无实机目检证据，复验前不得记作通过。
+  3. **初始配置待机行为（#100，代码已实现，实机未探活）**：打包附带的 `config/config.json` 默认 `"watch.hot_folder": ""` 为空时，Worker 按 #100 起保持 IPC 连接并待机，UI 引导前往配置页选择监控目录，保存有效目录后经热重载启用监控。本条目前只有代码与集成测试口径，尚无实机目检证据，复验前不得记作通过。#113 已把这条路径定形为上文的 K1-K4 四项（实机仍未探活），并把「真实传输级待机连通」补成进 CI 门禁的自动化用例。
   4. **GUI 文本不可划选复制**：gpui 纯文本展示未支持鼠标划选高亮与系统剪贴板复制，报错无法直接复制排障。
   5. **主题设置入口冗余**：右上角快捷切换与设置页平铺切换并存，交互体验重叠。
