@@ -11,6 +11,8 @@ namespace PhotoPrivacy.Core.Tests.ExifTool;
 ///    含 `-ver` 的块产出版本号、`-execute` 收尾产 `{ready}`；没有任何 marker 名字特判，
 ///    也没有“是否发射 SUT 期待的那个 marker”的开关。
 /// 2) 故障注入是进程级的（<see cref="SilenceOutput"/> = 进程无响应），不是“抑制 SUT 期待的那一行”。
+///    时序注入也按协议语义走：<see cref="LateReadySignalMs"/> 让块结束的 `{ready}` 整体迟到，
+///    不认识任何 marker 名，也不按 marker 抑制输出。
 /// 3) 因此命令块里没有 TASK_DONE_ 时，fake 就不会产 TASK_DONE_——等待它的桥会真挂死，
 ///    行为测试才能抓住挂死链（见 UnsupportedFormatPipelineTests）。
 /// </summary>
@@ -18,9 +20,23 @@ internal sealed class ProtocolLevelFakeExifToolProcess : IExifToolProcess
 {
     private readonly List<string> _args = [];
     private readonly List<string> _writes = [];
+    private readonly List<string> _stdoutLines = [];
+    private readonly object _stdoutLinesLock = new();
     private int _activeStartCalls;
 
     public event Action<string>? StdoutLine;
+
+    /// <summary>已产出的 stdout 行（快照）——用例据此确认「某一行的处理器已经跑过」。</summary>
+    public IReadOnlyList<string> StdoutLines
+    {
+        get
+        {
+            lock (_stdoutLinesLock)
+            {
+                return _stdoutLines.ToArray();
+            }
+        }
+    }
 
     public string ExePath { get; private set; } = string.Empty;
 
@@ -57,6 +73,13 @@ internal sealed class ProtocolLevelFakeExifToolProcess : IExifToolProcess
     /// 为 0 时退回既有 HealthResponseDelayMs/VersionResponseDelayMs 选择逻辑（既有用例零影响）。
     /// </summary>
     public int FileInputParseDelayMs { get; set; }
+
+    /// <summary>
+    /// 协议时序注入：块内 <c>-echo1</c> 回显照常在参数解析阶段先出，但块结束的 <c>{ready}</c> 迟到这些毫秒。
+    /// 复现真实 ExifTool 的「回显早于文件写入完成」——擦除若在回显时就判定完成，就会在磁盘还没写完
+    /// 的时刻返回成功（见 #97）。
+    /// </summary>
+    public int LateReadySignalMs { get; set; }
 
     /// <summary>StartAsync 耗时注入，单位毫秒——用于拉开并发启动窗口。</summary>
     public int StartDelayMs { get; set; }
@@ -153,6 +176,18 @@ internal sealed class ProtocolLevelFakeExifToolProcess : IExifToolProcess
                 EmitStdout(VersionText);
             }
 
+            if (LateReadySignalMs > 0)
+            {
+                // 块结束信号迟到：回显与数据已按真实时序先出，{ready} 才是「本块处理完」的那一句。
+                var lateMs = LateReadySignalMs;
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(lateMs);
+                    EmitStdout("{ready}");
+                });
+                return;
+            }
+
             EmitStdout("{ready}");
         }
 
@@ -238,5 +273,17 @@ internal sealed class ProtocolLevelFakeExifToolProcess : IExifToolProcess
         return false;
     }
 
-    private void EmitStdout(string line) => StdoutLine?.Invoke(line);
+    /// <summary>
+    /// 先派发给订阅者、再入列，于是用例在 <see cref="StdoutLines"/> 里看到某一行时，
+    /// 桥的 stdout 处理器必定已经跑过那一行——「等到回显」与「回显已被消费」是同一时刻。
+    /// </summary>
+    private void EmitStdout(string line)
+    {
+        StdoutLine?.Invoke(line);
+
+        lock (_stdoutLinesLock)
+        {
+            _stdoutLines.Add(line);
+        }
+    }
 }
