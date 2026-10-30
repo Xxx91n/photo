@@ -826,6 +826,7 @@ public sealed class WorkerReloadConfigRegressionTests
 
         // 同进程里其它监控态用例可能已在 <BaseDirectory>/hot 下留下目录：断言「待机前后存在性不变」
         // 而不是绝对不存在，避免把用例间残留误判成回归，也不删除共享的 <BaseDirectory>/hot。
+        // 强判据由显式安装目录用例承担；本用例守住 loader 空串回落分支不在待机时新增默认目录。
         var defaultHot = DefaultPaths.DefaultHotFolder;
         var defaultAudit = DefaultPaths.DefaultAuditLogDirectory;
         var defaultQuarantine = DefaultPaths.DefaultQuarantineDirectory;
@@ -864,10 +865,12 @@ public sealed class WorkerReloadConfigRegressionTests
     }
 
     /// <summary>
-    /// 只读/不可写安装目录形态的受测降级路径（#124 AC2）：配置里的目录连创建都会抛
+    /// 待机态的受测降级路径（#124 AC2）：配置里的目录连创建都会抛
     /// <see cref="IOException"/> 时，待机态必须照常起来——因为配置加载与待机分支都不再写盘。
     /// 安装到 <c>Program Files</c> 或以受限账户运行时，这正是旧实现抛
     /// <see cref="UnauthorizedAccessException"/>／<see cref="IOException"/> 并让服务停机的形态。
+    /// 启用监控后的只读目录仍在既有异常路径上抛（启动停宿主 / 重载回 <c>ok:false</c>），
+    /// 该启用态残余登记在 #82 D9 与 #108，不在本用例射程内。
     /// </summary>
     [Fact]
     public async Task Standby_Should_Survive_Uncreatable_Configured_Directories()

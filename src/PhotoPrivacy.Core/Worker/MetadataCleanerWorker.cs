@@ -542,6 +542,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
     /// <summary>
     /// 只在运行时真正启用监控时创建配置里的目录（#124）：待机态不创建这些目录。
     /// </summary>
+    // Design(#82): 目录只在真正启用监控时创建；待机（含重载回待机）不创建。
     private static void EnsureConfiguredDirectories(AppConfig config)
     {
         // ponytail: empty config paths (config.sample.json defaults to "") would throw
@@ -658,12 +659,6 @@ public sealed class MetadataCleanerWorker : BackgroundService
         // reload 路径的软告警落点（写进当前生效的审计日志）。
         await EmitConfigWarningsAsync(config, token);
 
-        // 目录创建是启用监控的前置写操作（#124）：放在拆卸/回滚之前，失败时旧运行时原样保留。
-        if (!string.IsNullOrWhiteSpace(config.Watch.HotFolder))
-        {
-            EnsureConfiguredDirectories(config);
-        }
-
         // 拆卸与重建期间持 drain 闸（#85）：等在途一轮处理结束，避免在途 HandleAsync 用到已释放的
         // store/audit；也避免 PopReady 已弹出的路径因 _pipeline 被置空而丢失（该路径不重入队）。
         // 等待有界：超时即放弃本次重载（旧配置与组件保持原样），不带着在途处理强拆。
@@ -674,6 +669,13 @@ public sealed class MetadataCleanerWorker : BackgroundService
 
         try
         {
+            // 拿到 drain 闸后再建目录（#124）：reload_busy 放弃本次重载时不留下新配置的目录；
+            // 创建失败仍在拆卸/回滚之前，旧运行时原样保留。
+            if (!string.IsNullOrWhiteSpace(config.Watch.HotFolder))
+            {
+                EnsureConfiguredDirectories(config);
+            }
+
             await RebuildRuntimeAsync(config, token);
         }
         finally
