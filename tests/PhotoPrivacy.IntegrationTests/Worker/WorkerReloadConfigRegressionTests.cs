@@ -80,6 +80,115 @@ public sealed class WorkerReloadConfigRegressionTests
         }
     }
 
+    [Fact]
+    public async Task Reload_After_Standby_Should_Sweep_Only_The_Configured_Depth()
+    {
+        // 防的具体回潮形态：RebuildRuntimeAsync 的首扫把枚举深度写死成 AllDirectories。
+        // include_subdirectories=false 时 FSW 只监听顶层，越界扫到的子目录文件却仍进了队列，
+        // 而 RuleEngine 不按目录深度过滤——范围外的照片会被真实改写（#100 审查 Major）。
+        var root = Path.Combine(Path.GetTempPath(), "pp-100-scope-" + Guid.NewGuid().ToString("N"));
+        var hot = Path.Combine(root, "hot");
+        var nested = Path.Combine(hot, "nested");
+        var audit = Path.Combine(hot, "_audit");
+        var configPath = Path.Combine(root, "config.json");
+        Directory.CreateDirectory(nested);
+        await File.WriteAllTextAsync(configPath, BuildConfigJson(string.Empty, audit, includeSubdirectories: false));
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["config"] = configPath })
+            .Build();
+        var worker = new MetadataCleanerWorker(
+            configuration,
+            NullLogger<MetadataCleanerWorker>.Instance,
+            new NullApplicationLifetime(),
+            new RuntimeControl());
+
+        await worker.StartAsync(CancellationToken.None);
+        try
+        {
+            // 待机期间投放两个文件：顶层在监听范围内，子目录在范围外。
+            await File.WriteAllTextAsync(Path.Combine(hot, "in-scope.jpg"), "in-scope");
+            await File.WriteAllTextAsync(Path.Combine(nested, "out-of-scope.jpg"), "out-of-scope");
+
+            await File.WriteAllTextAsync(configPath, BuildConfigJson(hot, audit, includeSubdirectories: false));
+            await worker.ReloadConfigAsync();
+
+            var processedPath = Path.Combine(audit, "processed.ndjson");
+            // 正向对照：范围内的既有文件必须被处理，否则「范围外文件没记录」只是因为整段扫描没跑。
+            Assert.True(
+                await WaitForProcessedRecordForAsync(processedPath, "in-scope.jpg", TimeSpan.FromSeconds(30)),
+                "待机转有效目录后未扫描监听范围内的既有文件（#100）");
+
+            Assert.False(
+                await WaitForProcessedRecordForAsync(processedPath, "out-of-scope.jpg", TimeSpan.FromSeconds(5)),
+                "include_subdirectories=false 时重载首扫越界处理了子目录文件（#100）");
+        }
+        finally
+        {
+            await worker.StopAsync(CancellationToken.None);
+            TryDelete(root);
+        }
+    }
+
+    [Fact]
+    public async Task Reload_With_Unchanged_Watch_Folder_Should_Not_Reprocess_On_Audit_Directory_Change()
+    {
+        // 防的具体回潮形态：RebuildRuntimeAsync 每次重载都整目录重扫。审计目录一换，
+        // 新的 FileProcessedRecordStore 指向新目录、去重记录为空，重扫就把既有文件全部重新处理一遍；
+        // fixed_directory 模式下这会覆盖输出目录里用户的改动（#100 审查 Major）。
+        var root = Path.Combine(Path.GetTempPath(), "pp-100-audit-" + Guid.NewGuid().ToString("N"));
+        var hot = Path.Combine(root, "hot");
+        var auditBefore = Path.Combine(hot, "_audit-a");
+        var auditAfter = Path.Combine(hot, "_audit-b");
+        var configPath = Path.Combine(root, "config.json");
+        Directory.CreateDirectory(hot);
+        await File.WriteAllTextAsync(configPath, BuildConfigJson(hot, auditBefore));
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["config"] = configPath })
+            .Build();
+        var worker = new MetadataCleanerWorker(
+            configuration,
+            NullLogger<MetadataCleanerWorker>.Instance,
+            new NullApplicationLifetime(),
+            new RuntimeControl());
+
+        await worker.StartAsync(CancellationToken.None);
+        try
+        {
+            // 前提：文件在旧审计目录下确实处理过（留下记录），换目录才有「不该再处理一遍」可言。
+            await File.WriteAllTextAsync(Path.Combine(hot, "already-done.jpg"), "already-done");
+            Assert.True(
+                await WaitForProcessedRecordForAsync(
+                    Path.Combine(auditBefore, "processed.ndjson"), "already-done.jpg", TimeSpan.FromSeconds(30)),
+                "启动态未处理既有文件：用例前提不成立");
+
+            await File.WriteAllTextAsync(configPath, BuildConfigJson(hot, auditAfter));
+            await worker.ReloadConfigAsync();
+
+            Assert.True(
+                await WaitForFileAsync(Path.Combine(auditAfter, "processed.ndjson"), TimeSpan.FromSeconds(30)),
+                "重载后新审计目录未建立处理记录表：重载没有真正生效");
+
+            Assert.False(
+                await WaitForProcessedRecordForAsync(
+                    Path.Combine(auditAfter, "processed.ndjson"), "already-done.jpg", TimeSpan.FromSeconds(5)),
+                "只改审计目录就整目录重扫，已处理文件被重新处理（#100）");
+
+            // 反向对照：目录没换≠监控停了。新文件仍须被处理，防止断言靠「运行时根本没起来」假绿。
+            await File.WriteAllTextAsync(Path.Combine(hot, "after-audit-change.jpg"), "after-audit-change");
+            Assert.True(
+                await WaitForProcessedRecordForAsync(
+                    Path.Combine(auditAfter, "processed.ndjson"), "after-audit-change.jpg", TimeSpan.FromSeconds(30)),
+                "重载后热文件夹不再处理新文件：ReloadConfig 未生效（#85 回归）");
+        }
+        finally
+        {
+            await worker.StopAsync(CancellationToken.None);
+            TryDelete(root);
+        }
+    }
+
     [Theory]
     [InlineData(RuntimeMode.Service, "service")]
     [InlineData(RuntimeMode.Background, "background")]
@@ -319,7 +428,7 @@ public sealed class WorkerReloadConfigRegressionTests
         TryDelete(fixture.Root);
     }
 
-    private static string BuildConfigJson(string hotFolder, string auditDirectory)
+    private static string BuildConfigJson(string hotFolder, string auditDirectory, bool includeSubdirectories = true)
     {
         // 全量键位对齐 config.sample.json；dry_run=true 让 validator 走早退分支
         // （不需要真实 exiftool.exe 与 exiftool_files 目录）。
@@ -339,7 +448,7 @@ public sealed class WorkerReloadConfigRegressionTests
             watch = new
             {
                 hot_folder = hotFolder,
-                include_subdirectories = true,
+                include_subdirectories = includeSubdirectories,
                 debounce_ms = 100,
                 internal_buffer_size = 65536,
                 auto_excluded_directories = Array.Empty<string>(),
@@ -442,6 +551,57 @@ public sealed class WorkerReloadConfigRegressionTests
         {
             // 文件在 Exists 与 Open 之间被 Compact 换掉：下一轮再读。
             return 0;
+        }
+    }
+
+    /// <summary>
+    /// 等「指定文件名的处理记录」出现。记录键是 <c>绝对路径|长度|LastWriteTimeUtc.Ticks</c> 明文，
+    /// 按文件名子串匹配即可绕开 Windows 路径在 JSON 行里的反斜杠转义。
+    /// </summary>
+    private static async Task<bool> WaitForProcessedRecordForAsync(string processedPath, string fileName, TimeSpan budget)
+    {
+        var deadline = DateTime.UtcNow + budget;
+        while (DateTime.UtcNow < deadline)
+        {
+            if (HasProcessedRecordFor(processedPath, fileName))
+            {
+                return true;
+            }
+
+            await Task.Delay(100);
+        }
+
+        return HasProcessedRecordFor(processedPath, fileName);
+    }
+
+    private static bool HasProcessedRecordFor(string processedPath, string fileName)
+    {
+        if (!File.Exists(processedPath))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var stream = new FileStream(
+                processedPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var reader = new StreamReader(stream);
+
+            // 与 CountProcessedRecords 同口径：只认写完整的 JSON 行，半行不计入。
+            while (reader.ReadLine() is { } line)
+            {
+                if (line.TrimEnd().EndsWith('}') && line.Contains(fileName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        catch (FileNotFoundException)
+        {
+            // 文件在 Exists 与 Open 之间被 Compact 换掉：下一轮再读。
+            return false;
         }
     }
 
