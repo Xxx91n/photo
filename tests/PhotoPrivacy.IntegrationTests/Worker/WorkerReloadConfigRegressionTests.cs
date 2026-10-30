@@ -521,8 +521,9 @@ public sealed class WorkerReloadConfigRegressionTests
         Directory.CreateDirectory(root);
         // 监控目录留空（发版包 config/config.json 的出厂形态）。审计目录给真实路径但**不**预建：
         // LoadEffectiveConfig 在返回配置前会把已配置的 hot/audit/quarantine 目录建出来，
-        // 于是「审计目录出现」成了 worker 已走完配置加载的正向屏障（见下面的 Wait）——
-        // 目录存在本身不能判「待机」（配置一加载就成立），判待机靠的是回包与兄弟用例。
+        // 于是「审计目录出现」成了 worker 已走完配置加载的正向屏障（见下面的 Wait）。
+        // 屏障只证明配置加载走完，不证明「已进待机」；回包也只证明连通与空目录。
+        // 「worker 是否真的待在待机里」由下面的兄弟用例以正向判据承担。
         await File.WriteAllTextAsync(configPath, BuildConfigJson(string.Empty, audit));
 
         // 夹具自检：worker 启动路径对配置校验失败会直接 Environment.Exit(1)（杀死整个测试进程），
@@ -552,7 +553,8 @@ public sealed class WorkerReloadConfigRegressionTests
         {
             // 就绪屏障：worker 的 CurrentWatchDirectory 在「配置还没加载」与「已进待机」两种状态下
             // 都回空串，少了这一步首拍可能靠空串假绿。审计目录由 LoadEffectiveConfig 建出来，
-            // 它出现只证明「配置加载走完了」——是否真进待机靠上面的回包，运行时误起由兄弟用例挡。
+            // 它出现只证明「配置加载走完了」——本用例证的是这条链通不通、回包给的是不是空目录，
+            // 「worker 是否真待在待机里」不在射程（见上面的射程声明），由兄弟用例的正向判据把关。
             Assert.True(
                 await WaitForDirectoryAsync(audit, TimeSpan.FromSeconds(30)),
                 "worker 未走完配置加载（审计目录没被建出来）：用例前提不成立");
