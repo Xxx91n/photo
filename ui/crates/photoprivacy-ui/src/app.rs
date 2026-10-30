@@ -10,10 +10,10 @@ use crate::service_page::{ServiceCommand, ServiceFeedback, ServiceSnapshot};
 use crate::theme::{self, Theme, ThemeMode};
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, App, BoxShadow, ClipboardItem, Context, CursorStyle, Div, FocusHandle, FontWeight,
-    IntoElement, KeyBinding, KeyDownEvent, MouseButton, PathPromptOptions, Render, Rgba, Stateful,
-    StyleRefinement, Styled, Subscription, UniformListScrollHandle, Window, actions, div, px,
-    uniform_list,
+    AnyElement, App, Bounds, BoxShadow, ClipboardItem, Context, CursorStyle, Div, FocusHandle,
+    FontWeight, IntoElement, KeyBinding, KeyDownEvent, MouseButton, PathPromptOptions, Pixels,
+    Render, Rgba, ScrollHandle, Stateful, StyleRefinement, Styled, Subscription,
+    UniformListScrollHandle, Window, actions, div, px, uniform_list,
 };
 use photoprivacy_ipc::{ConnectionSnapshot, ConnectionState, ServiceReachability, WorkerMode};
 use photoprivacy_logs::{AuditRecord, EventTone, LevelFilter, LogBuffer};
@@ -58,6 +58,39 @@ pub(crate) fn focus_ring(ring: Rgba) -> impl FnOnce(StyleRefinement) -> StyleRef
                 .spread_radius(px(2.))
                 .inset(),
         ])
+    }
+}
+
+/// 配置页可聚焦控件登记：稳定句柄（跨渲染身份不变）+ 布局探针（供滚动揭示取坐标）。
+// Design(#101): Tab/Shift+Tab 移焦后必须把聚焦控件滚入 config-scroll 视口，否则焦点环在
+// 视口外不可见、键盘用户失位；探针不设 overflow，滚轮 delta 恒为 0 且不吞事件，
+// 只借 track_scroll 记录控件窗口坐标。
+#[derive(Default)]
+pub(crate) struct FocusRegistry {
+    handles: HashMap<String, FocusHandle>,
+    probes: HashMap<String, ScrollHandle>,
+}
+
+impl FocusRegistry {
+    fn focus_handle(&mut self, id: &str, cx: &mut App) -> FocusHandle {
+        self.handles
+            .entry(id.to_string())
+            .or_insert_with(|| cx.focus_handle().tab_stop(true))
+            .clone()
+    }
+
+    fn probe(&mut self, id: &str) -> ScrollHandle {
+        self.probes.entry(id.to_string()).or_default().clone()
+    }
+
+    /// 聚焦控件最近一次布局的窗口坐标；未登记或未绘制过则 None。
+    fn bounds_of(&self, handle: &FocusHandle) -> Option<Bounds<Pixels>> {
+        let id = self
+            .handles
+            .iter()
+            .find(|(_, candidate)| *candidate == handle)
+            .map(|(id, _)| id)?;
+        self.probes.get(id).map(|probe| probe.bounds())
     }
 }
 
@@ -442,6 +475,10 @@ pub struct AppView {
     page: Page,
     /// 根聚焦句柄：启动时占住焦点，Tab/Shift+Tab 从这里进入控件链；自身不是 tab stop。
     focus_root: FocusHandle,
+    /// 配置页滚动容器句柄：Tab 移焦后据此把聚焦控件滚入视口。
+    config_scroll: ScrollHandle,
+    /// 配置页控件的稳定焦点句柄与布局探针登记。
+    config_registry: Rc<RefCell<FocusRegistry>>,
     snapshot: ConnectionSnapshot,
     snapshots: watch::Receiver<ConnectionSnapshot>,
     /// 主题、日志与服务快照都跨窗口重建保留（关窗驻守后托盘会重建窗口）。
@@ -498,13 +535,17 @@ impl AppView {
                 shared.edit_revision,
             )
         };
+        let config_registry = Rc::new(RefCell::new(FocusRegistry::default()));
         let mut fields = HashMap::new();
         for id in FieldId::ALL {
+            // Design(#101): 输入框句柄经登记表创建（tab_stop 已置），Tab/Shift+Tab 依序经过全部字段。
+            let focus = config_registry
+                .borrow_mut()
+                .focus_handle(id.element_id(), cx);
             fields.insert(
                 id,
                 FieldState {
-                    // Design(#101): 输入框句柄登记为 tab stop，Tab/Shift+Tab 依序经过全部字段。
-                    focus: cx.focus_handle().tab_stop(true),
+                    focus,
                     cursor: field_value(&config, id).len(),
                 },
             );
@@ -515,6 +556,8 @@ impl AppView {
         let view = Self {
             page: Page::Overview,
             focus_root,
+            config_scroll: ScrollHandle::new(),
+            config_registry,
             snapshot,
             snapshots,
             theme_mode,
@@ -557,14 +600,48 @@ impl AppView {
         i18n::is_rtl(&self.config.ui.locale)
     }
 
-    /// Tab：焦点移到下一个 tab stop（依渲染顺序循环）。
+    /// Tab：焦点移到下一个 tab stop（依渲染顺序循环），随后把聚焦控件滚入视口。
     fn on_focus_next(&mut self, _action: &FocusNext, window: &mut Window, cx: &mut Context<Self>) {
         window.focus_next(cx);
+        self.reveal_focused(window, cx);
     }
 
-    /// Shift+Tab：焦点移到上一个 tab stop（反向循环）。
+    /// Shift+Tab：焦点移到上一个 tab stop（反向循环），随后把聚焦控件滚入视口。
     fn on_focus_prev(&mut self, _action: &FocusPrev, window: &mut Window, cx: &mut Context<Self>) {
         window.focus_prev(cx);
+        self.reveal_focused(window, cx);
+    }
+
+    /// 配置页控件的焦点接线：从登记表取稳定句柄 + 布局探针（跨渲染身份不变）。
+    fn config_focus(&self, id: &str, cx: &mut Context<Self>) -> (FocusHandle, ScrollHandle) {
+        let mut registry = self.config_registry.borrow_mut();
+        (registry.focus_handle(id, cx), registry.probe(id))
+    }
+
+    /// 移焦后把 config-scroll 视口外的聚焦控件以最小位移滚入视口。
+    /// 只对配置页正文控件生效（登记表外的导航/页头/其他页控件不滚；非配置页视口高为 0 直接跳过）。
+    fn reveal_focused(&self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(focused) = window.focused(cx) else {
+            return;
+        };
+        let Some(target) = self.config_registry.borrow().bounds_of(&focused) else {
+            return;
+        };
+        let viewport = self.config_scroll.bounds();
+        if viewport.size.height <= px(0.) {
+            return;
+        }
+        let shift = if target.top() < viewport.top() {
+            viewport.top() - target.top()
+        } else if target.bottom() > viewport.bottom() {
+            viewport.bottom() - target.bottom()
+        } else {
+            return;
+        };
+        let mut offset = self.config_scroll.offset();
+        offset.y += shift;
+        self.config_scroll.set_offset(offset);
+        cx.notify();
     }
 
     /// Worker 快照从 tokio 线程来；这里在 UI 线程轮询，避免跨线程触碰 gpui 状态。
@@ -1047,11 +1124,12 @@ impl AppView {
         cx: &mut Context<Self>,
         toggle: impl Fn(&mut Self, &mut Context<Self>) + 'static,
     ) -> AnyElement {
+        let (focus, probe) = self.config_focus(id, cx);
         self.row_base(label, description, Self::toggle_switch(on, theme), theme)
             .id(id)
             .cursor_pointer()
-            .focusable()
-            .tab_stop(true)
+            .track_focus(&focus)
+            .track_scroll(&probe)
             .focus(focus_ring(theme.accent))
             .on_click(cx.listener(move |this, _, _, cx| toggle(this, cx)))
             .into_any_element()
@@ -1081,6 +1159,7 @@ impl AppView {
         cx: &mut Context<Self>,
         select: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
     ) -> AnyElement {
+        let (focus, probe) = self.config_focus(&id, cx);
         div()
             .id(id)
             .px(px(10.))
@@ -1100,8 +1179,8 @@ impl AppView {
             })
             .hover(|element| element.text_color(theme.text))
             .cursor_pointer()
-            .focusable()
-            .tab_stop(true)
+            .track_focus(&focus)
+            .track_scroll(&probe)
             // 选中 chip 是实心强调色底，描边取 on_accent 反色才看得清。
             .focus(focus_ring(if active {
                 theme.on_accent
@@ -1128,6 +1207,7 @@ impl AppView {
         } = view;
         let focus_for_click = focus.clone();
         let cursor_for_click = cursor;
+        let probe = self.config_registry.borrow_mut().probe(id.element_id());
         let content = if value.is_empty() && !focused {
             div()
                 .text_size(px(12.))
@@ -1177,6 +1257,7 @@ impl AppView {
             .rounded(px(7.))
             .cursor(CursorStyle::IBeam)
             .track_focus(&focus)
+            .track_scroll(&probe)
             .focus(focus_ring(theme.accent))
             .on_mouse_down(
                 MouseButton::Left,
@@ -1193,6 +1274,7 @@ impl AppView {
     }
 
     fn browse_button(&self, id: FieldId, theme: Theme, cx: &mut Context<Self>) -> AnyElement {
+        let (focus, probe) = self.config_focus(id.browse_id(), cx);
         div()
             .id(id.browse_id())
             .px(px(10.))
@@ -1204,8 +1286,8 @@ impl AppView {
             .text_color(theme.text_muted)
             .hover(|element| element.bg(theme.surface_raised))
             .cursor_pointer()
-            .focusable()
-            .tab_stop(true)
+            .track_focus(&focus)
+            .track_scroll(&probe)
             .focus(focus_ring(theme.accent))
             .on_click(cx.listener(move |this, _, window, cx| {
                 this.pick_path(id, window, cx);
@@ -1513,6 +1595,8 @@ impl AppView {
                 .enumerate()
             {
                 let path_to_remove = path.clone();
+                let (remove_focus, remove_probe) =
+                    self.config_focus(&format!("remove-excluded-{index}"), cx);
                 user_excluded.push(
                     div()
                         .id(format!("excluded-{index}"))
@@ -1540,8 +1624,8 @@ impl AppView {
                                 .text_color(theme.text_muted)
                                 .hover(|element| element.text_color(theme.danger))
                                 .cursor_pointer()
-                                .focusable()
-                                .tab_stop(true)
+                                .track_focus(&remove_focus)
+                                .track_scroll(&remove_probe)
                                 .focus(focus_ring(theme.accent))
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     if let Some(position) = this
@@ -1564,6 +1648,7 @@ impl AppView {
                 );
             }
         }
+        let (add_focus, add_probe) = self.config_focus("add-excluded", cx);
         user_excluded.push(
             div()
                 .id("add-excluded")
@@ -1577,8 +1662,8 @@ impl AppView {
                 .text_color(theme.text_muted)
                 .hover(|element| element.bg(theme.surface_raised))
                 .cursor_pointer()
-                .focusable()
-                .tab_stop(true)
+                .track_focus(&add_focus)
+                .track_scroll(&add_probe)
                 .focus(focus_ring(theme.accent))
                 .on_click(cx.listener(|this, _, window, cx| {
                     this.add_excluded_directory(window, cx);
@@ -2658,6 +2743,7 @@ impl Render for AppView {
                 .min_h(px(0.))
                 .id("config-scroll")
                 .overflow_y_scroll()
+                .track_scroll(&self.config_scroll)
                 .px(px(24.))
                 .pb(px(16.))
                 .child(self.config_page(window, cx))
@@ -2711,7 +2797,7 @@ mod tests {
     use super::*;
     use gpui::{
         AnyWindowHandle, AppContext, InputEvent, KeyUpEvent, Keystroke, TestAppContext,
-        WindowHandle,
+        WindowHandle, size,
     };
 
     #[test]
@@ -2761,6 +2847,35 @@ mod tests {
         cx.run_until_parked();
         draw(&mut cx, window.into());
         (cx, window)
+    }
+
+    /// 指定窗口尺寸建窗（add_window 用最大化边界；最小高度遍历用例要精确尺寸）。
+    fn setup_sized(width: f32, height: f32) -> (TestAppContext, WindowHandle<AppView>) {
+        let mut cx = TestAppContext::single();
+        cx.update(bind_focus_keys);
+        let window = cx.open_window(size(px(width), px(height)), move |window, cx| {
+            AppView::new(window, cx, test_deps())
+        });
+        cx.run_until_parked();
+        draw(&mut cx, window.into());
+        (cx, window)
+    }
+
+    /// 目标控件是否完整落在 config-scroll 视口内（按登记表探针的布局坐标判定）。
+    fn control_in_view(
+        cx: &mut TestAppContext,
+        window: WindowHandle<AppView>,
+        target: &FocusHandle,
+    ) -> bool {
+        window
+            .update(cx, |view, _, _| {
+                let Some(bounds) = view.config_registry.borrow().bounds_of(target) else {
+                    return false;
+                };
+                let viewport = view.config_scroll.bounds();
+                bounds.top() >= viewport.top() && bounds.bottom() <= viewport.bottom()
+            })
+            .unwrap()
     }
 
     fn draw(cx: &mut TestAppContext, window: AnyWindowHandle) {
@@ -3005,6 +3120,55 @@ mod tests {
             focused(&mut cx, any_window),
             Some(field_focus),
             "Shift+Tab 应回到输入框"
+        );
+    }
+
+    /// 最小窗口高度（820×600，对齐主窗口 window_min_size）下双向 Tab 遍历：
+    /// 焦点移进 config-scroll 视口外的控件后必须被滚入视口（CodeRabbit 审计项）。
+    #[test]
+    fn tab_reveals_focused_config_control_at_min_window_height() {
+        let (mut cx, window) = setup_sized(820., 600.);
+        let any_window: AnyWindowHandle = window.into();
+        open_config_page(&mut cx, window);
+
+        // 向下走到页面深处的「审计日志目录」字段（有界循环，控件增减时不钉死跳数）。
+        let deep = window
+            .update(&mut cx, |view, _, _| {
+                view.fields[&FieldId::AuditLogDirectory].focus.clone()
+            })
+            .unwrap();
+        let mut reached = false;
+        for _ in 0..60 {
+            press_tab(&mut cx, any_window, true);
+            if focused(&mut cx, any_window).as_ref() == Some(&deep) {
+                reached = true;
+                break;
+            }
+        }
+        assert!(reached, "Tab 应能走到审计日志目录字段");
+        assert!(
+            control_in_view(&mut cx, window, &deep),
+            "深部字段聚焦后应被滚入 config-scroll 视口"
+        );
+
+        // 反向回到顶部「ExifToolPath」字段，同样必须在视口内。
+        let top = window
+            .update(&mut cx, |view, _, _| {
+                view.fields[&FieldId::ExifToolPath].focus.clone()
+            })
+            .unwrap();
+        let mut reached_top = false;
+        for _ in 0..60 {
+            press_tab(&mut cx, any_window, false);
+            if focused(&mut cx, any_window).as_ref() == Some(&top) {
+                reached_top = true;
+                break;
+            }
+        }
+        assert!(reached_top, "Shift+Tab 应能回到 ExifToolPath 字段");
+        assert!(
+            control_in_view(&mut cx, window, &top),
+            "反向回顶后顶部字段也应在视口内"
         );
     }
 }
