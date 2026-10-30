@@ -98,6 +98,10 @@ public sealed class MetadataCleanerWorker : BackgroundService
            return;
         }
 
+        // 校验通过即登记当前配置：GetStatus 的 watchDirectory 由此立刻反映真实目录，
+        // 不再在建目录/首次扫描期间把已配置好的 Worker 误报成「监控目录待配置」。
+        _currentConfig = config;
+
         var printEffectiveConfig = ParseBool(GetValue("print-effective-config", "print_effective_config"));
         if (printEffectiveConfig)
         {
@@ -119,7 +123,6 @@ public sealed class MetadataCleanerWorker : BackgroundService
                 return;
             }
 
-            _currentConfig = config;
             _logger.LogWarning("Worker is ready but no watch folder is configured; waiting for configuration reload");
             try
             {
@@ -215,7 +218,6 @@ public sealed class MetadataCleanerWorker : BackgroundService
         }
 
         _watcher.Start();
-        _currentConfig = config;
 
         // Log inotify limits on Linux (non-blocking diagnostic)
         var inotifyDiag = InotifyMonitor.CheckAndWarn(_logger);
