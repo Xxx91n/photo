@@ -241,6 +241,64 @@ public sealed class WorkerReloadConfigRegressionTests
         }
     }
 
+    [Fact]
+    public async Task Reload_Into_Another_Folder_Should_Not_Clean_The_Retired_Folders_In_Flight_File()
+    {
+        // 防的具体回潮形态：RebuildRuntimeAsync 只要去抖窗口相同就复用队列，不看目录有没有换。
+        // 用户从 A 换到 B 后，A 里还压在去抖窗口内的路径会随队列活下来，被 B 的 pipeline 照常清除元数据
+        // ——那是用户已经放弃监控的目录（#100 审查）。
+        var root = Path.Combine(Path.GetTempPath(), "pp-100-switch-" + Guid.NewGuid().ToString("N"));
+        var folderA = Path.Combine(root, "A");
+        var folderB = Path.Combine(root, "B");
+        var audit = Path.Combine(root, "_audit");
+        var configPath = Path.Combine(root, "config.json");
+        Directory.CreateDirectory(folderA);
+        Directory.CreateDirectory(folderB);
+        await File.WriteAllTextAsync(configPath, BuildConfigJson(folderA, audit, debounceMs: 2000));
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["config"] = configPath })
+            .Build();
+        var worker = new MetadataCleanerWorker(
+            configuration,
+            NullLogger<MetadataCleanerWorker>.Instance,
+            new NullApplicationLifetime(),
+            new RuntimeControl());
+
+        await worker.StartAsync(CancellationToken.None);
+        try
+        {
+            var processedPath = Path.Combine(audit, "processed.ndjson");
+            Assert.True(
+                await WaitForFileAsync(processedPath, TimeSpan.FromSeconds(30)),
+                "启动期未创建处理记录表：用例前提不成立");
+            await Task.Delay(500);
+
+            // 投进 A，落在 2 s 去抖窗口内——重载发生时它还没被弹队。
+            await File.WriteAllTextAsync(Path.Combine(folderA, "retired.jpg"), "retired");
+            await Task.Delay(300);
+
+            await File.WriteAllTextAsync(configPath, BuildConfigJson(folderB, audit, debounceMs: 2000));
+            await worker.ReloadConfigAsync();
+            Assert.Equal(folderB, worker.CurrentWatchDirectory);
+
+            // 正向对照：B 的运行时确实在跑，否则「A 的文件没记录」只是因为整条链路没起来。
+            await File.WriteAllTextAsync(Path.Combine(folderB, "fresh.jpg"), "fresh");
+            Assert.True(
+                await WaitForProcessedRecordForAsync(processedPath, "fresh.jpg", TimeSpan.FromSeconds(30)),
+                "换目录重载后新目录未监控：用例前提不成立");
+
+            Assert.False(
+                await WaitForProcessedRecordForAsync(processedPath, "retired.jpg", TimeSpan.FromSeconds(5)),
+                "换目录后仍在去抖窗口内的旧目录文件被新运行时清除，越界改了放弃监控的文件（#100）");
+        }
+        finally
+        {
+            await worker.StopAsync(CancellationToken.None);
+            TryDelete(root);
+        }
+    }
+
     [Theory]
     [InlineData(RuntimeMode.Service, "service")]
     [InlineData(RuntimeMode.Background, "background")]
