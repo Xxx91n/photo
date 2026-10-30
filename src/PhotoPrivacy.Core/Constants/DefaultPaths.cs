@@ -6,7 +6,7 @@ public static class DefaultPaths
 
     /// <summary>
     /// App-local default hot folder: <BaseDirectory>/hot, three-platform compatible.
-    /// AppConfigValidator rejects an empty hot_folder (non-dry-run), so users get a clear "not configured" error.
+    /// An explicitly empty hot_folder is allowed as a first-run standby state; the UI guides users to configure it.
     /// </summary>
     public static string DefaultHotFolder => ResolveDefaultHotFolder();
 

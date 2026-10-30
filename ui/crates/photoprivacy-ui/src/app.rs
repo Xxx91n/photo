@@ -1676,7 +1676,7 @@ impl AppView {
     }
 
     /// Overview 页：连接状态与 Worker 详情。
-    fn overview_body(&self, theme: &Theme) -> AnyElement {
+    fn overview_body(&self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
         let state = self.snapshot.state;
         let dot = Self::state_color(state, theme);
         let endpoint = or_dash(self.snapshot.endpoint.clone());
@@ -1747,6 +1747,12 @@ impl AppView {
                         .is_empty())
                 .then(|| {
                     div()
+                        .cursor_pointer()
+                        .hover(|element| element.text_color(theme.text))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.page = Page::Config;
+                            cx.notify();
+                        }))
                         .text_size(px(12.))
                         .text_color(theme.warning)
                         .child(self.t(k::STATUS_CONFIGURE_WATCH_FOLDER))
@@ -2457,7 +2463,7 @@ impl Render for AppView {
             .child(self.theme_switch(self.theme_mode.get(), &theme, cx));
 
         let content = match self.page {
-            Page::Overview => self.overview_body(&theme),
+            Page::Overview => self.overview_body(&theme, cx),
             Page::Config => div()
                 .flex_1()
                 .min_h(px(0.))
