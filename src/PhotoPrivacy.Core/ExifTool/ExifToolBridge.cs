@@ -863,9 +863,9 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
     /// <summary>
     /// <c>{ready}</c> 只结清「紧挨在它前面那句回显」所属的擦除块。
     ///
-    /// <c>{ready}</c> 行本身不带块身份，能依据的只有位置：真实 stay_open 单线程按块处理，一块的回显与
-    /// 它自己的 <c>{ready}</c> 中间插不进别块的行。插得进就说明这句 <c>{ready}</c> 属于别的块（#39 登记的
-    /// stdin 顺序假设破了），此时让擦除等待继续等自己那块、或由进程退出判失败，也不能把它结清成已清理。
+    /// <c>{ready}</c> 行本身不带块身份，能依据的只有位置，于是归属只能押在「块按顺序整块处理、一块的回显与
+    /// 它自己的 <c>{ready}</c> 之间插不进别块的行」这一假设上——它由 #39 登记为未实测。假设破了（插得进）时，
+    /// 那句 <c>{ready}</c> 属于别的块：让擦除等待继续等自己那块、或由进程退出判失败，也不把它结清成已清理。
     /// </summary>
     private void CompleteBlockJustEchoed()
     {
