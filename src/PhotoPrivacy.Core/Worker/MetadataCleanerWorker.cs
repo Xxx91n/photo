@@ -696,7 +696,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
             && _currentConfig?.Watch.DebounceMs == config.Watch.DebounceMs;
 
         // 先在拆卸旧运行期之前建目录（#124）：创建失败时旧 watcher/audit/pipeline 保持原样，
-        // 与旧 LoadEffectiveConfig 在 ApplyConfig 之前抛错的失败时机一致；待机重载跳过创建。
+        // 与旧 LoadEffectiveConfig 的失败边界一致（旧实现也在拆卸前抛错）；待机重载跳过创建。
         if (!string.IsNullOrWhiteSpace(config.Watch.HotFolder))
         {
             EnsureConfiguredDirectories(config);
