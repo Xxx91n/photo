@@ -64,6 +64,88 @@ public sealed class ExifToolBridgeTests
     }
 
     [Fact]
+    public async Task WipeMetadataAsync_Should_Remove_Pending_Task_And_Not_Report_Cleaned_When_Process_Dies_Before_Ready_Signal()
+    {
+        // 防的具体回潮形态（issue #97 AC2）：进程在 {ready} 前被杀时，桥要么把 TASK_DONE_ 回显当成
+        // 完成、直接返回 Cleaned_Modified（文件其实还没写完 → 静默漏清理），要么挂在等待里直到调用方
+        // 取消；更糟的是新进程的第一个 {ready} 会被旧进程留下的等待方读成「自己那块结束了」。
+        var process = new ProtocolLevelFakeExifToolProcess
+        {
+            LateReadySignalMs = 5000
+        };
+        var bridge = new ExifToolBridge(process, Config);
+        await bridge.StartAsync(CancellationToken.None);
+
+        var wipe = Task.Run(() => bridge.WipeMetadataAsync(
+            Path.Combine(Path.GetTempPath(), "pp-bridge", "killed-before-ready.jpg"),
+            CancellationToken.None));
+
+        await WaitUntilStdoutLineAsync(process, "TASK_DONE_");
+
+        // 这一代进程再也不会发出 {ready}。
+        await process.StopAsync(CancellationToken.None);
+
+        var ex = await Assert.ThrowsAnyAsync<InvalidOperationException>(
+            () => wipe.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.Contains("TASK_DONE_", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("{ready}", ex.Message, StringComparison.Ordinal);
+        Assert.Equal(0, bridge.PendingCount);
+    }
+
+    [Fact]
+    public async Task WipeMetadataAsync_Should_Be_Canceled_And_Not_Report_Cleaned_When_Bridge_Stops_Before_Ready_Signal()
+    {
+        // 防的具体回潮形态（issue #97 影响段的另一条杀手路径）：停机/配置热重载走桥的 StopAsync，
+        // 退役时必须把在途擦除判成取消，而不是让它带着「回显已到」的乐观结论返回 Cleaned_Modified。
+        var process = new ProtocolLevelFakeExifToolProcess
+        {
+            LateReadySignalMs = 5000
+        };
+        var bridge = new ExifToolBridge(process, Config);
+        await bridge.StartAsync(CancellationToken.None);
+
+        var wipe = Task.Run(() => bridge.WipeMetadataAsync(
+            Path.Combine(Path.GetTempPath(), "pp-bridge", "stopped-before-ready.jpg"),
+            CancellationToken.None));
+
+        await WaitUntilStdoutLineAsync(process, "TASK_DONE_");
+
+        await bridge.StopAsync(CancellationToken.None);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => wipe);
+        Assert.Equal(0, bridge.PendingCount);
+    }
+
+    [Fact]
+    public async Task WipeMetadataAsync_Should_Keep_One_Wipe_Block_Per_File_When_Waiting_For_Ready_Signal()
+    {
+        // 防的具体回潮形态（issue #97 AC3）：为等块结束信号再补发一个「问写完没有」的命令块，
+        // 或干脆退回每文件 spawn 进程——stay_open 的常驻收益就没了。等 {ready} 只是晚一点读同一块
+        // 的输出，不产生额外往返。
+        var process = new ProtocolLevelFakeExifToolProcess
+        {
+            LateReadySignalMs = 50
+        };
+        var bridge = new ExifToolBridge(process, Config);
+        await bridge.StartAsync(CancellationToken.None);
+
+        for (var i = 0; i < 3; i++)
+        {
+            var result = await bridge.WipeMetadataAsync(
+                Path.Combine(Path.GetTempPath(), "pp-bridge", $"resident-{i}.jpg"),
+                CancellationToken.None);
+
+            Assert.Equal(WipeResult.Cleaned_Modified, result);
+        }
+
+        Assert.Equal(1, process.StartCalls);
+        Assert.Equal(0, process.StopCalls);
+        Assert.Equal(3, process.Writes.Count(w => w.Contains("TASK_DONE_", StringComparison.Ordinal)));
+        Assert.Equal(3, process.Writes.Count(w => w.Contains("-json", StringComparison.Ordinal)));
+        Assert.Equal(0, bridge.PendingCount);
+    }
+
+    [Fact]
     public async Task WipeMetadataAsync_Should_Timeout_And_Remove_Pending_Task_When_Marker_Missing()
     {
         var process = new ProtocolLevelFakeExifToolProcess

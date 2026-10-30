@@ -26,6 +26,8 @@ internal sealed class ProtocolLevelFakeExifToolProcess : IExifToolProcess
 
     public event Action<string>? StdoutLine;
 
+    public event Action? ProcessExited;
+
     /// <summary>已产出的 stdout 行（快照）——用例据此确认「某一行的处理器已经跑过」。</summary>
     public IReadOnlyList<string> StdoutLines
     {
@@ -75,9 +77,9 @@ internal sealed class ProtocolLevelFakeExifToolProcess : IExifToolProcess
     public int FileInputParseDelayMs { get; set; }
 
     /// <summary>
-    /// 协议时序注入：块内 <c>-echo1</c> 回显照常在参数解析阶段先出，但块结束的 <c>{ready}</c> 迟到这些毫秒。
-    /// 复现真实 ExifTool 的「回显早于文件写入完成」——擦除若在回显时就判定完成，就会在磁盘还没写完
-    /// 的时刻返回成功（见 #97）。
+    /// 协议时序注入：只有会写盘的命令块（含 <c>-overwrite_original</c>）的块结束信号 <c>{ready}</c> 迟到这些毫秒，
+    /// 回显与探测输出照常先出。真实 ExifTool 正是如此——<c>-echo1</c> 在参数解析阶段就打印，写盘要到块结束才完成
+    /// （见 #97）；只读块（<c>-json</c>/<c>-ver</c>/健康探针）不写文件，块结束信号不推迟。
     /// </summary>
     public int LateReadySignalMs { get; set; }
 
@@ -115,7 +117,16 @@ internal sealed class ProtocolLevelFakeExifToolProcess : IExifToolProcess
     public Task StopAsync(CancellationToken cancellationToken)
     {
         StopCalls++;
+
+        // 语义保真：进程停了就是停了——真实进程退出后 stdout 再也不会出现 {ready}，
+        // 桥必须收到这一次退出信号才能把在途命令块的等待判成失败（#97）。
+        var wasRunning = IsRunning;
         IsRunning = false;
+        if (wasRunning)
+        {
+            ProcessExited?.Invoke();
+        }
+
         return Task.CompletedTask;
     }
 
@@ -153,6 +164,8 @@ internal sealed class ProtocolLevelFakeExifToolProcess : IExifToolProcess
 
         var isVersionBlock = lines.Any(l => string.Equals(l.Trim(), "-ver", StringComparison.Ordinal));
         var isJsonBlock = lines.Any(l => string.Equals(l.Trim(), "-json", StringComparison.Ordinal));
+        var writesFile = lines.Any(l => string.Equals(l.Trim(), "-overwrite_original", StringComparison.Ordinal));
+        var lateReadyMs = writesFile ? LateReadySignalMs : 0;
         var delayMs = HasFileInput(lines) && FileInputParseDelayMs > 0
             ? FileInputParseDelayMs
             : (isVersionBlock ? VersionResponseDelayMs : (isJsonBlock ? 0 : HealthResponseDelayMs));
@@ -176,13 +189,12 @@ internal sealed class ProtocolLevelFakeExifToolProcess : IExifToolProcess
                 EmitStdout(VersionText);
             }
 
-            if (LateReadySignalMs > 0)
+            if (lateReadyMs > 0)
             {
-                // 块结束信号迟到：回显与数据已按真实时序先出，{ready} 才是「本块处理完」的那一句。
-                var lateMs = LateReadySignalMs;
+                // 写盘块的结束信号迟到：回显与数据已按真实时序先出，{ready} 才是「本块处理完」的那一句。
                 _ = Task.Run(async () =>
                 {
-                    await Task.Delay(lateMs);
+                    await Task.Delay(lateReadyMs);
                     EmitStdout("{ready}");
                 });
                 return;
