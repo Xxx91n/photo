@@ -135,9 +135,13 @@
 
 > 场景：发版包的 `config/config.json` 是 `config.sample.json` 的拷贝（`scripts/publish-app.ps1`），
 > 出厂 `watch.hot_folder: ""`。Worker 按 #100 保持驻守待命，UI 状态栏引导用户完成首次配置。
-> 自动化侧（#113 AC1，已进 CI 门禁）：`WorkerReloadConfigRegressionTests`
+> 自动化侧（#113 AC1）：`WorkerReloadConfigRegressionTests`
 > `.Standby_GetStatus_Through_Background_Endpoint_Should_Reply_With_Empty_Watch_Directory`
 > 在真实传输绑定 + accept 环 + 帧协议往返下断言空配置回 `ok:true` 且 `watchDirectory=""`。
+> **取证口径**：CI 的 dotnet `test` job 在本票 head 绿（最新 run `41080657590`，另有 6 个 head 各自绿过，
+> 外加 Release run `41073704339` 的独立一次）；整条 run 仍显示红，红的是 `markers` job——
+> src 里两条存量 `Design(#100)` 标记指向 #100 关闭后的死号，门禁脚本在 main 工作树上同样红，
+> 与 K 组和本用例无关，已单独记在 #118，别把它读成 AC1 未达。
 > **口径提醒**：CI 的 dotnet test 只跑 ubuntu，本用例在 CI 走 Unix socket 分支；
 > Windows 命名管道分支（实机形态）与下面四项的界面呈现一样，只能实机验证。
 > 另：该用例沿用本类既有夹具的 `exiftool.dry_run = true`，而发版包出厂是 `false`——
