@@ -65,7 +65,7 @@ public sealed class AppConfigValidatorTests
         Assert.Null(ex);
     }
     [Fact]
-    public void Validate_Should_Throw_When_HotFolder_Empty_And_Not_DryRun()
+    public void Validate_Should_Allow_Empty_HotFolder_For_FirstRun_Standby()
     {
         var cfg = AppConfig.Default with
         {
@@ -79,7 +79,8 @@ public sealed class AppConfigValidatorTests
             Watch = AppConfig.Default.Watch with { HotFolder = "" }
         };
 
-        Assert.Throws<AppConfigValidationException>(() => AppConfigValidator.Validate(cfg));
+        var ex = Record.Exception(() => AppConfigValidator.Validate(cfg));
+        Assert.Null(ex);
     }
 
     // ---------------------------------------------------------------------------------------

@@ -38,6 +38,7 @@
     "tray_running": "トレイ実行中",
     "pause_service_unavailable": "一時停止（サービスモードでは使用不可）",
     "connected": "接続済み",
+    "configure_watch_folder": "設定ページで監視フォルダーを設定してください",
     "reconnecting": "再接続中",
     "disconnected": "切断済み",
     "saving": "保存中…",

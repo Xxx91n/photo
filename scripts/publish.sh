@@ -142,6 +142,7 @@ mkdir -p "${TARGET_DIR}/config"
 cp "${REPO_ROOT}/config/config.sample.json" "${TARGET_DIR}/config/config.sample.json"
 # Copy config.sample.json as config.json so the release has a working default config
 cp "${REPO_ROOT}/config/config.sample.json" "${TARGET_DIR}/config/config.json"
+cp "${REPO_ROOT}/config/README.md" "${TARGET_DIR}/config/README.md"
 cp "${REPO_ROOT}/README.md" "${TARGET_DIR}/README.md"
 
 rm -rf "$WORKER_PUB_DIR"

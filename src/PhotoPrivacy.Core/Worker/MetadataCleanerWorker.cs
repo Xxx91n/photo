@@ -41,6 +41,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
     private IReadOnlyList<string> _autoExcludedSubdirectories = Array.Empty<string>();
 
     public string CurrentExifToolVersion => _bridge?.VersionText ?? ExifToolVersionText.Unknown;
+    public string CurrentWatchDirectory => _currentConfig?.Watch.HotFolder ?? string.Empty;
 
     /// <summary>
     /// 驱动 ExifTool 版本解析（#86）。
@@ -102,6 +103,22 @@ public sealed class MetadataCleanerWorker : BackgroundService
             var json = AppConfigJson.ToIndentedJson(config);
             Console.WriteLine(json);
             _applicationLifetime.StopApplication();
+            return;
+        }
+
+        _currentConfig = config;
+        if (string.IsNullOrWhiteSpace(config.Watch.HotFolder))
+        {
+            _logger.LogWarning("Worker is ready but no watch folder is configured; waiting for configuration reload");
+            try
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                // Normal shutdown while the worker is waiting for first-run configuration.
+            }
+
             return;
         }
 
@@ -649,6 +666,15 @@ public sealed class MetadataCleanerWorker : BackgroundService
             Directory.CreateDirectory(config.Quarantine.Directory);
         }
 
+       if (string.IsNullOrWhiteSpace(config.Watch.HotFolder))
+       {
+           _autoExcludedSubdirectories = Array.Empty<string>();
+           _currentConfig = config;
+           return;
+       }
+
+       _debounceQueue ??= new DebounceQueue(TimeSpan.FromMilliseconds(config.Watch.DebounceMs), () => DateTimeOffset.UtcNow);
+       _recentFingerprintCache ??= new RecentFingerprintCache(() => DateTimeOffset.UtcNow);
        _audit = new JsonLineAuditLogger(config.Audit.LogDirectory, config.Audit.RetainDays, config.Audit.DiagnosticMode, AuditLevelParser.Parse(config.Audit.LogLevel));
         IAuditLogger auditLogger = _audit is not null ? _audit : new NoopAuditLogger();
         _bridge = CreateBridge(config, auditLogger);
@@ -673,6 +699,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
 
         _autoExcludedSubdirectories = _watcher.GetAutoExcludedSubdirectories();
         _watcher.Start();
+        _currentConfig = config;
     }
 
     private void EnqueueIfNeeded(string path)

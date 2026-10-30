@@ -53,6 +53,7 @@ pub struct ConnectionSnapshot {
     pub worker_mode: Option<WorkerMode>,
     pub protocol_version: Option<i32>,
     pub exif_tool_version: Option<String>,
+    pub watch_directory: Option<String>,
     pub status_mode: Option<String>,
     pub service_reachability: ServiceReachability,
     pub round_trips: u64,
@@ -68,6 +69,7 @@ impl ConnectionSnapshot {
             worker_mode: None,
             protocol_version: None,
             exif_tool_version: None,
+            watch_directory: None,
             status_mode: None,
             service_reachability: ServiceReachability::Unknown,
             round_trips: 0,
@@ -193,6 +195,7 @@ fn apply_success(
 ) {
     snapshot.state = ConnectionState::Connected;
     snapshot.protocol_version = protocol_version;
+    snapshot.watch_directory = Some(status.watch_directory.clone());
     snapshot.status_mode = Some(status.mode.clone());
     snapshot.round_trips += 1;
     snapshot.last_round_trip = Some(elapsed);
@@ -205,6 +208,7 @@ fn apply_success(
 fn apply_failure(snapshot: &mut ConnectionSnapshot, err: &IpcError) {
     snapshot.state = ConnectionState::Reconnecting;
     snapshot.protocol_version = None;
+    snapshot.watch_directory = None;
     snapshot.status_mode = None;
     snapshot.last_error = Some(err.to_string());
 }
@@ -247,6 +251,7 @@ mod tests {
             &Status {
                 exif_tool_version: "13.20".into(),
                 mode: "background".into(),
+                watch_directory: String::new(),
                 ..Status::default()
             },
             Some(1),
@@ -256,12 +261,14 @@ mod tests {
             snapshot.service_reachability,
             ServiceReachability::Reachable
         );
+        assert_eq!(snapshot.watch_directory.as_deref(), Some(""));
 
         apply_failure(&mut snapshot, &IpcError::Timeout);
         assert_eq!(
             snapshot.service_reachability,
             ServiceReachability::Reachable
         );
+        assert!(snapshot.watch_directory.is_none());
     }
 
     #[tokio::test(start_paused = true)]

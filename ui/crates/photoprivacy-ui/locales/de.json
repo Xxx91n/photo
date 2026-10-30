@@ -38,6 +38,7 @@
     "tray_running": "Systemablage läuft",
     "pause_service_unavailable": "Pause (in Dienstmodus nicht verfügbar)",
     "connected": "Verbunden",
+    "configure_watch_folder": "Öffnen Sie die Einstellungen, um den Überwachungsordner festzulegen",
     "reconnecting": "Neuverbindung",
     "disconnected": "Getrennt",
     "saving": "Speichern…",
