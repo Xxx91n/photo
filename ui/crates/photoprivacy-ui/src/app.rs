@@ -1767,7 +1767,13 @@ impl AppView {
                             .text_color(theme.danger)
                             .child(error.clone()),
                     )
-                    .child(self.copy_button("copy-error".to_string(), &error, k::STATUS_COPY_ERROR, theme, cx))
+                    .child(self.copy_button(
+                        "copy-error".to_string(),
+                        &error,
+                        k::STATUS_COPY_ERROR,
+                        theme,
+                        cx,
+                    ))
             }))
             .children(
                 (state == ConnectionState::Connected
@@ -1943,7 +1949,8 @@ impl AppView {
                         let state = this.log_state.borrow();
                         let mut entries = Vec::with_capacity(range.len());
                         for index in range {
-                            let Some(entry_index) = state.visible_indices.get(index).copied() else {
+                            let Some(entry_index) = state.visible_indices.get(index).copied()
+                            else {
                                 continue;
                             };
                             let Some(entry) = state.logs.get(entry_index) else {
@@ -2110,7 +2117,7 @@ impl AppView {
         label_key: &str,
         theme: &Theme,
         cx: &mut Context<Self>,
-    ) -> Div {
+    ) -> Stateful<Div> {
         let copy_text = text.to_string();
         let feedback = self.copy_feedback_for(&id);
         let button_id = id.clone();
