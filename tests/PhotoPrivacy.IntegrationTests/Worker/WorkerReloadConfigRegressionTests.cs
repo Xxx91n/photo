@@ -462,9 +462,9 @@ public sealed class WorkerReloadConfigRegressionTests
                 "改写后的文件未被旧运行时处理：用例前提不成立");
 
             // 窗口撑到 5 s，mtime 拨到 +10 s：旧实现的判据是「起点前 2 s 余量」，而起点取在最长 8 s 的
-            // drain 闸之后，所以余量要盖住闸口停顿；同时「刚处理完」的 2 s 指纹抑制此时早已过期。
-            // 那两个常数就是旧实现唯一会多捞一条的时序前提，这里各留 5 s 以上，不靠 CI 快慢碰运气。
-            // 新实现比的是拆卸前后的差集，与这两个常数都不相干。
+            // drain 闸之后，所以余量要盖住闸口停顿；抑制期从「刚处理完」起算，5 s 窗口盖住它的 2 s TTL。
+            // 这两个常数就是旧实现唯一会多捞一条的时序前提，本机名义上各留数秒余量。
+            // 新实现比的是拆卸前后的差集，与这两个常数都不相干——这条用例绿不绿不看时序。
             worker.TeardownWindowHookAsync = () => Task.Delay(TimeSpan.FromSeconds(5));
 
             await File.WriteAllTextAsync(configPath, BuildConfigJson(hot, auditAfter));
