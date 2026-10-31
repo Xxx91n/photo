@@ -154,7 +154,7 @@
 
 | # | 操作 | 结果 | 证据 |
 |---|---|---|---|
-| K1 | 双击 `PhotoPrivacy.exe`（出厂空 `hot_folder`）→ 状态栏连接态显示「已连接」，不是「连接中/已断开」 | 通过 | 2026-10-31 桌面截图目检（`evidence/K1-K2-standby-overview.png`，产物见下文 2026-10-31 产物记录）：状态栏绿点 + 「已连接 · PhotoPrivacyCleaner.Background · 后台模式」，右侧「上次往返 0 ms」；本轮取的每一帧连接态都是「已连接」，未采到「连接中/已断开」帧。**启动方式是 `Start-Process` 拉起包内 exe，不是真·鼠标双击**——同目录同入口，UI 一律按可执行文件目录解析 `config.json`，对本判据等价；无控制台黑窗，符合指引第 3 步的前置门 |
+| K1 | 双击 `PhotoPrivacy.exe`（出厂空 `hot_folder`）→ 状态栏连接态显示「已连接」，不是「连接中/已断开」 | 通过 | 2026-10-31 桌面截图目检（产物见下文 2026-10-31 产物记录）。**启动方式按判据字面走双击路径**：`cmd /c start` 经 ShellExecute 拉起包内 `PhotoPrivacy.exe`（与资源管理器双击同一条 API，非 `CreateProcess`），UI 与 Worker 两进程均起，帧见 `evidence/K1-dblclick-standby.png`——状态栏绿点 + 「已连接 · PhotoPrivacyCleaner.Background · 后台模式」，右侧「上次往返 0 ms」，无控制台黑窗，符合指引第 3 步的前置门。早前一轮用 `Start-Process` 直起（`evidence/K1-K2-standby-overview.png`）连接态同样是「已连接」，本轮改按双击路径重取，两种入口结论一致 |
 | K2 | 状态栏出现 warning 色提示「请前往配置页设置监控目录」（`status.configure_watch_folder`，切 locale 后各自可见） | 通过 | 2026-10-31 桌面截图目检：10 个 locale 逐一取概览页截图（`evidence/K2-locale-*.png`），提示均以 warning 色（琥珀）渲染在连接态下一行——zh-CN「请前往配置页设置监控目录」、en「Go to Settings to set the watch folder」（与 `locales/en.json` 该键逐字一致）、ja/ko/de/fr/es/pt/ru 各随其 locale，ar 为 RTL 镜像布局下同一提示。只判「随 locale 出现且可读」，阿语字形连写质量归 B3 既有口径 |
 | K3 | 点该提示 → 直接进配置页（`app.rs` 的 `configure-watch-folder` on_click 置 `Page::Config`） | 通过 | 2026-10-31 桌面截图目检（English 帧，`evidence/K3-after-click-hint.png`）：点提示文本后导航高亮由 `Overview` 跳到 `Settings`、页面标题变 `Settings`，不是只高亮也不是无响应 |
 | K4 | 选有效目录保存 → 提示消失、监控启动；放入照片被处理（日志页出条目、审计目录 `processed.ndjson` 增长） | 通过 | 2026-10-31 桌面截图目检（`evidence/recheck-2-config-saved.png`、`recheck-4-overview-hint-gone.png`、`recheck-3-logs-dates-agree.png`）：填有效目录保存后提示消失、`ExifTool` 行由 `unknown` 变 `13.59`；放入 830 B 含 Artist/Copyright 的 jpg → 就地清为 676 B 且标签清空、`bak/` 留原件、`processed.ndjson` 增 2 条、日志页实时出 5 条。**环境前提要在证据里写明**：本机装了 ExifTool 且就在模板默认路径，出厂包一字未改即可启用监控（非 dry-run），故这是本体证据而非旁证；真裸机仍归 #108。取证时刻本地日期＝UTC 日期，日志页那一条腿才成立；分叉时窗内同一操作日志页恒空（`K4-logs-attempt1-localdate.png`、`K4-logs-after-localdate-copy.png`），见 #129 |
@@ -164,8 +164,8 @@
 - **K4 有已知阻断（#108）**：发布包不含 ExifTool 且模板 `exiftool.path` 指向 `C:\Program Files\ExifTool\exiftool.exe`、`dry_run: false`，
   裸机保存有效目录后 `ReloadConfig` 会因 `exiftool.path not found` 校验失败、监控起不来。
   验 K4 时若命中这条，属 #108 已登记的缺陷，不按 #113 AC3 另开票。
-  **两条取证口径要分清**：票面 K4 说的是「出厂包原样启动」（#125 写作「双击」，本轮实为 `Start-Process`
-  拉起同一 exe、同目录同入口，理由见 K1 行的启动方式说明）——手改包内 `exiftool.dry_run` 为 true 之后拿到的
+  **两条取证口径要分清**：票面 K4 说的是「出厂包双击启动」（K1 已按 `cmd /c start` 的 ShellExecute 双击路径重取，
+  见 K1 行）——手改包内 `exiftool.dry_run` 为 true 之后拿到的
   「监控启动、文件被处理」不是 K4 本体证据（dry-run 不写真文件），只能作为「待机 → 重载唤醒」这条链路的
   旁证记在证据列并注明改过什么；**这条只约束未装 ExifTool 的真裸机**——那种机器上正面证据要等 #108 落地
   （包内自带 ExifTool）后在出厂原样包上取。
@@ -245,8 +245,9 @@
   解压到私有目录 `D:\Aworker\photo-smoke-125\pkg\`，入口 `D:\Aworker\photo-smoke-125\pkg\PhotoPrivacy.exe`。
   包内实测出厂原样：`config/config.json` 与 `config.sample.json` 逐字节相同（`hot_folder: ""`、`dry_run: false`）。
 - 取证通道：整屏 `Graphics.CopyFromScreen` 截图 + 合成点击/键入，界面呈现由 agent 读图判定；
-  截图存 `D:\Aworker\photo-smoke-125\evidence\`，共 23 张、按判据命名、不入库
-  （K1/K2 待机帧 `K1-K2-standby-overview.png`；K2 逐 locale 概览帧 `K2-locale-<code>.png` ×10，
+  截图存 `D:\Aworker\photo-smoke-125\evidence\`，共 24 张、按判据命名、不入库
+  （K1 双击路径帧 `K1-dblclick-standby.png` 与早前 `Start-Process` 帧 `K1-K2-standby-overview.png`；
+  K2 逐 locale 概览帧 `K2-locale-<code>.png` ×10，
   其中 ar 那张中途误拍成规则页、已删除并以全页帧改名顶替，glob 与判据一一对得上；
   K3 帧 `K3-after-click-hint.png`；K4 帧 `recheck-*.png` ×4 与分叉时窗对照 `K4-logs-*.png` ×3；余为过程帧）。
   K2 的 10 locale 是逐一取证：
