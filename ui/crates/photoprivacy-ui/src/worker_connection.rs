@@ -177,9 +177,32 @@ fn launch_background_worker(worker: &Path, config: Option<&Path>) -> std::io::Re
     Ok(())
 }
 
+/// Builds the command that launches the background worker process.
+///
+/// Only the directory portion of `worker` is honoured: the executable name is
+/// always pinned to the canonical worker binary (`PhotoPrivacyWorker.exe` on
+/// Windows, `PhotoPrivacyWorker` elsewhere), so a caller-supplied path cannot
+/// substitute an arbitrary program. When `worker` has no parent directory the
+/// bare binary name is used and resolved by the OS executable search.
+///
+/// The worker is started with `--mode background`, plus `--config <path>` when
+/// `config` is given. On Windows the process is created without a console
+/// window. The command is spawned directly, never through a shell.
+///
+/// Note: this pins the filename only; it does not verify that the resolved
+/// directory is trusted.
 fn background_worker_command(worker: &Path, config: Option<&Path>) -> std::process::Command {
+    let allowed_name = if cfg!(windows) {
+        "PhotoPrivacyWorker.exe"
+    } else {
+        "PhotoPrivacyWorker"
+    };
+    let safe_worker = worker
+        .parent()
+        .map(|dir| dir.join(allowed_name))
+        .unwrap_or_else(|| PathBuf::from(allowed_name));
     #[allow(unused_mut)]
-    let mut command = std::process::Command::new(worker);
+    let mut command = std::process::Command::new(&safe_worker);
     command.arg("--mode").arg("background");
     if let Some(config) = config {
         command.arg("--config").arg(config);

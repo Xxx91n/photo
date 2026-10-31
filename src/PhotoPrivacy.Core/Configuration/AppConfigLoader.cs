@@ -66,11 +66,13 @@ public static class AppConfigLoader
                 // 空串/空白回落 DefaultPaths —— 对齐 Backup.Suffix 先例。
                 // 空串直传会让 Path.Combine("", 文件名) 退化成相对路径，隔离文件落进进程 CWD
                 // （config.sample.json 的 quarantine.directory 就是空串，跟着 README 第一步走即命中）。
+                // Design(#108): quarantine.directory 空串保留 <BaseDirectory>/hot/... 回落（不改成空串）。
                 Directory: string.IsNullOrWhiteSpace(dto.Quarantine.Directory)
                     ? DefaultPaths.DefaultQuarantineDirectory
                     : dto.Quarantine.Directory),
             Audit: new AuditOptions(
                 // 同上——审计日志目录空串回落 DefaultPaths，绝不落 CWD。
+                // Design(#108): audit.log_directory 空串保留 <BaseDirectory>/hot/... 回落（不改成空串）；空监控目录下的校验范围由 #108 裁定。
                 LogDirectory: string.IsNullOrWhiteSpace(dto.Audit.LogDirectory)
                     ? DefaultPaths.DefaultAuditLogDirectory
                     : dto.Audit.LogDirectory,
