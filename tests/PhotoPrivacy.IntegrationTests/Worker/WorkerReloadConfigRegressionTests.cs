@@ -310,7 +310,7 @@ public sealed class WorkerReloadConfigRegressionTests
     public async Task Reload_That_Widens_The_Scope_Should_Backfill_Existing_Nested_Files()
     {
         // 防的具体回潮形态：只改 include_subdirectories（false→true）被判成「范围没变」，既不整目录补扫、
-        // 又被 mtime 兜底跳过——新放开的子目录里既有文件永远不会被处理（#100 审查）。
+        // 又不被拆卸窗口差集捞到——新放开的子目录里既有文件永远不会被处理（#100 审查）。
         var root = Path.Combine(Path.GetTempPath(), "pp-100-scope-flip-" + Guid.NewGuid().ToString("N"));
         var hot = Path.Combine(root, "hot");
         var nested = Path.Combine(hot, "nested");
