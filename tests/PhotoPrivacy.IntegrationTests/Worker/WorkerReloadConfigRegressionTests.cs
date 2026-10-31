@@ -310,7 +310,7 @@ public sealed class WorkerReloadConfigRegressionTests
     public async Task Reload_That_Widens_The_Scope_Should_Backfill_Existing_Nested_Files()
     {
         // 防的具体回潮形态：只改 include_subdirectories（false→true）被判成「范围没变」，既不整目录补扫、
-        // 又被 mtime 兜底跳过——新放开的子目录里既有文件永远不会被处理（#100 审查）。
+        // 又不被拆卸窗口差集捞到——新放开的子目录里既有文件永远不会被处理（#100 审查）。
         var root = Path.Combine(Path.GetTempPath(), "pp-100-scope-flip-" + Guid.NewGuid().ToString("N"));
         var hot = Path.Combine(root, "hot");
         var nested = Path.Combine(hot, "nested");
@@ -341,7 +341,7 @@ public sealed class WorkerReloadConfigRegressionTests
             Directory.CreateDirectory(nested);
             var nestedFile = Path.Combine(nested, "pre-existing.jpg");
             await File.WriteAllTextAsync(nestedFile, "pre-existing");
-            // mtime 拨到 5 分钟前：排掉「拆卸窗口 mtime 兜底」这条路径，只剩「范围变更补扫」能捞到它。
+            // mtime 拨到 5 分钟前：排掉「拆卸窗口内落地的文件」这条回收路径，只剩「范围变更补扫」能捞到它。
             File.SetLastWriteTimeUtc(nestedFile, DateTime.UtcNow.AddMinutes(-5));
             await Task.Delay(500);
             Assert.False(
@@ -356,6 +356,140 @@ public sealed class WorkerReloadConfigRegressionTests
             Assert.True(
                 await WaitForProcessedRecordForAsync(processedPath, "pre-existing.jpg", TimeSpan.FromSeconds(30)),
                 "放开 include_subdirectories 后未补扫新放开的子目录，既有文件永远不会被处理（#100）");
+        }
+        finally
+        {
+            await worker.StopAsync(CancellationToken.None);
+            TryDelete(root);
+        }
+    }
+
+    [Fact]
+    public async Task Reload_Should_Process_The_Preserved_Timestamp_File_Dropped_Inside_The_Teardown_Window()
+    {
+        // 防的具体回潮形态：拆卸窗口内的回收判据取「mtime 落在窗口起点前 2 s 余量内」。cp -p、
+        // robocopy /DCOPY:T、解压这类保留源时间戳的写入落进窗口时 mtime 很旧，被余量跳过；新轮询兜底的
+        // 初始快照又把它当成既有文件，从此永不再报——元数据静默留存，正是这个兜底要防的形态（#114 残余 2）。
+        var root = Path.Combine(Path.GetTempPath(), "pp-114-window-" + Guid.NewGuid().ToString("N"));
+        var hot = Path.Combine(root, "hot");
+        var audit = Path.Combine(hot, "_audit");
+        var configPath = Path.Combine(root, "config.json");
+        Directory.CreateDirectory(hot);
+        // 关掉轮询兜底：窗口内落地的文件只该由拆卸前后的快照差集捞回，别让每秒重扫替它背锅。
+        await File.WriteAllTextAsync(configPath, BuildConfigJson(hot, audit, pollingSeconds: 0));
+        // 前提文件在启动首扫里就被处理，不依赖 FSW 在 CI 上报得及时。
+        await File.WriteAllTextAsync(Path.Combine(hot, "pre-existing.jpg"), "pre-existing");
+        AssertViableFixtureConfig(configPath);
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["config"] = configPath })
+            .Build();
+        var worker = new MetadataCleanerWorker(
+            configuration,
+            NullLogger<MetadataCleanerWorker>.Instance,
+            new NullApplicationLifetime(),
+            new RuntimeControl());
+
+        var archivedPath = Path.Combine(hot, "archive-drop.jpg");
+        var windowEntered = false;
+        // 钩子在旧 watcher 已停、新 watcher 未起之间执行：这一刻落地的文件没有任何事件源。
+        worker.TeardownWindowHookAsync = () =>
+        {
+            File.WriteAllText(archivedPath, "archive-drop");
+            // 归档/复制落地的形态：内容是新的，mtime 却是三天前的源时间戳。
+            File.SetLastWriteTimeUtc(archivedPath, DateTime.UtcNow.AddDays(-3));
+            windowEntered = true;
+            return Task.CompletedTask;
+        };
+
+        await worker.StartAsync(CancellationToken.None);
+        try
+        {
+            var processedPath = Path.Combine(audit, "processed.ndjson");
+            Assert.True(
+                await WaitForProcessedRecordForAsync(processedPath, "pre-existing.jpg", TimeSpan.FromSeconds(30)),
+                "启动首扫未处理既有文件：用例前提不成立");
+
+            // 监控目录、深度、去抖都没变的重载——走差集回收那条分支，不是整目录补扫。
+            await worker.ReloadConfigAsync();
+            Assert.True(windowEntered, "重载没有进入拆卸窗口：钩子未执行，用例前提不成立");
+
+            Assert.True(
+                await WaitForProcessedRecordForAsync(processedPath, "archive-drop.jpg", TimeSpan.FromSeconds(30)),
+                "拆卸窗口内落地、mtime 被保留的写入没被捞回，元数据静默留存（#114）");
+        }
+        finally
+        {
+            await worker.StopAsync(CancellationToken.None);
+            TryDelete(root);
+        }
+    }
+
+    [Fact]
+    public async Task Reload_Into_A_Changed_Audit_Directory_Should_Not_Reprocess_A_File_Changed_Before_The_Window()
+    {
+        // 防的具体回潮形态：拆卸窗口按 mtime 余量回收，多捞到的已处理文件要靠去重表挡住——同一次重载换了
+        // 审计目录时新的 FileProcessedRecordStore 记录为空，那些文件会被重新处理（#114 残余 1）。
+        // 夹具的 output_mode 恒为 same_as_source，所以这里只验「不再重处理」这一步；票面点在
+        // fixed_directory 下覆盖输出目录的后果，本文件的夹具呈现不了。
+        var root = Path.Combine(Path.GetTempPath(), "pp-114-dedup-" + Guid.NewGuid().ToString("N"));
+        var hot = Path.Combine(root, "hot");
+        var auditBefore = Path.Combine(hot, "_audit-a");
+        var auditAfter = Path.Combine(hot, "_audit-b");
+        var configPath = Path.Combine(root, "config.json");
+        Directory.CreateDirectory(hot);
+        var sourcePath = Path.Combine(hot, "already-done.jpg");
+        await File.WriteAllTextAsync(configPath, BuildConfigJson(hot, auditBefore));
+        await File.WriteAllTextAsync(sourcePath, "first-pass");
+        AssertViableFixtureConfig(configPath);
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["config"] = configPath })
+            .Build();
+        var worker = new MetadataCleanerWorker(
+            configuration,
+            NullLogger<MetadataCleanerWorker>.Instance,
+            new NullApplicationLifetime(),
+            new RuntimeControl());
+
+        await worker.StartAsync(CancellationToken.None);
+        try
+        {
+            var beforePath = Path.Combine(auditBefore, "processed.ndjson");
+            var afterPath = Path.Combine(auditAfter, "processed.ndjson");
+            Assert.True(
+                await WaitForProcessedRecordForAsync(beforePath, "already-done.jpg", TimeSpan.FromSeconds(30)),
+                "启动态未处理既有文件：用例前提不成立");
+
+            // 把 mtime 拨新，复刻清洗落盘后的可观测形态（长度没变、mtime 变新），并等旧运行时按这个新指纹
+            // 再处理一次——到这儿「窗口之前刚被处理过」这条前提就落定了。
+            File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddSeconds(10));
+            Assert.True(
+                await WaitForProcessedRecordsAsync(beforePath, expectedAtLeast: 2, TimeSpan.FromSeconds(30)),
+                "改写后的文件未被旧运行时处理：用例前提不成立");
+
+            // 窗口撑到 5 s，mtime 拨到 +10 s：旧实现的判据是「起点前 2 s 余量」，而起点取在最长 8 s 的
+            // drain 闸之后，所以余量要盖住闸口停顿；抑制期从「刚处理完」起算，5 s 窗口盖住它的 2 s TTL。
+            // 这两个常数就是旧实现唯一会多捞一条的时序前提，本机名义上各留数秒余量。
+            // 新实现比的是拆卸前后的差集，与这两个常数都不相干——这条用例绿不绿不看时序。
+            worker.TeardownWindowHookAsync = () => Task.Delay(TimeSpan.FromSeconds(5));
+
+            await File.WriteAllTextAsync(configPath, BuildConfigJson(hot, auditAfter));
+            await worker.ReloadConfigAsync();
+
+            Assert.True(
+                await WaitForFileAsync(afterPath, TimeSpan.FromSeconds(30)),
+                "重载后新审计目录未建立处理记录表：重载没有真正生效");
+
+            Assert.False(
+                await WaitForProcessedRecordForAsync(afterPath, "already-done.jpg", TimeSpan.FromSeconds(5)),
+                "窗口外刚被处理的文件被 mtime 余量多捞，换审计目录后去重表为空、被重新处理（#114）");
+
+            // 反向对照：新目录确实在监控、运行时确实在跑，负断言不是靠「运行时没起来」假绿。
+            await File.WriteAllTextAsync(Path.Combine(hot, "after-window.jpg"), "after-window");
+            Assert.True(
+                await WaitForProcessedRecordForAsync(afterPath, "after-window.jpg", TimeSpan.FromSeconds(30)),
+                "换审计目录重载后不再处理新文件：ReloadConfig 未生效（#85 回归）");
         }
         finally
         {
@@ -576,7 +710,7 @@ public sealed class WorkerReloadConfigRegressionTests
     {
         // 防的具体回潮形态：失败尝试按新 DebounceMs 换掉去抖队列后抛错，回滚直接复用这条队列——
         // 回滚后的去抖窗口仍是新配置的值，旧窗口里的在途路径既不补扫也不在新队列里，文件静默漏处理
-        // （#112 回滚路径上的 #85 形态）。前提：文件的 mtime 早于回滚补扫的下限（拆卸起点 - 2 s），
+        // （#112 回滚路径上的 #85 形态）。前提：文件的 mtime 拨到 10 s 前，拆卸窗口的差集捞不到它，
         // 只有「回滚重建队列 + 全量补扫」能把它捞回来。
         // 关联 issue #112。
         var fixture = await StartProcessingWorkerAsync(debounceMs: 8000);
@@ -587,7 +721,7 @@ public sealed class WorkerReloadConfigRegressionTests
 
             var inFlight = Path.Combine(fixture.Hot, "in-flight-before-failed-reload.jpg");
             await File.WriteAllTextAsync(inFlight, "in-flight");
-            // mtime 拨到 10 s 前：排除回滚的 handoff 余量窗口，只剩全量补扫能捞回它。
+            // mtime 拨到 10 s 前：排除拆卸窗口的差集回收，只剩全量补扫能捞回它。
             File.SetLastWriteTimeUtc(inFlight, DateTime.UtcNow.AddSeconds(-10));
             // 1.2 s 足够事件进入旧队列，又远小于 8 s 窗口——重载发生时它仍未处理。
             await Task.Delay(1200);
@@ -1148,11 +1282,7 @@ public sealed class WorkerReloadConfigRegressionTests
         Directory.CreateDirectory(hot);
         await File.WriteAllTextAsync(configPath, BuildConfigJson(hot, audit, debounceMs: debounceMs));
 
-        // 夹具自检：worker 的启动路径对配置校验失败会直接 Environment.Exit(1)（杀死整个测试进程），
-        // 所以先在测试侧校验一遍——配置夹具漂移要以断言失败暴露，而不是让 CI 只看到进程消失。
-        var parsed = AppConfigLoader.Load(configPath);
-        AppConfigValidator.Validate(parsed);
-        Assert.True(parsed.ExifTool.DryRun, "夹具必须是 dry-run：否则会去 spawn ExifTool");
+        AssertViableFixtureConfig(configPath);
 
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> { ["config"] = configPath })
@@ -1196,6 +1326,17 @@ public sealed class WorkerReloadConfigRegressionTests
     {
         await fixture.Worker.StopAsync(CancellationToken.None);
         TryDelete(fixture.Root);
+    }
+
+    /// <summary>
+    /// 夹具自检：worker 启动路径对配置校验失败会直接 <c>Environment.Exit(1)</c>（杀死整个测试进程），
+    /// 所以先在测试侧校验一遍——配置夹具漂移要以断言失败暴露，而不是让 CI 只看到进程消失。
+    /// </summary>
+    private static void AssertViableFixtureConfig(string configPath)
+    {
+        var parsed = AppConfigLoader.Load(configPath);
+        AppConfigValidator.Validate(parsed);
+        Assert.True(parsed.ExifTool.DryRun, "夹具必须是 dry-run：否则会去 spawn ExifTool");
     }
 
     private static string BuildConfigJson(

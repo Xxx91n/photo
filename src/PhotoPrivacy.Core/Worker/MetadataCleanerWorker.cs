@@ -58,6 +58,17 @@ public sealed class MetadataCleanerWorker : BackgroundService
     public string CurrentWatchDirectory => _currentConfig?.Watch.HotFolder ?? string.Empty;
 
     /// <summary>
+    /// 测试缝：在「拆卸窗口」内执行一段代码（旧 watcher 已停、新 watcher 未起）。
+    ///
+    /// 这段窗口真实耗时只有毫秒级，靠时间投放文件撞不中；handoff 兜底要可重复地验，
+    /// 必须有个确定的落点（#114）。两种用法：往窗口里投放文件，或把窗口撑长。
+    /// 生产路径不赋值，为 null 时不产生任何行为。重载失败回滚（#112）会再走一遍建运行时，
+    /// 因此钩子可能被触发两次；回滚那趟恒全量补扫，钩里投放的文件不经差集判定。
+    /// </summary>
+    // Design(#82): 拆卸窗口的起止由注入钩子划定（生产不赋值），测试不得靠 sleep 猜窗口边界（#114）。
+    public Func<Task>? TeardownWindowHookAsync { get; set; }
+
+    /// <summary>
     /// 驱动 ExifTool 版本解析（#86）。
     ///
     /// 桥自 M4 起惰性启动（首个文件才拉进程），于是首个文件到达前 <see cref="CurrentExifToolVersion"/>
@@ -645,6 +656,40 @@ public sealed class MetadataCleanerWorker : BackgroundService
         }
     }
 
+    /// <summary>
+    /// 拆卸前快照没建成、本次重建退回整目录补扫这件事的留痕（不变量①④：降级不许只进日志）。
+    /// 写失败只记日志，不反噬重建——重建半途而废的代价比少一条告警大得多（#85 口径）。
+    /// </summary>
+    private async Task EmitHandoffDegradedAsync(AppConfig config, string reason)
+    {
+        var audit = _audit;
+        if (audit is null)
+        {
+            return;
+        }
+
+        try
+        {
+            // 与停机留痕同口径：2 s 有界等待，等不到就降级成只记日志。重载路径传进来的 token 恒为
+            // CancellationToken.None（ReloadConfigAsync / SIGHUP 都不带停机令牌），这里不必再链一个。
+            using var bounded = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            await audit.WriteAsync(
+                new AuditEvent(
+                    EventType: "config_warning",
+                    Level: AuditLevel.Warn,
+                    TimestampUtc: DateTimeOffset.UtcNow,
+                    TaskId: Guid.NewGuid().ToString("N"),
+                    SourcePath: config.Watch.HotFolder,
+                    Message: $"重载拆卸前的目录快照未建成（{reason}），本次改走整目录补扫：已处理文件可能被重处理。",
+                    Data: null),
+                bounded.Token);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "拆卸快照降级的审计事件未写出。");
+        }
+    }
+
     private async Task ApplyConfigAsync(AppConfig config, CancellationToken token)
     {
         try
@@ -740,10 +785,6 @@ public sealed class MetadataCleanerWorker : BackgroundService
         bool rebuildDebounceState,
         CancellationToken token)
     {
-        // 拆卸窗口的起点：旧 watcher 一停，这期间新建的文件既不会有 FSW 事件，又会落进新轮询兜底的
-        // 初始快照，只能靠补扫捞回来。
-        var handoffStartUtc = DateTime.UtcNow;
-
         // 首扫判定看「上一个完整建成的范围」：重建中途抛异常时收口目录已切到新目录，只看收口目录
         // 会让下一次重载同目录跳过首扫，那目录里的既有文件就永远漏扫。深度键也算范围——
         // false→true 时必须补扫新放开的子目录，否则那些既有文件永远不会被处理。
@@ -760,6 +801,31 @@ public sealed class MetadataCleanerWorker : BackgroundService
             && SamePath(_activeWatchFolder, config.Watch.HotFolder)
             && _currentConfig?.Watch.DebounceMs == config.Watch.DebounceMs;
 
+        var fullSweep = scopeChanged || !debounceWindowUnchanged;
+
+        // 非全量补扫的重载只回收「拆卸窗口内发生变化」的文件：快照必须在旧 watcher 停下之前取——一停就没有
+        // FSW 事件，新轮询兜底的初始快照又会把窗口内的文件当成既有文件，从此永不上报。
+        // 差集比的是 (长度, mtime)：只看 mtime 余量的话，保留源时间戳的写入躲得过判定，判定多捞到的已处理
+        // 文件又只能靠去重表挡住——同一次重载换了审计目录时新表是空的，多捞的就是重处理。
+        // 空基准只是「本次走全量补扫」的占位：差集判定只在非全量补扫那条分支上才发生。
+        // Design(#82): 非全量补扫的回收判据是拆卸前后的目录快照差集，不用 mtime 余量、不靠去重表兜多捞（#114）；快照没建成与回滚（#112）两条退路仍走全量补扫，残余就记在这里。
+        var handoffBaseline = new Dictionary<string, FileFingerprint>(PathKeyComparer);
+        if (!fullSweep)
+        {
+            try
+            {
+                handoffBaseline = CaptureWatchFolderSnapshot(config);
+            }
+            catch (Exception ex)
+            {
+                // 记录的取舍：差集没有基准可用，退回整目录补扫——多捞的已处理文件此时只能靠去重表兜
+                // （审计目录同批改时新表为空，会重处理）。选它是因为另一头漏捞等于元数据静默留存。
+                _logger.LogWarning(ex, "重载拆卸前的目录快照未建成，本次重建改走整目录补扫。");
+                fullSweep = true;
+                await EmitHandoffDegradedAsync(config, ex.Message);
+            }
+        }
+
         // 收口目录先切到新配置：此后旧 watcher 与轮询兜底的在途回调都按新目录过滤，不会漏进新队列。
         _activeWatchFolder = config.Watch.HotFolder;
 
@@ -767,6 +833,14 @@ public sealed class MetadataCleanerWorker : BackgroundService
         _watcher = null;
         _cleanupTimer?.Dispose();
         _cleanupTimer = null;
+
+        // 拆卸窗口（旧 watcher 已停、新 watcher 未起）从这里开始，到下面 _watcher.Start() 结束。
+        // 基准比窗口起点取得更早，所以「基准→Stop」之间落地的改动会被 FSW 与差集各报一次，
+        // 由去重队列与 2 s 指纹抑制压掉重复——多报一次无所谓，漏报等于元数据静默留存。
+        if (TeardownWindowHookAsync is { } teardownHook)
+        {
+            await teardownHook();
+        }
 
         if (!debounceWindowUnchanged)
         {
@@ -846,8 +920,12 @@ public sealed class MetadataCleanerWorker : BackgroundService
         _watcher.Start();
 
         // 其余重载不整目录补扫：审计目录一改，新的去重记录表是空的，把既有文件全排一遍就会重处理，
-        // fixed_directory 产物可被覆盖。例外是回滚（rebuildDebounceState）：失败尝试可能已耗数秒，
-        // 只捞 mtime 余量会漏掉窗口内落地的文件，故回滚一律全量补扫——用旧的去重表挡住已处理文件。
+        // fixed_directory 产物可被覆盖。例外是回滚（rebuildDebounceState）：失败尝试从拆卸到抛错之间
+        // 没有任何事件源盯着目录，空窗可达数秒，而差集只覆盖本次这一趟，故回滚一律全量补扫——
+        // 已处理文件由回滚重建的旧去重表挡住。
+        // 非全量补扫时只捞差集，多一个都不捞：窗口外已处理过的文件即便 mtime 很新也不该再进队列。
+        // 残余：窗口内被原地改写、长度与 mtime 都没变的写入判不出来（保留时间戳的同名覆盖），
+        // 那种写入不留任何可比对的元数据，本路径判不出来；只有后续范围变更触发整目录补扫才会再碰到它。
         // Design(#82): 重载首扫只在「监控范围被启用」或队列被重建（在途去抖项已随旧队列丢弃）时全量补扫（#100）。
         if (Directory.Exists(config.Watch.HotFolder))
         {
@@ -855,15 +933,9 @@ public sealed class MetadataCleanerWorker : BackgroundService
             var searchOption = config.Watch.IncludeSubdirectories
                 ? SearchOption.AllDirectories
                 : SearchOption.TopDirectoryOnly;
-            var fullSweep = scopeChanged || !debounceWindowUnchanged;
-            // 非全量补扫时只捞拆卸窗口内新建的文件：它们没有 FSW 事件，又会被新轮询的初始快照当成既有文件。
-            // 时间戳粒度有差异（FAT 到 2 s），往前留余量——漏捞等于元数据静默留存，宁可多捞。
-            // 余量窗口内已处理的文件通常被去重记录挡住；但同一次重载若换了审计目录，去重表是空的，
-            // 它们会被重处理（fixed_directory 下可能覆盖输出）。保留 mtime 的写入也会被余量跳过。残余见 #114。
-            var handoffFloorUtc = handoffStartUtc.AddSeconds(-2);
             foreach (var path in Directory.EnumerateFiles(config.Watch.HotFolder, "*", searchOption))
             {
-                if (fullSweep || File.GetLastWriteTimeUtc(path) >= handoffFloorUtc)
+                if (fullSweep || ChangedInsideHandoffWindow(handoffBaseline, path))
                 {
                     EnqueueIfNeeded(path);
                 }
@@ -921,6 +993,58 @@ public sealed class MetadataCleanerWorker : BackgroundService
     /// </summary>
     private static bool SamePath(string left, string right)
         => string.Equals(left, right, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+
+    /// <summary>
+    /// 快照字典的路径键比较器，与 <see cref="SamePath"/> 同一口径：Windows 大小写不敏感、类 Unix 敏感。
+    /// 在大小写敏感的文件系统上一律 OrdinalIgnoreCase 会让 Photo.jpg 与 photo.jpg 撞成一个键，
+    /// 差集于是把没变的那个当成变了多捞一次。
+    /// </summary>
+    private static StringComparer PathKeyComparer
+        => OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+
+    /// <summary>
+    /// 拆卸起点上的监控目录基准：路径 → (长度, 最后写入时间)，深度取 include_subdirectories，
+    /// 与重建后的首扫同一口径——两份名单口径不一致，差集就会把范围外的文件当成窗口内新落地的。
+    /// 目录尚不存在时返回空基准：此后枚举到的都算新落地。
+    /// </summary>
+    private static Dictionary<string, FileFingerprint> CaptureWatchFolderSnapshot(AppConfig config)
+    {
+        var snapshot = new Dictionary<string, FileFingerprint>(PathKeyComparer);
+        if (!Directory.Exists(config.Watch.HotFolder))
+        {
+            return snapshot;
+        }
+
+        var searchOption = config.Watch.IncludeSubdirectories
+            ? SearchOption.AllDirectories
+            : SearchOption.TopDirectoryOnly;
+        foreach (var path in Directory.EnumerateFiles(config.Watch.HotFolder, "*", searchOption))
+        {
+            var info = new FileInfo(path);
+            if (info.Exists)
+            {
+                snapshot[path] = new FileFingerprint(info.Length, info.LastWriteTimeUtc);
+            }
+        }
+
+        return snapshot;
+    }
+
+    /// <summary>
+    /// 这个文件是不是拆卸窗口内落地的：基准里没有这个路径，或长度/最后写入时间与基准不同。
+    /// </summary>
+    private static bool ChangedInsideHandoffWindow(Dictionary<string, FileFingerprint> baseline, string path)
+    {
+        var info = new FileInfo(path);
+        if (!info.Exists)
+        {
+            // 枚举到之后、取指纹之前被删掉：没有东西要处理。
+            return false;
+        }
+
+        return !baseline.TryGetValue(path, out var seenBeforeTeardown)
+            || seenBeforeTeardown != new FileFingerprint(info.Length, info.LastWriteTimeUtc);
+    }
 
     private async Task DrainOnceAsync(CancellationToken cancellationToken)
     {
