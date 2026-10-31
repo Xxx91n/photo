@@ -151,10 +151,10 @@
 
 | # | 操作 | 结果 | 证据 |
 |---|---|---|---|
-| K1 | 双击 `PhotoPrivacy.exe`（出厂空 `hot_folder`）→ 状态栏连接态显示「已连接」，不是「连接中/已断开」 | 通过 | 2026-10-31 桌面截图目检（产物见下节）：状态栏绿点 + 「已连接 · PhotoPrivacyCleaner.Background · 后台模式」，右侧「上次往返 0 ms」，全程未出现「连接中/已断开」 |
-| K2 | 状态栏出现 warning 色提示「请前往配置页设置监控目录」（`status.configure_watch_folder`，切 locale 后各自可见） | 通过 | 2026-10-31 同产物：提示以 warning 色（琥珀）渲染在连接态下一行；配置页语言组切 English 后概览页为「Go to Settings to set the watch folder」，与 `locales/en.json` 该键逐字一致 |
-| K3 | 点该提示 → 直接进配置页（`app.rs` 的 `configure-watch-folder` on_click 置 `Page::Config`） | 通过 | 2026-10-31 同产物：点提示文本后导航高亮由「总览」跳到「配置」、页面标题变 `Settings`，不是只高亮也不是无响应 |
-| K4 | 选有效目录保存 → 提示消失、监控启动；放入照片被处理（日志页出条目、审计目录 `processed.ndjson` 增长） | 通过 | 2026-10-31 同产物：填有效目录保存后提示消失、`ExifTool` 行由 `unknown` 变 `13.59`；放入 830 B 含 Artist/Copyright 的 jpg → 就地清为 676 B 且标签清空、`bak/` 留原件、`processed.ndjson` 增 2 条、日志页实时出 5 条。取证时刻本地日期＝UTC 日期，故日志页那一条腿成立；分叉时窗内同一操作日志页恒空，见 #129 |
+| K1 | 双击 `PhotoPrivacy.exe`（出厂空 `hot_folder`）→ 状态栏连接态显示「已连接」，不是「连接中/已断开」 | 通过 | 2026-10-31 桌面截图目检（产物见下节；直接运行包内 `PhotoPrivacy.exe`，无控制台黑窗，符合指引第 3 步的前置门）：状态栏绿点 + 「已连接 · PhotoPrivacyCleaner.Background · 后台模式」，右侧「上次往返 0 ms」；本轮取的每一帧连接态都是「已连接」，未采到「连接中/已断开」帧 |
+| K2 | 状态栏出现 warning 色提示「请前往配置页设置监控目录」（`status.configure_watch_folder`，切 locale 后各自可见） | 通过 | 2026-10-31 桌面截图目检：10 个 locale 逐一取概览页截图（`evidence/K2-locale-*.png`），提示均以 warning 色（琥珀）渲染在连接态下一行——zh-CN「请前往配置页设置监控目录」、en「Go to Settings to set the watch folder」（与 `locales/en.json` 该键逐字一致）、ja/ko/de/fr/es/pt/ru 各随其 locale，ar 为 RTL 镜像布局下同一提示。只判「随 locale 出现且可读」，阿语字形连写质量归 B3 既有口径 |
+| K3 | 点该提示 → 直接进配置页（`app.rs` 的 `configure-watch-folder` on_click 置 `Page::Config`） | 通过 | 2026-10-31 桌面截图目检（English 帧，`evidence/K3-after-click-hint.png`）：点提示文本后导航高亮由 `Overview` 跳到 `Settings`、页面标题变 `Settings`，不是只高亮也不是无响应 |
+| K4 | 选有效目录保存 → 提示消失、监控启动；放入照片被处理（日志页出条目、审计目录 `processed.ndjson` 增长） | 通过 | 2026-10-31 桌面截图目检：填有效目录保存后提示消失、`ExifTool` 行由 `unknown` 变 `13.59`；放入 830 B 含 Artist/Copyright 的 jpg → 就地清为 676 B 且标签清空、`bak/` 留原件、`processed.ndjson` 增 2 条、日志页实时出 5 条。**环境前提要在证据里写明**：本机装了 ExifTool 且就在模板默认路径，出厂包一字未改即可启用监控（非 dry-run），故这是本体证据而非旁证；真裸机仍归 #108。取证时刻本地日期＝UTC 日期，日志页那一条腿才成立；分叉时窗内同一操作日志页恒空，见 #129 |
 
 - 提示只在 `ConnectionState::Connected && watch_directory` 为空时渲染，因此 K1/K2 同源：
   Worker 待机时回包把「已连接 + 空目录」一起交给 UI，UI 才谈引导。
@@ -173,13 +173,16 @@
 - **别把 #117 算进 K 组**：验完 K1-K4 关掉 UI / 停服务时，仍在待机态的 `StopAsync` 会挂住，
   表现为退出要等满 10 s（`HostOptions.ShutdownTimeout`）甚至留下未拆干净的任务——那是 #117，不是 K 组判据。
 
-### K 组取证指引（#113 定形，#125 换用桌面截图通道）
+### K 组取证指引（原名「K 组人工验收指引」，#113 定形，#125 换用桌面截图通道）
 
 > **勘误（2026-10-31，#125）**：本节原先写「gpui 窗口的界面呈现只能由人眼判」，前提取自
 > 「UIA descendant count=0」+「`PrintWindow` 只回黑帧」。前者仍然成立——控件树取不到，元素位置只能从像素上认；
 > 但后者只约束**按窗口句柄取图**这条路。改用整屏 `Graphics.CopyFromScreen`（BitBlt 已合成的桌面）
 > 就能拿到 gpui 窗口的真实像素，四项的界面呈现因此可由 agent 自查取证，不必再交人工目检。
 > 自动化侧的射程不变：仍只到上文那条真实传输级待机连通用例。
+> **口径变更的授权**：本票标签是 `ready-for-human`，原样交人工是默认路径；换成 agent 自查由用户在 #125
+> 实现窗口明确批准（连同「产物一律重跑当前 main」一起批的），不是 agent 自行改判。
+> 这只改变**谁来读这张图**，不改变「无证据不虚构」——读不到仍须记未探活。
 
 1. **取产物**：用 Release workflow（`create_release=false`）跑**当前 main** 的 `release-win-x64` artifact，
    解压到一个私有目录。并行窗口共用发布链时不要把产物拷进 `ui/target` 之类的共享构建目录。
@@ -202,6 +205,9 @@
    换算成窗口内偏移；合成 `SetCursorPos` + `mouse_event` 点击与 `SendKeys` 键入都能生效，
    先前「键进去没反应」是点偏了没落进输入框，不是 gpui 不吃合成键；
    取坐标别凭缩略图目测像素，先叠一层带数字标注的网格截图标定一次。
+   **导航项坐标不跨 locale 复用**：导航条按文案宽度排布，切一次语言第二项就能从 x=249 漂到 x=300 之外，
+   照旧坐标点过去会落在空白处「点了没反应」；逐 locale 取证要么每切换一次重新标定，
+   要么改用「手改 `config.json` 的 `ui.locale` → 热重载」切语言、只点固定的第一项回概览。
 8. **回填**：逐行把 K1-K4 的「结果」改成 通过 / 失败 / 未探活，并在「证据」列写 `日期 + 取证通道 + 看到的具体现象`；
    整屏截图当证据成立（#125 起），**无证据不虚构**的口径不变。
 
@@ -212,10 +218,12 @@
   的 `release-win-x64` artifact，已下载并解压到本机私有目录 `D:\Aworker\photo-smoke-113\`，
   双击入口 `D:\Aworker\photo-smoke-113\win-x64\PhotoPrivacy.exe`。
   该 head 与本票后续提交之间只差 `tests/`+`docs/`（`src/`、`ui/` 未动），产品二进制等价。
-  **勘误（2026-10-31，#125）**：这句只在写下它的那一刻成立。此后 main 合入 PR #116（#103 一键复制），
-  `ui/crates/photoprivacy-ui/src/app.rs`（+129 行）、`i18n.rs` 与 10 份 locale 全部变更，而这个 head 一个都没有，
-  产品二进制已不等价。逐 hunk 比对：#103 没有改动渲染 `configure-watch-folder` 提示的那段状态栏代码，
-  所以旧包对 K2/K3 未必给出不同结论——但 K 组取证一律重跑当前 main，不去赌「这几处没改应该无所谓」。
+  **勘误（2026-10-31，#125）**：这句只在写下它的那一刻成立，且当时就漏了 `src/`。`git diff --numstat 67aa17e4 d07129a0`
+  实际漂移：`src/PhotoPrivacy.Core/Worker/MetadataCleanerWorker.cs` +63/−5、`src/PhotoPrivacy.Worker/WorkerIpcRequestHandler.cs` +3/−2
+  （PR #120 的 #112 重载回滚，正压在 K4 走的 `ReloadConfig` 路径上）；`ui/.../app.rs` +112/−17、`i18n.rs` +6/0、
+  10 份 locale 各 +6/−3（PR #116 的 #103 一键复制）。产品二进制已不等价，「只差 tests/+docs/」不成立。
+  逐 hunk 比对：#103 没改动渲染 `configure-watch-folder` 提示的那段状态栏代码，所以旧包对 K1-K3 未必给出不同结论；
+  但 K4 的 `ReloadConfig` 路径确实被 #112 改过，取证一律重跑当前 main，不去赌「这几处没改应该无所谓」。
 - 包内实测（出厂原样，未改）：`config/config.json` 的 `watch.hot_folder` 为 `""`、
   `exiftool.dry_run` 为 `false`、`exiftool.path` 指向 `C:\Program Files\ExifTool\exiftool.exe`——
   K4 的 #108 阻断就来自后两项。
@@ -223,22 +231,23 @@
   按「无证据不虚构」不填任何通过项。自动化侧只到上文那条真实传输级待机连通用例。
   **已被下文 2026-10-31 记录取代**：换整屏 `CopyFromScreen` 通道后界面呈现读得到，四项已实机取证。
 
-#### K 组产物记录（2026-10-31，#125 窗口：桌面截图通道自查取证，K1-K4 全部达成）
+#### K 组产物记录（2026-10-31，#125 窗口：桌面截图通道自查取证，K1-K4 全部通过）
 
 - 产物：Release workflow run [41100201595](https://github.com/Xxx91n/photo/actions/runs/41100201595)
   （ref `main`，head `d07129a0`，version `0.1.0-verify125`，`create_release=false`）的 `release-win-x64` artifact，
   解压到私有目录 `D:\Aworker\photo-smoke-125\pkg\`，入口 `D:\Aworker\photo-smoke-125\pkg\PhotoPrivacy.exe`。
   包内实测出厂原样：`config/config.json` 与 `config.sample.json` 逐字节相同（`hot_folder: ""`、`dry_run: false`）。
 - 取证通道：整屏 `Graphics.CopyFromScreen` 截图 + 合成点击/键入，界面呈现由 agent 读图判定；
-  截图存 `D:\Aworker\photo-smoke-125\evidence\`（13 张，按判据命名，不入库）。
-- 结果：**K1 通过、K2 通过（含 English 复核）、K3 通过、K4 通过**。
+  截图存 `D:\Aworker\photo-smoke-125\evidence\`（按判据命名，不入库）。K2 的 10 locale 是逐一取证：
+  前 5 个走配置页语言组点击，后 5 个改走「手改 `ui.locale` → 热重载」这条路（导航项宽度随 locale 变，
+  固定坐标点不中，见指引第 7 步），两条路都取到概览页截图。取证结束把 `config.json` 还原成出厂样。
+- 结果：**K1 通过、K2 通过（10 locale 逐一）、K3 通过、K4 通过**。
   K4 的取证时刻是本地 10:48（UTC 02:48，本地日期＝UTC 日期），日志页那条腿因此成立；
   另在本地 02:03（UTC 前一日 18:03，两日期分叉）以同一产物复跑一次，日志页恒 0 条，
   仅把审计文件名从 `audit-2026-10-30.jsonl` 复制成 `audit-2026-10-31.jsonl` 就立刻出 5 条——
   该分叉缺陷独立登记为 #129，与本组判据无关，取证后复制出的文件已删除。
-- 环境事实（影响 K4 与 #108 的读法）：这台机器装了 ExifTool，且就在模板默认路径
-  `C:\Program Files\ExifTool\exiftool.exe`，所以出厂包一字未改即可启用监控、拿到 K4 本体证据；
-  真裸机仍会撞 #108，本轮证据不覆盖那条路径，也别拿它去关 #108。
+- 环境前提见上文「K4 的 #108 阻断在取证机上不成立」那条：本机 ExifTool 落在模板默认路径，
+  所以这轮 K4 是本体证据；真裸机路径未覆盖，#108 不因此轮取证而可关。
 - 顺带观察：待机态概览页 `ExifTool` 行显示 `unknown`，监控启用后变 `13.59`——
   待机不拉 ExifTool 进程，版本探不到属预期，不按失败记。
 - 目录副作用复现：待机态启动即在包目录生成 `hot/_audit`、`hot/_quarantine` 与 `logs/worker-*.log`
@@ -293,6 +302,6 @@
   1. **清单文案勘误**：原清单中关于主题、语言、日志级别的“下拉菜单”表述为推测失真；实机均为平铺选项组（Segmented/Radio-like buttons），无原生下拉框，本轮已在清单中更正。
   2. **终端黑框弹出**：`photoprivacy-ui` 的入口 `main.rs` 未声明 `#![windows_subsystem = "windows"]`，双击启动时系统默认分配控制台黑窗口，随后弹出 GUI。（勘误，2026-10-30：该形态已随 #99/PR #106 修复，release 构建现在带 `windows_subsystem = "windows"`；本条只作历史记录。）
   3. **初始配置待机行为（#100，代码已实现，实机未探活）**：打包附带的 `config/config.json` 默认 `"watch.hot_folder": ""` 为空时，Worker 按 #100 起保持 IPC 连接并待机，UI 引导前往配置页选择监控目录，保存有效目录后经热重载启用监控。本条目前只有代码与集成测试口径，尚无实机目检证据，复验前不得记作通过。#113 已把这条路径定形为上文的 K1-K4 四项（实机仍未探活），并把「真实传输级待机连通」补成进 CI 门禁的自动化用例。
-     （勘误，2026-10-31 #125：K1-K4 已按桌面截图通道实机取证并全部达成，见上文「首次配置待机 4 项」表；本条的「未探活」只描述写下它时的状态。）
+     （勘误，2026-10-31 #125：K1-K4 已按桌面截图通道实机取证并全部通过，见上文「首次配置待机 4 项」表；本条的「未探活」只描述写下它时的状态。）
   4. **GUI 文本不可划选复制**：gpui 纯文本展示未支持鼠标划选高亮与系统剪贴板复制，报错无法直接复制排障。
   5. **主题设置入口冗余**：右上角快捷切换与设置页平铺切换并存，交互体验重叠。
