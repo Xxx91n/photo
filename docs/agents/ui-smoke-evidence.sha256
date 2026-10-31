@@ -1,0 +1,36 @@
+# K 组取证截图 SHA256 清单 — #125（2026-10-31）
+#
+# 产物：Release run 41100201595 / ref main / head d07129a0 / version 0.1.0-verify125。
+# 图片本体按 docs/agents/ui-smoke.md 既有约定不入库，只存于取证机目录
+#   D:\Aworker\photo-smoke-125\evidence\（24 个文件，795655 字节）。
+# 本清单给这些一次性证据一个可校验的锚：当下能证明它们存在且内容未被事后替换；
+# 目录被清理后只剩哈希本身，无法再复现图中内容——这是已接受的缺口，不是遗漏。
+#
+# 校验（在取证机上）：
+#   cd 'D:\Aworker\photo-smoke-125\evidence' && grep -vE '^(#|$)' docs/agents/ui-smoke-evidence.sha256 | sha256sum -c
+# 期望：24 行全部 ': OK'，且无 improperly formatted 警告。
+
+98eb9e1867109ef898c00f984618851d78764ffc2d682d2bb5e67e454d28734e  K1-K2-standby-overview.png
+de2ea6de1668203a5812bdbd2ccffc8d45cc1fa047f026bb385e10dbcef61d35  K1-dblclick-standby.png
+ca4df9bac4a9a230f639a3c29eda268f1b0b1d948df23d1042b637e29b4b2cf8  K2-config-english.png
+9b92eac35f65e7ded96b21c8c025829e043ab6921e54df9d77d502fa53340a37  K2-locale-ar.png
+8038834a83bfcf95349668f01288902034ab4d943dbd7c69cf286adc78130fe1  K2-locale-de.png
+517ef18b880cbaac2d2055c8c0b1e38f6429764999fc61694a4b45f116b872b5  K2-locale-en.png
+ae6a46e03950c776cd80c5e04e66e2d550237ccd8a5dfbdbb7b9e0f6a81f4657  K2-locale-es.png
+08387f5511b421c6a76de642f2244e83c29e564f0fe10d9cc9bec702295f2aa0  K2-locale-fr.png
+7113d303c79acf034b57b8d160f122f90be528b38d688727bb1d955845dd3046  K2-locale-ja.png
+959a788b5c49cb553c080561812c5f599f814249fee28d586a18ace520e8ea95  K2-locale-ko.png
+28d2df43c3a41df8a0cabd0e17f914db891084cde0b580957bf2fcf756ea7419  K2-locale-pt.png
+efa73f2add01fb52df468d570dd744e340c2d0104f5ddd3df35a7246b2a6d986  K2-locale-ru.png
+9b12c2f0e31a8862bb5461bed8fdd6e3643e908e2365afbbce9061efcca0c8eb  K2-locale-zh-CN.png
+8e9d36af4b9c3e854651ffed90c6bc1c5775c6ecf7689fbf90e66ce060e42687  K2-overview-english.png
+4457e5822945f5971b584624510b6df3cf606317ee365cefda4e4743cf8c78a8  K3-after-click-hint.png
+8820229b63a5949e855fd29155e153f75429447bca9af6ef3491cf010af6d2c2  K4-config-saved.png
+27b589681f2378e1f6923fc8b25f470f7ea98d0d8bdf17f0394bbd78a48e3ca4  K4-logs-after-localdate-copy.png
+5ed74848e92430f1d2379cd919613055e37fb2ff20f9df234323879547a9fec9  K4-logs-attempt1-localdate.png
+d27120c1d3b0c0dd6b0744a30249d0dc997ab0f0294b57c999b2b17be1bcbd1a  K4-logs-filter-all-empty.png
+8fef80e3945310db0f2b3659e78d23ea795fb9f4fc18d2793ffd746531f4f1ec  K4-overview-hint-gone.png
+dc803ca4ffc4e93f91025f48336d2718fe20d7da7c39b3670e5c73dfe5528a76  recheck-1-standby.png
+bd0b57841d06e3308e9a5812630393bfa782e06aa08e5fee7b8189808d23b782  recheck-2-config-saved.png
+b592bc1b8546e7bebd42a40ca260c3b2a83cf7cd69db53bccc8aadf65ee2f866  recheck-3-logs-dates-agree.png
+214c24e6077e5f1054853bb6167d85652867a5c63eda778e5c01591502abf45f  recheck-4-overview-hint-gone.png
