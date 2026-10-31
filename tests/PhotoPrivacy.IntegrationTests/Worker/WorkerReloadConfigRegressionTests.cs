@@ -2,8 +2,10 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using PhotoPrivacy.Core.Configuration;
+using PhotoPrivacy.Core.Constants;
 using PhotoPrivacy.Core.Runtime;
 using PhotoPrivacy.Core.Worker;
 using PhotoPrivacy.Ipc;
@@ -25,12 +27,17 @@ namespace PhotoPrivacy.IntegrationTests.Worker;
 /// 新文件仍被处理」区分新旧实现：旧形态重载在新建 store 时就抛（被吞掉），旧 watcher 已停、
 /// 新 watcher 从未创建——文件不再被处理，必红。
 ///
-/// 两层覆盖：
+/// 三层覆盖：
 /// - handler 级（Theory）：服务与后台（托盘）两种运行形态各自单列（#85 AC「后台管道同方法
 ///   无回归」），重载链路两种形态共用同一 handler/worker，但响应 <c>Mode</c> 字段按形态回
 ///   service/background，逐形态断言，防止后台形态被服务形态的断言顺带掩盖；
 /// - 端点级（Fact）：后台形态的 ReloadConfig 走真实传输绑定 + accept 循环 + 帧协议往返，
-///   不再只是直连 handler——WorkerIpcServerHostedService 的形态端点绑定路径同样被覆盖。
+///   不再只是直连 handler——WorkerIpcServerHostedService 的形态端点绑定路径同样被覆盖；
+/// - 待机端点级（Fact）：空 <c>hot_folder</c> 的首次配置待机态同样走真实传输 + accept +
+///   帧协议（#113 AC1，补齐 #100 关闭时留下的证据缺口）。
+///
+/// 另含 #112 的失败路径：不可用监控目录（拆卸前拒绝）、拆卸后重建失败（回滚到上一份生效配置），
+/// 以及回滚必须重建去抖队列（失败尝试已按新配置换过队列）。三者都必须回 <c>ok:false</c> 且旧目录继续工作。
 /// </summary>
 public sealed class WorkerReloadConfigRegressionTests
 {
@@ -548,15 +555,7 @@ public sealed class WorkerReloadConfigRegressionTests
 
         try
         {
-            // Windows 管道名是内核对象名。Unix socket 落点：Linux 用夹具临时目录（固定路径
-            // /run/photoprivacy 需 root）；macOS 的 sun_path 上限 104 字节，夹具目录路径太长，
-            // 改用临时目录下的短文件名（GetTempPath() 约 49 字节 + 约 21 字节 < 104），
-            // socket 文件由 transport.DisposeAsync（端点属主）负责删除。
-            var endpoint = OperatingSystem.IsWindows()
-                ? "pp85-bg-" + Guid.NewGuid().ToString("N")
-                : OperatingSystem.IsMacOS()
-                    ? Path.Combine(Path.GetTempPath(), "pp85-bg-" + Guid.NewGuid().ToString("N")[..8] + ".sock")
-                    : Path.Combine(fixture.Root, "worker-background.sock");
+            var endpoint = ResolveBackgroundTestEndpoint(fixture.Root);
 
             // 形态→端点选择映射（WorkerIpcServerHostedService 内同一调用的 background 分支）逐 OS 钉住；
             // 兜底失败防止未知 OS 上断言静默跳过。真实固定端点在 CI 无法绑定（Linux /run/photoprivacy
@@ -594,28 +593,11 @@ public sealed class WorkerReloadConfigRegressionTests
 
             for (var attempt = 1; attempt <= 2; attempt++)
             {
-                var request = new WorkerIpcRequest(WorkerIpcMethods.ReloadConfig, "reload-endpoint-" + attempt);
-
-                await using var stream = await transport
-                    .ConnectAsync(TimeSpan.FromSeconds(10), CancellationToken.None)
-                    .WaitAsync(TimeSpan.FromSeconds(30));
-                var requestBytes = Encoding.UTF8.GetBytes(
-                    JsonSerializer.Serialize(request, WorkerIpcJsonContext.Default.WorkerIpcRequest) + "\n");
-                await stream.WriteAsync(requestBytes, CancellationToken.None);
-                await stream.FlushAsync(CancellationToken.None);
-
-                // 响应无结尾换行、以连接关闭（EOF）定界；读侧复用唯一的有界行读实现。
-                var line = await IpcLineReader
-                    .ReadBoundedLineAsync(stream, maxBytes: 64 * 1024, CancellationToken.None)
-                    .WaitAsync(TimeSpan.FromSeconds(30));
-                Assert.NotNull(line);
-
-                var response = JsonSerializer.Deserialize(line!, WorkerIpcJsonContext.Default.WorkerIpcResponse);
-                Assert.NotNull(response);
-                Assert.True(response!.Ok, $"第 {attempt} 次重载必须经后台端点回 ok：{response.Message}");
+                var response = await RequestOverTransportAsync(
+                    transport, new WorkerIpcRequest(WorkerIpcMethods.ReloadConfig, "reload-endpoint-" + attempt));
+                Assert.True(response.Ok, $"第 {attempt} 次重载必须经后台端点回 ok：{response.Message}");
                 Assert.Equal("background", response.Data!.Mode);
                 Assert.Equal(WorkerIpcProtocol.Version, response.V);
-                Assert.Equal(request.Id, response.Id);
             }
 
             // 重载真正生效的判据与 handler 级用例一致：watcher/pipeline 已重建并在跑。
@@ -640,6 +622,626 @@ public sealed class WorkerReloadConfigRegressionTests
 
             await StopAndDeleteAsync(fixture);
         }
+    }
+
+    [Fact]
+    public async Task Reload_With_Unusable_Watch_Folder_Should_Keep_The_Old_Folder_Monitored()
+    {
+        // 防的具体回潮形态：重载到「指向已存在文件的目录」时抛错，旧 watcher 已停、新运行时未建，
+        // worker 活着却不再监控原目录——此后新文件永远不被处理（#112 票面场景）。
+        // #124 把目录创建移出配置加载后，这个错误在 ApplyConfigAsync 的启用前置步骤暴露（仍在拆卸/回滚之前），
+        // 由 handler 统一回 reload_failed；旧运行时原样保留。
+        // 本用例同时锁「拒绝后旧运行时原样保留」与「IPC 不静默回 ok」。
+        // 关联 issue #112 / #124。
+        var fixture = await StartProcessingWorkerAsync();
+
+        try
+        {
+            // 目标监控目录是个文件：Directory.CreateDirectory 必抛。
+            var blocker = Path.Combine(fixture.Root, "blocker-file");
+            await File.WriteAllTextAsync(blocker, "not-a-directory");
+            await File.WriteAllTextAsync(
+                Path.Combine(fixture.Root, "config.json"),
+                BuildConfigJson(blocker, fixture.AuditDirectory));
+
+            var handler = CreateHandler(fixture, RuntimeMode.Background);
+            var (response, shouldShutdown) = await handler
+                .HandleAsync(new WorkerIpcRequest(WorkerIpcMethods.ReloadConfig, "reload-bad-folder"), CancellationToken.None)
+                .WaitAsync(TimeSpan.FromSeconds(30));
+
+            Assert.False(response.Ok, "重载到不可用目录必须回 ok:false，不得静默回 ok（#112）");
+            Assert.False(shouldShutdown);
+            Assert.StartsWith("reload_failed:", response.Message ?? string.Empty, StringComparison.Ordinal);
+            Assert.Equal(fixture.Hot, fixture.Worker.CurrentWatchDirectory);
+
+            // 旧目录仍被监控：新文件必须继续被处理，否则「回 ok:false」只是假象。
+            await AssertReloadKeepsProcessingAsync(fixture, "after-bad-folder-reload.jpg");
+        }
+        finally
+        {
+            await StopAndDeleteAsync(fixture);
+        }
+    }
+
+    [Fact]
+    public async Task Reload_That_Fails_After_Teardown_Should_Roll_Back_And_Keep_The_Old_Folder_Monitored()
+    {
+        // 防的具体回潮形态：拆卸（停 watcher、释放 store/audit）之后重建抛错，异常一路抛到 IPC，
+        // 旧运行时没有建回来——worker 活着但不再监控原目录，要等下一次成功重载或重启才恢复（#112）。
+        // 用「审计目录里放一个名为 processed.ndjson 的目录」确定性触发拆卸后失败：校验与建目录都通过，
+        // FileProcessedRecordStore 打开 processed.ndjson 时才抛，正好落在拆卸之后。
+        // 关联 issue #112。
+        var fixture = await StartProcessingWorkerAsync();
+
+        try
+        {
+            var brokenAudit = Path.Combine(fixture.Root, "audit-broken");
+            Directory.CreateDirectory(Path.Combine(brokenAudit, "processed.ndjson"));
+            await File.WriteAllTextAsync(
+                Path.Combine(fixture.Root, "config.json"),
+                BuildConfigJson(fixture.Hot, brokenAudit));
+
+            var handler = CreateHandler(fixture, RuntimeMode.Background);
+            var (response, shouldShutdown) = await handler
+                .HandleAsync(new WorkerIpcRequest(WorkerIpcMethods.ReloadConfig, "reload-teardown-fail"), CancellationToken.None)
+                .WaitAsync(TimeSpan.FromSeconds(30));
+
+            Assert.False(response.Ok, "拆卸后重建失败必须回 ok:false，不得静默回 ok（#112）");
+            Assert.False(shouldShutdown);
+            Assert.StartsWith("reload_failed:", response.Message ?? string.Empty, StringComparison.Ordinal);
+            Assert.Contains("已回滚", response.Message ?? string.Empty, StringComparison.Ordinal);
+            Assert.Equal(fixture.Hot, fixture.Worker.CurrentWatchDirectory);
+
+            // 回滚判据：旧目录继续处理新文件。未回滚时 watcher 已停、pipeline 已拆，文件不会被处理。
+            await File.WriteAllTextAsync(Path.Combine(fixture.Hot, "after-failed-reload.jpg"), "after-failed-reload");
+            Assert.True(
+                await WaitForProcessedRecordForAsync(
+                    fixture.ProcessedPath, "after-failed-reload.jpg", TimeSpan.FromSeconds(30)),
+                "重载失败后旧目录不再处理新文件：worker 停在「活着但不再监控」形态（#112）");
+        }
+        finally
+        {
+            await StopAndDeleteAsync(fixture);
+        }
+    }
+
+    [Fact]
+    public async Task Reload_That_Fails_After_Changing_The_Debounce_Window_Should_Reprocess_The_In_Flight_File()
+    {
+        // 防的具体回潮形态：失败尝试按新 DebounceMs 换掉去抖队列后抛错，回滚直接复用这条队列——
+        // 回滚后的去抖窗口仍是新配置的值，旧窗口里的在途路径既不补扫也不在新队列里，文件静默漏处理
+        // （#112 回滚路径上的 #85 形态）。前提：文件的 mtime 早于回滚补扫的下限（拆卸起点 - 2 s），
+        // 只有「回滚重建队列 + 全量补扫」能把它捞回来。
+        // 关联 issue #112。
+        var fixture = await StartProcessingWorkerAsync(debounceMs: 8000);
+
+        try
+        {
+            await Task.Delay(500);
+
+            var inFlight = Path.Combine(fixture.Hot, "in-flight-before-failed-reload.jpg");
+            await File.WriteAllTextAsync(inFlight, "in-flight");
+            // mtime 拨到 10 s 前：排除回滚的 handoff 余量窗口，只剩全量补扫能捞回它。
+            File.SetLastWriteTimeUtc(inFlight, DateTime.UtcNow.AddSeconds(-10));
+            // 1.2 s 足够事件进入旧队列，又远小于 8 s 窗口——重载发生时它仍未处理。
+            await Task.Delay(1200);
+            Assert.False(
+                HasProcessedRecordFor(fixture.ProcessedPath, "in-flight-before-failed-reload.jpg"),
+                "在途文件在重载前已被处理：用例前提不成立");
+
+            var brokenAudit = Path.Combine(fixture.Root, "audit-broken");
+            Directory.CreateDirectory(Path.Combine(brokenAudit, "processed.ndjson"));
+            await File.WriteAllTextAsync(
+                Path.Combine(fixture.Root, "config.json"),
+                BuildConfigJson(fixture.Hot, brokenAudit, debounceMs: 100));
+
+            var handler = CreateHandler(fixture, RuntimeMode.Background);
+            var (response, shouldShutdown) = await handler
+                .HandleAsync(new WorkerIpcRequest(WorkerIpcMethods.ReloadConfig, "reload-debounce-change"), CancellationToken.None)
+                .WaitAsync(TimeSpan.FromSeconds(60));
+
+            Assert.False(response.Ok, "拆卸后重建失败必须回 ok:false，不得静默回 ok（#112）");
+            Assert.False(shouldShutdown);
+            Assert.StartsWith("reload_failed:", response.Message ?? string.Empty, StringComparison.Ordinal);
+
+            Assert.True(
+                await WaitForProcessedRecordForAsync(
+                    fixture.ProcessedPath,
+                    "in-flight-before-failed-reload.jpg",
+                    TimeSpan.FromSeconds(40)),
+                "回滚复用了失败尝试按新配置重建的去抖队列，旧窗口内的在途文件没有被补扫（#112）");
+        }
+        finally
+        {
+            await StopAndDeleteAsync(fixture);
+        }
+    }
+
+    /// <summary>
+    /// 待机端点级用例（#113 AC1，补 #100 关闭时留下的证据缺口）：默认 <c>hot_folder: ""</c> 的首次配置
+    /// 待机态此前只有两层覆盖——handler 级假运行时（<c>WorkerIpcResidentStabilityTests</c>）与进程内
+    /// <c>worker.StartAsync</c>（<see cref="EmptyWatchFolder_Should_Stay_Resident_Until_Reload_Starts_Monitoring"/>），
+    /// 真实传输绑定 + accept 循环 + 帧协议往返在待机态从没被走过，而 #100 的实机形态正是「UI 连不上、
+    /// 只剩管道超时（os error 2）」。
+    ///
+    /// 防的具体回潮形态（本用例的射程就是「待机态下的 IPC 连通」，不认领别的）：
+    /// ① 待机态走不通「绑定 → accept 环 → 帧协议 → handler 回包」这条链，或回包把待机读成断线
+    ///    （首拍 GetStatus 往返直接红）；
+    /// ② 待机态只服务得了一拍（UI 心跳是每 1 s 一次 GetStatus、一条连接一个请求，见 monitor.rs 的
+    ///    Design(#49)；第二拍同方法往返 + accept 环未退出挡这条回潮）。
+    /// 两条射程的边界与同文件端点用例相同：绑定与 accept 环由用例按宿主同序自己搭，
+    /// <c>WorkerIpcServerHostedService</c> 的形态端点接线、以及「worker 在待机就退出」这种
+    /// 不影响回包的形态，都不在本用例的射程内（后者由
+    /// <see cref="EmptyWatchFolder_Should_Stay_Resident_Until_Reload_Starts_Monitoring"/> 的正向证据把关）。
+    ///
+    /// 前提屏障：首拍前先等 worker 打出待机日志（「no watch folder is configured」）。
+    /// <c>CurrentWatchDirectory</c> 在「配置还没加载」时同样回空串，没有这道屏障，回包的空目录
+    /// 可能只是「什么都还没发生」；而配置加载已是纯读路径（#124），不能再靠「审计目录被建出来」当屏障。
+    ///
+    /// 覆盖边界（勿当作 #100 崩溃路径的替身）：<c>AppConfigValidator.Validate</c> 有两道早退——
+    /// <c>dry_run</c> 一条、空 <c>hot_folder</c> 一条（后者正是 #100 的改动），任一命中就走不到
+    /// exiftool 路径存在性、quarantine/audit 目录这些后续校验；本夹具两条都命中，所以就算把
+    /// <c>dry_run</c> 改成 false 也带不进那些校验。那条「非 dry-run 的待机链路」归 #108 裁定
+    /// （裸机发布包不含 ExifTool，空监控目录又让校验整体 fail-open），本票不替它把行为钉进 CI 门禁。
+    /// </summary>
+    [Fact]
+    public async Task Standby_GetStatus_Through_Background_Endpoint_Should_Reply_With_Empty_Watch_Directory()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "pp-113-" + Guid.NewGuid().ToString("N"));
+        var audit = Path.Combine(root, "audit");
+        var configPath = Path.Combine(root, "config.json");
+        Directory.CreateDirectory(root);
+        // 监控目录留空（发版包 config/config.json 的出厂形态）。审计目录给真实路径但**不**预建：
+        // 配置加载不再有建目录副作用（#124），待机就绪改由 worker 的待机日志证明（见 try 开头的 Wait）。
+        await File.WriteAllTextAsync(configPath, BuildConfigJson(string.Empty, audit));
+
+        // 夹具自检：worker 启动路径对配置校验失败会直接 Environment.Exit(1)（杀死整个测试进程），
+        // 所以先在测试侧校验一遍——配置夹具漂移要以断言失败暴露，而不是让 CI 只看到进程消失。
+        var parsed = AppConfigLoader.Load(configPath);
+        AppConfigValidator.Validate(parsed);
+        Assert.Equal(string.Empty, parsed.Watch.HotFolder);
+        Assert.True(parsed.ExifTool.DryRun, "夹具必须是 dry-run：否则会去 spawn ExifTool");
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["config"] = configPath })
+            .Build();
+        var runtimeControl = new RuntimeControl();
+        var standbyLogger = new StandbySignalLogger();
+        var worker = new MetadataCleanerWorker(
+            configuration,
+            standbyLogger,
+            new NullApplicationLifetime(),
+            runtimeControl);
+
+        await worker.StartAsync(CancellationToken.None);
+
+        var loopStop = new CancellationTokenSource();
+        IIpcTransport? transport = null;
+        Task loopTask = Task.CompletedTask;
+
+        try
+        {
+            // 就绪屏障：worker 的 CurrentWatchDirectory 在「配置还没加载」与「已进待机」两种状态下
+            // 都回空串，少了这一步首拍可能靠空串假绿。待机日志只在 ExecuteAsync 走完配置加载/校验、
+            // 决定进入空监控目录等待之后才写（#124 收走了原「审计目录出现」的建目录副作用）。
+            Assert.True(
+                await WaitForStandbyAsync(standbyLogger, TimeSpan.FromSeconds(30)),
+                "worker 未进入空监控目录待机（未见到待机日志）：用例前提不成立");
+
+            transport = IpcTransportFactory.CreateServer(ResolveBackgroundTestEndpoint(root), isServiceMode: false);
+            // 与生产宿主同接线：watchDirectory 直接取 worker.CurrentWatchDirectory，
+            // 待机态的「空目录 + 已连接」必须由这条真实回包链路呈现给 UI。
+            var handler = new WorkerIpcRequestHandler(
+                new WorkerRuntimeContext(
+                    runtimeControl,
+                    worker,
+                    () => worker.CurrentWatchDirectory,
+                    RuntimeMode.Background,
+                    () => audit),
+                NullLogger<WorkerIpcRequestHandler>.Instance);
+
+            var loop = new WorkerIpcServerLoop(NullLogger<WorkerIpcServerLoop>.Instance);
+            // 与宿主同序：先绑定端点再进 accept 循环。
+            await transport.ListenAsync(loopStop.Token);
+            loopTask = loop.RunAsync(transport, handler.HandleAsync, requestShutdown: () => { }, loopStop.Token);
+
+            var request = new WorkerIpcRequest(WorkerIpcMethods.GetStatus, "standby-status");
+            var status = await RequestOverTransportAsync(transport, request);
+
+            Assert.True(status.Ok, $"待机态 GetStatus 必须经后台端点回 ok：{status.Message}");
+            Assert.Equal(string.Empty, status.Data!.WatchDirectory);
+            Assert.Equal("background", status.Data.Mode);
+            Assert.Equal(WorkerIpcProtocol.Version, status.V);
+
+            // UI 的心跳是「每 1 s 一次 GetStatus、一条连接一个请求」的轮询
+            // （monitor.rs 的 Design(#49)：探针固定 GetStatus，不用 Ping）——第二拍必须是同方法。
+            var secondBeatRequest = new WorkerIpcRequest(WorkerIpcMethods.GetStatus, "standby-status-2");
+            var secondBeat = await RequestOverTransportAsync(transport, secondBeatRequest);
+            Assert.True(secondBeat.Ok, "待机态第二拍 GetStatus 必须仍被服务");
+            Assert.Equal(string.Empty, secondBeat.Data!.WatchDirectory);
+            Assert.False(loopTask.IsCompleted, "accept 环不得在待机首拍之后退出");
+        }
+        finally
+        {
+            loopStop.Cancel();
+            try
+            {
+                await loopTask.WaitAsync(TimeSpan.FromSeconds(10));
+            }
+            catch
+            {
+                // 循环停不下来只说明停机路径有缺陷，不得掩盖上面的断言失败。
+            }
+
+            if (transport is not null)
+            {
+                await transport.DisposeAsync();
+            }
+
+            // 停机必须有界，但本用例不在这里断言它停得下来：finally 里抛出的异常会顶掉 try 内的真实
+            // 断言失败，把「连通性没验过」伪装成「只是停不下来」。
+            // 仍在待机态就 StopAsync 会挂住是 #117 登记的独立缺陷；基类 StopAsync 只受调用方 token 约束，
+            // 挂住会一路吃到 test.runsettings 的 1 h TestSessionTimeout——CI 只剩一条无名的红。
+            // 5 s 有界停机：拿不到结果也只降级继续，ExecuteAsync 那条任务留给进程退出收口。
+            // #117 修好后，把这里改回「断言 StopAsync 在预算内完成」（那条红测挂在 #117）。
+            using var stopCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await worker.StopAsync(stopCts.Token);
+            TryDelete(root);
+        }
+    }
+
+    /// <summary>
+    /// 待机态不得产生目录副作用（#124 AC1）：空 <c>hot_folder</c> 时 worker 只加载配置并待命，
+    /// 不得在磁盘上建出配置里的 audit/quarantine 目录（发版包默认路径落在安装目录下的
+    /// <c>hot/_audit</c>、<c>hot/_quarantine</c>）。
+    /// </summary>
+    [Fact]
+    public async Task Standby_Should_Not_Create_Configured_Directories()
+    {
+        // 防：LoadEffectiveConfig 在返回配置前就 Directory.CreateDirectory——配置加载这条纯读路径
+        // 带写副作用，待机态也凭空长出 hot/_audit、hot/_quarantine（#124）。
+        var root = Path.Combine(Path.GetTempPath(), "pp-124-standby-" + Guid.NewGuid().ToString("N"));
+        // 目录形状对齐安装目录：config.json 与 hot/_audit、hot/_quarantine 同根。
+        var installRoot = Path.Combine(root, "install");
+        var audit = Path.Combine(installRoot, "hot", "_audit");
+        var quarantine = Path.Combine(installRoot, "hot", "_quarantine");
+        var configPath = Path.Combine(installRoot, "config.json");
+        Directory.CreateDirectory(installRoot);
+        await File.WriteAllTextAsync(
+            configPath, BuildConfigJson(string.Empty, audit, quarantineDirectory: quarantine));
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["config"] = configPath })
+            .Build();
+        var standbyLogger = new StandbySignalLogger();
+        var worker = new MetadataCleanerWorker(
+            configuration,
+            standbyLogger,
+            new NullApplicationLifetime(),
+            new RuntimeControl());
+
+        await worker.StartAsync(CancellationToken.None);
+        try
+        {
+            Assert.True(
+                await WaitForStandbyAsync(standbyLogger, TimeSpan.FromSeconds(30)),
+                "worker 未进入空监控目录待机：用例前提不成立");
+            // 待机日志之后仍给一拍：若回归把建目录放到待机分支的后半段，也能被抓到。
+            await Task.Delay(200);
+            Assert.Equal(string.Empty, worker.CurrentWatchDirectory);
+            Assert.False(
+                Directory.Exists(Path.Combine(installRoot, "hot")),
+                "待机态在安装目录下建出了 hot 子树（hot/_audit、hot/_quarantine）：配置加载仍有写副作用（#124）");
+            Assert.False(Directory.Exists(audit));
+            Assert.False(Directory.Exists(quarantine));
+        }
+        finally
+        {
+            using var stopCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await worker.StopAsync(stopCts.Token);
+            TryDelete(root);
+        }
+    }
+
+    /// <summary>
+    /// 出厂包「三条空串」形态（#124 AC1）：<c>hot_folder</c> / <c>audit.log_directory</c> /
+    /// <c>quarantine.directory</c> 全空时，loader 会把 audit/quarantine 回落到
+    /// <c>&lt;BaseDirectory&gt;/hot/...</c>；待机态不得把这些回落路径建出来。
+    /// </summary>
+    [Fact]
+    public async Task Standby_With_Factory_Empty_Paths_Should_Not_Create_Default_Directories()
+    {
+        // 防：只把显式路径的创建挪走、却把创建塞回 loader 的空串回落分支——出厂包形态仍会长出
+        // <BaseDirectory>/hot、hot/_audit、hot/_quarantine（#124）。
+        var root = Path.Combine(Path.GetTempPath(), "pp-124-factory-" + Guid.NewGuid().ToString("N"));
+        var configPath = Path.Combine(root, "config.json");
+        Directory.CreateDirectory(root);
+        await File.WriteAllTextAsync(configPath, BuildConfigJson(string.Empty, string.Empty));
+
+        // 同进程里其它监控态用例可能已在 <BaseDirectory>/hot 下留下目录：断言「待机前后存在性不变」
+        // 而不是绝对不存在，避免把用例间残留误判成回归，也不删除共享的 <BaseDirectory>/hot。
+        // 强判据由显式安装目录用例承担；本用例守住 loader 空串回落分支不在待机时新增默认目录。
+        var defaultHot = DefaultPaths.DefaultHotFolder;
+        var defaultAudit = DefaultPaths.DefaultAuditLogDirectory;
+        var defaultQuarantine = DefaultPaths.DefaultQuarantineDirectory;
+        var hotBefore = Directory.Exists(defaultHot);
+        var auditBefore = Directory.Exists(defaultAudit);
+        var quarantineBefore = Directory.Exists(defaultQuarantine);
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["config"] = configPath })
+            .Build();
+        var standbyLogger = new StandbySignalLogger();
+        var worker = new MetadataCleanerWorker(
+            configuration,
+            standbyLogger,
+            new NullApplicationLifetime(),
+            new RuntimeControl());
+
+        await worker.StartAsync(CancellationToken.None);
+        try
+        {
+            Assert.True(
+                await WaitForStandbyAsync(standbyLogger, TimeSpan.FromSeconds(30)),
+                "worker 未进入空监控目录待机：用例前提不成立");
+            await Task.Delay(200);
+            Assert.Equal(string.Empty, worker.CurrentWatchDirectory);
+            Assert.Equal(hotBefore, Directory.Exists(defaultHot));
+            Assert.Equal(auditBefore, Directory.Exists(defaultAudit));
+            Assert.Equal(quarantineBefore, Directory.Exists(defaultQuarantine));
+        }
+        finally
+        {
+            using var stopCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await worker.StopAsync(stopCts.Token);
+            TryDelete(root);
+        }
+    }
+
+    /// <summary>
+    /// 待机态的受测降级路径（#124 AC2）：配置里的目录连创建都会抛
+    /// <see cref="IOException"/> 时，待机态必须照常起来——因为配置加载与待机分支都不再写盘。
+    /// 安装到 <c>Program Files</c> 或以受限账户运行时，这正是旧实现抛
+    /// <see cref="UnauthorizedAccessException"/>／<see cref="IOException"/> 并让服务停机的形态。
+    /// 启用监控后的只读目录仍在既有异常路径上抛（启动停宿主 / 重载回 <c>ok:false</c>），
+    /// 该启用态残余登记在 #82 D9 与 #108，不在本用例射程内。
+    /// </summary>
+    [Fact]
+    public async Task Standby_Should_Survive_Uncreatable_Configured_Directories()
+    {
+        // 防：把目录创建留在配置加载/待机路径——不可写安装目录下 worker 启动即抛，待机态连不上 IPC（#124）。
+        var root = Path.Combine(Path.GetTempPath(), "pp-124-readonly-" + Guid.NewGuid().ToString("N"));
+        var blocker = Path.Combine(root, "blocker");
+        var audit = Path.Combine(blocker, "audit");
+        var quarantine = Path.Combine(blocker, "quarantine");
+        var configPath = Path.Combine(root, "config.json");
+        Directory.CreateDirectory(root);
+        // 父路径是普通文件：任何 Directory.CreateDirectory(audit/quarantine) 必抛 IOException。
+        await File.WriteAllTextAsync(blocker, "not a directory");
+        await File.WriteAllTextAsync(
+            configPath, BuildConfigJson(string.Empty, audit, quarantineDirectory: quarantine));
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["config"] = configPath })
+            .Build();
+        var standbyLogger = new StandbySignalLogger();
+        var worker = new MetadataCleanerWorker(
+            configuration,
+            standbyLogger,
+            new NullApplicationLifetime(),
+            new RuntimeControl());
+
+        await worker.StartAsync(CancellationToken.None);
+        try
+        {
+            Assert.True(
+                await WaitForStandbyAsync(standbyLogger, TimeSpan.FromSeconds(30)),
+                "不可写目录形态下 worker 未进入待机：目录副作用仍在配置加载路径上（#124）");
+            // 判据只有「进入待机」这一条：旧实现会在 StartAsync 内抛 IOException，走不到这条日志；
+            // 父路径是普通文件时 Directory.Exists 恒假，不能再拿它当断言（无区分力）。
+        }
+        finally
+        {
+            using var stopCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await worker.StopAsync(stopCts.Token);
+            TryDelete(root);
+        }
+    }
+
+    /// <summary>
+    /// 目录创建搬到运行时后，启用监控的启动仍必须建目录（#124 回归）：已配置的 hot/audit/quarantine
+    /// 在启动时不存在，worker 也把它们建出来并进入监控。
+    /// </summary>
+    [Fact]
+    public async Task Configured_Startup_Should_Create_Runtime_Directories()
+    {
+        // 防：把创建挪出 LoadEffectiveConfig 时顺手删掉，已配置监控目录的启动不再建目录（#124）。
+        var root = Path.Combine(Path.GetTempPath(), "pp-124-startup-" + Guid.NewGuid().ToString("N"));
+        var hot = Path.Combine(root, "hot");
+        var audit = Path.Combine(root, "audit");
+        var quarantine = Path.Combine(root, "quarantine");
+        var configPath = Path.Combine(root, "config.json");
+        Directory.CreateDirectory(root);
+        await File.WriteAllTextAsync(
+            configPath, BuildConfigJson(hot, audit, quarantineDirectory: quarantine));
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["config"] = configPath })
+            .Build();
+        var worker = new MetadataCleanerWorker(
+            configuration,
+            NullLogger<MetadataCleanerWorker>.Instance,
+            new NullApplicationLifetime(),
+            new RuntimeControl());
+
+        await worker.StartAsync(CancellationToken.None);
+        try
+        {
+            Assert.True(await WaitForDirectoryAsync(hot, TimeSpan.FromSeconds(30)), "启用监控后未创建监控目录（#124）");
+            Assert.True(await WaitForDirectoryAsync(audit, TimeSpan.FromSeconds(30)), "启用监控后未创建审计目录（#124）");
+            Assert.True(await WaitForDirectoryAsync(quarantine, TimeSpan.FromSeconds(30)), "启用监控后未创建隔离目录（#124）");
+            Assert.Equal(hot, worker.CurrentWatchDirectory);
+        }
+        finally
+        {
+            await worker.StopAsync(CancellationToken.None);
+            TryDelete(root);
+        }
+    }
+
+    /// <summary>
+    /// 重载回待机同样零目录副作用（#124 AC1）：从启用监控重载到空 <c>hot_folder</c> 时，
+    /// <c>RebuildRuntimeAsync</c> 必须在创建目录之前早退，不得把新配置里的 audit/quarantine 建出来。
+    /// </summary>
+    [Fact]
+    public async Task Reload_To_Standby_Should_Not_Create_Directories()
+    {
+        // 防：目录创建留在 RebuildRuntimeAsync 的空 hot 早退之前——重载回待机仍会建目录（#124）。
+        var root = Path.Combine(Path.GetTempPath(), "pp-124-reload-standby-" + Guid.NewGuid().ToString("N"));
+        var hot = Path.Combine(root, "hot");
+        var auditWhileRunning = Path.Combine(root, "audit-running");
+        var auditAfterReload = Path.Combine(root, "audit-standby");
+        var quarantineAfterReload = Path.Combine(root, "quarantine-standby");
+        var configPath = Path.Combine(root, "config.json");
+        Directory.CreateDirectory(root);
+        await File.WriteAllTextAsync(configPath, BuildConfigJson(hot, auditWhileRunning));
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["config"] = configPath })
+            .Build();
+        var worker = new MetadataCleanerWorker(
+            configuration,
+            NullLogger<MetadataCleanerWorker>.Instance,
+            new NullApplicationLifetime(),
+            new RuntimeControl());
+
+        await worker.StartAsync(CancellationToken.None);
+        try
+        {
+            Assert.True(
+                await WaitForDirectoryAsync(auditWhileRunning, TimeSpan.FromSeconds(30)),
+                "启用监控的启动未建审计目录：用例前提不成立");
+            Assert.Equal(hot, worker.CurrentWatchDirectory);
+
+            await File.WriteAllTextAsync(
+                configPath,
+                BuildConfigJson(string.Empty, auditAfterReload, quarantineDirectory: quarantineAfterReload));
+            await worker.ReloadConfigAsync();
+
+            // ReloadConfigAsync 已同步走完重建，回到待机才返回；这里不需要启动态那样再留一拍。
+            Assert.Equal(string.Empty, worker.CurrentWatchDirectory);
+            Assert.False(
+                Directory.Exists(auditAfterReload),
+                "重载回待机创建了审计目录：RebuildRuntimeAsync 仍在空 hot 早退前建目录（#124）");
+            Assert.False(
+                Directory.Exists(quarantineAfterReload),
+                "重载回待机创建了隔离目录：RebuildRuntimeAsync 仍在空 hot 早退前建目录（#124）");
+        }
+        finally
+        {
+            using var stopCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await worker.StopAsync(stopCts.Token);
+            TryDelete(root);
+        }
+    }
+
+    /// <summary>
+    /// 目录创建失败的重载必须保留旧运行时（#124）：创建挪到拆卸之前，失败时旧 watcher/pipeline
+    /// 仍继续处理文件，而不是留下「重载失败 + 监控已停」的死运行期。
+    /// </summary>
+    [Fact]
+    public async Task Failed_Reload_On_Directory_Creation_Should_Keep_The_Old_Runtime()
+    {
+        // 防：EnsureConfiguredDirectories 放在拆卸之后（BuildRuntimeAsync 内）——脏目录重载失败时
+        // 旧 watcher 已停、pipeline 已拆，监控从此静默停摆（#124）。
+        var root = Path.Combine(Path.GetTempPath(), "pp-124-reload-fail-" + Guid.NewGuid().ToString("N"));
+        var hot = Path.Combine(root, "hot");
+        var audit = Path.Combine(root, "audit");
+        var blocker = Path.Combine(root, "blocker");
+        var badAudit = Path.Combine(blocker, "audit");
+        var configPath = Path.Combine(root, "config.json");
+        Directory.CreateDirectory(root);
+        await File.WriteAllTextAsync(configPath, BuildConfigJson(hot, audit));
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["config"] = configPath })
+            .Build();
+        var worker = new MetadataCleanerWorker(
+            configuration,
+            NullLogger<MetadataCleanerWorker>.Instance,
+            new NullApplicationLifetime(),
+            new RuntimeControl());
+
+        await worker.StartAsync(CancellationToken.None);
+        try
+        {
+            var processedPath = Path.Combine(audit, "processed.ndjson");
+            Assert.True(
+                await WaitForFileAsync(processedPath, TimeSpan.FromSeconds(30)),
+                "启动期未创建处理记录表：用例前提不成立");
+
+            await File.WriteAllTextAsync(Path.Combine(hot, "before-failed-reload.jpg"), "before");
+            Assert.True(
+                await WaitForProcessedRecordsAsync(processedPath, expectedAtLeast: 1, TimeSpan.FromSeconds(30)),
+                "启动态未处理文件：用例前提不成立");
+
+            // 新配置 hot 非空、audit 父路径是普通文件 → 建目录必抛。
+            await File.WriteAllTextAsync(blocker, "not a directory");
+            await File.WriteAllTextAsync(configPath, BuildConfigJson(hot, badAudit));
+            var failure = await Assert.ThrowsAnyAsync<Exception>(() => worker.ReloadConfigAsync());
+            Assert.True(
+                failure is IOException or UnauthorizedAccessException,
+                $"重载失败必须来自目录创建，实际：{failure.GetType().Name}: {failure.Message}");
+
+            // 旧运行时仍在：写进旧 hot 的文件继续被处理（旧实现在拆卸后才建目录，这里必红）。
+            await File.WriteAllTextAsync(Path.Combine(hot, "after-failed-reload.jpg"), "after");
+            Assert.True(
+                await WaitForProcessedRecordForAsync(processedPath, "after-failed-reload.jpg", TimeSpan.FromSeconds(30)),
+                "重载因建目录失败后旧 watcher/pipeline 被拆掉，监控静默停摆（#124）");
+        }
+        finally
+        {
+            await worker.StopAsync(CancellationToken.None);
+            TryDelete(root);
+        }
+    }
+
+    /// <summary>
+    /// 端点级用例的临时后台端点。Windows 管道名是内核对象名。Unix socket 落点：Linux 用夹具临时目录
+    /// （固定路径 <c>/run/photoprivacy</c> 需 root，CI 绑不了）；macOS 的 <c>sun_path</c> 上限 104 字节，
+    /// 夹具目录路径太长，改用临时目录下的短文件名（<c>GetTempPath()</c> 约 49 字节 + 约 21 字节 &lt; 104），
+    /// socket 文件由 <c>transport.DisposeAsync</c>（端点属主）负责删除。
+    /// </summary>
+    private static string ResolveBackgroundTestEndpoint(string root)
+        => OperatingSystem.IsWindows()
+            ? "pp-bg-" + Guid.NewGuid().ToString("N")
+            : OperatingSystem.IsMacOS()
+                ? Path.Combine(Path.GetTempPath(), "pp-bg-" + Guid.NewGuid().ToString("N")[..8] + ".sock")
+                : Path.Combine(root, "worker-background.sock");
+
+    /// <summary>
+    /// 经真实传输做一次「一连接一消息」的帧协议往返：写请求行，读以连接关闭（EOF）定界的响应行
+    /// （响应无结尾换行，读侧复用唯一的有界行读实现）。
+    /// </summary>
+    private static async Task<WorkerIpcResponse> RequestOverTransportAsync(IIpcTransport transport, WorkerIpcRequest request)
+    {
+        await using var stream = await transport
+            .ConnectAsync(TimeSpan.FromSeconds(10), CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(30));
+        var requestBytes = Encoding.UTF8.GetBytes(
+            JsonSerializer.Serialize(request, WorkerIpcJsonContext.Default.WorkerIpcRequest) + "\n");
+        await stream.WriteAsync(requestBytes, CancellationToken.None);
+        await stream.FlushAsync(CancellationToken.None);
+
+        var line = await IpcLineReader
+            .ReadBoundedLineAsync(stream, maxBytes: 64 * 1024, CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(30));
+        Assert.NotNull(line);
+
+        var response = JsonSerializer.Deserialize(line!, WorkerIpcJsonContext.Default.WorkerIpcResponse);
+        Assert.NotNull(response);
+        Assert.Equal(request.Id, response!.Id);
+        return response;
     }
 
     private static WorkerIpcRequestHandler CreateHandler(ReloadFixture fixture, RuntimeMode runtimeMode)
@@ -670,7 +1272,7 @@ public sealed class WorkerReloadConfigRegressionTests
     /// processed.ndjson 出现至少 1 条记录。此后测试续做重载断言；结束统一走
     /// <see cref="StopAndDeleteAsync"/>。
     /// </summary>
-    private static async Task<ReloadFixture> StartProcessingWorkerAsync()
+    private static async Task<ReloadFixture> StartProcessingWorkerAsync(int debounceMs = 100)
     {
         var root = Path.Combine(Path.GetTempPath(), "pp-85-" + Guid.NewGuid().ToString("N"));
         var hot = Path.Combine(root, "hot");
@@ -678,7 +1280,7 @@ public sealed class WorkerReloadConfigRegressionTests
         var configPath = Path.Combine(root, "config.json");
 
         Directory.CreateDirectory(hot);
-        await File.WriteAllTextAsync(configPath, BuildConfigJson(hot, audit));
+        await File.WriteAllTextAsync(configPath, BuildConfigJson(hot, audit, debounceMs: debounceMs));
 
         AssertViableFixtureConfig(configPath);
 
@@ -742,7 +1344,8 @@ public sealed class WorkerReloadConfigRegressionTests
         string auditDirectory,
         bool includeSubdirectories = true,
         int debounceMs = 100,
-        int pollingSeconds = 1)
+        int pollingSeconds = 1,
+        string? quarantineDirectory = null)
     {
         // 全量键位对齐 config.sample.json；dry_run=true 让 validator 走早退分支
         // （不需要真实 exiftool.exe 与 exiftool_files 目录）。
@@ -786,7 +1389,11 @@ public sealed class WorkerReloadConfigRegressionTests
                 max_size_mb = 100,
                 retain_days = 30
             },
-            quarantine = new { enabled = false, directory = string.Empty },
+            quarantine = new
+            {
+                enabled = quarantineDirectory is not null,
+                directory = quarantineDirectory ?? string.Empty
+            },
             audit = new
             {
                 log_directory = auditDirectory,
@@ -799,12 +1406,36 @@ public sealed class WorkerReloadConfigRegressionTests
         return JsonSerializer.Serialize(payload);
     }
 
-    private static async Task<bool> WaitForFileAsync(string path, TimeSpan budget)
+    private static Task<bool> WaitForFileAsync(string path, TimeSpan budget)
+        => WaitForPresenceAsync(() => File.Exists(path), budget);
+
+    /// <summary>运行时建目录用例用：目录是否已出现。</summary>
+    private static Task<bool> WaitForDirectoryAsync(string path, TimeSpan budget)
+        => WaitForPresenceAsync(() => Directory.Exists(path), budget);
+
+    /// <summary>
+    /// 待机就绪屏障：等 <see cref="StandbySignalLogger"/> 收到空监控目录的待机日志。
+    /// 不依赖配置加载的建目录副作用（#124 已移除）。
+    /// </summary>
+    private static async Task<bool> WaitForStandbyAsync(StandbySignalLogger logger, TimeSpan budget)
+    {
+        try
+        {
+            await logger.StandbyEntered.WaitAsync(budget);
+            return true;
+        }
+        catch (TimeoutException)
+        {
+            return false;
+        }
+    }
+
+    private static async Task<bool> WaitForPresenceAsync(Func<bool> exists, TimeSpan budget)
     {
         var deadline = DateTime.UtcNow + budget;
         while (DateTime.UtcNow < deadline)
         {
-            if (File.Exists(path))
+            if (exists())
             {
                 return true;
             }
@@ -812,7 +1443,7 @@ public sealed class WorkerReloadConfigRegressionTests
             await Task.Delay(50);
         }
 
-        return File.Exists(path);
+        return exists();
     }
 
     /// <summary>
@@ -932,6 +1563,36 @@ public sealed class WorkerReloadConfigRegressionTests
         catch
         {
             // best-effort：FSW 句柄释放有延迟，临时目录残留不影响断言。
+        }
+    }
+
+    /// <summary>
+    /// 待机就绪信号：收 Worker 的「no watch folder is configured」告警。该日志只在 ExecuteAsync
+    /// 走完配置加载/校验并决定进入空监控目录等待之后才写，是待机态的正向屏障（#124）。
+    /// </summary>
+    private sealed class StandbySignalLogger : ILogger<MetadataCleanerWorker>
+    {
+        private readonly TaskCompletionSource<bool> _standby =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task StandbyEntered => _standby.Task;
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            if (logLevel == LogLevel.Warning
+                && formatter(state, exception).Contains("no watch folder is configured", StringComparison.Ordinal))
+            {
+                _standby.TrySetResult(true);
+            }
         }
     }
 

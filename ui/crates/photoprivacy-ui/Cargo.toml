@@ -23,6 +23,9 @@ serde.workspace = true
 [dev-dependencies]
 # 配置服务的防抖/轮询测试用 tokio 的暂停时钟，避免 real sleep 造成慢测与抖动。
 tokio = { workspace = true, features = ["test-util"] }
+# Design(#82): gpui 的 test-support 只允许出现在 dev-dependencies——测试台只进 test 构建，
+# 发布二进制不得携带；版本仍随 workspace 锁 =0.3.10（Design(#49)）。
+gpui = { workspace = true, features = ["test-support"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 gpui_windows = { package = "gpui-pre-windows", version = "=0.3.10", default-features = false }

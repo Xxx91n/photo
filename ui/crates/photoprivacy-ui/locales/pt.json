@@ -44,7 +44,8 @@
     "saving": "A guardar…",
     "saved_reloaded": "Guardado · Worker recarregado",
     "saved_worker_down": "Guardado · Worker não recarregado: {0}",
-    "config_error": "Erro de config.json: {0}"
+    "config_error": "Erro de config.json: {0}",
+    "copy_error": "Copiar erro"
   },
   "mode": {
     "tray": "Modo Bandeja",
@@ -254,7 +255,8 @@
       "logs": "Registros"
     },
     "btn": {
-      "clear": "Limpar"
+      "clear": "Limpar",
+      "copy": "Copiar"
     },
     "empty": "Ainda não há registos de auditoria — aguardando eventos de monitorização",
     "empty_desc": "Os eventos de auditoria aparecem aqui à medida que os ficheiros são processados.",
@@ -357,7 +359,8 @@
     "service_failed": "Falha na operação de serviço",
     "service_cancelled": "Operação cancelada",
     "service_skipped": "Operação ignorada",
-    "dismiss": "Fechar"
+    "dismiss": "Fechar",
+    "copied": "Copiado"
   },
   "common": {
     "none": "Nenhum"

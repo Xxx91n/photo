@@ -172,6 +172,9 @@ public sealed class MetadataCleanerWorker : BackgroundService
             return;
         }
 
+        // 待机分支已在上面返回：只有真正启用监控才创建目录（#124）。
+        EnsureConfiguredDirectories(config);
+
         _audit = new JsonLineAuditLogger(config.Audit.LogDirectory, config.Audit.RetainDays, config.Audit.DiagnosticMode, AuditLevelParser.Parse(config.Audit.LogLevel));
         IAuditLogger auditLogger = _audit is not null ? _audit : new NoopAuditLogger();
         // 启动路径的软告警落点（排除清单不可匹配/未支持模式）。
@@ -484,6 +487,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
         }
     }
 
+    // Design(#82): 配置加载纯读——LoadEffectiveConfig 不在返回前创建 hot/audit/quarantine；目录只在运行时真正启用监控时创建。
     private AppConfig LoadEffectiveConfig()
     {
         var configPath = GetValue("config")
@@ -542,22 +546,29 @@ public sealed class MetadataCleanerWorker : BackgroundService
            };
        }
 
-       // ponytail: empty config paths (config.sample.json defaults to "") would throw
-       // ArgumentException on Directory.CreateDirectory — skip if blank.
-       if (!string.IsNullOrWhiteSpace(config.Watch.HotFolder))
-       {
-           Directory.CreateDirectory(config.Watch.HotFolder);
-       }
-       if (!string.IsNullOrWhiteSpace(config.Audit.LogDirectory))
-       {
-           Directory.CreateDirectory(config.Audit.LogDirectory);
-       }
-       if (!string.IsNullOrWhiteSpace(config.Quarantine.Directory))
-       {
-           Directory.CreateDirectory(config.Quarantine.Directory);
-       }
-
        return config;
+    }
+
+    /// <summary>
+    /// 只在运行时真正启用监控时创建配置里的目录（#124）：待机态不创建这些目录。
+    /// </summary>
+    // Design(#82): 目录只在真正启用监控时创建；待机（含重载回待机）不创建。
+    private static void EnsureConfiguredDirectories(AppConfig config)
+    {
+        // ponytail: empty config paths (config.sample.json defaults to "") would throw
+        // ArgumentException on Directory.CreateDirectory — skip if blank.
+        if (!string.IsNullOrWhiteSpace(config.Watch.HotFolder))
+        {
+            Directory.CreateDirectory(config.Watch.HotFolder);
+        }
+        if (!string.IsNullOrWhiteSpace(config.Audit.LogDirectory))
+        {
+            Directory.CreateDirectory(config.Audit.LogDirectory);
+        }
+        if (!string.IsNullOrWhiteSpace(config.Quarantine.Directory))
+        {
+            Directory.CreateDirectory(config.Quarantine.Directory);
+        }
     }
 
     private IExifToolBridge CreateBridge(AppConfig config, IAuditLogger audit)
@@ -645,7 +656,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
     }
 
     /// <summary>
-    /// 拆卸前快照没建成、本次重载退回整目录补扫这件事的留痕（不变量①④：降级不许只进日志）。
+    /// 拆卸前快照没建成、本次重建退回整目录补扫这件事的留痕（不变量①④：降级不许只进日志）。
     /// 写失败只记日志，不反噬重建——重建半途而废的代价比少一条告警大得多（#85 口径）。
     /// </summary>
     private async Task EmitHandoffDegradedAsync(AppConfig config, string reason)
@@ -702,6 +713,13 @@ public sealed class MetadataCleanerWorker : BackgroundService
 
         try
         {
+            // 拿到 drain 闸后再建目录（#124）：reload_busy 放弃本次重载时不留下新配置的目录；
+            // 创建失败仍在拆卸/回滚之前，旧运行时原样保留。
+            if (!string.IsNullOrWhiteSpace(config.Watch.HotFolder))
+            {
+                EnsureConfiguredDirectories(config);
+            }
+
             await RebuildRuntimeAsync(config, token);
         }
         finally
@@ -710,7 +728,61 @@ public sealed class MetadataCleanerWorker : BackgroundService
         }
     }
 
+    /// <summary>
+    /// 重建运行期组件；重建失败时用上一份已生效配置把旧运行时建回来（#112）。
+    ///
+    /// 拆卸（停 watcher、释放 store/audit）发生在重建之前，因此进入拆卸之后的任何抛错都会让
+    /// worker 停在「进程活着但不再监控原目录」的形态。失败必须回滚：旧配置当时能建成，重建它
+    /// 通常也能成功；回滚成功再把原异常上抛为 <c>reload_failed</c>（IPC 契约不变）。
+    /// 不能改成「先建新运行时再切换」：新旧 store/audit 对同一 processed.ndjson 与审计文件各持
+    /// 写句柄，旧实例未释放时新建必然自我冲突（#85 根因），事务化需要改存储共享模型，不在本票。
+    /// </summary>
+    // Design(#82): 重载重建失败必须回滚到上一份生效配置（#112），不得停在「活着但不再监控」形态。
     private async Task RebuildRuntimeAsync(AppConfig config, CancellationToken token)
+    {
+        var previousConfig = _currentConfig;
+        if (previousConfig is null)
+        {
+            await BuildRuntimeAsync(config, rebuildDebounceState: false, token);
+            return;
+        }
+
+        try
+        {
+            await BuildRuntimeAsync(config, rebuildDebounceState: false, token);
+        }
+        catch (Exception ex)
+        {
+            // 回滚强制重建去抖队列/指纹缓存：失败尝试可能已按新配置的 DebounceMs 换过队列，
+            // 「队列非空」不代表它属于上一份配置；复用会让回滚后的窗口变成新配置的值，并丢掉
+            // 旧窗口里的在途路径。重建队列同时触发全量补扫，由旧的去重表挡住已处理文件。
+            try
+            {
+                await BuildRuntimeAsync(previousConfig, rebuildDebounceState: true, token);
+            }
+            catch (Exception rollbackEx)
+            {
+                SafeLog.Try(() => _logger.LogError(
+                    rollbackEx,
+                    "配置重载失败且回滚到上一份生效配置也失败：原错误={ReloadError}；回滚错误={RollbackError}",
+                    ex.Message,
+                    rollbackEx.Message));
+                // AggregateException.Message 会追加内层异常消息，再手拼会让 IPC 文案重复两段。
+                throw new AggregateException(
+                    "重载失败，且用上一份生效配置回滚未完成；worker 可能已无可用运行时，需再次重载或重启确认",
+                    ex,
+                    rollbackEx);
+            }
+
+            SafeLog.Try(() => _logger.LogWarning(ex, "配置重载失败，已回滚到上一份生效配置"));
+            throw new InvalidOperationException($"{ex.Message}（已回滚到上一份生效配置）", ex);
+        }
+    }
+
+    private async Task BuildRuntimeAsync(
+        AppConfig config,
+        bool rebuildDebounceState,
+        CancellationToken token)
     {
         // 首扫判定看「上一个完整建成的范围」：重建中途抛异常时收口目录已切到新目录，只看收口目录
         // 会让下一次重载同目录跳过首扫，那目录里的既有文件就永远漏扫。深度键也算范围——
@@ -721,7 +793,10 @@ public sealed class MetadataCleanerWorker : BackgroundService
         // 去抖队列的复用看「当前收口目录」：换了目录必须丢弃旧目录压在窗口内的在途路径，否则它们会被
         // 新 pipeline 照常清除元数据。窗口未变才复用——#85 只护住「已弹队」那一段，拆卸时若把队列连同
         // 窗口内的路径一起丢掉，新 watcher 的轮询初始快照会把这些文件当既有文件，从此永不再报。
-        var debounceWindowUnchanged = _debounceQueue is not null
+        // 回滚（rebuildDebounceState）一律重建：失败尝试可能已把队列换成新配置的窗口，复用它会让
+        // 回滚后的去抖窗口仍是新值，旧窗口里的在途路径也不会被补扫回来。
+        var debounceWindowUnchanged = !rebuildDebounceState
+            && _debounceQueue is not null
             && SamePath(_activeWatchFolder, config.Watch.HotFolder)
             && _currentConfig?.Watch.DebounceMs == config.Watch.DebounceMs;
 
@@ -744,7 +819,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
             {
                 // 记录的取舍：差集没有基准可用，退回整目录补扫——多捞的已处理文件此时只能靠去重表兜
                 // （审计目录同批改时新表为空，会重处理）。选它是因为另一头漏捞等于元数据静默留存。
-                _logger.LogWarning(ex, "重载拆卸前的目录快照未建成，本次重载改走整目录补扫。");
+                _logger.LogWarning(ex, "重载拆卸前的目录快照未建成，本次重建改走整目录补扫。");
                 fullSweep = true;
                 await EmitHandoffDegradedAsync(config, ex.Message);
             }
@@ -801,21 +876,6 @@ public sealed class MetadataCleanerWorker : BackgroundService
         DisposeQuietly(retiredStore);
         DisposeQuietly(retiredAudit);
 
-        // ponytail: empty config paths (config.sample.json defaults to "") would throw
-        // ArgumentException on Directory.CreateDirectory — skip if blank.
-        if (!string.IsNullOrWhiteSpace(config.Watch.HotFolder))
-        {
-            Directory.CreateDirectory(config.Watch.HotFolder);
-        }
-        if (!string.IsNullOrWhiteSpace(config.Audit.LogDirectory))
-        {
-            Directory.CreateDirectory(config.Audit.LogDirectory);
-        }
-        if (!string.IsNullOrWhiteSpace(config.Quarantine.Directory))
-        {
-            Directory.CreateDirectory(config.Quarantine.Directory);
-        }
-
        if (string.IsNullOrWhiteSpace(config.Watch.HotFolder))
        {
            _autoExcludedSubdirectories = Array.Empty<string>();
@@ -855,15 +915,17 @@ public sealed class MetadataCleanerWorker : BackgroundService
         _autoExcludedSubdirectories = _watcher.GetAutoExcludedSubdirectories();
 
         // 先起 watcher 再扫描：扫描期间新建的文件若没被 FSW 盯住，会落进轮询兜底的初始快照，从此永不上报。
-        // Design(#82): 重载首扫之前必须先起 watcher。
+        // Design(#82): 重载首扫之前必须先起 watcher（#100）。
         _watcher.Start();
 
         // 其余重载不整目录补扫：审计目录一改，新的去重记录表是空的，把既有文件全排一遍就会重处理，
-        // fixed_directory 产物可被覆盖。
+        // fixed_directory 产物可被覆盖。例外是回滚（rebuildDebounceState）：失败尝试从拆卸到抛错之间
+        // 没有任何事件源盯着目录，空窗可达数秒，而差集只覆盖本次这一趟，故回滚一律全量补扫——
+        // 已处理文件由回滚重建的旧去重表挡住。
         // 非全量补扫时只捞差集，多一个都不捞：窗口外已处理过的文件即便 mtime 很新也不该再进队列。
         // 残余：窗口内被原地改写、长度与 mtime 都没变的写入判不出来（保留时间戳的同名覆盖），
         // 那种写入不留任何可比对的元数据，只能靠范围变更时的整目录补扫兜。
-        // Design(#82): 重载首扫只在「监控范围被启用」或队列被重建（在途去抖项已随旧队列丢弃）时全量补扫。
+        // Design(#82): 重载首扫只在「监控范围被启用」或队列被重建（在途去抖项已随旧队列丢弃）时全量补扫（#100）。
         if (Directory.Exists(config.Watch.HotFolder))
         {
             // 扫描深度取自 include_subdirectories：FSW 按这个键建监听，越界扫到的子目录文件规则引擎并不过滤。
