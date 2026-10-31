@@ -809,7 +809,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
         // 文件又只能靠去重表挡住——同一次重载换了审计目录时新表是空的，多捞的就是重处理。
         // 空基准只是「本次走全量补扫」的占位：差集判定只在非全量补扫那条分支上才发生。
         // Design(#114): 非全量补扫的回收判据是拆卸前后的目录快照差集，不用 mtime 余量、不靠去重表兜多捞；快照没建成与回滚（#112）两条退路仍走全量补扫，残余登记 #114。
-        var handoffBaseline = new Dictionary<string, FileFingerprint>(StringComparer.OrdinalIgnoreCase);
+        var handoffBaseline = new Dictionary<string, FileFingerprint>(PathKeyComparer);
         if (!fullSweep)
         {
             try
@@ -995,13 +995,21 @@ public sealed class MetadataCleanerWorker : BackgroundService
         => string.Equals(left, right, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
 
     /// <summary>
+    /// 快照字典的路径键比较器，与 <see cref="SamePath"/> 同一口径：Windows 大小写不敏感、类 Unix 敏感。
+    /// 在大小写敏感的文件系统上一律 OrdinalIgnoreCase 会让 Photo.jpg 与 photo.jpg 撞成一个键，
+    /// 差集于是把没变的那个当成变了多捞一次。
+    /// </summary>
+    private static StringComparer PathKeyComparer
+        => OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+
+    /// <summary>
     /// 拆卸起点上的监控目录基准：路径 → (长度, 最后写入时间)，深度取 include_subdirectories，
     /// 与重建后的首扫同一口径——两份名单口径不一致，差集就会把范围外的文件当成窗口内新落地的。
     /// 目录尚不存在时返回空基准：此后枚举到的都算新落地。
     /// </summary>
     private static Dictionary<string, FileFingerprint> CaptureWatchFolderSnapshot(AppConfig config)
     {
-        var snapshot = new Dictionary<string, FileFingerprint>(StringComparer.OrdinalIgnoreCase);
+        var snapshot = new Dictionary<string, FileFingerprint>(PathKeyComparer);
         if (!Directory.Exists(config.Watch.HotFolder))
         {
             return snapshot;
