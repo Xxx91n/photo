@@ -144,6 +144,9 @@
 > 整条 run 仍显示红，红的是 `markers` job——
 > src 里两条存量 `Design(#100)` 标记指向 #100 关闭后的死号，门禁脚本在 main 工作树上同样红，
 > 与 K 组和本用例无关，已单独记在 #118，别把它读成 AC1 未达。
+> （勘误，2026-10-31 #125：这一句只对写下它时的 head 成立。`aabdfaa9` 已把那两条标记改指存续的 `Design(#82)`，
+> 且该提交在本轮取证基线 `d07129a0` 之前，`bash scripts/check-design-markers.sh` 在 HEAD 退出 0——
+> 现在按当前 main 重跑不会再有 markers 恒红这件事。#118 票本身仍 OPEN，其前提已在代码侧消失。）
 > **口径提醒**：CI 的 dotnet test 只跑 ubuntu，本用例在 CI 走 Unix socket 分支；
 > Windows 命名管道分支（实机形态）与下面四项的界面呈现一样，只能实机验证。
 > 另：该用例沿用本类既有夹具的 `exiftool.dry_run = true`，而发版包出厂是 `false`——
