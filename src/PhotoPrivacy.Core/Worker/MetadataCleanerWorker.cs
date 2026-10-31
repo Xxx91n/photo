@@ -62,7 +62,8 @@ public sealed class MetadataCleanerWorker : BackgroundService
     ///
     /// 这段窗口真实耗时只有毫秒级，靠时间投放文件撞不中；handoff 兜底要可重复地验，
     /// 必须有个确定的落点（#114）。两种用法：往窗口里投放文件，或把窗口撑长。
-    /// 生产路径不赋值，为 null 时不产生任何行为。
+    /// 生产路径不赋值，为 null 时不产生任何行为。重载失败回滚（#112）会再走一遍建运行时，
+    /// 因此钩子可能被触发两次；回滚那趟恒全量补扫，钩里投放的文件不经差集判定。
     /// </summary>
     // Design(#114): 拆卸窗口的起止由注入钩子划定（生产不赋值），测试不得靠 sleep 猜窗口边界。
     public Func<Task>? TeardownWindowHookAsync { get; set; }
@@ -807,7 +808,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
         // 差集比的是 (长度, mtime)：只看 mtime 余量的话，保留源时间戳的写入躲得过判定，判定多捞到的已处理
         // 文件又只能靠去重表挡住——同一次重载换了审计目录时新表是空的，多捞的就是重处理。
         // 空基准只是「本次走全量补扫」的占位：差集判定只在非全量补扫那条分支上才发生。
-        // Design(#114): handoff 兜底的回收判据是拆卸前后的目录快照差集，不用 mtime 余量，也不得靠去重表兜多捞。
+        // Design(#114): 非全量补扫的回收判据是拆卸前后的目录快照差集，不用 mtime 余量、不靠去重表兜多捞；快照没建成与回滚（#112）两条退路仍走全量补扫，残余登记 #114。
         var handoffBaseline = new Dictionary<string, FileFingerprint>(StringComparer.OrdinalIgnoreCase);
         if (!fullSweep)
         {
@@ -924,7 +925,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
         // 已处理文件由回滚重建的旧去重表挡住。
         // 非全量补扫时只捞差集，多一个都不捞：窗口外已处理过的文件即便 mtime 很新也不该再进队列。
         // 残余：窗口内被原地改写、长度与 mtime 都没变的写入判不出来（保留时间戳的同名覆盖），
-        // 那种写入不留任何可比对的元数据，只能靠范围变更时的整目录补扫兜。
+        // 那种写入不留任何可比对的元数据，本路径判不出来；只有后续范围变更触发整目录补扫才会再碰到它。
         // Design(#82): 重载首扫只在「监控范围被启用」或队列被重建（在途去抖项已随旧队列丢弃）时全量补扫（#100）。
         if (Directory.Exists(config.Watch.HotFolder))
         {

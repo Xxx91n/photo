@@ -33,7 +33,7 @@ const SAVE_STATUS_TTL: Duration = Duration::from_secs(3);
 /// 复制反馈显示时长。
 const COPY_FEEDBACK_TTL: Duration = Duration::from_secs(2);
 
-// Design(#82): Tab/Shift+Tab 绑定到焦点遍历动作，动作回调只调 window.focus_next/prev；
+// Design(#119): Tab/Shift+Tab 绑定到焦点遍历动作，动作回调只调 window.focus_next/prev；
 // Enter/Space 激活沿用 gpui 内建的合成点击（focusable + on_click 控件），不再自管按键。
 actions!(photoprivacy_ui, [FocusNext, FocusPrev]);
 
@@ -62,7 +62,7 @@ pub(crate) fn focus_ring(ring: Rgba) -> impl FnOnce(StyleRefinement) -> StyleRef
 }
 
 /// 配置页可聚焦控件登记：稳定句柄（跨渲染身份不变）+ 布局探针（供滚动揭示取坐标）。
-// Design(#82): Tab/Shift+Tab 移焦后必须把聚焦控件滚入 config-scroll 视口，否则焦点环在
+// Design(#119): Tab/Shift+Tab 移焦后必须把聚焦控件滚入 config-scroll 视口，否则焦点环在
 // 视口外不可见、键盘用户失位；探针不设 overflow，滚轮 delta 恒为 0 且不吞事件，
 // 只借 track_scroll 记录控件窗口坐标。
 #[derive(Default)]
@@ -538,7 +538,7 @@ impl AppView {
         let config_registry = Rc::new(RefCell::new(FocusRegistry::default()));
         let mut fields = HashMap::new();
         for id in FieldId::ALL {
-            // Design(#82): 输入框句柄经登记表创建（tab_stop 已置），Tab/Shift+Tab 依序经过全部字段。
+            // Design(#119): 输入框句柄经登记表创建（tab_stop 已置），Tab/Shift+Tab 依序经过全部字段。
             let focus = config_registry
                 .borrow_mut()
                 .focus_handle(id.element_id(), cx);

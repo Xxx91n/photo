@@ -710,7 +710,7 @@ public sealed class WorkerReloadConfigRegressionTests
     {
         // 防的具体回潮形态：失败尝试按新 DebounceMs 换掉去抖队列后抛错，回滚直接复用这条队列——
         // 回滚后的去抖窗口仍是新配置的值，旧窗口里的在途路径既不补扫也不在新队列里，文件静默漏处理
-        // （#112 回滚路径上的 #85 形态）。前提：文件的 mtime 早于回滚补扫的下限（拆卸起点 - 2 s），
+        // （#112 回滚路径上的 #85 形态）。前提：文件的 mtime 拨到 10 s 前，拆卸窗口的差集捞不到它，
         // 只有「回滚重建队列 + 全量补扫」能把它捞回来。
         // 关联 issue #112。
         var fixture = await StartProcessingWorkerAsync(debounceMs: 8000);
@@ -721,7 +721,7 @@ public sealed class WorkerReloadConfigRegressionTests
 
             var inFlight = Path.Combine(fixture.Hot, "in-flight-before-failed-reload.jpg");
             await File.WriteAllTextAsync(inFlight, "in-flight");
-            // mtime 拨到 10 s 前：排除回滚的 handoff 余量窗口，只剩全量补扫能捞回它。
+            // mtime 拨到 10 s 前：排除拆卸窗口的差集回收，只剩全量补扫能捞回它。
             File.SetLastWriteTimeUtc(inFlight, DateTime.UtcNow.AddSeconds(-10));
             // 1.2 s 足够事件进入旧队列，又远小于 8 s 窗口——重载发生时它仍未处理。
             await Task.Delay(1200);
