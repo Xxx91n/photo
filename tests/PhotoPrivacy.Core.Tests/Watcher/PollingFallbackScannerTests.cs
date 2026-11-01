@@ -80,6 +80,7 @@ public sealed class PollingFallbackScannerTests
         }
     }
 
+    /// <summary>轮询等待条件成立（兜底用例的观察窗），超时回 false 供断言定性。</summary>
     private static async Task<bool> WaitForAsync(Func<bool> condition, TimeSpan budget)
     {
         var deadline = DateTime.UtcNow + budget;

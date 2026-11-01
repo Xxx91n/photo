@@ -203,6 +203,7 @@ public sealed class WorkerStartupSweepScopeTests
         return JsonSerializer.Serialize(payload);
     }
 
+    /// <summary>轮询等待指定文件名的处理记录出现（CI 上处理完成时点不定），超时回最终观测值。</summary>
     private static async Task<bool> WaitForProcessedRecordForAsync(string processedPath, string fileName, TimeSpan budget)
     {
         var deadline = DateTime.UtcNow + budget;
@@ -219,6 +220,7 @@ public sealed class WorkerStartupSweepScopeTests
         return HasProcessedRecordFor(processedPath, fileName);
     }
 
+    /// <summary>单次读取 processed.ndjson 判断指定文件名是否已有处理记录（半行不计入）。</summary>
     private static bool HasProcessedRecordFor(string processedPath, string fileName)
     {
         if (!File.Exists(processedPath))
@@ -251,6 +253,7 @@ public sealed class WorkerStartupSweepScopeTests
         }
     }
 
+    /// <summary>best-effort 清理临时夹具：FSW 句柄释放有延迟，删除失败不掩盖断言结果。</summary>
     private static void TryDelete(string root)
     {
         try
