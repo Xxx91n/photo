@@ -204,7 +204,7 @@ public sealed class WorkerIpcRequestHandler
     /// Read the tail N lines of today audit JSONL file.
     /// Returns empty array if the log directory or file is missing.
     /// </summary>
-    // Design(#41): 回填只认基础名 audit-<date>.jsonl，分卷 audit-<date>_N.jsonl 的行不返回——记录在案的接受行为，非缺陷；分卷与清理生命周期归 #41。
+    // Design(#41): 读取只认基础名 audit-<date>.jsonl，分卷 audit-<date>_N.jsonl 的行不返回——记录在案的接受行为，非缺陷；分卷与清理生命周期归 #41。
     private string[] ReadRecentAuditLogs(int maxLines)
     {
         try

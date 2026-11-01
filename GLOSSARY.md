@@ -11,7 +11,7 @@
 ## 业务
 
 **Audit Log**：业务审计日志（JSONL，路径脱敏+哈希），记录 wipe、backup、config 事件。
-**Shard（分卷）**：单日审计 JSONL 触及 100MB 上限后按 `_N` 序号续写的文件族；IPC 回填与 UI tail 只认基础名 `audit-<date>.jsonl`，分卷行不经日志页返回——记录在案的接受行为（#135，生命周期归 #41），非缺陷。
+**Shard（分卷）**：单日审计 JSONL 触及 100MB 上限后按 `_N` 序号续写的文件族；`GetRecentLogs`（IPC Log Pull）与 UI tail 只认基础名 `audit-<date>.jsonl`，分卷行不经日志页返回——记录在案的接受行为（#135，生命周期归 #41），非缺陷。写入侧 rollover 现状与设计不符，见 #144。
 **Diagnostic Log**：运行诊断日志（启动/配置/ExifTool 交互/异常），统一走 Serilog。
 **Backup**：源文件清理前的原始副本；镜像相对路径布局，同内容跳过、分歧内容写时间戳旁路版本，绝不静默覆盖。
 **Quarantine**：处理失败或可疑文件的隔离目录。

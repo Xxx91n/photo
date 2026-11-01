@@ -237,7 +237,7 @@ impl AuditFeed {
 }
 
 /// 旧 UI `AuditTailService.BuildAuditPath` 的等价实现（本地日期）。
-// Design(#41): tail 只认基础名 audit-<date>.jsonl，分卷 audit-<date>_N.jsonl 不进 tail 与回填——记录在案的接受行为，非缺陷；分卷与清理生命周期归 #41。
+// Design(#41): tail 只认基础名 audit-<date>.jsonl，分卷 audit-<date>_N.jsonl 的行不进 tail——记录在案的接受行为，非缺陷；分卷与清理生命周期归 #41。
 pub fn audit_path(directory: &Path, day: NaiveDate) -> PathBuf {
     directory.join(format!("audit-{}.jsonl", day.format("%Y-%m-%d")))
 }
