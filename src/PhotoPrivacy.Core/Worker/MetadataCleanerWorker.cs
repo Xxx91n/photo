@@ -425,9 +425,13 @@ public sealed class MetadataCleanerWorker : BackgroundService
         }
 
         _reloadGate.Dispose();
-        _standbySignal.Dispose();
 
         await base.StopAsync(cancellationToken);
+        // 待机等待必须在 ExecuteTask 收敛后才 Dispose：#117 修复（先 Cancel）与 .NET 10 的
+        // SemaphoreSlim.Dispose（只清等待队列、不完成等待者）之间存在竞态——若 Dispose 抢在
+        // 取消回调把等待者移出队列之前执行，等待者会被永久挂起（CI 稳定复现、本地间歇复现）。
+        // 先让 base.StopAsync 等到 ExecuteAsync 观察到取消并返回，再释放信号量，窗口消失。
+        _standbySignal.Dispose();
 
         // ExecuteAsync 已在 base.StopAsync 中完成（待机分支观察到取消后返回），可以释放停机信号。
         _standbyStopCts.Dispose();
