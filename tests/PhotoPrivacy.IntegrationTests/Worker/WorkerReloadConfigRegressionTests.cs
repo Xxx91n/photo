@@ -878,14 +878,15 @@ public sealed class WorkerReloadConfigRegressionTests
                 await transport.DisposeAsync();
             }
 
-            // 停机必须有界，但本用例不在这里断言它停得下来：finally 里抛出的异常会顶掉 try 内的真实
-            // 断言失败，把「连通性没验过」伪装成「只是停不下来」。
-            // 仍在待机态就 StopAsync 会挂住是 #117 登记的独立缺陷；基类 StopAsync 只受调用方 token 约束，
-            // 挂住会一路吃到 test.runsettings 的 1 h TestSessionTimeout——CI 只剩一条无名的红。
-            // 5 s 有界停机：拿不到结果也只降级继续，ExecuteAsync 那条任务留给进程退出收口。
-            // #117 修好后，把这里改回「断言 StopAsync 在预算内完成」（那条红测挂在 #117）。
+            // 停机必须有界且必须断言它停得下来（#117）：待机态 StopAsync 曾因 .NET 10 的
+            // SemaphoreSlim.Dispose 只清空等待队列、不会让挂起的 WaitAsync 完成而挂住（重入重试才抛
+            // ObjectDisposedException，首次挂起等待不会被它打断）；基类 StopAsync 只受调用方 token
+            // 约束，挂住会一路吃到 test.runsettings 的 1 h TestSessionTimeout——CI 只剩一条无名的红。
+            // 修复后停机先显式取消待机等待（_standbyStopCts），待机分支立刻收敛，base.StopAsync 按预算完成。
+            // 用比 stopCts 更紧的 WaitAsync(3 s) 断言：挂住会以 TimeoutException 显式失败，不留降级口。
             using var stopCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            await worker.StopAsync(stopCts.Token);
+            await worker.StopAsync(stopCts.Token).WaitAsync(TimeSpan.FromSeconds(3));
+            Assert.True(worker.ExecuteTask.IsCompleted, "停机后 ExecuteAsync 必须已完成（#117：待机等待被显式打断并返回）");
             TryDelete(root);
         }
     }
