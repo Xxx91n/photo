@@ -532,7 +532,7 @@ mod tests {
 
     #[test]
     fn watermark_still_applies_after_audit_file_is_archived() {
-        // 防：水位隐式绑定具体文件（路径/偏移），归档改名后过滤失效（#137；E5 原型形态）。
+        // 防：水位隐式绑定具体文件（路径/偏移），归档改名后过滤失效（#102 B′；E5 原型形态）。
         let temp = tempfile::tempdir().expect("temp dir");
         let day = Local::now().date_naive();
         let path = audit_path(temp.path(), day);
@@ -540,7 +540,17 @@ mod tests {
         feed.start();
         feed.set_backfill_watermark(Some(utc("2026-11-01T02:03:04Z")));
 
-        // 活动文件归档改名 + 同名重建：水位不指向文件，过滤照常按行内时刻生效。
+        // 归档前活动文件已有两行并消费到末尾（建立真实 tail 位置），随后改名留档、
+        // 同名重建继续写：重建文件更短，tail 走「截断/替换」路径从头上重读。
+        append(
+            &path,
+            &format!("{}\n", line("archived_1", "2026-11-01T02:03:02Z")),
+        );
+        append(
+            &path,
+            &format!("{}\n", line("archived_2", "2026-11-01T02:03:03Z")),
+        );
+        assert_eq!(feed.poll_tail_on(day).len(), 2);
         fs::rename(&path, temp.path().join("audit-cleared-archive.jsonl")).expect("archive rename");
         append(
             &path,
@@ -549,9 +559,10 @@ mod tests {
 
         let old = line("old", "2026-11-01T02:03:03Z");
         let post = line("post_backfill", "2026-11-01T02:03:06Z");
+        // backfill 混入归档前的旧行：水位只看行内时刻、不指向文件，旧行仍被挡住。
         assert_eq!(feed.accept_backfill(&[old, post.clone()]), vec![post]);
 
-        // tail 在重建的活动文件上照常读出新行；归档名不进 tail。
+        // tail 在重建的活动文件上照常读出新行；归档名不进 tail，归档内容不回流。
         assert_eq!(
             feed.poll_tail_on(day),
             vec![line("post_archive", "2026-11-01T02:03:06Z")]
