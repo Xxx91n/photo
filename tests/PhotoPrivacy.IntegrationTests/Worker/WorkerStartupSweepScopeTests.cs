@@ -43,13 +43,14 @@ public sealed class WorkerStartupSweepScopeTests
             new NullApplicationLifetime(),
             new RuntimeControl());
 
+        // 启动前投放两个文件：顶层在监听范围内，子目录在范围外——两者都是启动首扫的枚举对象。
+        // 必须先于 StartAsync：否则 watcher/轮询事件能满足正向断言，启动首扫被删也可能假绿（CodeRabbit）。
+        await File.WriteAllTextAsync(Path.Combine(hot, "in-scope.jpg"), "in-scope");
+        await File.WriteAllTextAsync(Path.Combine(nested, "out-of-scope.jpg"), "out-of-scope");
+
         await worker.StartAsync(CancellationToken.None);
         try
         {
-            // 启动前投放两个文件：顶层在监听范围内，子目录在范围外——两者都是启动首扫的枚举对象。
-            await File.WriteAllTextAsync(Path.Combine(hot, "in-scope.jpg"), "in-scope");
-            await File.WriteAllTextAsync(Path.Combine(nested, "out-of-scope.jpg"), "out-of-scope");
-
             // 启动后另投一个子目录文件：轮询兜底与 FSW 都不得把它报进队列（#109 的兜底深度裁定）。
             await File.WriteAllTextAsync(Path.Combine(nested, "post-start-nested.jpg"), "post-start");
 
