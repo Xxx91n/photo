@@ -14,6 +14,7 @@ public sealed class PollingFallbackScanner : IDisposable
     private readonly Func<string, Task> _onPath;
     private readonly Func<string, bool> _shouldSkip;
     private readonly TimeSpan _interval;
+    private readonly bool _includeSubdirectories;
     private readonly ILogger _logger;
 
     private Timer? _timer;
@@ -25,12 +26,14 @@ public sealed class PollingFallbackScanner : IDisposable
         Func<string, Task> onPath,
         Func<string, bool> shouldSkip,
         TimeSpan interval,
+        bool includeSubdirectories,
         ILogger? logger = null)
     {
         _rootPath = rootPath;
         _onPath = onPath;
         _shouldSkip = shouldSkip;
         _interval = interval < TimeSpan.FromSeconds(1) ? TimeSpan.FromSeconds(1) : interval;
+        _includeSubdirectories = includeSubdirectories;
         _logger = logger ?? NullLogger.Instance;
     }
 
@@ -114,16 +117,19 @@ public sealed class PollingFallbackScanner : IDisposable
         return changes;
     }
 
+    /// <summary>
+    /// 当前目录快照：路径 → (最后写入, 长度)，深度取构造时传入的 <c>includeSubdirectories</c>，
+    /// 与 FSW 监听深度同源（#109）。单个文件在枚举与取 FileInfo 之间消失属正常竞态，跳过不报错。
+    /// </summary>
     private Dictionary<string, FileSnapshot> TakeSnapshot()
     {
         var snapshot = new Dictionary<string, FileSnapshot>(StringComparer.OrdinalIgnoreCase);
 
-        if (!Directory.Exists(_rootPath))
-            return snapshot;
-
         try
         {
-            foreach (var file in Directory.EnumerateFiles(_rootPath, "*", SearchOption.AllDirectories))
+            // 快照深度与 FSW 监听深度同源：include_subdirectories=false 时兜底只盯顶层，
+            // 否则监听范围外新建的子目录文件仍会被上报处理（#109）。
+            foreach (var file in WatchFolderEnumeration.EnumerateFiles(_rootPath, _includeSubdirectories))
             {
                 if (_shouldSkip(file))
                     continue;

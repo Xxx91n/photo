@@ -105,6 +105,10 @@ public sealed class MetadataCleanerWorker : BackgroundService
         _runtimeControl = runtimeControl;
     }
 
+    /// <summary>
+    /// Worker 主流程：加载并校验配置 → 空监控目录进待机（等重载配置）→ 建运行时（目录、审计、桥）
+    /// → 先起 watcher 再首扫（once 模式只「枚举→drain→退出」，不起 watcher）→ 进入处理循环。
+    /// </summary>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         AppConfig config;
@@ -232,10 +236,19 @@ public sealed class MetadataCleanerWorker : BackgroundService
                 stoppingToken);
         }
 
-        // Skip enumeration if hot folder is empty — prevents ArgumentException
-        if (!string.IsNullOrWhiteSpace(config.Watch.HotFolder) && Directory.Exists(config.Watch.HotFolder))
+        // 先起 watcher 再扫描（与重载首扫同一时序）：扫描期间新建的文件若没被 FSW 盯住，
+        // 会落进轮询兜底的初始快照，从此永不上报。once 模式没有监控运行时，保持「枚举→清理→退出」的既有时序。
+        // Design(#109): 启动首扫之前必须先起 watcher，与重载首扫同一时序（once 模式无监控运行时，除外）。
+        if (!once)
         {
-            foreach (var file in Directory.EnumerateFiles(config.Watch.HotFolder, "*", SearchOption.AllDirectories))
+            _watcher.Start();
+        }
+
+        _appliedWatchFolder = config.Watch.HotFolder;
+
+        if (!string.IsNullOrWhiteSpace(config.Watch.HotFolder))
+        {
+            foreach (var file in WatchFolderEnumeration.EnumerateFiles(config.Watch.HotFolder, config.Watch.IncludeSubdirectories))
             {
                 EnqueueIfNeeded(file);
             }
@@ -247,9 +260,6 @@ public sealed class MetadataCleanerWorker : BackgroundService
             _applicationLifetime.StopApplication();
             return;
         }
-
-        _watcher.Start();
-        _appliedWatchFolder = config.Watch.HotFolder;
 
         // Log inotify limits on Linux (non-blocking diagnostic)
         var inotifyDiag = InotifyMonitor.CheckAndWarn(_logger);
@@ -780,6 +790,11 @@ public sealed class MetadataCleanerWorker : BackgroundService
         }
     }
 
+    /// <summary>
+    /// 建一遍运行期组件：拆卸旧实例（停 watcher、释放 store/audit），按配置重建并在之后做首扫
+    /// 或拆卸窗口差集回收（fullSweep / handoffBaseline 决定）。失败语义与回滚由调用方
+    /// <see cref="RebuildRuntimeAsync"/> 负责；首扫与快照的深度一律走 <see cref="WatchFolderEnumeration"/>。
+    /// </summary>
     private async Task BuildRuntimeAsync(
         AppConfig config,
         bool rebuildDebounceState,
@@ -929,11 +944,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
         // Design(#82): 重载首扫只在「监控范围被启用」或队列被重建（在途去抖项已随旧队列丢弃）时全量补扫（#100）。
         if (Directory.Exists(config.Watch.HotFolder))
         {
-            // 扫描深度取自 include_subdirectories：FSW 按这个键建监听，越界扫到的子目录文件规则引擎并不过滤。
-            var searchOption = config.Watch.IncludeSubdirectories
-                ? SearchOption.AllDirectories
-                : SearchOption.TopDirectoryOnly;
-            foreach (var path in Directory.EnumerateFiles(config.Watch.HotFolder, "*", searchOption))
+            foreach (var path in WatchFolderEnumeration.EnumerateFiles(config.Watch.HotFolder, config.Watch.IncludeSubdirectories))
             {
                 if (fullSweep || ChangedInsideHandoffWindow(handoffBaseline, path))
                 {
@@ -1010,15 +1021,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
     private static Dictionary<string, FileFingerprint> CaptureWatchFolderSnapshot(AppConfig config)
     {
         var snapshot = new Dictionary<string, FileFingerprint>(PathKeyComparer);
-        if (!Directory.Exists(config.Watch.HotFolder))
-        {
-            return snapshot;
-        }
-
-        var searchOption = config.Watch.IncludeSubdirectories
-            ? SearchOption.AllDirectories
-            : SearchOption.TopDirectoryOnly;
-        foreach (var path in Directory.EnumerateFiles(config.Watch.HotFolder, "*", searchOption))
+        foreach (var path in WatchFolderEnumeration.EnumerateFiles(config.Watch.HotFolder, config.Watch.IncludeSubdirectories))
         {
             var info = new FileInfo(path);
             if (info.Exists)
@@ -1181,15 +1184,13 @@ public sealed class MetadataCleanerWorker : BackgroundService
             _config = config;
         }
 
+        /// <summary>
+        /// FSW 出错恢复后的补扫：深度跟随 <c>include_subdirectories</c>（#109），只收扩展名白名单内的文件。
+        /// </summary>
         public IReadOnlyList<string> ScanAll(string rootPath)
         {
-            if (!Directory.Exists(rootPath))
-            {
-                return [];
-            }
-
-            return Directory
-                .EnumerateFiles(rootPath, "*", SearchOption.AllDirectories)
+            return WatchFolderEnumeration
+                .EnumerateFiles(rootPath, _config.Watch.IncludeSubdirectories)
                 .Where(path => IsAllowed(path, _config.Rules.AllowedExtensions ?? []))
                 .ToArray();
         }

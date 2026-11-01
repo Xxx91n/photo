@@ -37,6 +37,10 @@ public sealed class FswFolderWatcher
         _logger = logger ?? NullLogger.Instance;
     }
 
+    /// <summary>
+    /// 启动监控：先起 FSW（EnableRaisingEvents），配置了轮询兜底再起轮询。
+    /// 两者就绪都必须先于调用方的首扫——「watcher 先于扫描」时序的执行点（#109）。
+    /// </summary>
     public void Start()
     {
         _fsw = BuildWatcher();
@@ -46,11 +50,13 @@ public sealed class FswFolderWatcher
         if (_config.Watch.PollingIntervalSeconds > 0)
         {
             var interval = TimeSpan.FromSeconds(_config.Watch.PollingIntervalSeconds);
+            // Design(#109): 轮询兜底的快照深度与 FSW 监听深度同源（include_subdirectories），兜底不得上报监听范围外文件。
             _poller = new PollingFallbackScanner(
                 _config.Watch.HotFolder,
                 _onPath,
                 path => WatchPathFilter.ShouldSkipPath(path, _autoExcludedSubdirectories),
                 interval,
+                _config.Watch.IncludeSubdirectories,
                 _logger);
             _poller.Start();
         }
