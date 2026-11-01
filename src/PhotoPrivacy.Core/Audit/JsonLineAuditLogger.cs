@@ -23,6 +23,8 @@ public sealed class JsonLineAuditLogger : IAuditLogger, IDisposable
     private readonly Task _backgroundTask;
     private readonly CancellationTokenSource _cts = new();
     private bool _disposed;
+    private string? _activeRolloverTarget;
+    private string? _activeRolloverDate;
 
     public JsonLineAuditLogger(
         string logDirectory,
@@ -154,28 +156,53 @@ public sealed class JsonLineAuditLogger : IAuditLogger, IDisposable
     private string ResolveRolloverTarget()
     {
         var baseName = $"audit-{DateTime.UtcNow:yyyy-MM-dd}";
-        var target = Path.Combine(_logDirectory, baseName + ".jsonl");
+        var baseTarget = Path.Combine(_logDirectory, baseName + ".jsonl");
 
-        if (File.Exists(target))
+        // 已记住当前活动目标：同日、文件仍存在且未满 → 续写同一文件，避免每批次重复探测/新建分卷。
+        if (_activeRolloverTarget is not null
+            && _activeRolloverDate == baseName
+            && !FileExistsAndAtLimit(_activeRolloverTarget))
         {
-            try
-            {
-                var info = new FileInfo(target);
-                if (info.Length >= MaxFileSizeBytes)
-                {
-                    var seq = 1;
-                    while (File.Exists(Path.Combine(_logDirectory, $"{baseName}_{seq}.jsonl")))
-                        seq++;
-                    target = Path.Combine(_logDirectory, $"{baseName}_{seq}.jsonl");
-                }
-            }
-            catch
-            {
-                // best effort check
-            }
+            return _activeRolloverTarget;
         }
 
-        return target;
+        // 基础名未满 → 续写基础名。
+        if (!FileExistsAndAtLimit(baseTarget))
+        {
+            _activeRolloverTarget = baseTarget;
+            _activeRolloverDate = baseName;
+            return baseTarget;
+        }
+
+        // 基础名已满 → 复用第一个「不存在或未满」的分卷：未满续写，仅当连续分卷都已满才 seq+1 新建。
+        var seq = 1;
+        string shard;
+        while (true)
+        {
+            shard = Path.Combine(_logDirectory, $"{baseName}_{seq}.jsonl");
+            if (!File.Exists(shard) || !FileExistsAndAtLimit(shard))
+            {
+                break;
+            }
+            seq++;
+        }
+
+        _activeRolloverTarget = shard;
+        _activeRolloverDate = baseName;
+        return shard;
+    }
+
+    private static bool FileExistsAndAtLimit(string path)
+    {
+        try
+        {
+            return File.Exists(path) && new FileInfo(path).Length >= MaxFileSizeBytes;
+        }
+        catch
+        {
+            // best effort：探测失败按未满处理，续写既有文件
+            return false;
+        }
     }
 
     public void CleanupExpired()
