@@ -238,7 +238,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
 
         // 先起 watcher 再扫描（与重载首扫同一时序）：扫描期间新建的文件若没被 FSW 盯住，
         // 会落进轮询兜底的初始快照，从此永不上报。once 模式没有监控运行时，保持「枚举→清理→退出」的既有时序。
-        // Design(#109): 启动首扫之前必须先起 watcher，与重载首扫同一时序（once 模式无监控运行时，除外）。
+        // Design(#82): 启动首扫之前必须先起 watcher，与重载首扫同一时序（once 模式无监控运行时，除外；#109 修复后定稿，残余见 #82 域内）。
         if (!once)
         {
             _watcher.Start();

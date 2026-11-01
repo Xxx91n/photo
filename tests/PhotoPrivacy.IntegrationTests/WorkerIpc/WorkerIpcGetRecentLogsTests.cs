@@ -14,11 +14,11 @@ namespace PhotoPrivacy.IntegrationTests.WorkerIpc;
 ///    本套用例固化它，不是把它改成缺陷；
 /// ③ 目录缺失、文件缺失、读取失败一律空数组且 ok:true，不向调用方抛出。
 ///
-/// 日期基准说明：写入端按 UTC 日期命名、读取端按本地日期读取的三处基准分叉是 #129 的缺陷面；
-/// 本套用例按读取端现行口径（本地「今天」）取样，钉死读取端日期基准——#129 统一基准时，
-/// 这些锚点钉住的契约随之失效，须随该票验收一并改写。注意 CI（ubuntu，本地时区=UTC）上
-/// 单方面把读取端改成 UTC 基准可能不触发红灯，时区≠UTC 的实机才会显红；改写义务
-/// 写在 #129 验收里，不靠红灯兜底。
+/// 日期基准说明：写入端、IPC 回填、UI tail 三处的审计文件名日期基准已随 #129 统一为本地
+/// 「今天」（统一入口 <c>AuditLogFileNames.BaseName</c>，UTC 只保留在行内 <c>timestamp_utc</c>）。
+/// 本套用例按本地日期取样，是统一基准后的契约锚点。注意 CI（ubuntu，本地时区=UTC）上
+/// 本地=UTC，任一端单方面改回 UTC 基准在 CI 可能不触发红灯，时区≠UTC 的实机才会显红——
+/// 三处口径的守卫靠 AuditLogFileNamesTests 与写入端命名用例，不靠 CI 时区巧合。
 /// </summary>
 public sealed class WorkerIpcGetRecentLogsTests
 {
@@ -88,9 +88,9 @@ public sealed class WorkerIpcGetRecentLogsTests
             var response = await GetRecentLogsAsync(logDir);
 
             // 防回潮形态：读取端把「单文件 tail」扩成「枚举 audit-*.jsonl 聚合」——历史日期
-            // 行混进回灌，UI 日志页出现陈旧条目；同时钉死返回范围只含今天文件，任何一端
-            // 单方面改日期基准（写入端 UTC / 读取端本地，#129）都会让本锚点失配——
-            // 时区≠UTC 的实机上显红，CI（UTC）上可能保持绿（见文件头日期基准说明）。
+            // 行混进回灌，UI 日志页出现陈旧条目；同时钉死返回范围只含今天文件。日期基准
+            // 已随 #129 统一为本地「今天」（写入端同口径），任一端单方面改回 UTC 都会让
+            // 本锚点失配——时区≠UTC 的实机上显红，CI（UTC）上可能保持绿（见文件头说明）。
             // 关联 issue #129、#135。
             Assert.Equal(today, OkLines(response));
         }
@@ -133,7 +133,7 @@ public sealed class WorkerIpcGetRecentLogsTests
         try
         {
             // 分卷形状与写入端一致：audit-<日期>_N.jsonl、seq 从 1 起（JsonLineAuditLogger 分卷实现；
-            // 写入端文件名日期基准是 UTC，属 #129 的面，本用例只钉「_N 后缀不回」的排除规则）。
+            // 写入端文件名日期基准已随 #129 统一为本地「今天」，本用例只钉「_N 后缀不回」的排除规则）。
             // 今天基础名文件同时在：证明排除的是分卷后缀，不是整个目录。
             var today = new[] { "today-base-01" };
             await File.WriteAllLinesAsync(Path.Combine(logDir, TodayFileName()), today);

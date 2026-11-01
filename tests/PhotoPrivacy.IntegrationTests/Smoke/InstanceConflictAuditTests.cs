@@ -100,7 +100,7 @@ public sealed class InstanceConflictAuditTests : IntegrationTestBase
     {
         var root = Path.Combine(Path.GetTempPath(), "photo-instance-conflict-lock-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
-        var auditFile = Path.Combine(root, $"audit-{DateTime.UtcNow:yyyy-MM-dd}.jsonl");
+        var auditFile = Path.Combine(root, $"audit-{DateTime.Today:yyyy-MM-dd}.jsonl"); // #129：文件名按本地「今天」，与写入端统一基准一致
         await File.WriteAllTextAsync(auditFile, "{\"event_type\":\"service_started\"}" + Environment.NewLine);
 
         FileStream? hold = null;

@@ -59,6 +59,45 @@ public sealed class JsonLineAuditLoggerTests
     }
 
     [Fact]
+    public async Task WriteAsync_Should_Write_Into_Local_Day_Filename_Not_Utc()
+    {
+        // #129 决策钉死：写入端文件名按本地「今天」分卷（与 IPC 回填、UI tail 同口径），
+        // UTC 只保留在行内 timestamp_utc。本用例断言文件名 = 本地日期名。
+        // CI（ubuntu，本地时区=UTC）上本地=UTC，无法靠红灯区分基准——UTC+8 00:00–07:59
+        // 分叉时窗的行为由 AuditLogFileNamesTests 的窗口用例钉死，本用例钉「入口进文件名」。
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+
+        try
+        {
+            var logger = new JsonLineAuditLogger(dir, retainDays: 30, diagnosticMode: false);
+            var ev = new AuditEvent(
+                EventType: "file_processing_succeeded",
+                Level: AuditLevel.Info,
+                TimestampUtc: DateTimeOffset.UtcNow,
+                TaskId: "t-129",
+                SourcePath: @"C:\Users\alice\Pictures\a.jpg",
+                Message: "ok",
+                Data: null);
+
+            await logger.WriteAsync(ev, CancellationToken.None);
+            logger.Dispose();
+
+            var expected = $"audit-{DateTime.Now:yyyy-MM-dd}.jsonl";
+            var file = Directory.GetFiles(dir, "audit-*.jsonl").Single();
+            Assert.Equal(expected, Path.GetFileName(file));
+
+            // 行内时间戳仍是 UTC 表示（#102 水位比较的前提），与文件名日期正交。
+            var line = File.ReadLines(file).Single();
+            Assert.Contains("\"timestamp_utc\"", line);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task Rollover_Should_Append_To_Active_Shard_Until_Full_Then_Advance_Seq()
     {
         var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
