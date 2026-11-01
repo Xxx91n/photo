@@ -163,7 +163,7 @@ fn main() -> anyhow::Result<()> {
         config_event_tx,
     );
 
-    // Design(#137): 清空水位落 config.json 同目录（#136），启动喂给 backfill 过滤、清空时更新。
+    // Design(#102): 清空水位落 config.json 同目录（T1/#136 落地），启动喂给 backfill 过滤、清空时更新。
     let log_service = log_service::start(
         runtime.handle(),
         audit_config,

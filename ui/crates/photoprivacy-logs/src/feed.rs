@@ -131,7 +131,7 @@ impl AuditFeed {
 
     /// 设置 backfill 过滤水位；`None` = 不过滤（首启无水位语义不变）。
     /// 值由调用方决定：启动时来自持久化清空水位，清空时来自清空动作的时刻。
-    // Design(#137): backfill 只交付 timestamp_utc 严格大于清空水位的行——比较基准是
+    // Design(#102): backfill 只交付 timestamp_utc 严格大于清空水位的行——比较基准是
     // 行内绝对 UTC 时刻，与文件名日期、本地墙钟日期、分卷后缀全部无关。
     pub fn set_backfill_watermark(&mut self, watermark: Option<DateTime<Utc>>) {
         self.backfill_watermark = watermark;
