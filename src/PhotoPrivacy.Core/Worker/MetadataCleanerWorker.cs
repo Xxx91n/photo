@@ -105,6 +105,10 @@ public sealed class MetadataCleanerWorker : BackgroundService
         _runtimeControl = runtimeControl;
     }
 
+    /// <summary>
+    /// Worker 主流程：加载并校验配置 → 空监控目录进待机（等重载配置）→ 建运行时（目录、审计、桥）
+    /// → 先起 watcher 再首扫（once 模式只「枚举→drain→退出」，不起 watcher）→ 进入处理循环。
+    /// </summary>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         AppConfig config;
@@ -786,6 +790,11 @@ public sealed class MetadataCleanerWorker : BackgroundService
         }
     }
 
+    /// <summary>
+    /// 建一遍运行期组件：拆卸旧实例（停 watcher、释放 store/audit），按配置重建并在之后做首扫
+    /// 或拆卸窗口差集回收（fullSweep / handoffBaseline 决定）。失败语义与回滚由调用方
+    /// <see cref="RebuildRuntimeAsync"/> 负责；首扫与快照的深度一律走 <see cref="WatchFolderEnumeration"/>。
+    /// </summary>
     private async Task BuildRuntimeAsync(
         AppConfig config,
         bool rebuildDebounceState,
@@ -1175,6 +1184,9 @@ public sealed class MetadataCleanerWorker : BackgroundService
             _config = config;
         }
 
+        /// <summary>
+        /// FSW 出错恢复后的补扫：深度跟随 <c>include_subdirectories</c>（#109），只收扩展名白名单内的文件。
+        /// </summary>
         public IReadOnlyList<string> ScanAll(string rootPath)
         {
             return WatchFolderEnumeration

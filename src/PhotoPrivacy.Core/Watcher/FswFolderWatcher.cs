@@ -37,6 +37,10 @@ public sealed class FswFolderWatcher
         _logger = logger ?? NullLogger.Instance;
     }
 
+    /// <summary>
+    /// 启动监控：先起 FSW（EnableRaisingEvents），配置了轮询兜底再起轮询。
+    /// 两者就绪都必须先于调用方的首扫——「watcher 先于扫描」时序的执行点（#109）。
+    /// </summary>
     public void Start()
     {
         _fsw = BuildWatcher();

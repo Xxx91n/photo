@@ -20,6 +20,7 @@ namespace PhotoPrivacy.IntegrationTests.Worker;
 /// </summary>
 public sealed class WorkerStartupSweepScopeTests
 {
+    /// <summary>启动首扫在 include_subdirectories=false 时只处理顶层既有文件，子目录文件两条通路都不进队列（#109 AC1）。</summary>
     [Fact]
     public async Task Startup_Should_Sweep_Only_The_Configured_Depth_When_Subdirectories_Are_Excluded()
     {

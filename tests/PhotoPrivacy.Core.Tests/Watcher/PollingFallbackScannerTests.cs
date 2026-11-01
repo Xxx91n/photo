@@ -5,6 +5,7 @@ namespace PhotoPrivacy.Core.Tests.Watcher;
 
 public sealed class PollingFallbackScannerTests
 {
+    /// <summary>include_subdirectories=false 时兜底不上报子目录新文件，顶层照报（#109）。</summary>
     [Fact]
     public async Task IncludeSubdirectories_False_Should_Not_Report_Files_Below_The_Top_Level()
     {
@@ -45,6 +46,7 @@ public sealed class PollingFallbackScannerTests
         }
     }
 
+    /// <summary>include_subdirectories=true 时兜底照常上报子目录新文件（#109）。</summary>
     [Fact]
     public async Task IncludeSubdirectories_True_Should_Report_New_Nested_Files()
     {

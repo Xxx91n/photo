@@ -4,6 +4,7 @@ namespace PhotoPrivacy.Core.Tests.Watcher;
 
 public sealed class WatchFolderEnumerationTests
 {
+    /// <summary>枚举入口对不存在的目录必须回空序列而非抛错（#109）。</summary>
     [Fact]
     public void Nonexistent_Root_Should_Enumerate_Nothing()
     {
@@ -15,6 +16,7 @@ public sealed class WatchFolderEnumerationTests
         Assert.Empty(WatchFolderEnumeration.EnumerateFiles(missing, includeSubdirectories: false));
     }
 
+    /// <summary>include_subdirectories=false 只枚举顶层（#109）。</summary>
     [Fact]
     public void IncludeSubdirectories_False_Should_Enumerate_Only_The_Top_Level()
     {
@@ -39,6 +41,7 @@ public sealed class WatchFolderEnumerationTests
         }
     }
 
+    /// <summary>include_subdirectories=true 枚举覆盖子目录（#109）。</summary>
     [Fact]
     public void IncludeSubdirectories_True_Should_Enumerate_Nested_Files()
     {

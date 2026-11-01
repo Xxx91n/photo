@@ -306,6 +306,7 @@ public sealed class WorkerReloadConfigRegressionTests
         }
     }
 
+    /// <summary>false→true 的范围变更必须补扫新放开子目录里的既有文件（#100 审查）。</summary>
     [Fact]
     public async Task Reload_That_Widens_The_Scope_Should_Backfill_Existing_Nested_Files()
     {

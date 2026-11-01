@@ -117,6 +117,10 @@ public sealed class PollingFallbackScanner : IDisposable
         return changes;
     }
 
+    /// <summary>
+    /// 当前目录快照：路径 → (最后写入, 长度)，深度取构造时传入的 <c>includeSubdirectories</c>，
+    /// 与 FSW 监听深度同源（#109）。单个文件在枚举与取 FileInfo 之间消失属正常竞态，跳过不报错。
+    /// </summary>
     private Dictionary<string, FileSnapshot> TakeSnapshot()
     {
         var snapshot = new Dictionary<string, FileSnapshot>(StringComparer.OrdinalIgnoreCase);
