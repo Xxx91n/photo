@@ -1,5 +1,6 @@
 use crate::worker_connection::WorkerLink;
-use photoprivacy_logs::{AuditConfig, AuditFeed, AuditRecord, parse_line};
+use chrono::Utc;
+use photoprivacy_logs::{AuditConfig, AuditFeed, AuditRecord, ClearWatermark, parse_line};
 use std::path::PathBuf;
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -40,11 +41,14 @@ impl LogService {
 /// 启动日志尾部与 backfill 两条后台通道。
 ///
 /// 协调者独占 `AuditFeed`，因此 tail 与 IPC 的交付天然串行：无论谁先到，原始行只会进 UI 一次。
+/// `watermark` 是持久化清空水位（config.json 同目录）：启动时喂给 backfill 过滤，
+/// 用户清空时更新落盘。
 pub fn start(
     runtime: &tokio::runtime::Handle,
     config: AuditConfig,
     link: WorkerLink,
     batches: mpsc::UnboundedSender<LogBatch>,
+    watermark: ClearWatermark,
 ) -> LogService {
     let (commands, command_rx) = mpsc::unbounded_channel();
     let service = LogService {
@@ -53,6 +57,7 @@ pub fn start(
 
     runtime.spawn(run_coordinator(
         config.log_directory,
+        watermark,
         command_rx,
         batches.clone(),
     ));
@@ -62,11 +67,15 @@ pub fn start(
 
 async fn run_coordinator(
     directory: PathBuf,
+    watermark: ClearWatermark,
     mut commands: mpsc::UnboundedReceiver<LogCommand>,
     batches: mpsc::UnboundedSender<LogBatch>,
 ) {
     let mut feed = AuditFeed::new(directory);
     feed.start();
+    // Design(#102): 重启后的 backfill 由落盘清空水位过滤——用户清空后重启，历史行不回灌；
+    // 水位缺失或损坏按无水位处理（fail-open），首启语义不变。
+    feed.set_backfill_watermark(watermark.load());
 
     // Design(#49): 本地 tail 只走 1s 轮询（对齐旧 UI LoopAsync 的兜底节拍），不引入平台 FSW 依赖；
     // FSW 盲区由 IPC backfill 补齐（#57）。
@@ -81,6 +90,12 @@ async fn run_coordinator(
                 match command {
                     Some(LogCommand::Clear { generation: next }) => {
                         generation = next;
+                        // Design(#102): 清空 = 写入新水位（绝对 UTC 时刻，落盘 + 内存过滤）
+                        // + tail 推到文件末尾（既有 clear_view 语义）；落盘失败按 fail-open
+                        // 继续——本会话过滤仍生效，最坏重启回灌一次，与损坏水位同一兜底。
+                        let cleared_at = Utc::now();
+                        let _ = watermark.save(cleared_at);
+                        feed.set_backfill_watermark(Some(cleared_at));
                         feed.clear_view();
                     }
                     Some(LogCommand::Backfill(lines)) => {
@@ -133,5 +148,124 @@ fn publish(lines: Vec<String>, generation: u64, batches: &mpsc::UnboundedSender<
             generation,
             records,
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{DateTime, Duration};
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    struct TempDir(PathBuf);
+
+    impl TempDir {
+        fn new(name: &str) -> Self {
+            let nanos = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
+            let dir = std::env::temp_dir().join(format!(
+                "photoprivacy-log-service-{name}-{}-{nanos}",
+                std::process::id()
+            ));
+            fs::create_dir_all(&dir).unwrap();
+            Self(dir)
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn utc(text: &str) -> DateTime<Utc> {
+        DateTime::parse_from_rfc3339(text)
+            .expect("rfc3339 timestamp")
+            .with_timezone(&Utc)
+    }
+
+    fn line(event: &str, timestamp: &str) -> String {
+        format!(r#"{{"event_type":"{event}","timestamp_utc":"{timestamp}"}}"#)
+    }
+
+    fn drain(batches: &mut mpsc::UnboundedReceiver<LogBatch>) -> Vec<LogBatch> {
+        let mut drained = Vec::new();
+        while let Ok(batch) = batches.try_recv() {
+            drained.push(batch);
+        }
+        drained
+    }
+
+    #[tokio::test]
+    async fn clear_persists_watermark_and_blocks_preclear_backfill() {
+        // 防：清空只清了内存视图、水位没落盘或没接进 backfill 过滤，重启/补拉后历史回灌（#137）。
+        let temp = TempDir::new("clear");
+        let (commands, command_rx) = mpsc::unbounded_channel();
+        let (batches_tx, mut batches_rx) = mpsc::unbounded_channel();
+        let coordinator = tokio::spawn(run_coordinator(
+            temp.0.join("audit"),
+            ClearWatermark::from_directory(&temp.0),
+            command_rx,
+            batches_tx,
+        ));
+
+        commands.send(LogCommand::Clear { generation: 1 }).unwrap();
+        // 清空时刻由协调者取当前时钟：清空前的行必须被挡下，清空后的行正常交付。
+        let before = line("pre_clear", &(Utc::now() - Duration::hours(1)).to_rfc3339());
+        let after = line(
+            "post_clear",
+            &(Utc::now() + Duration::hours(1)).to_rfc3339(),
+        );
+        commands
+            .send(LogCommand::Backfill(vec![before, after]))
+            .unwrap();
+        drop(commands);
+        coordinator.await.unwrap();
+
+        let batches = drain(&mut batches_rx);
+        assert_eq!(batches.len(), 1);
+        assert_eq!(batches[0].generation, 1);
+        assert_eq!(batches[0].records.len(), 1);
+        assert_eq!(batches[0].records[0].event_type, "post_clear");
+
+        // 水位已落盘：重启后的会话能读回。
+        let reloaded = ClearWatermark::from_directory(&temp.0);
+        assert!(reloaded.load().is_some());
+    }
+
+    #[tokio::test]
+    async fn startup_watermark_blocks_history_backfill_after_restart() {
+        // 防：上次会话清空落盘的水位在重启后没接进 backfill 过滤，Logs 页回灌历史（#102 AC2）。
+        let temp = TempDir::new("restart");
+        ClearWatermark::from_directory(&temp.0)
+            .save(utc("2026-11-01T02:03:04Z"))
+            .unwrap();
+
+        let (commands, command_rx) = mpsc::unbounded_channel();
+        let (batches_tx, mut batches_rx) = mpsc::unbounded_channel();
+        let coordinator = tokio::spawn(run_coordinator(
+            temp.0.join("audit"),
+            ClearWatermark::from_directory(&temp.0),
+            command_rx,
+            batches_tx,
+        ));
+
+        // 本会话从未清空：过滤完全来自启动时读回的落盘水位。
+        let history = line("history", "2026-11-01T02:03:03Z");
+        let fresh = line("fresh", "2026-11-01T02:03:05Z");
+        commands
+            .send(LogCommand::Backfill(vec![history, fresh]))
+            .unwrap();
+        drop(commands);
+        coordinator.await.unwrap();
+
+        let batches = drain(&mut batches_rx);
+        assert_eq!(batches.len(), 1);
+        assert_eq!(batches[0].generation, 0);
+        assert_eq!(batches[0].records.len(), 1);
+        assert_eq!(batches[0].records[0].event_type, "fresh");
     }
 }

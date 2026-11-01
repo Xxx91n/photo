@@ -16,11 +16,11 @@ use std::sync::atomic::{AtomicU64, Ordering};
 /// 进程内 save 调用序号：保证每次写入的临时文件名互不相同。
 static SAVE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
-// Design(#136): 水位落 config.json 同目录的独立小文件，不进 config.json（config/rules JSON 契约冻结）。
+// Design(#102): 水位落 config.json 同目录的独立小文件，不进 config.json（config/rules JSON 契约冻结）。
 pub const CLEAR_WATERMARK_FILENAME: &str = "logs-clear-watermark.json";
 
 /// 「清空水位」存储：用户上次清空日志视图的绝对 UTC 时刻。
-// Design(#136): 水位值是绝对 UTC 时刻，不存本地墙钟日期、文件名日期或字节偏移。
+// Design(#102): 水位值是绝对 UTC 时刻，不存本地墙钟日期、文件名日期或字节偏移。
 pub struct ClearWatermark {
     path: PathBuf,
 }
@@ -47,7 +47,7 @@ impl ClearWatermark {
     /// 其余读取失败同样按无水位处理——首启语义不变，绝不阻塞启动。
     ///
     /// 不创建、不改写水位文件；损坏文件的恢复动作是下次清空时的重写。
-    // Design(#136): 文件缺失/损坏一律按无水位处理（fail-open），下次清空重写，load 绝不阻塞启动。
+    // Design(#102): 文件缺失/损坏一律按无水位处理（fail-open），下次清空重写，load 绝不阻塞启动。
     pub fn load(&self) -> Option<DateTime<Utc>> {
         let text = fs::read_to_string(&self.path).ok()?;
         let root: Value = serde_json::from_str(&text).ok()?;
@@ -65,7 +65,7 @@ impl ClearWatermark {
     /// 仍由调用方负责（UI 单实例、单一清空路径，接线归 #137）。崩溃可能残留一个
     /// 临时文件（体积极小、不影响读取），不做清扫——清扫会在并发下删掉别的调用
     /// 正在写的临时文件。
-    // Design(#136): 水位只由用户清空视图写入，原子覆盖（临时文件+rename），连续清空只保留最新。
+    // Design(#102): 水位只由用户清空视图写入，原子覆盖（临时文件+rename），连续清空只保留最新。
     pub fn save(&self, cleared_at: DateTime<Utc>) -> io::Result<()> {
         if let Some(parent) = self.path.parent() {
             fs::create_dir_all(parent)?;
