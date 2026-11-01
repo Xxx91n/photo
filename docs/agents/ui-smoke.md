@@ -132,6 +132,7 @@
 | T3 | 关闭主窗口进程驻守（销毁+重建；主题/连接状态/日志缓冲/服务快照保留，位置/尺寸回中——#59 已登记取舍） | 通过 | 2026-10-28 实机：`CloseMainWindow()` 后进程存活、无 PhotoPrivacy 主窗、Worker 保持 1 个；再启动第二实例（exit 0）主窗重建 |
 | T4 | `ui.hide_main_window_on_startup=true` 时启动仅托盘不弹窗 | 通过 | 2026-10-28 实机：hide=true 启动后无 PhotoPrivacy 主窗（`MainWindowTitle` 仅托盘辅助窗）、进程与 Worker 正常 |
 | T5 | 二次启动不重开：第二实例退出并唤起既有窗口（`Global\PhotoPrivacyUi_Instance`） | 通过 | 2026-10-28 实机 ×3：第二实例 6s 内退出（exit code 0），第一实例存活且主窗可见（title=PhotoPrivacy） |
+| T6 | 首次配置待机态下停机收敛（托盘 Exit / 停服务时 `StopAsync` 不挂满 `ShutdownTimeout`，`#117`） | 未回填 | 待 #117 PR 合并后按「#117 实机停机证据」段补证（自动化侧已由 #113 待机用例断言 CI 绿） |
 
 ### 首次配置待机 4 项（#100 定形，#113 补自动化，#125 桌面截图取证）
 
@@ -175,8 +176,21 @@
   （`dry_run` 保持 `false`，未手改任何配置项），不需要 #113 设想的 dry-run 旁证。
   这不等于 #108 已解决：真裸机（未装 ExifTool）保存有效目录仍会撞 `exiftool.path not found`，
   该票的「裸机解压发布包 → 配置目录 → 监控确实启动」AC 依旧未达，别拿本轮证据去关它。
-- **别把 #117 算进 K 组**：验完 K1-K4 关掉 UI / 停服务时，仍在待机态的 `StopAsync` 会挂住，
-  表现为退出要等满 10 s（`HostOptions.ShutdownTimeout`）甚至留下未拆干净的任务——那是 #117，不是 K 组判据。
+- **#117 已修（2026-11-01 实现窗口）**：待机态 `StopAsync` 挂住曾由 .NET 10 的
+  `SemaphoreSlim.Dispose` 语义导致——Dispose 只清空等待队列，不会让挂起的 `WaitAsync` 完成，
+  首次配置待机这条路径靠「Dispose + catch ObjectDisposedException」兜不住。
+  修复后停机先显式取消待机等待（`_standbyStopCts.Cancel()`），`ExecuteAsync` 待机分支立刻收敛，
+  不再等满 10 s（`HostOptions.ShutdownTimeout`）。自动化侧已由 #113 待机用例改回
+  「断言 `StopAsync` 在预算内完成」（CI 绿，run 号见 PR 正文）；实机停机证据（托盘 Exit /
+  停服务）待 #117 PR 合并后回填 T6，见下文「#117 实机停机证据」段。
+
+### #117 实机停机证据（待回填）
+
+> **目的**：T6 的取证段。自动化侧（#113 待机用例）已断言「待机态 `StopAsync` 在预算内完成」并进 CI 门禁；
+> 实机形态（托盘 Exit / 停服务）仍需按桌面截图 / 进程观察通道补证。
+> 判据：出厂空 `hot_folder` 待机态下，托盘 Exit 或停服务后进程在
+> `HostOptions.ShutdownTimeout`（10 s）内退出，无残留 Worker / UI 进程；观察方式同 T2。
+> **未回填前不得把 T6 记作通过**（无证据不虚构）。待 #117 PR 合并后在独立取证窗口补证回填。
 
 ### K 组取证指引（原名「K 组人工验收指引」，#113 定形，#125 换用桌面截图通道）
 
