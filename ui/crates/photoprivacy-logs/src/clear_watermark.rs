@@ -1,15 +1,20 @@
 //! 「清空水位」持久化：用户上次清空日志视图的绝对 UTC 时刻。
 //!
 //! 水位文件是 config.json 同目录的独立小文件（`logs-clear-watermark.json`），不进
-//! config.json；写入走 `<文件>.write.tmp` → rename 的原子覆盖，与 `photoprivacy-ui`
-//! 的 config_file.rs 同一写盘顺序。水位损坏不做 `.bak` 备份链——兜底是 fail-open：
-//! 按无水位处理，最坏回灌一次，下次清空重写。
+//! config.json；写入走「同目录临时文件 → rename」的原子覆盖，与 `photoprivacy-ui`
+//! 的 config_file.rs 同一契约，但临时文件每次调用独立命名，多个调用互不踩踏。
+//! 水位损坏不做 `.bak` 备份链——兜底是 fail-open：按无水位处理，最坏回灌一次，
+//! 下次清空重写。
 
 use chrono::{DateTime, SecondsFormat, Utc};
 use serde_json::{Value, json};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+
+/// 进程内 save 调用序号：保证每次写入的临时文件名互不相同。
+static SAVE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 // Design(#136): 水位落 config.json 同目录的独立小文件，不进 config.json（config/rules JSON 契约冻结）。
 pub const CLEAR_WATERMARK_FILENAME: &str = "logs-clear-watermark.json";
@@ -54,6 +59,12 @@ impl ClearWatermark {
 
     /// 写入水位（用户清空视图时的唯一写入口）：临时文件 + rename 原子覆盖，
     /// 同一次进程内连续清空只保留最新一次。
+    ///
+    /// 临时文件按调用独立命名，并发的 save 不会共用固定 `.write.tmp` 互相踩踏
+    /// （一方把另一方的值 rename 落盘、或对方因临时文件消失而失败）；调用的串行化
+    /// 仍由调用方负责（UI 单实例、单一清空路径，接线归 #137）。崩溃可能残留一个
+    /// 临时文件（体积极小、不影响读取），不做清扫——清扫会在并发下删掉别的调用
+    /// 正在写的临时文件。
     // Design(#136): 水位只由用户清空视图写入，原子覆盖（临时文件+rename），连续清空只保留最新。
     pub fn save(&self, cleared_at: DateTime<Utc>) -> io::Result<()> {
         if let Some(parent) = self.path.parent() {
@@ -61,15 +72,24 @@ impl ClearWatermark {
         }
         let body =
             json!({ "cleared_at_utc": cleared_at.to_rfc3339_opts(SecondsFormat::AutoSi, true) });
-        let write_tmp = with_suffix(&self.path, "write.tmp");
+        let write_tmp = self.unique_write_tmp();
         fs::write(&write_tmp, body.to_string())?;
         fs::rename(&write_tmp, &self.path)?;
         Ok(())
     }
+
+    /// `logs-clear-watermark.json` → `logs-clear-watermark.json.write.<pid>.<序号>.tmp`：
+    /// 同目录、每次调用唯一，rename 后即消失；进程内靠序号、跨进程靠 pid 区分。
+    fn unique_write_tmp(&self) -> PathBuf {
+        let sequence = SAVE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+        with_suffix(
+            &self.path,
+            &format!("write.{}.{}.tmp", std::process::id(), sequence),
+        )
+    }
 }
 
-/// `logs-clear-watermark.json` -> `logs-clear-watermark.json.write.tmp`
-/// （字符串追加，不替换扩展名，与 config_file.rs 的临时文件命名一致）。
+/// `文件名` -> `文件名.<suffix>`（字符串追加，不替换扩展名，与 config_file.rs 同一手法）。
 fn with_suffix(path: &Path, suffix: &str) -> PathBuf {
     let mut name = path
         .file_name()
@@ -127,18 +147,27 @@ mod tests {
 
     #[test]
     fn save_is_atomic_and_leaves_no_temp_file_behind() {
-        // 防：写入中途崩溃留下半份水位文件被当成有效时刻，或临时文件长期残留（#136）。
+        // 防：写入中途崩溃留下半份水位文件被当成有效时刻；并发 save 共用固定临时
+        // 文件互相踩踏（CodeRabbit #140 线程）——临时文件按调用独立命名，落盘后
+        // 目录里不残留任何 .tmp（#136）。
         let temp = tempfile::tempdir().expect("temp dir");
         let watermark = ClearWatermark::from_directory(temp.path());
         let cleared_at = utc("2026-11-01T02:03:04Z");
 
         watermark.save(cleared_at).expect("save watermark");
-        assert!(
-            !temp
-                .path()
-                .join("logs-clear-watermark.json.write.tmp")
-                .exists()
-        );
+        watermark.save(cleared_at).expect("save watermark again");
+        let leftovers: Vec<String> = std::fs::read_dir(temp.path())
+            .expect("read dir")
+            .map(|entry| {
+                entry
+                    .expect("dir entry")
+                    .file_name()
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .filter(|name| name.ends_with(".tmp"))
+            .collect();
+        assert_eq!(leftovers, Vec::<String>::new());
         assert_eq!(
             ClearWatermark::from_directory(temp.path()).load(),
             Some(cleared_at)
