@@ -5,11 +5,13 @@
 //! 去重记忆有上限，清空视图不删除记忆（防止已清空历史经 backfill 回流）。
 
 mod buffer;
+mod clear_watermark;
 mod config;
 mod feed;
 mod model;
 
 pub use buffer::{LogBuffer, MAX_LOG_ENTRIES};
+pub use clear_watermark::{CLEAR_WATERMARK_FILENAME, ClearWatermark};
 pub use config::{AuditConfig, resolve_audit_config};
 pub use feed::{AuditFeed, DELIVERED_MEMORY_CAP, DeliveredLines, merge_backfill_lines};
 pub use model::{
