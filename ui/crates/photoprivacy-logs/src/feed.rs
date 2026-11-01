@@ -579,7 +579,7 @@ mod tests {
         let temp = tempfile::tempdir().expect("temp dir");
         let day = Local::now().date_naive();
         let path = audit_path(temp.path(), day);
-        let watermark_store = ClearWatermark::from_directory(temp.path().join("config"));
+        let watermark_store = ClearWatermark::from_directory(&temp.path().join("config"));
 
         // 第一会话：两条历史行经 tail 显示后，用户点击清空。
         let mut session = AuditFeed::new(temp.path());
