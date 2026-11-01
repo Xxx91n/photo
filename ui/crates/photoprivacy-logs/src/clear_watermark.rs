@@ -166,10 +166,8 @@ mod tests {
         fs::write(watermark.path(), "{not json").expect("write corrupt file");
 
         assert_eq!(watermark.load(), None);
-        assert_eq!(
-            fs::read_to_string(watermark.path()).as_deref(),
-            Ok("{not json")
-        );
+        let after_load = fs::read_to_string(watermark.path()).expect("read corrupt file");
+        assert_eq!(after_load, "{not json");
 
         let cleared_at = utc("2026-11-01T02:03:04Z");
         watermark.save(cleared_at).expect("save watermark");
