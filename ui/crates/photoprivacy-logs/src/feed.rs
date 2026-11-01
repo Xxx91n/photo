@@ -280,6 +280,7 @@ pub fn merge_backfill_lines(lines: &[String]) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ClearWatermark;
     use std::fs::OpenOptions;
     use std::io::Write;
 
@@ -567,6 +568,75 @@ mod tests {
             feed.poll_tail_on(day),
             vec![line("post_archive", "2026-11-01T02:03:06Z")]
         );
+    }
+
+    #[test]
+    fn e4_probe_clear_then_restart_keeps_history_blocked_by_persisted_watermark() {
+        // 防（#102 E4 探针复现）：#29 实测的回灌形态——点击清空只清了视图，重启后旧
+        // 审计日志整批回来。镜像 E4 全链：同进程清空 = 落盘水位（ClearWatermark.save）
+        // + tail 推到末尾；重启 = 新 `AuditFeed` 从磁盘读回水位；Worker backfill 带回
+        // 「末 50 行」窗口（已清历史 + 清空后新行），水位只放行晚于清空时刻的行。
+        let temp = tempfile::tempdir().expect("temp dir");
+        let day = Local::now().date_naive();
+        let path = audit_path(temp.path(), day);
+        let watermark_store = ClearWatermark::from_directory(temp.path().join("config"));
+
+        // 第一会话：两条历史行经 tail 显示后，用户点击清空。
+        let mut session = AuditFeed::new(temp.path());
+        session.start();
+        let first = line("first", "2026-11-01T02:03:01Z");
+        let second = line("second", "2026-11-01T02:03:02Z");
+        append(&path, &format!("{first}\n{second}\n"));
+        assert_eq!(session.poll_tail_on(day).len(), 2);
+
+        let cleared_at = utc("2026-11-01T02:03:04Z");
+        watermark_store.save(cleared_at).expect("save watermark");
+        session.set_backfill_watermark(Some(cleared_at));
+        session.clear_view();
+
+        // 清空后产生一条新行（#102 AC3：新日志照常追加落盘）。
+        let fresh = line("fresh", "2026-11-01T02:03:05Z");
+        append(&path, &format!("{fresh}\n"));
+
+        // 重启（第二会话）：本会话从未清空，过滤完全来自磁盘读回的水位。
+        let mut restarted = AuditFeed::new(temp.path());
+        restarted.start();
+        restarted.set_backfill_watermark(watermark_store.load());
+        // Worker 末 50 行窗口带回两条已清历史 + 一条清空后新行：历史不回灌（AC2），
+        // 新行照常显示（AC3）。
+        let delivered = restarted.accept_backfill(&[first, second, fresh.clone()]);
+        assert_eq!(delivered, vec![fresh]);
+        // tail 从文件末尾起步不回放历史；重启后再写入的行照常经 tail 追加。
+        assert!(restarted.poll_tail_on(day).is_empty());
+        let after_restart = line("after_restart", "2026-11-01T02:03:06Z");
+        append(&path, &format!("{after_restart}\n"));
+        assert_eq!(restarted.poll_tail_on(day), vec![after_restart]);
+    }
+
+    #[test]
+    fn fork_window_geometry_filters_by_inline_utc_not_file_name_date() {
+        // 防（#102 × #129 分叉时窗）：本地日期领先 UTC 的时窗内，UTC「昨日」时刻的行
+        // 落在本地「今日」名的文件里。水位若比文件名日期或本地墙钟日期，此时窗几何会
+        // 整批错删或漏显；只能比行内 timestamp_utc 绝对时刻（#102 原型报告 §3 场景 4）。
+        // 构造是模拟而非复现：文件名日期取运行机当日、行内时刻固定为「昨日」，两者
+        // 组成的几何随时区变化——但被测不变量（比较只看行内时刻）在任何时区下恒成立。
+        let temp = tempfile::tempdir().expect("temp dir");
+        let day = Local::now().date_naive();
+        let path = audit_path(temp.path(), day);
+        let mut feed = AuditFeed::new(temp.path());
+        feed.start();
+        feed.set_backfill_watermark(Some(utc("2026-10-31T19:00:00Z")));
+
+        // 模拟时窗几何：文件名是本地「今日」，backfill 行内 UTC 时刻全是「昨日」。
+        let before = line("pre_clear", "2026-10-31T18:59:59Z");
+        let after = line("post_clear", "2026-10-31T19:00:01Z");
+        // 清空前的行挡下；「昨日」时刻但晚于水位的行不错删——文件名日期不参与比较。
+        assert_eq!(feed.accept_backfill(&[before, after.clone()]), vec![after]);
+
+        // tail 由文件位置守门、水位不参与：时窗内新写入的行照常读出，不漏显。
+        let tail_line = line("tail_in_window", "2026-10-31T19:00:02Z");
+        append(&path, &format!("{tail_line}\n"));
+        assert_eq!(feed.poll_tail_on(day), vec![tail_line]);
     }
 
     #[test]

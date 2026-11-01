@@ -206,12 +206,14 @@ mod tests {
     }
 
     #[test]
-    fn method_surface_is_exactly_the_dotnet_contract_set() {
+    fn method_surface_is_exactly_the_client_declared_set() {
         // 防（source-lint，#102）：B′ 清空水位方案零协议改动——清空只走本地水位过滤，
-        // 不新增 IPC method。方法面必须恰为 dotnet 契约的五个方法；任何新增常量
-        // （如 ClearAuditLogs）都意味着协议扩展，必须先走 docs/agents/ipc-contract.md
-        // 的契约同步三件套（协议文档 + 本文件 + 两端契约测试），此守卫逼那次改动
-        // 显式改这里，防止 B′ 回潮成静默扩协议。
+        // 不新增 IPC method。守卫范围：本文件 `methods` 模块声明的常量面必须恰为 UI
+        // 实际使用的五个方法（dotnet 侧契约全集另有 Pause/Resume/Shutdown，见
+        // docs/agents/ipc-contract.md，不经此模块）。守卫边界：只解析模块体到第一个
+        // `}`，且只抓常量声明——绕过常量以内联字符串调 `Request::new` 的新方法不触发；
+        // 真要扩协议必须先走 ipc-contract.md 的契约同步三件套（协议文档 + 本文件 +
+        // 两端契约测试），此守卫逼那次改动显式改这里，防止 B′ 回潮成静默扩协议。
         let source = include_str!("protocol.rs");
         let module = source
             .split("pub mod methods")
