@@ -155,7 +155,8 @@ public sealed class JsonLineAuditLogger : IAuditLogger, IDisposable
 
     private string ResolveRolloverTarget()
     {
-        var baseName = $"audit-{DateTime.UtcNow:yyyy-MM-dd}";
+        // Design(#129): 审计文件名按本地「今天」命名，与 IPC 回填、UI tail 同口径——UTC+8 00:00–07:59 时窗内不再把行写进「昨天」名文件。
+        var baseName = AuditLogFileNames.BaseName(DateTime.Now);
         var baseTarget = Path.Combine(_logDirectory, baseName + ".jsonl");
 
         // 已记住当前活动目标：同日、文件仍存在且未满 → 续写同一文件，避免每批次重复探测/新建分卷。
@@ -207,6 +208,7 @@ public sealed class JsonLineAuditLogger : IAuditLogger, IDisposable
 
     public void CleanupExpired()
     {
+        // Design(#129): 清理仍按文件创建时间（UTC 表示）判龄、按 audit-*.jsonl 全局枚举计数，与文件名日期无关——本地命名统一后此判据不受影响；生命周期归 #41。
         var cutoff = DateTime.UtcNow.AddDays(-_retainDays);
         foreach (var file in Directory.EnumerateFiles(_logDirectory, "audit-*.jsonl"))
         {

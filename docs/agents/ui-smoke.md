@@ -157,7 +157,7 @@
 | K1 | 双击 `PhotoPrivacy.exe`（出厂空 `hot_folder`）→ 状态栏连接态显示「已连接」，不是「连接中/已断开」 | 通过 | 2026-10-31 桌面截图目检（产物见下文 2026-10-31 产物记录）。**启动方式按判据字面走双击路径**：`cmd /c start` 经 ShellExecute 拉起包内 `PhotoPrivacy.exe`（与资源管理器双击同一条 API，非 `CreateProcess`），UI 与 Worker 两进程均起，帧见 `evidence/K1-dblclick-standby.png`——状态栏绿点 + 「已连接 · PhotoPrivacyCleaner.Background · 后台模式」，右侧「上次往返 0 ms」，无控制台黑窗，符合指引第 3 步的前置门。早前一轮用 `Start-Process` 直起（`evidence/K1-K2-standby-overview.png`）连接态同样是「已连接」，本轮改按双击路径重取，两种入口结论一致 |
 | K2 | 状态栏出现 warning 色提示「请前往配置页设置监控目录」（`status.configure_watch_folder`，切 locale 后各自可见） | 通过 | 2026-10-31 桌面截图目检：10 个 locale 逐一取概览页截图（`evidence/K2-locale-*.png`），提示均以 warning 色（琥珀）渲染在连接态下一行——zh-CN「请前往配置页设置监控目录」、en「Go to Settings to set the watch folder」（与 `locales/en.json` 该键逐字一致）、ja/ko/de/fr/es/pt/ru 各随其 locale，ar 为 RTL 镜像布局下同一提示。只判「随 locale 出现且可读」，阿语字形连写质量归 B3 既有口径 |
 | K3 | 点该提示 → 直接进配置页（`app.rs` 的 `configure-watch-folder` on_click 置 `Page::Config`） | 通过 | 2026-10-31 桌面截图目检（English 帧，`evidence/K3-after-click-hint.png`）：点提示文本后导航高亮由 `Overview` 跳到 `Settings`、页面标题变 `Settings`，不是只高亮也不是无响应 |
-| K4 | 选有效目录保存 → 提示消失、监控启动；放入照片被处理（日志页出条目、审计目录 `processed.ndjson` 增长） | 通过 | 2026-10-31 桌面截图目检（`evidence/recheck-2-config-saved.png`、`recheck-4-overview-hint-gone.png`、`recheck-3-logs-dates-agree.png`）：填有效目录保存后提示消失、`ExifTool` 行由 `unknown` 变 `13.59`；放入 830 B 含 Artist/Copyright 的 jpg → 就地清为 676 B 且标签清空、`bak/` 留原件、`processed.ndjson` 增 2 条、日志页实时出 5 条。**环境前提要在证据里写明**：本机装了 ExifTool 且就在模板默认路径，出厂包一字未改即可启用监控（非 dry-run），故这是本体证据而非旁证；真裸机仍归 #108。取证时刻本地日期＝UTC 日期，日志页那一条腿才成立；分叉时窗内同一操作日志页恒空（`K4-logs-attempt1-localdate.png`、`K4-logs-after-localdate-copy.png`），见 #129 |
+| K4 | 选有效目录保存 → 提示消失、监控启动；放入照片被处理（日志页出条目、审计目录 `processed.ndjson` 增长） | 通过 | 2026-10-31 桌面截图目检（`evidence/recheck-2-config-saved.png`、`recheck-4-overview-hint-gone.png`、`recheck-3-logs-dates-agree.png`）：填有效目录保存后提示消失、`ExifTool` 行由 `unknown` 变 `13.59`；放入 830 B 含 Artist/Copyright 的 jpg → 就地清为 676 B 且标签清空、`bak/` 留原件、`processed.ndjson` 增 2 条、日志页实时出 5 条。**环境前提要在证据里写明**：本机装了 ExifTool 且就在模板默认路径，出厂包一字未改即可启用监控（非 dry-run），故这是本体证据而非旁证；真裸机仍归 #108。取证时刻本地日期＝UTC 日期，日志页那一条腿才成立；分叉时窗内同一操作日志页恒空（`K4-logs-attempt1-localdate.png`、`K4-logs-after-localdate-copy.png`）——该恒空正是 #129 的缺陷表现，修复后（三处基准统一为本地「今天」）该时窗不再恒空，分叉时窗的修复后复验归 #129 AC4 |
 
 - 提示只在 `ConnectionState::Connected && watch_directory` 为空时渲染，因此 K1/K2 同源：
   Worker 待机时回包把「已连接 + 空目录」一起交给 UI，UI 才谈引导。
@@ -204,8 +204,10 @@
 5. **K3**：点该提示文本，是否直接落到配置页（不是只高亮、也不是无响应）。
 6. **K4**：在配置页选一个有效目录并保存 → 提示应消失、监控应启动；往该目录放一张带元数据的照片 →
    日志页出现处理条目、审计目录生成 `processed.ndjson` 且新增记录。命中 #108 的校验失败按 #108 记，不重复开票。
-   **日志页那一条腿要看取证时刻**：本地日期 ≠ UTC 日期时（UTC+8 的 00:00–07:59）日志页恒空，
-   与待机链路无关，根因与 A/B 反证记在 #129；K4 取证要排在本地 08:00 之后。
+   **日志页那一条腿要看取证时刻**：审计文件名日期基准已随 #129 统一为本地「今天」，写入端、
+   IPC 回填、UI tail 三处同口径——本地 00:00–07:59 分叉时窗内日志页不再恒空；该时窗的实机复验
+   记录（#129 AC4）在修复产物可用时补齐，K4 常规取证仍排在本地 08:00 之后。修复前旧记录里
+   该时窗恒空是 #129 缺陷表现，别当成 K4 判据。
 7. **取证通道的操作细节**（#125 实测，少走一遍的弯路）：
    `SetForegroundWindow` 单独调用会被系统挡掉，要先 `AttachThreadInput` 到前台线程再补一发 ALT 的 `keybd_event`；
    别在序列里调 `ShowWindow(SW_RESTORE)`，它会把窗口弹回默认位置，坐标随之全错——点击一律按 `GetWindowRect`
@@ -262,6 +264,9 @@
   另在本地 02:03（UTC 前一日 18:03，两日期分叉）以同一产物复跑一次，日志页恒 0 条，
   仅把审计文件名从 `audit-2026-10-30.jsonl` 复制成 `audit-2026-10-31.jsonl` 就立刻出 5 条——
   该分叉缺陷独立登记为 #129，与本组判据无关，取证后复制出的文件已删除。
+  **#129 修复状态**：该票已实现统一基准（文件名按本地「今天」，写入端/IPC/UI tail 三处同口径），
+  代码侧由 `AuditLogFileNamesTests` 与写入端命名用例守卫；分叉时窗（本地 00:00–07:59）的修复后
+  实机复验记录（#129 AC4）待修复产物在该时窗内重跑时补齐，当前未取。
 - **基线时效（读这四项前必看）**：结论说的是 head `d07129a0`，不是当前 main。
   本 PR 合并 main 时带进来 `app.rs` +547/−6（#101 Tab 焦点）、`worker_connection.rs` +24/−1（K1 读的连接态）、
   `MetadataCleanerWorker.cs` +170/−43（K4 走的 ReloadConfig 路径），已按上文第 1 步的规矩构成「需重跑」条件；

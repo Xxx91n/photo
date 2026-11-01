@@ -50,7 +50,7 @@ public sealed class FswFolderWatcher
         if (_config.Watch.PollingIntervalSeconds > 0)
         {
             var interval = TimeSpan.FromSeconds(_config.Watch.PollingIntervalSeconds);
-            // Design(#109): 轮询兜底的快照深度与 FSW 监听深度同源（include_subdirectories），兜底不得上报监听范围外文件。
+            // Design(#82): 轮询兜底的快照深度与 FSW 监听深度同源（include_subdirectories），兜底不得上报监听范围外文件（#109 修复后定稿，残余见 #82 域内）。
             _poller = new PollingFallbackScanner(
                 _config.Watch.HotFolder,
                 _onPath,

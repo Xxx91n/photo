@@ -6,7 +6,7 @@ namespace PhotoPrivacy.Core.Watcher;
 /// 之外的照片真实改写元数据。启动首扫、重载首扫、重载拆卸快照、轮询兜底快照与 FSW 恢复补扫
 /// 都从这里取深度，不得再各写一份 <c>SearchOption</c>。
 /// </summary>
-// Design(#109): 监控范围枚举全仓唯一入口，深度只由 include_subdirectories 决定；不得再各写一份 SearchOption。
+// Design(#82): 监控范围枚举全仓唯一入口，深度只由 include_subdirectories 决定；不得再各写一份 SearchOption（#109 修复后定稿，残余见 #82 域内）。
 public static class WatchFolderEnumeration
 {
     /// <summary>
