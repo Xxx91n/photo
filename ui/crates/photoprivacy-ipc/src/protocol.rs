@@ -206,6 +206,42 @@ mod tests {
     }
 
     #[test]
+    fn method_surface_is_exactly_the_dotnet_contract_set() {
+        // 防（source-lint，#102）：B′ 清空水位方案零协议改动——清空只走本地水位过滤，
+        // 不新增 IPC method。方法面必须恰为 dotnet 契约的五个方法；任何新增常量
+        // （如 ClearAuditLogs）都意味着协议扩展，必须先走 docs/agents/ipc-contract.md
+        // 的契约同步三件套（协议文档 + 本文件 + 两端契约测试），此守卫逼那次改动
+        // 显式改这里，防止 B′ 回潮成静默扩协议。
+        let source = include_str!("protocol.rs");
+        let module = source
+            .split("pub mod methods")
+            .nth(1)
+            .expect("methods module present");
+        let body = module.split_once('{').expect("module body").1;
+        let body = &body[..body.find('}').expect("module body closes")];
+        let declared: Vec<&str> = body
+            .lines()
+            .filter(|line| line.contains("pub const"))
+            .map(|line| line.split('"').nth(1).expect("method name literal"))
+            .collect();
+        assert_eq!(
+            declared,
+            vec![
+                "Ping",
+                "GetStatus",
+                "ReloadConfig",
+                "GetExifToolVersion",
+                "GetRecentLogs",
+            ]
+        );
+        // GetRecentLogs 是 backfill 的唯一取数缝：线名漂移即与 Worker 读取端脱钩。
+        assert_eq!(methods::GET_RECENT_LOGS, "GetRecentLogs");
+        let json = serde_json::to_string(&Request::new(methods::GET_RECENT_LOGS, Some("1")))
+            .expect("serialize request");
+        assert_eq!(json, r#"{"method":"GetRecentLogs","id":"1","v":1}"#);
+    }
+
+    #[test]
     fn response_tolerates_unknown_and_missing_fields() {
         // 防：Worker 新增字段或省略可空字段时客户端解析失败，把正常响应当成协议错误（#54）。
         let response: Response =
