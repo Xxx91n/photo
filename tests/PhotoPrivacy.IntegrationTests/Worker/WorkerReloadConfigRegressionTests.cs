@@ -317,7 +317,8 @@ public sealed class WorkerReloadConfigRegressionTests
         var audit = Path.Combine(hot, "_audit");
         var configPath = Path.Combine(root, "config.json");
         Directory.CreateDirectory(hot);
-        // 关掉轮询兜底：它的快照恒递归所有子目录（独立票 #109），会把本用例「子目录未被处理」的前提打破。
+        // 仍关掉轮询兜底：让「子目录未被处理」只由首扫深度通路负责，不靠兜底行为背书
+        // （#109 之后兜底深度已与 FSW 同源，但本用例锁的是首扫，没必要让两条通路纠缠）。
         await File.WriteAllTextAsync(
             configPath, BuildConfigJson(hot, audit, includeSubdirectories: false, pollingSeconds: 0));
 
