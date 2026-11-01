@@ -179,7 +179,9 @@
 - **#117 已修（2026-11-01 实现窗口）**：待机态 `StopAsync` 挂住曾由 .NET 10 的
   `SemaphoreSlim.Dispose` 语义导致——Dispose 只清空等待队列，不会让挂起的 `WaitAsync` 完成，
   首次配置待机这条路径靠「Dispose + catch ObjectDisposedException」兜不住。
-  修复后停机先显式取消待机等待（`_standbyStopCts.Cancel()`），`ExecuteAsync` 待机分支立刻收敛，
+  修复分两步：停机先显式取消待机等待（`_standbyStopCts.Cancel()`），且信号量 `Dispose` 必须等
+  `ExecuteAsync` 观察到取消并返回之后再执行（Cancel 的取消回调与 Dispose 清空等待队列存在竞态——
+  Dispose 抢跑会让等待者永久挂起，CI 稳定复现、本地间歇复现）。`ExecuteAsync` 待机分支立刻收敛，
   不再等满 10 s（`HostOptions.ShutdownTimeout`）。自动化侧已由 #113 待机用例改回
   「断言 `StopAsync` 在预算内完成」（CI 绿，run 号见 PR 正文）；实机停机证据（托盘 Exit /
   停服务）待 #117 PR 合并后回填 T6，见下文「#117 实机停机证据」段。
