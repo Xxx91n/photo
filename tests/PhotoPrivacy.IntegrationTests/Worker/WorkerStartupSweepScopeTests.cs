@@ -74,6 +74,62 @@ public sealed class WorkerStartupSweepScopeTests
     }
 
     /// <summary>
+    /// once 模式（<c>--mode cli --once true</c>）的守护（#109 AC3）：本票改的正是 once 枚举前后的代码，
+    /// 而 CI 的 dotnet test 口径排除 Smoke（once 此前只有 Smoke 的真实进程用例背书），一旦回潮主测试 job 不红。
+    /// 本用例在进程内驱动同一条 ExecuteAsync once 分支，锁两件事：先枚举后 drain 的时序仍然成立
+    /// （既有文件被处理），且枚举深度跟随 include_subdirectories（范围外文件不进 once 首扫）。
+    /// </summary>
+    [Fact]
+    public async Task Cli_Once_Should_Sweep_Before_Draining_And_Respect_The_Configured_Depth()
+    {
+        // 防的具体回潮形态：once 分支的枚举深度写死成 AllDirectories，或时序被打乱导致既有文件不被
+        // once 清理（#109；CI 口径排除 Smoke，once 路径只有本用例守护）。
+        var root = Path.Combine(Path.GetTempPath(), "pp-109-once-" + Guid.NewGuid().ToString("N"));
+        var hot = Path.Combine(root, "hot");
+        var nested = Path.Combine(hot, "nested");
+        var audit = Path.Combine(hot, "_audit");
+        var configPath = Path.Combine(root, "config.json");
+        Directory.CreateDirectory(nested);
+        await File.WriteAllTextAsync(configPath, BuildConfigJson(hot, audit, includeSubdirectories: false));
+        AssertViableFixtureConfig(configPath);
+
+        await File.WriteAllTextAsync(Path.Combine(hot, "once-in-scope.jpg"), "in-scope");
+        await File.WriteAllTextAsync(Path.Combine(nested, "once-out-of-scope.jpg"), "out-of-scope");
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["config"] = configPath,
+                ["once"] = "true"
+            })
+            .Build();
+        var worker = new MetadataCleanerWorker(
+            configuration,
+            NullLogger<MetadataCleanerWorker>.Instance,
+            new NullApplicationLifetime(),
+            new RuntimeControl());
+
+        try
+        {
+            await worker.StartAsync(CancellationToken.None);
+
+            var processedPath = Path.Combine(audit, "processed.ndjson");
+            Assert.True(
+                await WaitForProcessedRecordForAsync(processedPath, "once-in-scope.jpg", TimeSpan.FromSeconds(30)),
+                "once 模式未在退出前清理既有文件：先枚举后 drain 的时序被破坏（#109 AC3）");
+
+            Assert.False(
+                await WaitForProcessedRecordForAsync(processedPath, "once-out-of-scope.jpg", TimeSpan.FromSeconds(5)),
+                "once 模式枚举越界处理了子目录文件（#109）");
+        }
+        finally
+        {
+            await worker.StopAsync(CancellationToken.None);
+            TryDelete(root);
+        }
+    }
+
+    /// <summary>
     /// 夹具自检：worker 启动路径对配置校验失败会直接 <c>Environment.Exit(1)</c>（杀死整个测试进程），
     /// 所以先在测试侧校验一遍——配置夹具漂移要以断言失败暴露，而不是让 CI 只看到进程消失。
     /// </summary>
