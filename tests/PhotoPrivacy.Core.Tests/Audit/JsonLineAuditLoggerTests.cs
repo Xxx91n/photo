@@ -114,12 +114,14 @@ public sealed class JsonLineAuditLoggerTests
 
         try
         {
-            // 29 个历史日期文件，CreationTimeUtc 固定为近期早于当天，保证保留策略按日期稳定排序
-            for (var i = 3; i <= 31; i++)
+            // 29 个历史日期文件：从捕获的 UTC 日期向前派生，全部落在 CleanupExpired 30 天保留窗口内
+            var anchor = DateTime.UtcNow.Date;
+            for (var offset = 1; offset <= 29; offset++)
             {
-                var hist = Path.Combine(dir, $"audit-2026-10-{i:D2}.jsonl");
+                var date = anchor.AddDays(-offset);
+                var hist = Path.Combine(dir, $"audit-{date:yyyy-MM-dd}.jsonl");
                 File.WriteAllText(hist, "{}" + Environment.NewLine);
-                File.SetCreationTimeUtc(hist, new DateTime(2026, 10, i, 0, 0, 0, DateTimeKind.Utc));
+                File.SetCreationTimeUtc(hist, date);
             }
 
             // 当天基础名已满 → 触发分卷
@@ -137,9 +139,10 @@ public sealed class JsonLineAuditLoggerTests
             }
 
             // 历史文件全部保留，未被 31 上限淘汰
-            for (var i = 3; i <= 31; i++)
+            for (var offset = 1; offset <= 29; offset++)
             {
-                Assert.True(File.Exists(Path.Combine(dir, $"audit-2026-10-{i:D2}.jsonl")));
+                var date = anchor.AddDays(-offset);
+                Assert.True(File.Exists(Path.Combine(dir, $"audit-{date:yyyy-MM-dd}.jsonl")));
             }
             // 分卷复用 _1（两行），没有 _2；总数 31 恰好不超上限
             Assert.Equal(2, File.ReadLines(Path.Combine(dir, ShardFileName(1))).Count());
