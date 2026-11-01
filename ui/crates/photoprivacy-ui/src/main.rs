@@ -163,7 +163,14 @@ fn main() -> anyhow::Result<()> {
         config_event_tx,
     );
 
-    let log_service = log_service::start(runtime.handle(), audit_config, link, log_tx);
+    // Design(#137): 清空水位落 config.json 同目录（#136），启动喂给 backfill 过滤、清空时更新。
+    let log_service = log_service::start(
+        runtime.handle(),
+        audit_config,
+        link,
+        log_tx,
+        photoprivacy_logs::ClearWatermark::from_config_path(&config_path),
+    );
 
     // 10 语言键值目录：启动时一次三层加载（内嵌 → exe 目录 → 用户目录），之后只读（#60）。
     let i18n = Rc::new(i18n::Catalog::load());

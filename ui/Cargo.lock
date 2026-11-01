@@ -3803,6 +3803,7 @@ name = "photoprivacy-ui"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "gpui-pre",
  "gpui-pre-linux",
  "gpui-pre-macos",

@@ -1,4 +1,4 @@
-use chrono::{DateTime, FixedOffset, Local, NaiveDate};
+use chrono::{DateTime, FixedOffset, Local, NaiveDate, Utc};
 use serde_json::Value;
 use std::cmp::Ordering;
 use std::collections::{HashSet, VecDeque};
@@ -53,12 +53,15 @@ impl Default for DeliveredLines {
 /// 审计尾部双通道协调者：本地 tail 负责新增行，IPC backfill 补齐 FSW 盲区。
 ///
 /// 启动时把水位推到当前文件末尾（不回放历史），历史只由 backfill 提供；之后任何一通道交付过的
-/// 原始行都会被另一通道跳过。清空视图只把水位推到末尾并保留去重记忆。
+/// 原始行都会被另一通道跳过。清空视图把 tail 水位推到文件末尾并保留去重记忆；重启后的 backfill
+/// 另由持久化清空水位过滤——调用方经 `set_backfill_watermark` 喂入，`AuditFeed` 只比较不落盘。
 pub struct AuditFeed {
     directory: PathBuf,
     current_path: PathBuf,
     position: u64,
     delivered: DeliveredLines,
+    /// backfill 过滤水位：行内 `timestamp_utc` 必须严格大于它才交付；`None` = 不过滤。
+    backfill_watermark: Option<DateTime<Utc>>,
     /// 上次轮询时文件的总长度，用于识别未换行尾段是否仍在增长。
     stall_length: u64,
     /// 上次轮询时水位之后的未换行字节；长度与内容都不再变化时一次性交付。
@@ -74,6 +77,7 @@ impl AuditFeed {
             current_path,
             position: 0,
             delivered: DeliveredLines::new(),
+            backfill_watermark: None,
             stall_length: 0,
             stall_partial: Vec::new(),
         }
@@ -125,18 +129,40 @@ impl AuditFeed {
         self.process_chunk(&chunk, actual_length)
     }
 
+    /// 设置 backfill 过滤水位；`None` = 不过滤（首启无水位语义不变）。
+    /// 值由调用方决定：启动时来自持久化清空水位，清空时来自清空动作的时刻。
+    // Design(#137): backfill 只交付 timestamp_utc 严格大于清空水位的行——比较基准是
+    // 行内绝对 UTC 时刻，与文件名日期、本地墙钟日期、分卷后缀全部无关。
+    pub fn set_backfill_watermark(&mut self, watermark: Option<DateTime<Utc>>) {
+        self.backfill_watermark = watermark;
+    }
+
     /// 接受 Worker 的最近 N 行：稳定按时间升序、去重，再与 tail 已交付行合并。
     ///
-    /// 清空视图只推进水位并保留去重记忆：清空前尚未交付的行仍可由 backfill 补齐，
-    /// 已交付过的历史行则被去重记忆挡住，不会回流。
+    /// 有清空水位时只交付严格晚于水位的行：清空前的历史行（含清空时还未显示过的）
+    /// 重启后不回灌、不补交；无水位时行为不变。清空视图推进 tail 水位并保留去重记忆。
     pub fn accept_backfill(&mut self, lines: &[String]) -> Vec<String> {
         let mut accepted = Vec::new();
         for line in merge_backfill_lines(lines) {
+            if !self.is_after_backfill_watermark(&line) {
+                continue;
+            }
             if self.delivered.claim(&line) {
                 accepted.push(line);
             }
         }
         accepted
+    }
+
+    /// 水位存在时，行必须带可解析的 `timestamp_utc` 且严格晚于水位；无时间戳的行
+    /// 无法自证晚于清空，按挡下处理（fail-closed）。无水位时全部放行。
+    fn is_after_backfill_watermark(&self, line: &str) -> bool {
+        match self.backfill_watermark {
+            None => true,
+            Some(watermark) => {
+                timestamp(line).is_some_and(|time| time.with_timezone(&Utc) > watermark)
+            }
+        }
     }
 
     /// 用户清空日志视图：丢掉水位之后的未读内容，但保留去重记忆。
@@ -268,6 +294,12 @@ mod tests {
 
     fn line(event: &str, timestamp: &str) -> String {
         format!(r#"{{"event_type":"{event}","timestamp_utc":"{timestamp}"}}"#)
+    }
+
+    fn utc(text: &str) -> DateTime<Utc> {
+        DateTime::parse_from_rfc3339(text)
+            .expect("rfc3339 timestamp")
+            .with_timezone(&Utc)
     }
 
     #[test]
@@ -410,8 +442,10 @@ mod tests {
     }
 
     #[test]
-    fn backfill_after_clear_delivers_lines_never_shown() {
-        // 防：用户清空后，清空前已写入但尚未显示的审计行被 IPC backfill 永久吞掉（#57）。
+    fn clear_with_watermark_blocks_preclear_backfill_even_never_shown_lines() {
+        // 防：清空后 backfill 把清空前的历史行（含从未显示过的）重新送回视图（#102）。
+        // 顺序镜像协调者：清空 = 更新过滤水位 + clear_view。#57 的「未显示行补交」由
+        // #137 显式退役——水位存在即按时间过滤，同进程内同样生效。
         let temp = tempfile::tempdir().expect("temp dir");
         let day = Local::now().date_naive();
         let path = audit_path(temp.path(), day);
@@ -420,12 +454,108 @@ mod tests {
 
         let history = line("history", "2026-10-27T00:00:00Z");
         append(&path, &format!("{history}\n"));
+        feed.set_backfill_watermark(Some(utc("2026-10-27T12:00:00Z")));
         feed.clear_view();
 
-        let delivered = feed.accept_backfill(std::slice::from_ref(&history));
-        assert_eq!(delivered, vec![history]);
-        // 水位在清空时已推到文件末尾，因此 tail 不会重复交付同一行。
-        assert!(feed.poll_tail_on(day).is_empty());
+        assert!(
+            feed.accept_backfill(std::slice::from_ref(&history))
+                .is_empty()
+        );
+        // 清空后新写入的行照常经 tail 追加显示。
+        append(
+            &path,
+            &format!("{}\n", line("after", "2026-10-27T12:00:01Z")),
+        );
+        let lines = feed.poll_tail_on(day);
+        assert_eq!(lines.len(), 1);
+        assert!(lines[0].contains("\"after\""));
+    }
+
+    #[test]
+    fn restart_backfill_filters_history_by_persisted_watermark() {
+        // 防：清空后重启 UI，backfill 把已清历史行灌回 Logs 页，清空状态丢失（#102）。
+        let temp = tempfile::tempdir().expect("temp dir");
+        let mut feed = AuditFeed::new(temp.path());
+        feed.start();
+        // 模拟重启：水位来自上次会话落盘的清空时刻，本会话从未调用 clear_view。
+        feed.set_backfill_watermark(Some(utc("2026-11-01T02:03:04Z")));
+
+        let before = line("before", "2026-11-01T02:03:03Z");
+        let at_watermark = line("boundary", "2026-11-01T02:03:04Z");
+        let after = line("after", "2026-11-01T02:03:05Z");
+        let no_time = r#"{"event_type":"no_time"}"#;
+        let delivered =
+            feed.accept_backfill(&[before, at_watermark, after.clone(), no_time.to_string()]);
+        // 严格大于：与水位相等的行也挡；无时间戳的行无法自证晚于清空，一并挡下。
+        assert_eq!(delivered, vec![after]);
+    }
+
+    #[test]
+    fn without_watermark_backfill_keeps_full_history_delivery() {
+        // 防：无水位（首启/从未清空）时误开过滤，把 backfill 补历史的整个功能打断。
+        let temp = tempfile::tempdir().expect("temp dir");
+        let mut feed = AuditFeed::new(temp.path());
+        feed.start();
+
+        let history = line("history", "2020-01-01T00:00:00Z");
+        let no_time = r#"{"event_type":"no_time"}"#;
+        assert_eq!(
+            feed.accept_backfill(&[history.clone(), no_time.to_string()]),
+            vec![history, no_time.to_string()]
+        );
+    }
+
+    #[test]
+    fn watermark_filters_by_absolute_time_across_days() {
+        // 防：跨日重启后按文件名日期或本地墙钟日期过滤，错删水位后的旧行、漏显新行（#129 交互）。
+        let temp = tempfile::tempdir().expect("temp dir");
+        let second_day = NaiveDate::from_ymd_opt(2026, 10, 27).expect("date");
+        let mut feed = AuditFeed::new(temp.path());
+        feed.start();
+        feed.set_backfill_watermark(Some(utc("2026-10-26T23:00:00Z")));
+
+        let before = line("before", "2026-10-26T22:59:59Z");
+        let late_day1 = line("late_day1", "2026-10-26T23:30:00Z");
+        let day2 = line("day2", "2026-10-27T00:00:30Z");
+        let delivered = feed.accept_backfill(&[before, late_day1.clone(), day2.clone()]);
+        // 水位只看行内绝对时刻：昨日深夜（水位后）不错删，跨日新行不漏显。
+        assert_eq!(delivered, vec![late_day1, day2]);
+
+        // 跨日后 tail 换新文件照常追加；tail 由文件位置守门，不受水位影响。
+        let path = audit_path(temp.path(), second_day);
+        append(
+            &path,
+            &format!("{}\n", line("tail_day2", "2026-10-27T00:01:00Z")),
+        );
+        assert_eq!(feed.poll_tail_on(second_day).len(), 1);
+    }
+
+    #[test]
+    fn watermark_still_applies_after_audit_file_is_archived() {
+        // 防：水位隐式绑定具体文件（路径/偏移），归档改名后过滤失效（#137；E5 原型形态）。
+        let temp = tempfile::tempdir().expect("temp dir");
+        let day = Local::now().date_naive();
+        let path = audit_path(temp.path(), day);
+        let mut feed = AuditFeed::new(temp.path());
+        feed.start();
+        feed.set_backfill_watermark(Some(utc("2026-11-01T02:03:04Z")));
+
+        // 活动文件归档改名 + 同名重建：水位不指向文件，过滤照常按行内时刻生效。
+        fs::rename(&path, temp.path().join("audit-cleared-archive.jsonl")).expect("archive rename");
+        append(
+            &path,
+            &format!("{}\n", line("post_archive", "2026-11-01T02:03:06Z")),
+        );
+
+        let old = line("old", "2026-11-01T02:03:03Z");
+        let post = line("post_backfill", "2026-11-01T02:03:06Z");
+        assert_eq!(feed.accept_backfill(&[old, post.clone()]), vec![post]);
+
+        // tail 在重建的活动文件上照常读出新行；归档名不进 tail。
+        assert_eq!(
+            feed.poll_tail_on(day),
+            vec![line("post_archive", "2026-11-01T02:03:06Z")]
+        );
     }
 
     #[test]

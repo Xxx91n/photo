@@ -19,6 +19,8 @@ tokio.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
 serde.workspace = true
+# 清空水位的落盘时刻取当前 UTC（#137）；版本与特性随 workspace 锁。
+chrono.workspace = true
 
 [dev-dependencies]
 # 配置服务的防抖/轮询测试用 tokio 的暂停时钟，避免 real sleep 造成慢测与抖动。
