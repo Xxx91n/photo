@@ -175,6 +175,32 @@ mod tests {
     }
 
     #[test]
+    fn staged_save_is_invisible_until_rename_replaces_the_target() {
+        // 防：原子替换测试只查「无 .tmp 残留」——原地写也能通过（CodeRabbit #140 Minor）；
+        // 契约是 rename 前写入不可见、旧水位保持可读，rename 一步替换到新值（#136）。
+        let temp = tempfile::tempdir().expect("temp dir");
+        let watermark = ClearWatermark::from_directory(temp.path());
+        let first = utc("2026-11-01T02:03:04Z");
+        let second = utc("2026-11-01T02:03:05Z");
+        watermark.save(first).expect("save first watermark");
+
+        // 模拟 save 在 rename 前中断：临时文件已写好，替换未发生。
+        let staged = watermark.unique_write_tmp();
+        let staged_body =
+            json!({ "cleared_at_utc": second.to_rfc3339_opts(SecondsFormat::AutoSi, true) })
+                .to_string();
+        fs::write(&staged, staged_body).expect("write staged body");
+
+        // 写入阶段不产生可观测变化：旧水位照常可读，目标文件未被触碰。
+        assert_eq!(watermark.load(), Some(first));
+
+        // rename = 原子替换：旧值一步到新值，临时文件消失。
+        fs::rename(&staged, watermark.path()).expect("replace watermark");
+        assert_eq!(watermark.load(), Some(second));
+        assert!(!staged.exists());
+    }
+
+    #[test]
     fn save_creates_missing_parent_directory() {
         // 防：config 目录尚未建立时清空动作直接失败，水位没落盘（#136）。
         let temp = tempfile::tempdir().expect("temp dir");
