@@ -437,11 +437,12 @@
   2. 一轮交互（置顶 → 点击 → 等待 → 截屏）收在同一进程内，避免宿主抢前台（#88 已登记）。
 - **步骤与结果**：
   1. 服务运行中启动 UI：连接态「已连接 · PhotoPrivacyCleaner.Service · 服务模式」，Worker 卡片
-     「服务模式 / service / 服务 IPC=可达 / 协议 v1 / ExifTool 13.60」，进程侧只有服务 Worker，
-     UI 未拉起后台 Worker——`S5-00-overview-before.png`；
+     「服务模式 / service / 服务 IPC=可达 / 协议 v1 / ExifTool 13.60」——`S5-00-overview-before.png`；
+     同会话进程表只有一个 Worker（pid 3496、SessionId 0），UI 未拉起后台 Worker
+     ——`S5-07-process-and-service.txt`；
   2. 配置页把「监控目录」从 `…\photo-smoke-113r2\hot` 改为 `…\photo-smoke-85\hot-s5`
      ——编辑态帧 `S5-02-field-edited.png`；UI 防抖后写盘，`config.json` 的 `watch.hot_folder`
-     为新值（`stat` 实测 06:28:43.853；该时刻没有单独留帧，口径见本条）；
+     为新值，文件 mtime 06:28:43.853——`S5-07-process-and-service.txt` 的 `--- config ---` 段；
   3. 服务管道 `GetStatus` 回 `watchDirectory=C:\Users\Administrator\photo-smoke-85\hot-s5`
      （`mode=service`，`S5-06-service-pipe-probe.txt`），重开配置页显示持久化值
      ——`S5-05-config-persisted.png`；
