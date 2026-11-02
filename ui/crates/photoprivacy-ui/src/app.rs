@@ -193,7 +193,7 @@ impl ConfigUiState {
                     Some(error) => SaveState::SavedWorkerDown(error),
                     None => SaveState::Saved,
                 };
-                // Design(#108): 只有成功态按 TTL 淡出。失败态（配置已落盘但 Worker 未重载）
+                // Design(#82): 只有成功态按 TTL 淡出。失败态（配置已落盘但 Worker 未重载）
                 // 常驻到下一次保存成功——否则阻断原因随 3 s 消失，用户被绕回「请前往配置页」，
                 // 看不到「ExifTool 缺失 / 目录不可写」这类真正原因。
                 self.save_status_deadline = if reload_failed {
@@ -217,7 +217,7 @@ impl ConfigUiState {
         // 旧 UI 的 ResolveExifToolPath：首次加载时当前路径不存在则探测并显示提示；
         // 外部回灌/保存回读不清掉已有提示（旧 UI 只在启动时设置 hint）。
         if auto_detect_exiftool {
-            // Design(#108): 空路径 = 按运行时探测，只探测给提示，绝不写回 config.exiftool.path——
+            // Design(#82): 空路径 = 按运行时探测，只探测给提示，绝不写回 config.exiftool.path——
             // UI 是 config.json 的写入方，写回会把「探测」冻结成绝对路径，包换个目录就指向旧位置。
             if config.exiftool.path.trim().is_empty() {
                 self.exiftool_hint = detect_exiftool_path(&config.exiftool.path);
@@ -1895,7 +1895,7 @@ impl AppView {
             ConnectionState::Disconnected => self.t(k::STATUS_DISCONNECTED),
         };
 
-        // Design(#108): 保存已落盘但未生效（或保存本身失败）时，原因必须在概览页常驻可见，
+        // Design(#82): 保存已落盘但未生效（或保存本身失败）时，原因必须在概览页常驻可见，
         // 并可直接点回配置页。以前它只是配置页里一条 3 s 淡出的状态文本，用户在概览页只看到
         // 「请前往配置页设置监控目录」，被绕回同一步。
         let reload_block = match &self.save_state {
@@ -2862,7 +2862,7 @@ mod tests {
     }
 
     /// 防的回潮形态：重载失败原因随 `SAVE_STATUS_TTL` 一起消失，用户被绕回「请前往配置页」。
-    // Design(#108): 失败态不挂 3 s TTL，只有成功态按 TTL 淡出。
+    // Design(#82): 失败态不挂 3 s TTL，只有成功态按 TTL 淡出。
     #[test]
     fn save_failure_status_stays_visible_instead_of_expiring() {
         let mut state = ConfigUiState::new(Some(AppConfig::default()));
