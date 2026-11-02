@@ -4,7 +4,7 @@
 # （与 #88、#113 第二轮同一产物；本票基线 5298b6466 与该 head 的差异经 git 核对仅 4 个 docs 提交，
 # 二进制 sha256 一致：PhotoPrivacy.exe a49189b2…、PhotoPrivacyWorker.exe 424acf03…）。
 # 图片与探针输出按既有约定不入库，只存于取证机目录
-#   C:\Users\Administrator\photo-smoke-85\evidence\（11 个文件，1,183,914 字节）。
+#   C:\Users\Administrator\photo-smoke-85\evidence\（12 个文件，1,184,809 字节）。
 # 本清单给这些一次性证据一个可校验的锚：当下能证明它们存在且内容未被事后替换；
 # 目录被清理后只剩哈希本身，无法再复现其中内容——这是已接受的缺口，不是遗漏。
 #
@@ -17,7 +17,7 @@
 # 所以必须先 grep 出清单再进图目录喂给 sha256sum——反过来 cd 进图目录就找不到这份清单了）：
 #   cd <仓库根> && grep -vE '^(#|$)' docs/agents/ui-smoke-evidence.sha256 \
 #     | (cd 'C:\Users\Administrator\photo-smoke-85\evidence' && sha256sum -c -)
-# 期望：11 行全部 ': OK'、退出码 0、stderr 无 improperly formatted 警告（2026-11-03 实测 11/11 OK）。
+# 期望：12 行全部 ': OK'、退出码 0、stderr 无 improperly formatted 警告（2026-11-03 实测 12/12 OK）。
 
 df97c2597f6241988c949966d6bb155f82cd3851aaf6ed2c47fa196c67009364  S5-00-overview-before.png
 89be71733f24def06c7daa27e394e5a2d3414fc1259104a98359bfe1ffd92a0d  S5-01-config-page.png
@@ -30,3 +30,4 @@ ede0ead7804dcde211ace4f84ed31da65fe0585df246c8549cd5809d9b777ec2  S5-03-logs-aft
 b6c828f131dead69f564085016e165852702dbc79ed73e36a645fc6709d09d35  S5-08-e2e-timing.png
 a16cbdee98505e3fc6d68ceed39f3deffabee42776c58458402da35e545c1c0f  S5-08-e2e-timing.txt
 de7186c730cd0924124cf96a3fd958ea744c31e58c8bc34f8c1c50f1d40e8a87  S5-09-service-log.txt
+13466fbd4cd34b7cee1b7227e72026dfcfc81b9155febacdf41035299e860b4b  S5-10-audit-records.txt

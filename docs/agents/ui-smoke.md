@@ -427,8 +427,8 @@
   （High IL 管理员，无 UAC 交互）安装并启动，安装即登记 `ServicePipeInstallerSid`（`S-1-5-21-…-500`）；
   `sc query` STATE 4 RUNNING，服务 Worker 落在 Services 会话（pid 3496，SessionId 0）。
 - **取证通道**：整屏 `ImageGrab` + 合成点击/键入；截图与探针输出存
-  `C:\Users\Administrator\photo-smoke-85\evidence\`（11 个文件，不入库），
-  哈希锚 `docs/agents/ui-smoke-evidence.sha256`（实测 11/11 `OK`）。本轮新增的操作细节：
+  `C:\Users\Administrator\photo-smoke-85\evidence\`（12 个文件，不入库），
+  哈希锚 `docs/agents/ui-smoke-evidence.sha256`（实测 12/12 `OK`）。本轮新增的操作细节：
   1. **gpui 输入框不响应 Ctrl+A**：清空既有路径必须 `End` + 退格。首次按 Ctrl+A 再粘贴时，
      新路径被拼到旧值尾部（`…\photo-smoke-113r2\hotC:\Users\…`），界面照常落盘；
      该畸形路径触发的重载在服务管道回 `reload_failed`（`EnsureConfiguredDirectories` 抛
@@ -439,23 +439,29 @@
   1. 服务运行中启动 UI：连接态「已连接 · PhotoPrivacyCleaner.Service · 服务模式」，Worker 卡片
      「服务模式 / service / 服务 IPC=可达 / 协议 v1 / ExifTool 13.60」，进程侧只有服务 Worker，
      UI 未拉起后台 Worker——`S5-00-overview-before.png`；
-  2. 配置页把「监控目录」从 `…\photo-smoke-113r2\hot` 改为 `…\photo-smoke-85\hot-s5`：
-     `config.json` 于 06:28:43.853 落盘（`watch.hot_folder` 为新值）——`S5-02-field-edited.png`；
-  3. 服务管道 `GetStatus` 随即回 `watchDirectory=C:\Users\Administrator\photo-smoke-85\hot-s5`
-     （`mode=service`），重开配置页显示持久化值——`S5-05-config-persisted.png`；
+  2. 配置页把「监控目录」从 `…\photo-smoke-113r2\hot` 改为 `…\photo-smoke-85\hot-s5`
+     ——编辑态帧 `S5-02-field-edited.png`；UI 防抖后写盘，`config.json` 的 `watch.hot_folder`
+     为新值（`stat` 实测 06:28:43.853；该时刻没有单独留帧，口径见本条）；
+  3. 服务管道 `GetStatus` 回 `watchDirectory=C:\Users\Administrator\photo-smoke-85\hot-s5`
+     （`mode=service`，`S5-06-service-pipe-probe.txt`），重开配置页显示持久化值
+     ——`S5-05-config-persisted.png`；
   4. 向新目录投放 `sample.jpg`（3,648 B）：服务 Worker 于 06:29:18 就地清洗为 626 B，审计
      `processed.ndjson` 留 3,648 / 626 两条记录，日志页实时出
      `Cleaned attempt=1;wipe_result=Cleaned_Modified` 与
      `backup_sidecar_version… content_diverged_sidecar_written`——`S5-03-logs-after-reload.png`；
-     同刻总览仍为服务模式、上次往返 8 ms——`S5-04-overview-after-reload.png`；
-  5. **端到端计时**（第二轮回改为原目录）：粘贴生效后 **0.52 s** 配置落盘、**0.64 s**
-     `GetStatus.watchDirectory` 切到新值，同帧界面绿字「已保存 · Worker 已重载」
-     ——`S5-08-e2e-timing.png` / `S5-08-e2e-timing.txt`，读侧预算 10 s；
-  6. **服务管道独立探针**（不经 UI，按帧协议直连 `\\.\pipe\PhotoPrivacyCleaner.Service`）：
+     同帧读数总览仍为服务模式、上次往返 8 ms——`S5-04-overview-after-reload.png`；
+     审计与处理记录的原样输出见 `S5-10-audit-records.txt`（这两份文件收尾后仍在磁盘上，
+     可事后原样取；截图与探针输出不可重取，故入锚）；
+  5. **服务管道独立探针**（不经 UI，按帧协议直连 `\\.\pipe\PhotoPrivacyCleaner.Service`）：
      `GetStatus` 1–2 ms；三次运行的两次 `ReloadConfig` 往返落在 **0.44–0.62 s**（锚定的那一轮
      0.59 / 0.55 s），全部回 `ok:true`、`mode=service`、`v=1`，无一次触及 10 s 预算
      ——`S5-06-service-pipe-probe.txt`。这是事故形态「服务管道 10 s/15 s 无响应」在
-     Windows 命名管道上的直接反证。
+     Windows 命名管道上的直接反证；
+  6. **端到端计时**（第二轮回改为原目录）：粘贴生效后 **0.52 s** 配置落盘、**0.64 s**
+     `GetStatus.watchDirectory` 切到新值，同帧界面绿字「已保存 · Worker 已重载」
+     ——`S5-08-e2e-timing.png` / `S5-08-e2e-timing.txt`，读侧预算 10 s
+     （该文件首行 `watched_before=` 为空串：退格清空与粘贴之间 UI 把空目录落盘了一次，
+     worker 因而短暂回待机，属合成输入手法的产物，不参与判定）。
 - **收尾状态**：UI 已退出、服务已卸载（SC 1060 复核）、`ServicePipeInstallerSid` 值随 uninstall 清除、
   任务表 0/0 残留；`pkg/config/config.json` 回到取证前的 `watch.hot_folder`（`…\photo-smoke-113r2\hot`），
   二进制未变；`hot-s5\` 内留 626 B 已清洗样本与其备份，全部落在取证目录内，仓库工作区不受影响。
