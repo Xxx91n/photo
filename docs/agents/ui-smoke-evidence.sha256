@@ -1,28 +1,32 @@
-# S 组取证截图 SHA256 清单 — #88（2026-11-03）
+# S5 复测证据 SHA256 清单 — #85（2026-11-03）
 #
 # 产物：Release run 41495388043 / ref main / head fb388507 / version 0.1.0-verify113b
-# （与 #113 第二轮同一产物，本票基线与其同 head，二进制 sha256 一致，直接复用）。
-# 图片本体按 docs/agents/ui-smoke.md 既有约定不入库，只存于取证机目录
-#   C:\Users\Administrator\photo-smoke-88\evidence\（6 个文件，1,501,851 字节）。
+# （与 #88、#113 第二轮同一产物；本票基线 5298b6466 与该 head 的差异经 git 核对仅 4 个 docs 提交，
+# 二进制 sha256 一致：PhotoPrivacy.exe a49189b2…、PhotoPrivacyWorker.exe 424acf03…）。
+# 图片与探针输出按既有约定不入库，只存于取证机目录
+#   C:\Users\Administrator\photo-smoke-85\evidence\（11 个文件，1,183,914 字节）。
 # 本清单给这些一次性证据一个可校验的锚：当下能证明它们存在且内容未被事后替换；
-# 目录被清理后只剩哈希本身，无法再复现图中内容——这是已接受的缺口，不是遗漏。
+# 目录被清理后只剩哈希本身，无法再复现其中内容——这是已接受的缺口，不是遗漏。
 #
-# 上一版清单（2026-11-03，#113 第二轮，K 组 20 个文件，目录
-# C:\Users\Administrator\photo-smoke-113r2\evidence\）已不再逐条收录：同一路径一个锚
-# 只装「当前一轮」，旧条目留着会让 sha256sum -c 恒红。该轮 20 条哈希可从 git 历史取回
-# （git show 4db2583:docs/agents/ui-smoke-evidence.sha256——4db2583 是 #152 合并后的 main 顶，
-# 即本票 S 组换轮前的最后一版；注意 fb388507 上取到的是更早的 #125 24 条版，不是这 20 条），
-# 对应图片仍在取证机上。
+# 上一版清单（2026-11-03，#88 窗口，S 组 6 个文件，目录
+# C:\Users\Administrator\photo-smoke-88\evidence\）不再逐条收录：同一路径一个锚只装
+# 「当前一轮」，旧条目留着会让 sha256sum -c 恒红。该轮 6 条哈希可从 git 历史取回
+# （git show 5298b64:docs/agents/ui-smoke-evidence.sha256），对应图片仍在取证机上。
 #
 # 校验（在取证机上，从仓库根跑；清单在仓库里、图在取证目录，两者不同目录，
 # 所以必须先 grep 出清单再进图目录喂给 sha256sum——反过来 cd 进图目录就找不到这份清单了）：
 #   cd <仓库根> && grep -vE '^(#|$)' docs/agents/ui-smoke-evidence.sha256 \
-#     | (cd 'C:\Users\Administrator\photo-smoke-88\evidence' && sha256sum -c -)
-# 期望：6 行全部 ': OK'、退出码 0、stderr 无 improperly formatted 警告（2026-11-03 实测 6/6 OK）。
+#     | (cd 'C:\Users\Administrator\photo-smoke-85\evidence' && sha256sum -c -)
+# 期望：11 行全部 ': OK'、退出码 0、stderr 无 improperly formatted 警告（2026-11-03 实测 11/11 OK）。
 
-4f80c85780e7a10dbf14868aeb94ffece1deae7887550f9fa1862f9c5ce5b837  S1-launch.png
-9126ebfa4b534cc2e9f30c5512617b3e962641785071b30498d1cbd30877a8c0  S1-service-page.png
-0ba1febed9acaf70489c8fb39371b1e53864faf373214587f73a465b74ac92ea  S3-before-stopped.png
-d7ef101f3c4040ba763054a09b7db42b3b42190b4ff45ecdb2d3a9dddeb01250  S3-after-running.png
-1ac8c22d1616fe735879cf3474b1c5581551e30d5f014c072c4feaeadb87ee54  S4-overview-service-mode.png
-b7612431936d719f9b43d12645830fcac679bd73e208a623c915ea18dc018ad6  S8-logs-page-service.png
+df97c2597f6241988c949966d6bb155f82cd3851aaf6ed2c47fa196c67009364  S5-00-overview-before.png
+89be71733f24def06c7daa27e394e5a2d3414fc1259104a98359bfe1ffd92a0d  S5-01-config-page.png
+46ea0a1341ffaa6ced71a365808992403c6607228561b322e7806f8033f66195  S5-02-field-edited.png
+ede0ead7804dcde211ace4f84ed31da65fe0585df246c8549cd5809d9b777ec2  S5-03-logs-after-reload.png
+6e33c330e62c545b534a92658d4cb185b1441e83b425f3401494c2e77699d290  S5-04-overview-after-reload.png
+0b83b98ad13d4ad3aa118f1240de12885968a30039e190ecde1b0af4800aceed  S5-05-config-persisted.png
+5de7c5130de72d45f55673ac794cc528c40154116587b022de556224f1dcf795  S5-06-service-pipe-probe.txt
+2d59c50d748bd67e927bf06c8804a10518b4768e2b704198927f1d67b5fffb29  S5-07-process-and-service.txt
+b6c828f131dead69f564085016e165852702dbc79ed73e36a645fc6709d09d35  S5-08-e2e-timing.png
+a16cbdee98505e3fc6d68ceed39f3deffabee42776c58458402da35e545c1c0f  S5-08-e2e-timing.txt
+de7186c730cd0924124cf96a3fd958ea744c31e58c8bc34f8c1c50f1d40e8a87  S5-09-service-log.txt

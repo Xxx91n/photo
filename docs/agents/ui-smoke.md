@@ -97,7 +97,7 @@
 | S2 | 安装服务（提权 UAC/pkexec/osascript 流） | 未回填 | 不在 #88 AC 内；本轮仅作为 S3/S4/S8 的前置步骤用 `scripts/install-service.ps1`（agent 以 High IL 管理员运行，无 UAC 交互）执行，安装即登记 #70 的 `ServicePipeInstallerSid` |
 | S3 | 启动服务 → 状态变运行中 | 通过 | 2026-11-03 桌面截图目检 + `sc query`：前态帧 `S3-before-stopped.png` 服务状态「已停止」，启动钮深色可点、停止/安装置灰、卸载红钮可点（与 `button_state` 一致）；点 UI「启动」后帧 `S3-after-running.png` 状态变「运行中」并出绿字反馈「Operation succeeded」，同时刻 `sc query PhotoPrivacyCleaner` STATE 4 RUNNING，服务 Worker 进程在 Services 会话（SYSTEM 上下文）存活；ProgramData 服务日志 04:09:55 Application started 后无 FTL/再停 |
 | S4 | 服务运行中 UI 经服务端点连接（服务页/日志页数据来自服务 Worker） | 通过 | 2026-11-03 桌面截图目检：服务运行中重启 UI，总览连接态「已连接 · PhotoPrivacyCleaner.Service · 服务模式」（帧 `S4-overview-service-mode.png`），Worker 卡片 Worker 模式=服务模式、上报模式=service、服务 IPC=可达、协议=v1、ExifTool=13.60、往返次数=14（单帧读数）；进程侧仅一个 Worker（pid 8996）且在 Services 会话，UI 未拉起后台 Worker——UI 连的是服务端点（#70 修复后服务管道 DACL 生效） |
-| S5 | 服务模式下改配置保存 → ReloadConfig 热生效 | 未回填 | 归 #85 ReloadConfig 缺陷票的探针与 #58 核销覆盖（票面既定口径） |
+| S5 | 服务模式下改配置保存 → ReloadConfig 热生效 | 通过 | 2026-11-03 桌面截图 + 服务管道探针（产物见下文「S5 复测产物记录（#85 窗口）」）：服务运行中 UI 走服务端点（帧 `S5-00-overview-before.png`：「已连接 · PhotoPrivacyCleaner.Service · 服务模式」，进程侧仅一个 Worker 在 Services 会话）；配置页把「监控目录」改为 `…\photo-smoke-85\hot-s5` 后界面绿字「已保存 · Worker 已重载」（帧 `S5-08-e2e-timing.png`），端到端 **0.52 s 配置落盘 / 0.64 s 热生效**（读侧预算 10 s，`S5-08-e2e-timing.txt`）；投放 `sample.jpg` 后由服务 Worker 就地清洗 3,648→626 B，日志页出 `Cleaned attempt=1;wipe_result=Cleaned_Modified` + `backup_sidecar_version…`（帧 `S5-03-logs-after-reload.png`），重开配置页显示持久化值（`S5-05-config-persisted.png`）；不经 UI 的独立探针经 `\\.\pipe\PhotoPrivacyCleaner.Service` 两次 `ReloadConfig` 各回 `ok:true`/`mode=service`，往返 0.44–0.62 s（锚定那轮 0.59 / 0.55 s，`S5-06-service-pipe-probe.txt`） |
 | S6 | 停止服务 → 状态回落 | 未回填 | 未探活（#88 范围外） |
 | S7 | 卸载服务 → 回到未安装态 | 未回填 | 未探活（#88 范围外）；本轮收尾用 `install-service.ps1 -Action uninstall` 卸载并复核 SC 1060，但那是脚本通道，不是 S7 要验的 UI 提权链路 |
 | S8 | 服务模式日志通道在日志页可见（与后台模式区分） | 通过 | 2026-11-03 桌面截图 + 文件系统取证（帧 `S8-logs-page-service.png`）：同一服务模式会话切日志页，04:09:55「Service started mode=live」、04:09:56「ExifTool started」在列；04:13:08–09 投入 `hot/` 的带 Artist/Copyright 样本被服务 Worker 就地清洗 3648→626 B，日志页实时出「Cleaned attempt=1/wipe_result=Cleaned, Modified」×2 +「backup_sidecar_version… content_diverged_sidecar_written」，exiftool 复查标签已空；条目与 `pkg/hot/_audit/audit-2026-11-03.jsonl`、`processed.ndjson`（两文件 mtime 均落在投放后的 04:13）及 ProgramData 服务日志同刻。与后台模式的区分锚在连接态：本会话状态卡是「PhotoPrivacyCleaner.Service · 服务模式」+ Worker 卡片「服务 IPC=可达」（K1 记录的后台形态是 Background · 不可达） |
@@ -391,7 +391,7 @@
   服务 Worker 因此直接进监控形态（对 S8 的实时日志条目是必要条件，对 S1/S3/S4 无影响）。
 - **S2 前置步骤**：`install-service.ps1 -Action install`（High IL 管理员，无 UAC 交互），
   安装即写 `HKLM:\SOFTWARE\PhotoPrivacy\ServicePipeInstallerSid`（#70 的安装者 SID）再 `Start-Service`。
-- **结果**：**S1 通过、S3 通过、S4 通过、S8 通过**（逐项证据见上文 S1-S8 行）；S2/S5/S6/S7 不在本票 AC，未回填。
+- **结果**：**S1 通过、S3 通过、S4 通过、S8 通过**（逐项证据见上文 S1-S8 行）；S2/S6/S7 不在本票 AC，未回填（S5 已由 #85 窗口单独复测，见下一节）。
 - **本轮新观察（不自行开票，是否成票待用户裁决）**：
   1. **服务 Worker 与后台 Worker 同 config 并存时服务自停**：两形态 Worker 共用同一
      `hot/_audit/processed.ndjson`，后启动者在 `FileProcessedRecordStore` 构造处抛
@@ -411,6 +411,56 @@
   hot\ 目录回到 #113 二轮收尾内容；`config.json` 未动。
   服务 Worker 的诊断日志留存在 `C:\ProgramData\PhotoPrivacy\logs\worker-20261103.log`
   （含两轮 #70 相关崩溃栈），未入仓库。
+
+### S5 复测产物记录（2026-11-03，#85 窗口：服务模式配置热重载）
+
+> **授权记录**：在本机执行实机取证（含安装/卸载 `PhotoPrivacyCleaner` 服务、合成点击驱动 UI）
+> 由用户在 #85 实现窗口明确批准（2026-11-03）。不改变「无证据不虚构」：本节每条结论都对应
+> 下文具体帧或探针输出。
+
+- **产物**：复用 Release run [41495388043](https://github.com/Xxx91n/photo/actions/runs/41495388043)
+  的 `release-win-x64`（已解压 `C:\Users\Administrator\photo-smoke-113r2\pkg\`，head `fb388507`）。
+  与 #85 起始基线 `5298b6466` 的差异经 `git log fb388507..5298b64` 核对**仅 4 个 docs 提交**；
+  二进制 sha256 实测与既有记录一致（`PhotoPrivacy.exe a49189b2…`、`PhotoPrivacyWorker.exe 424acf03…`），
+  故结论对当前 main 的代码成立。本地未编译，包体全部来自远端 CI。
+- **前置**：服务未安装（SC 1060）、无 UI/Worker 残留进程。`scripts/install-service.ps1 -Action install`
+  （High IL 管理员，无 UAC 交互）安装并启动，安装即登记 `ServicePipeInstallerSid`（`S-1-5-21-…-500`）；
+  `sc query` STATE 4 RUNNING，服务 Worker 落在 Services 会话（pid 3496，SessionId 0）。
+- **取证通道**：整屏 `ImageGrab` + 合成点击/键入；截图与探针输出存
+  `C:\Users\Administrator\photo-smoke-85\evidence\`（11 个文件，不入库），
+  哈希锚 `docs/agents/ui-smoke-evidence.sha256`（实测 11/11 `OK`）。本轮新增的操作细节：
+  1. **gpui 输入框不响应 Ctrl+A**：清空既有路径必须 `End` + 退格。首次按 Ctrl+A 再粘贴时，
+     新路径被拼到旧值尾部（`…\photo-smoke-113r2\hotC:\Users\…`），界面照常落盘；
+     该畸形路径触发的重载在服务管道回 `reload_failed`（`EnsureConfiguredDirectories` 抛
+     `IOException`）且旧运行时保持原样——正好实证「失败不吞成成功」（#94）与「建目录失败在拆卸前
+     拒绝」（#112/#124）在服务端点的行为（`S5-09-service-log.txt` 的 06:28:03 段）。
+  2. 一轮交互（置顶 → 点击 → 等待 → 截屏）收在同一进程内，避免宿主抢前台（#88 已登记）。
+- **步骤与结果**：
+  1. 服务运行中启动 UI：连接态「已连接 · PhotoPrivacyCleaner.Service · 服务模式」，Worker 卡片
+     「服务模式 / service / 服务 IPC=可达 / 协议 v1 / ExifTool 13.60」，进程侧只有服务 Worker，
+     UI 未拉起后台 Worker——`S5-00-overview-before.png`；
+  2. 配置页把「监控目录」从 `…\photo-smoke-113r2\hot` 改为 `…\photo-smoke-85\hot-s5`：
+     `config.json` 于 06:28:43.853 落盘（`watch.hot_folder` 为新值）——`S5-02-field-edited.png`；
+  3. 服务管道 `GetStatus` 随即回 `watchDirectory=C:\Users\Administrator\photo-smoke-85\hot-s5`
+     （`mode=service`），重开配置页显示持久化值——`S5-05-config-persisted.png`；
+  4. 向新目录投放 `sample.jpg`（3,648 B）：服务 Worker 于 06:29:18 就地清洗为 626 B，审计
+     `processed.ndjson` 留 3,648 / 626 两条记录，日志页实时出
+     `Cleaned attempt=1;wipe_result=Cleaned_Modified` 与
+     `backup_sidecar_version… content_diverged_sidecar_written`——`S5-03-logs-after-reload.png`；
+     同刻总览仍为服务模式、上次往返 8 ms——`S5-04-overview-after-reload.png`；
+  5. **端到端计时**（第二轮回改为原目录）：粘贴生效后 **0.52 s** 配置落盘、**0.64 s**
+     `GetStatus.watchDirectory` 切到新值，同帧界面绿字「已保存 · Worker 已重载」
+     ——`S5-08-e2e-timing.png` / `S5-08-e2e-timing.txt`，读侧预算 10 s；
+  6. **服务管道独立探针**（不经 UI，按帧协议直连 `\\.\pipe\PhotoPrivacyCleaner.Service`）：
+     `GetStatus` 1–2 ms；三次运行的两次 `ReloadConfig` 往返落在 **0.44–0.62 s**（锚定的那一轮
+     0.59 / 0.55 s），全部回 `ok:true`、`mode=service`、`v=1`，无一次触及 10 s 预算
+     ——`S5-06-service-pipe-probe.txt`。这是事故形态「服务管道 10 s/15 s 无响应」在
+     Windows 命名管道上的直接反证。
+- **收尾状态**：UI 已退出、服务已卸载（SC 1060 复核）、`ServicePipeInstallerSid` 值随 uninstall 清除、
+  任务表 0/0 残留；`pkg/config/config.json` 回到取证前的 `watch.hot_folder`（`…\photo-smoke-113r2\hot`），
+  二进制未变；`hot-s5\` 内留 626 B 已清洗样本与其备份，全部落在取证目录内，仓库工作区不受影响。
+- **边界**：仅 Windows 命名管道。Linux/macOS 服务端点（Unix socket 0660 + 组边界）未实机，仍归 #31/#32；
+  CI `test` job 为 ubuntu，服务形态那一行走的是 Unix 策略——两侧证据互补，互不替代。
 
 ### 切换日实机执行记录（2026-10-28，#61 实现窗口）
 
