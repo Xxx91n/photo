@@ -5,6 +5,13 @@
 ## 治理
 
 **Design Marker（决策标记）**：源码里可检索的架构决策锚 `// Design(#<issue>): <决策>`，紧贴受约束声明；issue 号 = 决策存续出处。取舍判据见 `docs/agents/design-markers.md`，形态由 `DesignMarkerSourceTests` 守。
+**不变量①–⑤（运行不变量表）**：correctness-round（2026-09）拍的五条系统级正确性不变量，源码/测试以「不变量N」编号引用（含「不变量①④」连写与同句间隔两种形态）。原表体住 D 系决策账本 D-002（未入仓，fa360d6 拆治理层后散佚），本词条为对账重建：存续出处定 GLOSSARY、编号引用不折算不退役（#63）；引用与表体的对账由 `InvariantReferenceReconciliationTests` 守。
+- **不变量①（fail-closed）**：不可读、不识别、异常路径一律显式拒绝或可见告警，绝不静默放行、不静默降级。
+- **不变量②（数据零意外丢失）**：用户数据零意外丢失——备份镜像布局结构性消歧、restart 与停机窗口不丢在途任务。
+- **不变量③（最小攻击面）**：认证只信内核身份边界，不信用户态可伪造信号（PID/进程路径）。考古恢复：现行仓内无 ③ 引用点，取义自 correctness-round 票 04 报告（「D-002 不变量③最小攻击面」），非新提。
+- **不变量④（驻守可观测）**：不允许「看起来在跑实际没在跑」——常驻收益（stay_open）不被摧毁、探针轻量不误杀、降级必留痕。
+- **不变量⑤（宣称-实现一致）**：宣称的承诺由机器断言兑现——对账守卫随 CI 硬失败，宣称数字由测试产出。
+
 **Stack Migration（换栈）**：UI 框架栈层面的整体更换，与栈内重构相对。
 **In-Stack Refactor（栈内重构）**：不换 UI 框架，只改栈内的结构与呈现模式。
 
@@ -84,3 +91,5 @@
 **Visual Baseline**：4 页×关键态截图基线，人工目检见 `docs/agents/ui-smoke.md`，不上 CI 像素 diff。
 **Source-lint Test**：编译期源码文本断言，约定见 `tests/TEST-CONVENTIONS.md`。
 **CI Gate**：push/PR 自动跑过滤后的测试，是云端验收闸。
+
+> AI生成

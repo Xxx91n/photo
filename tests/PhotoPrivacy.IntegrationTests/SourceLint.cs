@@ -58,11 +58,33 @@ public static class SourceLint
         var srcRoot = Path.Combine(RepoRoot, "src");
         Assert.True(Directory.Exists(srcRoot), $"src root not found: {srcRoot}");
         return Directory.GetFiles(srcRoot, "*.cs", SearchOption.AllDirectories)
-            .Where(f => !f.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar) &&
-                        !f.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar) &&
-                        !f.EndsWith(".g.cs") && !f.EndsWith(".GlobalUsings.g.cs"))
+            .Where(f => IsNotBuildArtifact(f) && !f.EndsWith(".g.cs") && !f.EndsWith(".GlobalUsings.g.cs"))
             .ToList();
     }
+
+    /// <summary>
+    /// （#63）按仓库相对根名与通配枚举源码文件，排除 bin/obj/target 构建产物——
+    /// 新守卫的 tests/ .cs 与 ui/ .rs/.toml 等非 src 枚举走本方法（存量 guard 的
+    /// 既有枚举为预存状态，不在本方法收编范围），与 <see cref="SrcCsFiles"/> 同一出处，
+    /// 不在各 guard 里另起一套排除规则。
+    /// </summary>
+    public static List<string> EnumerateSourceFiles(string rootName, string pattern)
+    {
+        var root = Path.Combine(RepoRoot, rootName);
+        if (!Directory.Exists(root))
+        {
+            return [];
+        }
+
+        return Directory.GetFiles(root, pattern, SearchOption.AllDirectories)
+            .Where(IsNotBuildArtifact)
+            .ToList();
+    }
+
+    private static bool IsNotBuildArtifact(string path) =>
+        !path.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar) &&
+        !path.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar) &&
+        !path.Contains(Path.DirectorySeparatorChar + "target" + Path.DirectorySeparatorChar);
 
     private static string FindRepoRoot()
     {
