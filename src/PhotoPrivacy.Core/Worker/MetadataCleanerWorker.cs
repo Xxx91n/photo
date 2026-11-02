@@ -40,6 +40,10 @@ public sealed class MetadataCleanerWorker : BackgroundService
     /// <c>_pipeline</c> 被置空而丢失（不重入队）。
     /// </summary>
     private readonly SemaphoreSlim _drainGate = new(1, 1);
+    // CodeRabbit #437：StopAsync 幂等串行化。host 关闭会多次调用 StopAsync（见 StopAsync 注释），
+    // 用锁 + 共享完成任务保证第二次调用只等待、不重跑 Cancel/Dispose 等清理步骤。
+    private readonly object _stopLock = new();
+    private Task? _stopTask;
 
     private Timer? _cleanupTimer;
     private AppConfig? _currentConfig;
@@ -348,7 +352,21 @@ public sealed class MetadataCleanerWorker : BackgroundService
         }
     }
 
-    public override async Task StopAsync(CancellationToken cancellationToken)
+    public override Task StopAsync(CancellationToken cancellationToken)
+    {
+        // 幂等（CodeRabbit #437）：host 关闭会在 ShutdownCoordinator 的 app.StopAsync 与
+        // RunAsync 路径（ApplicationStopping 后 host.StopAsync(None)）各调用一次 StopAsync；
+        // 若两路都执行完整清理，第二次会撞已释放的 _standbyStopCts（Cancel/Dispose 抛
+        // ObjectDisposedException）导致 host 判定关机失败。串行化：首次调用创建关闭任务，
+        // 后续调用复用同一任务等待其完成。
+        lock (_stopLock)
+        {
+            _stopTask ??= StopAsyncCore(cancellationToken);
+            return _stopTask;
+        }
+    }
+
+    private async Task StopAsyncCore(CancellationToken cancellationToken)
     {
         // #117：停机必须先显式打断待机等待。.NET 10 的 SemaphoreSlim.Dispose 只清空等待队列、
         // 不会让挂起的 WaitAsync 完成（不会向等待者抛 ObjectDisposedException），只靠 Dispose + catch
@@ -427,13 +445,30 @@ public sealed class MetadataCleanerWorker : BackgroundService
         _reloadGate.Dispose();
 
         await base.StopAsync(cancellationToken);
+
+        // CodeRabbit #357：base.StopAsync 对 ExecuteTask 的等待受调用方 token 影响——token 过期会
+        // 提前返回，ExecuteTask 可能尚未完成，立即 Dispose 信号量会重开 .NET 10 的竞态窗口。
+        // 补一次不可取消等待，确保 ExecuteAsync 的待机分支（观察到取消后）真正收敛再释放。
+        if (ExecuteTask is not null)
+        {
+            try
+            {
+                await ExecuteTask;
+            }
+            catch
+            {
+                // ExecuteTask 的失败已由 base.StopAsync 按既有语义处理（OCE 被吞、其余包装抛出），
+                // 这里只补齐「完成等待」，不再重复处理异常。
+            }
+        }
+
         // 待机等待必须在 ExecuteTask 收敛后才 Dispose：#117 修复（先 Cancel）与 .NET 10 的
         // SemaphoreSlim.Dispose（只清等待队列、不完成等待者）之间存在竞态——若 Dispose 抢在
         // 取消回调把等待者移出队列之前执行，等待者会被永久挂起（CI 稳定复现、本地间歇复现）。
-        // 先让 base.StopAsync 等到 ExecuteAsync 观察到取消并返回，再释放信号量，窗口消失。
+        // 先让 ExecuteTask 收敛，再释放信号量，窗口消失。
         _standbySignal.Dispose();
 
-        // ExecuteAsync 已在 base.StopAsync 中完成（待机分支观察到取消后返回），可以释放停机信号。
+        // ExecuteTask 已收敛（含上面不可取消等待补齐的场景），可以释放停机信号。
         _standbyStopCts.Dispose();
     }
 
