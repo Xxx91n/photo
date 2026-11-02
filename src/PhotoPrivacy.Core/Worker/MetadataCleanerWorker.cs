@@ -29,6 +29,10 @@ public sealed class MetadataCleanerWorker : BackgroundService
     private int _maxParallelDrain = 1;
     private readonly SemaphoreSlim _reloadGate = new(1, 1);
     private readonly SemaphoreSlim _standbySignal = new(0, 1);
+    // 停机信号（#117）：待机等待必须能被 StopAsync 显式打断。仅 Dispose 不会让挂起的
+    // WaitAsync 完成（.NET 10 的 SemaphoreSlim.Dispose 只清空等待队列、不完成等待者），
+    // 待机分支用它与宿主 stoppingToken 链接的令牌等待，StopAsync 先 Cancel 再收口。
+    private readonly CancellationTokenSource _standbyStopCts = new();
 
     /// <summary>
     /// 串行化「drain 一轮」与「拆卸重建」（#85）：重载在拆卸 store/audit 前必须先等当前一轮 drain 结束，
@@ -36,6 +40,10 @@ public sealed class MetadataCleanerWorker : BackgroundService
     /// <c>_pipeline</c> 被置空而丢失（不重入队）。
     /// </summary>
     private readonly SemaphoreSlim _drainGate = new(1, 1);
+    // CodeRabbit #437：StopAsync 幂等串行化。host 关闭会多次调用 StopAsync（见 StopAsync 注释），
+    // 用锁 + 共享完成任务保证第二次调用只等待、不重跑 Cancel/Dispose 等清理步骤。
+    private readonly object _stopLock = new();
+    private Task? _stopTask;
 
     private Timer? _cleanupTimer;
     private AppConfig? _currentConfig;
@@ -153,23 +161,27 @@ public sealed class MetadataCleanerWorker : BackgroundService
             }
 
             _logger.LogWarning("Worker is ready but no watch folder is configured; waiting for configuration reload");
+            // 待机等待必须能被停机显式打断（#117）：仅 Dispose 不会让挂起的 WaitAsync 完成——
+            // .NET 10 的 SemaphoreSlim.Dispose 只清空等待队列、不完成等待者，Dispose + catch 兜不住
+            // 首次配置待机这条路径。把宿主 stoppingToken 与本 Worker 停机信号链接起来，两条停机路径
+            // （宿主停止 / StopAsync）都收敛到下面的 OperationCanceledException 分支。
+            using var standbyCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, _standbyStopCts.Token);
             try
             {
                 while (string.IsNullOrWhiteSpace(_currentConfig?.Watch.HotFolder))
                 {
-                    await _standbySignal.WaitAsync(stoppingToken);
+                    await _standbySignal.WaitAsync(standbyCts.Token);
                 }
             }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            catch (OperationCanceledException) when (standbyCts.IsCancellationRequested)
             {
                 // Normal shutdown while the worker is waiting for first-run configuration.
                 return;
             }
             catch (ObjectDisposedException)
             {
-                // StopAsync disposes the signal before the host cancels; re-entering the wait after that
-                // throws synchronously. That is shutdown too — must not fall through into the processing
-                // loop, which would spin against a torn-down runtime until the cancellation lands.
+                // 防御兜底：若信号在链接令牌被观察前已被 Dispose，重入等待会同步抛
+                // ObjectDisposedException。同样是停机，不得落入处理循环。
                 return;
             }
 
@@ -350,8 +362,27 @@ public sealed class MetadataCleanerWorker : BackgroundService
         }
     }
 
-    public override async Task StopAsync(CancellationToken cancellationToken)
+    public override Task StopAsync(CancellationToken cancellationToken)
     {
+        // 幂等（CodeRabbit #437）：host 关闭会在 ShutdownCoordinator 的 app.StopAsync 与
+        // RunAsync 路径（ApplicationStopping 后 host.StopAsync(None)）各调用一次 StopAsync；
+        // 若两路都执行完整清理，第二次会撞已释放的 _standbyStopCts（Cancel/Dispose 抛
+        // ObjectDisposedException）导致 host 判定关机失败。串行化：首次调用创建关闭任务，
+        // 后续调用复用同一任务等待其完成。
+        lock (_stopLock)
+        {
+            _stopTask ??= StopAsyncCore(cancellationToken);
+            return _stopTask;
+        }
+    }
+
+    private async Task StopAsyncCore(CancellationToken cancellationToken)
+    {
+        // #117：停机必须先显式打断待机等待。.NET 10 的 SemaphoreSlim.Dispose 只清空等待队列、
+        // 不会让挂起的 WaitAsync 完成（不会向等待者抛 ObjectDisposedException），只靠 Dispose + catch
+        // 兜不住「首次配置待机」这条路径；先 Cancel 让 ExecuteAsync 的待机分支立刻收敛，
+        // 后续有界清理与 base.StopAsync 才能按预算完成。
+        _standbyStopCts.Cancel();
         _cleanupTimer?.Dispose();
         _watcher?.Stop();
 
@@ -422,9 +453,34 @@ public sealed class MetadataCleanerWorker : BackgroundService
         }
 
         _reloadGate.Dispose();
-        _standbySignal.Dispose();
 
         await base.StopAsync(cancellationToken);
+
+        // CodeRabbit #357/#456：base.StopAsync 对 ExecuteTask 的等待受调用方 token 影响——token 过期会
+        // 提前返回，ExecuteTask 可能尚未完成。这里补一次**有界且不抛**的收敛检查：既确保 ExecuteAsync
+        // 的待机分支（观察到取消后）真正收敛，又不让被阻塞的启动清扫无限拖住停机，也不把 ExecuteTask
+        // 的 fault 传播到停机路径（收敛状态已由 base.StopAsync 按既有语义处理）。
+        // 预算内未收敛则跳过 Dispose（信号量不释放就不会有 .NET 10 的 Dispose 竞态），
+        // 残留句柄由进程退出收尾。
+        var converged = ExecuteTask is null;
+        if (ExecuteTask is not null)
+        {
+            converged = await Task.WhenAny(ExecuteTask, Task.Delay(TimeSpan.FromSeconds(4))) == ExecuteTask;
+        }
+
+        if (converged)
+        {
+            // 待机等待必须在 ExecuteTask 收敛后才 Dispose：#117 修复（先 Cancel）与 .NET 10 的
+            // SemaphoreSlim.Dispose（只清等待队列、不完成等待者）之间存在竞态——若 Dispose 抢在
+            // 取消回调把等待者移出队列之前执行，等待者会被永久挂起。先让 ExecuteTask 收敛再释放。
+            _standbySignal.Dispose();
+            _standbyStopCts.Dispose();
+        }
+        else
+        {
+            _logger.LogWarning(
+                "ExecuteTask did not converge within 4 s on shutdown; skipping signal disposal to avoid the Dispose race (#117/#357/#456).");
+        }
     }
 
     /// <summary>
