@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "exiftool": {
-    "path": "C:\\Program Files\\ExifTool\\exiftool.exe",
+    "path": "",
     "enable_windows_long_path": true,
     "enable_large_file_support": true,
     "dry_run": false,

@@ -11,6 +11,21 @@ public static class AppConfigValidator
     ];
 
     /// <summary>
+    /// 包管理器管理的安装前缀（Unix）：命中即认为该安装能自行解析 <c>lib/</c>。
+    /// 只列真实的包管理器根，不用「在 PATH 里」代替——见 <see cref="IsPackageManagedDirectory"/>。
+    /// </summary>
+    private static readonly string[] PackageManagedPrefixes =
+    [
+        "/usr/",
+        "/bin/",
+        "/sbin/",
+        "/opt/",
+        "/snap/",
+        "/nix/",
+        "/home/linuxbrew/",
+    ];
+
+    /// <summary>
     /// 当前 MatchesPattern 未实现的通配语法字符——出现即按字面量匹配，
     /// 用户按 gitignore/rsync 习惯写的模式会静默失效，故必须告警（不识别≠静默）。
     /// </summary>
@@ -23,8 +38,25 @@ public static class AppConfigValidator
     private static readonly char[] InvalidFileNameChars =
         Path.GetInvalidFileNameChars().Where(c => c != '*' && c != '?').ToArray();
 
+    /// <summary>
+    /// 配置校验分三层（决策记录见 #108）：
+    /// <list type="number">
+    /// <item><b>无条件层</b>——纯值不变量（连接池大小、禁用参数）。既不依赖文件系统，
+    /// 也不依赖是否启用监控，因此任何形态（含待机、含 dry-run）都必须通过。</item>
+    /// <item><b>dry-run 层</b>——不调用 ExifTool、不落盘，资源存在性无意义，直接放过。</item>
+    /// <item><b>启用监控前置层</b>——ExifTool 可执行文件与伴随目录、隔离/审计目录、
+    /// 备份目录冲突。这些资源只在监控真正运行时被使用，故只在启用监控时 fail-closed。</item>
+    /// </list>
+    /// 空监控目录是首运行待机态（#100）：以前用一条 <c>return</c> 整体跳过，
+    /// 连带跳过了与监控无关的禁用参数校验，且使备份分支里的空目录判断变成不可达死代码；
+    /// 现在改为按「是否启用监控」显式分层，跳过范围仅限监控资源本身。
+    /// 代价：缺 ExifTool 的裸机在保存监控目录时才会被拒——该拒绝原因由 UI 常驻显示，
+    /// 不随 3 s 过期消失（同票 UI 侧）。
+    /// </summary>
+    // Design(#108): 空监控目录只跳过监控资源校验（ExifTool 及伴随目录、隔离/审计目录、备份目录冲突）；连接池不变量与禁用参数任何形态都 fail-closed。
     public static void Validate(AppConfig config)
     {
+        // —— 无条件层 ——
         if (config.ExifTool.StayOpenPoolSize < 1)
         {
             throw new AppConfigValidationException("exiftool.stay_open_pool_size must be >= 1");
@@ -35,11 +67,19 @@ public static class AppConfigValidator
             throw new AppConfigValidationException("exiftool.max_parallel_drain must be >= 1");
         }
 
+        // 禁用参数会破坏 stay_open 长驻协议，与是否启用监控、是否 dry-run 无关，故前置。
+        if (config.ExifTool.ExtraExifToolArgs.Any(arg => ForbiddenExtraArgs.Contains(arg, StringComparer.OrdinalIgnoreCase)))
+        {
+            throw new AppConfigValidationException("extra_exiftool_args contains forbidden argument");
+        }
+
+        // —— dry-run 层 ——
         if (config.ExifTool.DryRun)
         {
             return;
         }
 
+        // —— 启用监控前置层 ——
         // An empty hot folder is a valid first-run standby state. The worker
         // remains available over IPC until the user chooses a directory.
         if (string.IsNullOrWhiteSpace(config.Watch.HotFolder))
@@ -64,36 +104,56 @@ public static class AppConfigValidator
 
         if (!Path.IsPathFullyQualified(config.ExifTool.Path))
         {
-            throw new AppConfigValidationException("exiftool.path must be absolute");
+            // 前缀保留英文口径（smoke 断言与文档按此定位），后缀给出可执行指引：
+            // 发布包内置 ExifTool 后，用户不需要自己找路径，报错必须说清两条出路。
+            throw new AppConfigValidationException(
+                $"exiftool.path must be absolute（当前值：\"{config.ExifTool.Path}\"）。" +
+                "exiftool.path 留空表示按运行时探测（优先发布包内置的 ExifTool 目录）；" +
+                "内置文件缺失时请重新解压发布包，或安装 ExifTool 后在配置页填写可执行文件的完整路径。");
         }
 
         if (!File.Exists(config.ExifTool.Path))
         {
-            throw new AppConfigValidationException("exiftool.path not found");
+            throw new AppConfigValidationException(
+                $"exiftool.path not found（当前值：\"{config.ExifTool.Path}\"）。" +
+                "发布包内置的 ExifTool 缺失时请重新解压发布包；或安装 ExifTool 后在配置页指定 exiftool 可执行文件的完整路径。");
         }
 
-        var exifToolDirectory = Path.GetDirectoryName(config.ExifTool.Path)
+        // 符号链接要先解到最终目标：`~/bin/exiftool -> ~/ExifTool/exiftool` 这类安装的 lib/
+        // 在目标旁边而不在链接旁边，按链接所在目录查运行时目录会把可用安装误判成装坏（#108 审查）。
+        var exifToolPath = ResolveFinalTarget(config.ExifTool.Path);
+        var exifToolDirectory = Path.GetDirectoryName(exifToolPath)
             ?? throw new AppConfigValidationException("exiftool.path parent directory missing");
-        var exifToolFilesDirectory = Path.Combine(exifToolDirectory, "exiftool_files");
 
-        if (!Directory.Exists(exifToolFilesDirectory))
+        // 伴随运行时目录：Windows 包是 exiftool_files（官方要求与 exiftool.exe 同级），
+        // Perl 发行版是同级 lib/。缺了它 exiftool 起不来，而失败点会晚到 stay_open 桥接启动期，
+        // 所以在配置校验就拦住。
+        if (OperatingSystem.IsWindows())
         {
-            throw new AppConfigValidationException("exiftool_files directory missing");
-        }
+            var exifToolFilesDirectory = Path.Combine(exifToolDirectory, "exiftool_files");
 
-        if (config.ExifTool.ExtraExifToolArgs.Any(arg => ForbiddenExtraArgs.Contains(arg, StringComparer.OrdinalIgnoreCase)))
-        {
-            throw new AppConfigValidationException("extra_exiftool_args contains forbidden argument");
-        }
-
-       if (config.Backup.Enabled)
-       {
-            if (string.IsNullOrWhiteSpace(config.Watch.HotFolder))
+            if (!Directory.Exists(exifToolFilesDirectory))
             {
-                throw new AppConfigValidationException("watch.hot_folder 未配置，无法启用备份。请先设置监控目录。");
+                throw new AppConfigValidationException(
+                    $"exiftool_files directory missing（{exifToolDirectory} 下缺少 exiftool_files 目录）。" +
+                    "Windows 版 ExifTool 的 exiftool.exe 必须与 exiftool_files 同级；请重新解压发布包，或重新安装 ExifTool。");
             }
+        }
+        else if (!IsPackageManagedDirectory(exifToolDirectory)
+                 && !Directory.Exists(Path.Combine(exifToolDirectory, "lib")))
+        {
+            // 包管理器管理的安装（/usr、/opt/homebrew、/nix/store 等）由包自身登记 lib 搜索路径，
+            // 不要求同级目录；其余位置（含发布包内置的 ExifTool/、自定义目录）必须是自包含的一份。
+            throw new AppConfigValidationException(
+                $"exiftool_files directory missing（{exifToolDirectory} 下既没有 exiftool_files 也没有 lib 目录）。" +
+                "随包内置的 ExifTool 需与 lib/ 同级；请重新解压发布包，或安装系统级 ExifTool 后在配置页指定 /usr/bin/exiftool。");
+        }
 
-           var hot = Path.GetFullPath(config.Watch.HotFolder).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        // 本块只在启用监控时到达，故「备份启用但监控目录为空」不可能成立——
+        // 那条判断曾经是不可达死代码（空目录在方法入口就 return 了），已随分层删除。
+        if (config.Backup.Enabled)
+        {
+            var hot = Path.GetFullPath(config.Watch.HotFolder).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
             var backupDir = !string.IsNullOrWhiteSpace(config.Backup.Directory)
                 ? Path.GetFullPath(config.Backup.Directory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
                 : Path.Combine(hot, "bak");
@@ -103,6 +163,54 @@ public static class AppConfigValidator
                 throw new AppConfigValidationException("备份目录不能与监控目录相同，请指定监控目录的子目录(如 bak)或其他路径。");
             }
         }
+    }
+
+    /// <summary>
+    /// 解到符号链接的最终目标；不是链接或解析失败时原样返回。
+    /// 用于「运行时目录在链接目标旁边」的安装（Unix 上 <c>~/bin/exiftool -> ~/ExifTool/exiftool</c>）。
+    /// </summary>
+    private static string ResolveFinalTarget(string path)
+    {
+        try
+        {
+            return File.ResolveLinkTarget(path, returnFinalTarget: true)?.FullName ?? path;
+        }
+        catch (IOException)
+        {
+            return path;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return path;
+        }
+    }
+
+    /// <summary>
+    /// 包管理器管理的安装目录：这些位置的 exiftool 由包自身登记 lib 搜索路径（发行版 <c>/usr</c>、
+    /// Homebrew <c>/opt/homebrew</c>、Nix <c>/nix/store</c>、Linuxbrew 等），不要求同级的 <c>lib/</c>。
+    ///
+    /// 判定不采信「目录在 PATH 里」：PATH 只证明文件能被发现，自定义目录里可能只是一个缺 <c>lib/</c>
+    /// 的脚本副本——那种副本过了校验也会在首个文件上起不来，等于把 fail-closed 换成延迟失败（#108 审查）。
+    /// </summary>
+    private static bool IsPackageManagedDirectory(string directory)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return false;
+        }
+
+        var normalized = Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory))
+            + Path.DirectorySeparatorChar;
+
+        foreach (var prefix in PackageManagedPrefixes)
+        {
+            if (normalized.StartsWith(prefix, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>
