@@ -1568,8 +1568,8 @@ public sealed class WorkerReloadConfigRegressionTests
     }
 
     /// <summary>
-    /// 等「指定文件名的处理记录」出现。记录键是 <c>绝对路径|长度|LastWriteTimeUtc.Ticks</c> 明文，
-    /// 按文件名子串匹配即可绕开 Windows 路径在 JSON 行里的反斜杠转义。
+    /// 等「指定文件名的处理记录」出现。记录键是规范化绝对路径（#133 路线 2 起收敛为路径粗粒度，
+    /// 不再携带长度/LastWriteTimeUtc 指纹），按文件名子串匹配即可绕开 Windows 路径在 JSON 行里的反斜杠转义。
     /// </summary>
     private static async Task<bool> WaitForProcessedRecordForAsync(string processedPath, string fileName, TimeSpan budget)
     {

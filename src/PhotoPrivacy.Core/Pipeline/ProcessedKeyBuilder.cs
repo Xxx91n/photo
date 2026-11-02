@@ -2,9 +2,9 @@ namespace PhotoPrivacy.Core.Pipeline;
 
 public static class ProcessedKeyBuilder
 {
-    public static string Build(string path, long fileLength, DateTime lastWriteTimeUtc)
+    /// <summary>构建去重键：#133 路线 2 起收敛为规范化路径（粗粒度命中），不再携带长度/时间戳指纹。</summary>
+    public static string Build(string path)
     {
-        var normalized = Path.GetFullPath(path);
-        return $"{normalized}|{fileLength}|{lastWriteTimeUtc.Ticks}";
+        return Path.GetFullPath(path);
     }
 }

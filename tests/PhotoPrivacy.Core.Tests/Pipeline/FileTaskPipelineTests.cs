@@ -160,6 +160,49 @@ public sealed class FileTaskPipelineTests
                 && e.Message.Contains("next_attempt=2", StringComparison.OrdinalIgnoreCase));
     }
 
+    [Fact]
+    public async Task HandleAsync_Should_Skip_Rescan_Of_Same_Path_After_Content_Changed()
+    {
+        // 防的具体回潮形态：same_as_source 清洗后文件长度/mtime 指纹变化，旧去重键（路径|长度|mtime）
+        // 不再命中，整目录补扫把已清洗文件又处理一遍（#133）。
+        // 关联 issue #133。
+        // 路线 2 口径：去重键收敛为规范化路径粗粒度命中——同一路径已有记录即视为已处理，不再比对指纹。
+        var hot = Path.Combine(Path.GetTempPath(), "pp-ft-rescan-path-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(hot);
+        var file = Path.Combine(hot, "a.jpg");
+        File.WriteAllBytes(file, [1, 2, 3]);
+
+        try
+        {
+            var cfg = AppConfig.Default with
+            {
+                Retry = AppConfig.Default.Retry with { MaxAttempts = 1, BackoffSeconds = [0] },
+                Backup = AppConfig.Default.Backup with { Enabled = false }
+            };
+            var ruleEngine = new RuleEngine(cfg);
+            var bridge = new SlowSuccessBridge();
+            var fileOps = new InMemoryFileOperations();
+            var audit = new InMemoryAuditLogger();
+            var store = new InMemoryProcessedRecordStore();
+            var pipeline = new FileTaskPipeline(cfg, ruleEngine, bridge, fileOps, audit, store);
+
+            await pipeline.HandleAsync(file, CancellationToken.None);
+            Assert.Equal(1, bridge.Calls);
+
+            // 模拟清洗后文件内容/指纹变化（same_as_source 会改长度和 mtime）：补扫同一路径应被路径命中挡住。
+            File.WriteAllBytes(file, [9, 9, 9, 9, 9]);
+
+            await pipeline.HandleAsync(file, CancellationToken.None);
+
+            Assert.Equal(1, bridge.Calls);
+            Assert.Contains(audit.Events, e => e.EventType == "file_skipped" && e.Reason == "already_processed");
+        }
+        finally
+        {
+            Directory.Delete(hot, recursive: true);
+        }
+    }
+
     private sealed class InMemoryFileOperations : IFileOperations
     {
         public List<(string Source, string Destination)> Moves { get; } = [];

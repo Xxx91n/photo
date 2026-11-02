@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace PhotoPrivacy.Core.Pipeline;
 
@@ -225,7 +226,9 @@ public sealed class FileProcessedRecordStore : IProcessedRecordStore, IDisposabl
 
                     if (DateTimeOffset.TryParse(tsStr, out var ts) && ts >= cutoff)
                     {
-                        _cache.TryAdd(key, ts);
+                        // #133 路线 2：key 口径收敛为路径粗粒度。旧记录是「路径|长度|mtimeTicks」指纹格式，
+                        // 归一化为纯路径再入缓存，避免升级首轮整目录补扫把已清洗文件重复处理一遍。
+                        _cache.TryAdd(NormalizeLegacyKey(key), ts);
                     }
                 }
                 catch
@@ -238,5 +241,13 @@ public sealed class FileProcessedRecordStore : IProcessedRecordStore, IDisposabl
         {
             // 最佳努力恢复，不阻塞初始化
         }
+    }
+
+    /// <summary>把历史指纹格式 key（路径|长度|mtimeTicks）归一化为纯路径；已是路径格式时原样返回。</summary>
+    private static string NormalizeLegacyKey(string key)
+    {
+        // 仅剥离「|数字|数字」两段指纹；路径本身含 | 的极端场景（POSIX 文件名允许 |）不会被误剥。
+        var match = Regex.Match(key, @"\|[0-9]+\|[0-9]+$");
+        return match.Success ? key[..match.Index] : key;
     }
 }
