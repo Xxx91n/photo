@@ -446,30 +446,30 @@ public sealed class MetadataCleanerWorker : BackgroundService
 
         await base.StopAsync(cancellationToken);
 
-        // CodeRabbit #357：base.StopAsync 对 ExecuteTask 的等待受调用方 token 影响——token 过期会
-        // 提前返回，ExecuteTask 可能尚未完成，立即 Dispose 信号量会重开 .NET 10 的竞态窗口。
-        // 补一次不可取消等待，确保 ExecuteAsync 的待机分支（观察到取消后）真正收敛再释放。
-        if (ExecuteTask is not null)
+        // CodeRabbit #357/#456：base.StopAsync 对 ExecuteTask 的等待受调用方 token 影响——token 过期会
+        // 提前返回，ExecuteTask 可能尚未完成。这里补一次**有界**收敛等待：既确保 ExecuteAsync 的待机
+        // 分支（观察到取消后）真正收敛，又不让被阻塞的启动清扫无限拖住停机。
+        // 预算内未收敛则跳过 Dispose（信号量不释放就不会有 .NET 10 的 Dispose 竞态），
+        // 残留句柄由进程退出收尾。
+        using var convergeCts = new CancellationTokenSource(TimeSpan.FromSeconds(4));
+        try
         {
-            try
+            if (ExecuteTask is not null)
             {
-                await ExecuteTask;
+                await ExecuteTask.WaitAsync(convergeCts.Token);
             }
-            catch
-            {
-                // ExecuteTask 的失败已由 base.StopAsync 按既有语义处理（OCE 被吞、其余包装抛出），
-                // 这里只补齐「完成等待」，不再重复处理异常。
-            }
+
+            // 待机等待必须在 ExecuteTask 收敛后才 Dispose：#117 修复（先 Cancel）与 .NET 10 的
+            // SemaphoreSlim.Dispose（只清等待队列、不完成等待者）之间存在竞态——若 Dispose 抢在
+            // 取消回调把等待者移出队列之前执行，等待者会被永久挂起。先让 ExecuteTask 收敛再释放。
+            _standbySignal.Dispose();
+            _standbyStopCts.Dispose();
         }
-
-        // 待机等待必须在 ExecuteTask 收敛后才 Dispose：#117 修复（先 Cancel）与 .NET 10 的
-        // SemaphoreSlim.Dispose（只清等待队列、不完成等待者）之间存在竞态——若 Dispose 抢在
-        // 取消回调把等待者移出队列之前执行，等待者会被永久挂起（CI 稳定复现、本地间歇复现）。
-        // 先让 ExecuteTask 收敛，再释放信号量，窗口消失。
-        _standbySignal.Dispose();
-
-        // ExecuteTask 已收敛（含上面不可取消等待补齐的场景），可以释放停机信号。
-        _standbyStopCts.Dispose();
+        catch (OperationCanceledException)
+        {
+            _logger.LogWarning(
+                "ExecuteTask did not converge within 4 s on shutdown; skipping signal disposal to avoid the Dispose race (#117/#357/#456).");
+        }
     }
 
     /// <summary>
