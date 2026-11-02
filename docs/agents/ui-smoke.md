@@ -163,8 +163,8 @@
 
 | # | 操作 | 结果 | 证据 |
 |---|---|---|---|
-| K1 | 双击 `PhotoPrivacy.exe`（出厂空 `hot_folder`）→ 状态栏连接态显示「已连接」，不是「连接中/已断开」 | 通过 | 2026-11-03 桌面截图目检（产物见下文 2026-11-03 产物记录）。**启动方式按判据字面走双击路径**：`cmd /c start "" …\PhotoPrivacy.exe` 经 ShellExecute 拉起包内 exe（与资源管理器双击同一条 API，非 `CreateProcess`），主窗 996×759、无控制台黑窗，UI（pid 5664）与 Worker（pid 7324）两进程均起——帧 `K1-window.png`（同刻整屏 `K1-launch-standby.png`）：状态栏绿点 +「已连接 · PhotoPrivacyCleaner.Background · 后台模式」，右侧「上次往返 1 ms」；Worker 卡片 Worker 模式=后台模式、上报模式=background、服务 IPC=不可达、协议=v1、ExifTool=unknown（待机不拉 ExifTool 进程，属预期，非失败）、往返次数 13 |
-| K2 | 状态栏出现 warning 色提示「请前往配置页设置监控目录」（`status.configure_watch_folder`，切 locale 后各自可见） | 通过 | 2026-11-03 桌面截图目检：10 个 locale 逐一取概览页帧（`K2-locale-<code>.png` ×10，另附逐行拼合的 `K2-hint-strip.png`）。切语言走「外部改写 `config.ui.locale` → 500 ms 内容指纹轮询回灌」（`config_service.rs` 的 `ExternalReload`，代码内的正式路径），不点坐标，因此避开指引第 7 步记的「导航项宽度随 locale 漂移」。10 行全部是 warning 色（琥珀）落在连接态下一行：zh-CN「请前往配置页设置监控目录」、en「Go to Settings to set the watch folder」（与 `locales/en.json` 该键逐字一致）、ja「設定ページで監視フォルダーを設定してください」、ko/de/fr/es/pt/ru 各随其 locale；ar 在 RTL 镜像布局（导航靠右、正文右对齐）下同一提示。只判「随 locale 出现且可读」，字形连写质量归 B3 既有口径。取证后 `config.json` 已逐字节还原（sha256 回到出厂 `aa2d36ee…`） |
+| K1 | 双击 `PhotoPrivacy.exe`（出厂空 `hot_folder`）→ 状态栏连接态显示「已连接」，不是「连接中/已断开」 | 通过 | 2026-11-03 桌面截图目检（产物见下文 2026-11-03 产物记录）。**启动方式按判据字面走双击路径**：`cmd /c start "" …\PhotoPrivacy.exe` 经 ShellExecute 拉起包内 exe（与资源管理器双击同一条 API，非 `CreateProcess`），主窗 996×759、无控制台黑窗，UI（pid 5664）与 Worker（pid 7324）两进程均起——帧 `K1-window.png`（启动后约 8 s 的整屏帧 `K1-launch-standby.png` 是同一窗口更早一拍）：状态栏绿点 +「已连接 · PhotoPrivacyCleaner.Background · 后台模式」，右侧「上次往返 1 ms」；Worker 卡片 Worker 模式=后台模式、上报模式=background、服务 IPC=不可达、协议=v1、ExifTool=unknown（待机不拉 ExifTool 进程，属预期，非失败）；「往返次数」两帧读数不同（整屏帧 13 → 窗口帧 28），是 1 s 一次 GetStatus 心跳的递增，不是两个值矛盾 |
+| K2 | 状态栏出现 warning 色提示「请前往配置页设置监控目录」（`status.configure_watch_folder`，切 locale 后各自可见） | 通过 | 2026-11-03 桌面截图目检：10 个 locale 逐一取概览页帧（`K2-locale-<code>.png` ×10，另附逐行拼合的 `K2-hint-strip.png`）。切语言走「外部改写 `config.ui.locale` → 500 ms 内容指纹轮询回灌」（`config_service.rs` 的 `ExternalReload`，代码内的正式路径），不点坐标，因此避开指引第 7 步记的「导航项宽度随 locale 漂移」。10 行全部是 warning 色（琥珀）落在连接态下一行：zh-CN「请前往配置页设置监控目录」、en「Go to Settings to set the watch folder」（与 `locales/en.json` 该键逐字一致）、ja「設定ページで監視フォルダーを設定してください」、ko/de/fr/es/pt/ru 各随其 locale；ar 在 RTL 镜像布局（导航靠右、正文右对齐）下同一提示。只判「该 locale 的文案存在、渲染在判据位置且颜色正确」。**字形本身不判**：ar 帧上的阿拉伯文呈孤立字形、整行读起来词序是反的（`K2-hint-strip.png` 末行可见），而 B 组 B3 只覆盖「选 العربية 布局翻转为 RTL」、不含字形连写，所以这条观感当前**没有票覆盖**，本轮只如实记录、不据此判 K2 失败，也不自行开票。取证后 `config.json` 已逐字节还原（sha256 回到出厂 `aa2d36ee…`） |
 | K3 | 点该提示 → 直接进配置页（`app.rs` 的 `configure-watch-folder` on_click 置 `Page::Config`） | 通过 | 2026-11-03 桌面截图目检（zh-CN 帧）：点提示文本前「总览」高亮（`K3-before-click.png`），点后导航高亮跳到「配置」、页面标题变「配置」（`K3-after-click-hint.png`），不是只高亮也不是无响应。点击用 `SetCursorPos` + `mouse_event`，坐标由 `GetWindowRect` 换算成窗口内偏移，非缩略图目测 |
 | K4 | 选有效目录保存 → 提示消失、监控启动；放入照片被处理（日志页出条目、审计目录 `processed.ndjson` 增长） | 通过 | 2026-11-03 桌面截图 + 文件系统取证（产物见下文 2026-11-03 产物记录）。配置页「监控目录」填 `C:\Users\Administrator\photo-smoke-113r2\hot`（`K4-1-typed.png`）→ 500 ms 防抖写盘 + `ReloadConfig` 成功；回总览：琥珀提示消失、`ExifTool` 行由 `unknown` 变 `13.60`、连接仍「已连接」（`K4-3-overview-after-save.png`）；预置 3666 B 含 Artist/Copyright 的 jpg 被就地清为 626 B、标签查空，`hot/bak/k4-sample-src.jpg.bak` 留 3666 B 原件（标签仍在）；随后放入 790 B 新照片验证实时处理 → 634 B、标签清空，`processed.ndjson` 2→4 条，日志页 4→7 条并实时刷新（`K4-4-logs.png`、`K4-5-logs-live.png`，02:13:28~02:14:37，含 `ExifTool started` / `Cleaned` / `backup_sidecar_version…`）。**环境前提**：本机 ExifTool 装在模板默认路径（13.60），出厂包一字未改即可启用监控，故这是本体证据而非 dry-run 旁证；真裸机（未装 ExifTool）仍归 #108。**时刻**：本地 02:14＝UTC 前一日 18:14（两日期分叉），日志页照样出 7 条，即 #129 的修复在本产物上成立。**顺带观察**：每张照片产生 2 条 `Cleaned` + 1 条 sidecar（`#133` 形态，不按本票 AC3 另开票，见产物记录） |
 
@@ -336,7 +336,7 @@
      这属于取证机环境准备，包体未动、也不是「手改 `dry_run` 换成旁证」。
   2. 取证时刻本地 02:13–02:14（UTC 前一日 18:13–18:14，**两日期分叉时窗**）。#129 修复后日志页在该时窗**仍出条目**，
      与被修复前的「分叉时窗恒空」相反——这条同时是 #129 AC4 的实机复验证据（该票 AC4 由 #129 窗口自行核销，本票只提供观察）。
-- **本轮新观察的两项（均不按 #113 AC3 并入本票）**：
+- **本轮新观察的三项（均不按 #113 AC3 并入本票）**：
   1. **同一张照片被处理两次**：每张照片在 `processed.ndjson` 留 2 条、日志页出 2 条 `Cleaned` + 1 条
      `backup_sidecar_version…`（首次 3666→626 一条、紧接 626 一条）。这与 **#133** 描述的形态一致
      （去重键取入队时指纹，`same_as_source` 清洗后指纹变化即不再命中），#133 已有实现票/PR 在跑，本票只记观察。
@@ -346,6 +346,8 @@
      `fs::create_dir_all(&self.directory)`（本行是静态读码得出的候选，未做运行时归因证实）。
      若成立，它与 #124「配置加载改为纯读」的收口范围不重叠（另一个进程、另一个模块），属新发现的旁路副作用；
      是否成票待用户在 #113 窗口裁决，本轮**不自行开票、不并入本 PR 的修复范围**。
+  3. **ar 文案字形**：`K2-locale-ar.png` 与 `K2-hint-strip.png` 末行的阿拉伯文呈孤立字形、整行词序读起来是反的。
+     该观感不在 B 组 B3 的覆盖范围内（B3 只判「选 العربية 布局翻转为 RTL」），当前无票承接；本轮只记录，不据此判 K2 失败。
 - **收尾状态**：K2 段为切语言改过 `ui.locale`，段末已逐字节还原（回到出厂 `aa2d36ee…`）；
   K4 段由 UI 正常保存写入 `watch.hot_folder`（正是判据要求的操作，不是取证污染），故取证结束时
   `config.json` 停在「已配置一个有效监控目录」这一状态，`locale` 仍是 `zh-CN`。
