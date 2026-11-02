@@ -1,5 +1,3 @@
-using PhotoPrivacy.Core.Constants;
-
 namespace PhotoPrivacy.Core.Configuration;
 
 public static class AppConfigValidator
@@ -10,6 +8,21 @@ public static class AppConfigValidator
         "-@",
         "-execute",
         "-echo1"
+    ];
+
+    /// <summary>
+    /// 包管理器管理的安装前缀（Unix）：命中即认为该安装能自行解析 <c>lib/</c>。
+    /// 只列真实的包管理器根，不用「在 PATH 里」代替——见 <see cref="IsPackageManagedDirectory"/>。
+    /// </summary>
+    private static readonly string[] PackageManagedPrefixes =
+    [
+        "/usr/",
+        "/bin/",
+        "/sbin/",
+        "/opt/",
+        "/snap/",
+        "/nix/",
+        "/home/linuxbrew/",
     ];
 
     /// <summary>
@@ -123,12 +136,11 @@ public static class AppConfigValidator
                     "Windows 版 ExifTool 的 exiftool.exe 必须与 exiftool_files 同级；请重新解压发布包，或重新安装 ExifTool。");
             }
         }
-        else if (!IsSystemBinDirectory(exifToolDirectory)
-                 && !IsOnPathVariable(exifToolDirectory)
+        else if (!IsPackageManagedDirectory(exifToolDirectory)
                  && !Directory.Exists(Path.Combine(exifToolDirectory, "lib")))
         {
-            // 由环境解析自身 lib 搜索路径的安装（系统目录、PATH 可见目录）不要求同级目录；
-            // 其余位置（含发布包内置的 ExifTool/）必须是自包含的一份，否则就是打包漏了文件。
+            // 包管理器管理的安装（/usr、/opt/homebrew、/nix/store 等）由包自身登记 lib 搜索路径，
+            // 不要求同级目录；其余位置（含发布包内置的 ExifTool/、自定义目录）必须是自包含的一份。
             throw new AppConfigValidationException(
                 $"exiftool_files directory missing（{exifToolDirectory} 下既没有 exiftool_files 也没有 lib 目录）。" +
                 "随包内置的 ExifTool 需与 lib/ 同级；请重新解压发布包，或安装系统级 ExifTool 后在配置页指定 /usr/bin/exiftool。");
@@ -151,38 +163,25 @@ public static class AppConfigValidator
     }
 
     /// <summary>
-    /// Unix 系统级安装目录：这些位置的 exiftool 由发行版/包管理器解析自身 lib 搜索路径，
-    /// 不要求同级的 <c>lib/</c>。除此之外（含发布包内置的 <c>ExifTool/</c>）必须是自包含的一份。
+    /// 包管理器管理的安装目录：这些位置的 exiftool 由包自身登记 lib 搜索路径（发行版 <c>/usr</c>、
+    /// Homebrew <c>/opt/homebrew</c>、Nix <c>/nix/store</c>、Linuxbrew 等），不要求同级的 <c>lib/</c>。
+    ///
+    /// 判定不采信「目录在 PATH 里」：PATH 只证明文件能被发现，自定义目录里可能只是一个缺 <c>lib/</c>
+    /// 的脚本副本——那种副本过了校验也会在首个文件上起不来，等于把 fail-closed 换成延迟失败（#108 审查）。
     /// </summary>
-    private static bool IsSystemBinDirectory(string directory)
+    private static bool IsPackageManagedDirectory(string directory)
     {
         if (OperatingSystem.IsWindows())
         {
             return false;
         }
 
-        string[] systemBins = ["/usr/bin", "/bin", "/usr/local/bin", "/opt/homebrew/bin", "/opt/local/bin"];
-        var normalized = Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory));
+        var normalized = Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory))
+            + Path.DirectorySeparatorChar;
 
-        return systemBins.Any(bin => string.Equals(bin, normalized, StringComparison.Ordinal));
-    }
-
-    /// <summary>
-    /// 目录是否出现在 PATH 里：与 <c>DefaultPaths</c> 的 PATH 探测同口径——这类安装由系统/包管理器
-    /// 解析自身 lib 搜索路径，不要求同级的 <c>lib/</c>。少了这条，PATH 里探测到的 exiftool 会被
-    /// 下面那条「缺运行时目录」拒掉，而 UI 侧显示「已自动检测到」，同一台机器给出两处矛盾结论（#108 审查）。
-    /// </summary>
-    private static bool IsOnPathVariable(string directory)
-    {
-        var normalized = Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory));
-        var comparison = OperatingSystem.IsWindows()
-            ? StringComparison.OrdinalIgnoreCase
-            : StringComparison.Ordinal;
-
-        foreach (var entry in DefaultPaths.EnumerateAbsolutePathEntries(
-                     Environment.GetEnvironmentVariable("PATH")))
+        foreach (var prefix in PackageManagedPrefixes)
         {
-            if (string.Equals(Path.TrimEndingDirectorySeparator(entry), normalized, comparison))
+            if (normalized.StartsWith(prefix, StringComparison.Ordinal))
             {
                 return true;
             }

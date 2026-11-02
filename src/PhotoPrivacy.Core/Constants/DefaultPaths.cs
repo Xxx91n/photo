@@ -92,9 +92,9 @@ public static class DefaultPaths
             OperatingSystem.IsWindows() ? "exiftool.exe" : "exiftool");
 
     /// <summary>
-    /// PATH 里可用的绝对路径片段（去引号、丢弃非绝对片段）。解析口径只在这一个地方定义：
-    /// <see cref="ResolveExifToolPath"/> 用它找可执行文件，<c>AppConfigValidator</c> 用它判断
-    /// 「这个目录是不是 PATH 可见的安装」——两处各写一份会再次分叉。
+    /// PATH 里可用的绝对路径片段（去引号、丢弃非绝对片段）。PATH 的解析口径只在这一个地方定义，
+    /// 避免 Worker 与 UI 各自实现一套后分叉；<see cref="FindExifToolInPathValue"/> 与它之上的
+    /// 探测都从这里取片段。
     /// </summary>
     internal static IEnumerable<string> EnumerateAbsolutePathEntries(string? pathValue)
     {
