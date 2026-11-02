@@ -447,25 +447,26 @@ public sealed class MetadataCleanerWorker : BackgroundService
         await base.StopAsync(cancellationToken);
 
         // CodeRabbit #357/#456：base.StopAsync 对 ExecuteTask 的等待受调用方 token 影响——token 过期会
-        // 提前返回，ExecuteTask 可能尚未完成。这里补一次**有界**收敛等待：既确保 ExecuteAsync 的待机
-        // 分支（观察到取消后）真正收敛，又不让被阻塞的启动清扫无限拖住停机。
+        // 提前返回，ExecuteTask 可能尚未完成。这里补一次**有界且不抛**的收敛检查：既确保 ExecuteAsync
+        // 的待机分支（观察到取消后）真正收敛，又不让被阻塞的启动清扫无限拖住停机，也不把 ExecuteTask
+        // 的 fault 传播到停机路径（收敛状态已由 base.StopAsync 按既有语义处理）。
         // 预算内未收敛则跳过 Dispose（信号量不释放就不会有 .NET 10 的 Dispose 竞态），
         // 残留句柄由进程退出收尾。
-        using var convergeCts = new CancellationTokenSource(TimeSpan.FromSeconds(4));
-        try
+        var converged = ExecuteTask is null;
+        if (ExecuteTask is not null)
         {
-            if (ExecuteTask is not null)
-            {
-                await ExecuteTask.WaitAsync(convergeCts.Token);
-            }
+            converged = await Task.WhenAny(ExecuteTask, Task.Delay(TimeSpan.FromSeconds(4))) == ExecuteTask;
+        }
 
+        if (converged)
+        {
             // 待机等待必须在 ExecuteTask 收敛后才 Dispose：#117 修复（先 Cancel）与 .NET 10 的
             // SemaphoreSlim.Dispose（只清等待队列、不完成等待者）之间存在竞态——若 Dispose 抢在
             // 取消回调把等待者移出队列之前执行，等待者会被永久挂起。先让 ExecuteTask 收敛再释放。
             _standbySignal.Dispose();
             _standbyStopCts.Dispose();
         }
-        catch (OperationCanceledException)
+        else
         {
             _logger.LogWarning(
                 "ExecuteTask did not converge within 4 s on shutdown; skipping signal disposal to avoid the Dispose race (#117/#357/#456).");
