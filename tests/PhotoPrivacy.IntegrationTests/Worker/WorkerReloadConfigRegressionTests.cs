@@ -31,8 +31,10 @@ namespace PhotoPrivacy.IntegrationTests.Worker;
 /// - handler 级（Theory）：服务与后台（托盘）两种运行形态各自单列（#85 AC「后台管道同方法
 ///   无回归」），重载链路两种形态共用同一 handler/worker，但响应 <c>Mode</c> 字段按形态回
 ///   service/background，逐形态断言，防止后台形态被服务形态的断言顺带掩盖；
-/// - 端点级（Fact）：后台形态的 ReloadConfig 走真实传输绑定 + accept 循环 + 帧协议往返，
-///   不再只是直连 handler——WorkerIpcServerHostedService 的形态端点绑定路径同样被覆盖；
+/// - 端点级（Theory，后台与服务各一行）：ReloadConfig 走真实传输绑定 + accept 循环 + 帧协议往返，
+///   不再只是直连 handler——WorkerIpcServerHostedService 的形态端点绑定路径（形态→端点选择 +
+///   访问策略）同样被覆盖。服务形态那一行是 #85 AC「服务管道 ReloadConfig 在 10 s 读超时内返回 ok」
+///   的端点级证据：读侧预算就钉在 UI 客户端的 ReloadConfig 读超时 10 s 上，事故形态必红；
 /// - 待机端点级（Fact）：空 <c>hot_folder</c> 的首次配置待机态同样走真实传输 + accept +
 ///   帧协议（#113 AC1，补齐 #100 关闭时留下的证据缺口）。
 ///
@@ -41,6 +43,19 @@ namespace PhotoPrivacy.IntegrationTests.Worker;
 /// </summary>
 public sealed class WorkerReloadConfigRegressionTests
 {
+    /// <summary>
+    /// UI 客户端 <c>ReloadConfig</c> 的读超时（普通请求 3 s，热重载独立放宽到 10 s，
+    /// 见 docs/agents/ipc-contract.md 与 ui/crates/photoprivacy-ipc/src/client.rs）。
+    /// 端点级用例用它当读侧预算：#85 的事故形态就是「服务管道 10 s/15 s 无响应」。
+    /// </summary>
+    private static readonly TimeSpan ReloadConfigReadTimeout = TimeSpan.FromSeconds(10);
+
+    /// <summary>
+    /// 其余端点往返的读侧预算：这些用例判的是回包内容（待机态状态快照等），不是回包时限，
+    /// 宽限沿用原有用例的 30 s，别把 CI 冷启动慢当成挂起。
+    /// </summary>
+    private static readonly TimeSpan ResponseReadTimeout = TimeSpan.FromSeconds(30);
+
     [Fact]
     public async Task EmptyWatchFolder_Should_Stay_Resident_Until_Reload_Starts_Monitoring()
     {
@@ -537,19 +552,30 @@ public sealed class WorkerReloadConfigRegressionTests
     }
 
     /// <summary>
-    /// 端点级后台用例（CodeRabbit 对上一版仅 handler 级的 Major 意见）：两条 ReloadConfig
+    /// 端点级用例（CodeRabbit 对上一版仅 handler 级的 Major 意见）：每行形态的两条 ReloadConfig
     /// 各走一条真实 IPC 连接（协议一连接一消息），经真实传输绑定 + accept 循环 + 帧协议往返
-    /// 到真实 handler/worker，响应按 EOF 定界读回。后台端点的绑定、accept、帧协议、处理链、
-    /// 重载生效全部被真实 exercised。
+    /// 到真实 handler/worker，响应按 EOF 定界读回。形态端点的绑定、访问策略、accept、帧协议、
+    /// 处理链、重载生效全部被真实 exercised。
+    ///
+    /// 服务形态那一行是 #85 AC1 的端点级证据：读侧预算钉在 UI 客户端的 ReloadConfig 读超时
+    /// 10 s 上（docs/agents/ipc-contract.md），事故形态「服务管道 10 s/15 s 无响应」在这里必红。
+    /// 该行此前缺位：#94 修好响应路径后只补到 handler 级，#70 的服务管道认证未进基线时
+    /// 非提权令牌连不上服务端点、端点级证据无从取；两条前置的代码现均已在基线。
     ///
     /// 不经 WorkerIpcServerHostedService 直接驱动：它把形态端点解析成固定名（Linux
     /// <c>/run/photoprivacy</c> 需 root，CI 绑不了，也不能与真实 worker 抢端点）。因此绑定
-    /// 行为用同一工厂的 background 访问策略在临时端点上验证，形态→端点选择映射
-    /// （<c>ResolveEndpoint</c> 的 background 分支，与宿主内同一调用）单独逐 OS 断言钉住。
+    /// 行为用同一工厂的形态访问策略在临时端点上验证，形态→端点选择映射
+    /// （<c>ResolveEndpoint</c> 的形态分支，与宿主内同一调用）单独逐 OS 断言钉住。
+    /// 在 Windows 宿主上跑本用例时，服务形态一行会走 #70 的显式 DACL 建例路径
+    /// （CI test job 为 ubuntu，Windows 侧由发版机构建与实机 S4/S5 承担，见 ipc-contract.md）。
     /// </summary>
-    [Fact]
-    public async Task ReloadConfig_Through_Background_Endpoint_Should_Reply_And_Keep_Processing()
+    [Theory]
+    [InlineData(RuntimeMode.Background, "background")]
+    [InlineData(RuntimeMode.Service, "service")]
+    public async Task ReloadConfig_Through_Mode_Endpoint_Should_Reply_And_Keep_Processing(
+        RuntimeMode runtimeMode, string expectedMode)
     {
+        var isServiceMode = runtimeMode == RuntimeMode.Service;
         var fixture = await StartProcessingWorkerAsync();
         var loopStop = new CancellationTokenSource();
         IIpcTransport? transport = null;
@@ -557,48 +583,66 @@ public sealed class WorkerReloadConfigRegressionTests
 
         try
         {
-            var endpoint = ResolveBackgroundTestEndpoint(fixture.Root);
+            var endpoint = ResolveTestEndpoint(fixture.Root, isServiceMode);
 
-            // 形态→端点选择映射（WorkerIpcServerHostedService 内同一调用的 background 分支）逐 OS 钉住；
+            // 形态→端点选择映射（WorkerIpcServerHostedService 内同一调用的形态分支）逐 OS 钉住；
             // 兜底失败防止未知 OS 上断言静默跳过。真实固定端点在 CI 无法绑定（Linux /run/photoprivacy
             // 需 root），故绑定行为在临时端点上验证。
             if (OperatingSystem.IsLinux())
             {
-                Assert.Equal(WorkerIpcEndpointNames.LinuxBackgroundSocket, IpcTransportFactory.ResolveEndpoint(isServiceMode: false));
+                Assert.Equal(
+                    isServiceMode ? WorkerIpcEndpointNames.LinuxServiceSocket : WorkerIpcEndpointNames.LinuxBackgroundSocket,
+                    IpcTransportFactory.ResolveEndpoint(isServiceMode));
             }
             else if (OperatingSystem.IsMacOS())
             {
-                Assert.Equal(WorkerIpcEndpointNames.MacBackgroundSocket, IpcTransportFactory.ResolveEndpoint(isServiceMode: false));
+                Assert.Equal(
+                    isServiceMode ? WorkerIpcEndpointNames.MacServiceSocket : WorkerIpcEndpointNames.MacBackgroundSocket,
+                    IpcTransportFactory.ResolveEndpoint(isServiceMode));
             }
             else if (OperatingSystem.IsWindows())
             {
-                Assert.Equal(WorkerIpcEndpointNames.BackgroundPipe, IpcTransportFactory.ResolveEndpoint(isServiceMode: false));
+                Assert.Equal(
+                    isServiceMode ? WorkerIpcEndpointNames.ServicePipe : WorkerIpcEndpointNames.BackgroundPipe,
+                    IpcTransportFactory.ResolveEndpoint(isServiceMode));
             }
             else
             {
                 Assert.Fail("未覆盖的 OS：形态→端点选择映射断言被静默跳过");
             }
 
-            transport = IpcTransportFactory.CreateServer(endpoint, isServiceMode: false);
-            if (transport is UnixDomainSocketIpcTransport unixTransport)
-            {
-                // 后台访问策略必须随形态绑定：0600 仅属主可连（service 侧才是 0660 + 组边界）。
-                Assert.Equal(UnixSocketAccessMode.BackgroundOnly, unixTransport.AccessMode);
-            }
+            transport = IpcTransportFactory.CreateServer(endpoint, isServiceMode);
 
-            var handler = CreateHandler(fixture, RuntimeMode.Background);
+            var handler = CreateHandler(fixture, runtimeMode);
 
             var loop = new WorkerIpcServerLoop(NullLogger<WorkerIpcServerLoop>.Instance);
             // 与宿主同序：先绑定端点再进 accept 循环（两个传输的 ListenAsync 都是非阻塞绑定）。
             await transport.ListenAsync(loopStop.Token);
+
+            if (transport is UnixDomainSocketIpcTransport unixTransport)
+            {
+                // 访问策略必须随形态绑定：后台 0600 仅属主可连；服务 0660 + 组边界（Unix 侧口径未随 #70 变）。
+                Assert.Equal(
+                    isServiceMode ? UnixSocketAccessMode.ServiceShared : UnixSocketAccessMode.BackgroundOnly,
+                    unixTransport.AccessMode);
+                // 策略必须真的落到 socket 文件上：防「只挂在属性上、绑定路径没用它」的假形态。
+                UnixFileMode expectedSocketMode = isServiceMode
+                    ? UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.GroupWrite
+                    : UnixFileMode.UserRead | UnixFileMode.UserWrite;
+                Assert.Equal<UnixFileMode?>(expectedSocketMode, unixTransport.AppliedSocketMode);
+            }
+
             loopTask = loop.RunAsync(transport, handler.HandleAsync, requestShutdown: () => { }, loopStop.Token);
 
             for (var attempt = 1; attempt <= 2; attempt++)
             {
+                // 读侧预算 = UI 客户端的 ReloadConfig 读超时：服务管道挂起形态（#85）在这一行必红。
                 var response = await RequestOverTransportAsync(
-                    transport, new WorkerIpcRequest(WorkerIpcMethods.ReloadConfig, "reload-endpoint-" + attempt));
-                Assert.True(response.Ok, $"第 {attempt} 次重载必须经后台端点回 ok：{response.Message}");
-                Assert.Equal("background", response.Data!.Mode);
+                    transport,
+                    new WorkerIpcRequest(WorkerIpcMethods.ReloadConfig, "reload-endpoint-" + attempt),
+                    ReloadConfigReadTimeout);
+                Assert.True(response.Ok, $"第 {attempt} 次重载必须经{expectedMode}端点回 ok：{response.Message}");
+                Assert.Equal(expectedMode, response.Data!.Mode);
                 Assert.Equal(WorkerIpcProtocol.Version, response.V);
             }
 
@@ -830,7 +874,7 @@ public sealed class WorkerReloadConfigRegressionTests
                 await WaitForStandbyAsync(standbyLogger, TimeSpan.FromSeconds(30)),
                 "worker 未进入空监控目录待机（未见到待机日志）：用例前提不成立");
 
-            transport = IpcTransportFactory.CreateServer(ResolveBackgroundTestEndpoint(root), isServiceMode: false);
+            transport = IpcTransportFactory.CreateServer(ResolveTestEndpoint(root, isServiceMode: false), isServiceMode: false);
             // 与生产宿主同接线：watchDirectory 直接取 worker.CurrentWatchDirectory，
             // 待机态的「空目录 + 已连接」必须由这条真实回包链路呈现给 UI。
             var handler = new WorkerIpcRequestHandler(
@@ -848,7 +892,7 @@ public sealed class WorkerReloadConfigRegressionTests
             loopTask = loop.RunAsync(transport, handler.HandleAsync, requestShutdown: () => { }, loopStop.Token);
 
             var request = new WorkerIpcRequest(WorkerIpcMethods.GetStatus, "standby-status");
-            var status = await RequestOverTransportAsync(transport, request);
+            var status = await RequestOverTransportAsync(transport, request, ResponseReadTimeout);
 
             Assert.True(status.Ok, $"待机态 GetStatus 必须经后台端点回 ok：{status.Message}");
             Assert.Equal(string.Empty, status.Data!.WatchDirectory);
@@ -858,7 +902,7 @@ public sealed class WorkerReloadConfigRegressionTests
             // UI 的心跳是「每 1 s 一次 GetStatus、一条连接一个请求」的轮询
             // （monitor.rs 的 Design(#49)：探针固定 GetStatus，不用 Ping）——第二拍必须是同方法。
             var secondBeatRequest = new WorkerIpcRequest(WorkerIpcMethods.GetStatus, "standby-status-2");
-            var secondBeat = await RequestOverTransportAsync(transport, secondBeatRequest);
+            var secondBeat = await RequestOverTransportAsync(transport, secondBeatRequest, ResponseReadTimeout);
             Assert.True(secondBeat.Ok, "待机态第二拍 GetStatus 必须仍被服务");
             Assert.Equal(string.Empty, secondBeat.Data!.WatchDirectory);
             Assert.False(loopTask.IsCompleted, "accept 环不得在待机首拍之后退出");
@@ -1218,23 +1262,32 @@ public sealed class WorkerReloadConfigRegressionTests
     }
 
     /// <summary>
-    /// 端点级用例的临时后台端点。Windows 管道名是内核对象名。Unix socket 落点：Linux 用夹具临时目录
+    /// 端点级用例的临时端点。Windows 管道名是内核对象名。Unix socket 落点：Linux 用夹具临时目录
     /// （固定路径 <c>/run/photoprivacy</c> 需 root，CI 绑不了）；macOS 的 <c>sun_path</c> 上限 104 字节，
     /// 夹具目录路径太长，改用临时目录下的短文件名（<c>GetTempPath()</c> 约 49 字节 + 约 21 字节 &lt; 104），
-    /// socket 文件由 <c>transport.DisposeAsync</c>（端点属主）负责删除。
+    /// socket 文件由 <c>transport.DisposeAsync</c>（端点属主）负责删除。Unix 侧文件名按形态区分，
+    /// 与产品端点同名只为可读性，不参与断言。
     /// </summary>
-    private static string ResolveBackgroundTestEndpoint(string root)
-        => OperatingSystem.IsWindows()
-            ? "pp-bg-" + Guid.NewGuid().ToString("N")
-            : OperatingSystem.IsMacOS()
-                ? Path.Combine(Path.GetTempPath(), "pp-bg-" + Guid.NewGuid().ToString("N")[..8] + ".sock")
-                : Path.Combine(root, "worker-background.sock");
+    private static string ResolveTestEndpoint(string root, bool isServiceMode)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return (isServiceMode ? "pp-svc-" : "pp-bg-") + Guid.NewGuid().ToString("N");
+        }
+        if (OperatingSystem.IsMacOS())
+        {
+            return Path.Combine(Path.GetTempPath(), "pp-" + Guid.NewGuid().ToString("N")[..8] + ".sock");
+        }
+        return Path.Combine(root, isServiceMode ? "worker.sock" : "worker-background.sock");
+    }
 
     /// <summary>
     /// 经真实传输做一次「一连接一消息」的帧协议往返：写请求行，读以连接关闭（EOF）定界的响应行
-    /// （响应无结尾换行，读侧复用唯一的有界行读实现）。
+    /// （响应无结尾换行，读侧复用唯一的有界行读实现）。<paramref name="readTimeout"/> 是读侧预算：
+    /// 客户端等不到回包时不会收到任何错误帧，只会到点超时，因此「响应被跳过」只能由这层预算判红（#85）。
     /// </summary>
-    private static async Task<WorkerIpcResponse> RequestOverTransportAsync(IIpcTransport transport, WorkerIpcRequest request)
+    private static async Task<WorkerIpcResponse> RequestOverTransportAsync(
+        IIpcTransport transport, WorkerIpcRequest request, TimeSpan readTimeout)
     {
         await using var stream = await transport
             .ConnectAsync(TimeSpan.FromSeconds(10), CancellationToken.None)
@@ -1244,9 +1297,12 @@ public sealed class WorkerReloadConfigRegressionTests
         await stream.WriteAsync(requestBytes, CancellationToken.None);
         await stream.FlushAsync(CancellationToken.None);
 
-        var line = await IpcLineReader
-            .ReadBoundedLineAsync(stream, maxBytes: 64 * 1024, CancellationToken.None)
-            .WaitAsync(TimeSpan.FromSeconds(30));
+        var readTask = IpcLineReader.ReadBoundedLineAsync(stream, maxBytes: 64 * 1024, CancellationToken.None);
+        var firstCompleted = await Task.WhenAny(readTask, Task.Delay(readTimeout));
+        Assert.True(
+            firstCompleted == readTask,
+            $"{request.Method} 未在 {readTimeout.TotalSeconds} s 读超时内回包（#85 服务管道挂起形态）");
+        var line = await readTask;
         Assert.NotNull(line);
 
         var response = JsonSerializer.Deserialize(line!, WorkerIpcJsonContext.Default.WorkerIpcResponse);
