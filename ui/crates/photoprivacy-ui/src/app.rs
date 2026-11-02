@@ -1895,12 +1895,14 @@ impl AppView {
         // 并可直接点回配置页。以前它只是配置页里一条 3 s 淡出的状态文本，用户在概览页只看到
         // 「请前往配置页设置监控目录」，被绕回同一步。
         let reload_block = match &self.save_state {
-            SaveState::SavedWorkerDown(error) => {
-                Some((self.tr(k::STATUS_SAVED_WORKER_DOWN, &[error]), theme.warning))
-            }
-            SaveState::Failed(error) => {
-                Some((self.tr(k::MSG_SAVE_FAILED_EXCEPTION, &[error]), theme.danger))
-            }
+            SaveState::SavedWorkerDown(error) => Some((
+                self.tr(k::STATUS_SAVED_WORKER_DOWN, &[error]),
+                theme.warning,
+            )),
+            SaveState::Failed(error) => Some((
+                self.tr(k::MSG_SAVE_FAILED_EXCEPTION, &[error]),
+                theme.danger,
+            )),
             _ => None,
         };
 
