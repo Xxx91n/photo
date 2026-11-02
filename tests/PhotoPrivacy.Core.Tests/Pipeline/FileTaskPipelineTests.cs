@@ -195,7 +195,7 @@ public sealed class FileTaskPipelineTests
             await pipeline.HandleAsync(file, CancellationToken.None);
 
             Assert.Equal(1, bridge.Calls);
-            Assert.Contains(audit.Events, e => e.EventType == "file_skipped" && e.Reason == "already_processed");
+            Assert.Contains(audit.Events, e => e.EventType == "file_skipped" && e.Message == "already_processed");
         }
         finally
         {

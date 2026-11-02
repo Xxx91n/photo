@@ -478,12 +478,14 @@ public sealed class WorkerReloadConfigRegressionTests
                 await WaitForProcessedRecordForAsync(beforePath, "already-done.jpg", TimeSpan.FromSeconds(30)),
                 "启动态未处理既有文件：用例前提不成立");
 
-            // 把 mtime 拨新，复刻清洗落盘后的可观测形态（长度没变、mtime 变新），并等旧运行时按这个新指纹
-            // 再处理一次——到这儿「窗口之前刚被处理过」这条前提就落定了。
+            // 把 mtime 拨新，复刻清洗落盘后的可观测形态（长度没变、mtime 变新）。
+            // #133 路线 2：去重键收敛为路径粗粒度，mtime 变化不再触发重复处理——
+            // 记录数保持 1 条（旧指纹口径下这里会再处理一次、写到第 2 条，正是 #133 的缺陷形态）。
             File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddSeconds(10));
+            await Task.Delay(TimeSpan.FromSeconds(3));
             Assert.True(
-                await WaitForProcessedRecordsAsync(beforePath, expectedAtLeast: 2, TimeSpan.FromSeconds(30)),
-                "改写后的文件未被旧运行时处理：用例前提不成立");
+                CountProcessedRecords(beforePath) == 1,
+                "mtime 拨新后仍被重复处理：路线 2 路径粗粒度去重未生效（#133）");
 
             // 窗口撑到 5 s，mtime 拨到 +10 s：旧实现的判据是「起点前 2 s 余量」，而起点取在最长 8 s 的
             // drain 闸之后，所以余量要盖住闸口停顿；抑制期从「刚处理完」起算，5 s 窗口盖住它的 2 s TTL。
