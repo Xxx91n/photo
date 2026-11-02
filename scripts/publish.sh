@@ -5,6 +5,18 @@ VERSION="0.1.0-preview"
 FRAMEWORK="net10.0"
 SELF_CONTAINED="true"
 ZIP="true"
+EXIFTOOL_VERSION="13.60"
+EXIFTOOL_ARCHIVE=""
+
+# 固定版本 → 官方 SHA256（取自 https://exiftool.org/checksums.txt）。
+# 新增版本必须同时登记校验值：未登记的版本直接失败，避免打包被替换或半截的归档。
+# 用 case 而不是关联数组：macOS runner 默认 bash 3.2 不支持 declare -A。
+exiftool_sha256() {
+  case "$1" in
+    13.60) echo "c8e3c42576f46d862e4cd9c192989776e7363931e890c95056bcd6293e83ea36" ;;
+    *) return 1 ;;
+  esac
+}
 
 usage() {
   cat <<EOF
@@ -16,6 +28,8 @@ Options:
   --framework <fw>      Target framework (default: $FRAMEWORK; 仅作用于 Worker)
   --self-contained <b>  Self-contained (default: $SELF_CONTAINED)
   --zip <b>             Create archive (default: $ZIP)
+  --exiftool-version <v>  随包内置的 ExifTool 版本（default: $EXIFTOOL_VERSION；必须已登记校验值）
+  --exiftool-archive <p>  使用本地已下载的 Image-ExifTool-<v>.tar.gz（离线/内网构建；仍校验 SHA256）
   -h, --help            Show this help
 
 Valid runtimes: linux-x64, linux-arm64, osx-x64, osx-arm64 (须在本机对应平台执行；
@@ -39,6 +53,8 @@ while [[ $# -gt 0 ]]; do
     --framework) FRAMEWORK="$2"; shift 2 ;;
     --self-contained) SELF_CONTAINED="$2"; shift 2 ;;
     --zip) ZIP="$2"; shift 2 ;;
+    --exiftool-version) EXIFTOOL_VERSION="$2"; shift 2 ;;
+    --exiftool-archive) EXIFTOOL_ARCHIVE="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage; exit 1 ;;
   esac
@@ -96,6 +112,69 @@ esac
 
 command -v cargo >/dev/null 2>&1 || { echo "cargo not found in PATH; 新 UI 入口需要 Rust 工具链（rust-version 见 ui/Cargo.toml）" >&2; exit 1; }
 
+# --- 内置 ExifTool（#108）---
+# Unix 官方发行形态是 Perl 脚本 + lib/（没有自包含二进制），随包带上 exiftool 与 lib/；
+# 运行时仍要求目标机有 perl（macOS 15 仍带 /usr/bin/perl5.34，Apple 已声明未来可能移除）。
+# 配置模板的 exiftool.path 留空，运行时探测优先命中 <包根>/ExifTool/。
+bundle_exiftool() {
+  local version="$1"
+  local archive="$2"
+  local dest="${TARGET_DIR}/ExifTool"
+  local expected
+  expected="$(exiftool_sha256 "$version" || true)"
+
+  if [[ -z "$expected" ]]; then
+    echo "No pinned SHA256 for ExifTool $version; 先登记 scripts/publish.sh 的 exiftool_sha256 函数（https://exiftool.org/checksums.txt）" >&2
+    exit 1
+  fi
+
+  local tmp
+  tmp="$(mktemp -d)"
+
+  if [[ -z "$archive" ]]; then
+    archive="${tmp}/Image-ExifTool-${version}.tar.gz"
+    local url="https://downloads.sourceforge.net/project/exiftool/Image-ExifTool-${version}.tar.gz"
+    echo "Downloading ExifTool ${version} ..."
+    if command -v curl >/dev/null 2>&1; then
+      curl -fsSL --retry 3 -o "$archive" "$url" || { echo "ExifTool download failed: $url" >&2; exit 1; }
+    else
+      wget -q -O "$archive" "$url" || { echo "ExifTool download failed: $url" >&2; exit 1; }
+    fi
+  elif [[ ! -f "$archive" ]]; then
+    echo "ExifTool archive not found: $archive" >&2
+    exit 1
+  fi
+
+  local actual
+  if command -v sha256sum >/dev/null 2>&1; then
+    actual="$(sha256sum "$archive" | awk '{print $1}')"
+  else
+    actual="$(shasum -a 256 "$archive" | awk '{print $1}')"
+  fi
+
+  if [[ "$actual" != "$expected" ]]; then
+    echo "ExifTool archive SHA256 mismatch for $version: expected $expected, got $actual" >&2
+    exit 1
+  fi
+
+  tar -xzf "$archive" -C "$tmp"
+  local src="${tmp}/Image-ExifTool-${version}"
+  [[ -f "${src}/exiftool" && -d "${src}/lib" ]] || { echo "Unexpected ExifTool archive layout: $src" >&2; exit 1; }
+
+  mkdir -p "$dest"
+  cp "${src}/exiftool" "${dest}/exiftool"
+  cp -R "${src}/lib" "${dest}/lib"
+  # 许可证与版权声明随包（README 内含 Artistic/GPL 双许可全文）。
+  cp "${src}/README" "${dest}/README"
+  chmod +x "${dest}/exiftool"
+  rm -rf "$tmp"
+
+  if ! command -v perl >/dev/null 2>&1; then
+    echo "WARNING: perl not found on build host; 内置 ExifTool 需要目标机提供 perl（Unix 官方发行形态）" >&2
+  fi
+  echo "Bundled ExifTool ${version} -> ${dest}"
+}
+
 echo "Publishing new UI (cargo) + PhotoPrivacy.Worker ..."
 echo "Runtime: ${RUNTIME} | Framework: ${FRAMEWORK}"
 
@@ -144,6 +223,8 @@ cp "${REPO_ROOT}/config/config.sample.json" "${TARGET_DIR}/config/config.sample.
 cp "${REPO_ROOT}/config/config.sample.json" "${TARGET_DIR}/config/config.json"
 cp "${REPO_ROOT}/config/README.md" "${TARGET_DIR}/config/README.md"
 cp "${REPO_ROOT}/README.md" "${TARGET_DIR}/README.md"
+
+bundle_exiftool "$EXIFTOOL_VERSION" "$EXIFTOOL_ARCHIVE"
 
 rm -rf "$WORKER_PUB_DIR"
 
