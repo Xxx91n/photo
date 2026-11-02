@@ -93,14 +93,14 @@
 
 | # | 操作 | 结果 | 证据 |
 |---|---|---|---|
-| S1 | 未安装态：服务页显示未安装，启动/停止禁用 | | |
-| S2 | 安装服务（提权 UAC/pkexec/osascript 流） | | |
-| S3 | 启动服务 → 状态变运行中 | | |
-| S4 | 服务运行中 UI 经服务端点连接（服务页/日志页数据来自服务 Worker） | | |
-| S5 | 服务模式下改配置保存 → ReloadConfig 热生效 | | |
-| S6 | 停止服务 → 状态回落 | | |
-| S7 | 卸载服务 → 回到未安装态 | | |
-| S8 | 服务模式日志通道在日志页可见（与后台模式区分） | | |
+| S1 | 未安装态：服务页显示未安装，启动/停止禁用 | 通过 | 2026-11-03 桌面截图目检（产物见下文 S 组产物记录）：服务页「服务状态：未安装」+「每 3 秒刷新」；「启动 / 停止服务」行的启动、停止两钮文字置灰 (154,154,148)，对照「安装」钮蓝 (47,188,251)、「刷新」钮深色 (26,26,25) 可点——与 `button_state` 未安装态 start/stop=false 一致（`ui/crates/photoprivacy-service/src/state.rs`）。帧 `S1-service-page.png`；同帧服务未安装时总览连接态为「已连接 · PhotoPrivacyCleaner.Background · 后台模式」（连接编排按 #70 现状回落后台端点，`S1-launch.png`），服务页仍如实显示未安装 |
+| S2 | 安装服务（提权 UAC/pkexec/osascript 流） | 未回填 | 不在 #88 AC 内；本轮仅作为 S3/S4/S8 的前置步骤用 `scripts/install-service.ps1`（agent 以 High IL 管理员运行，无 UAC 交互）执行，安装即登记 #70 的 `ServicePipeInstallerSid` |
+| S3 | 启动服务 → 状态变运行中 | 通过 | 2026-11-03 桌面截图目检 + `sc query`：前态帧 `S3-before-stopped.png` 服务状态「已停止」，启动钮深色可点、停止/安装置灰、卸载红钮可点（与 `button_state` 一致）；点 UI「启动」后帧 `S3-after-running.png` 状态变「运行中」并出绿字反馈「Operation succeeded」，同时刻 `sc query PhotoPrivacyCleaner` STATE 4 RUNNING，服务 Worker 进程在 Services 会话（SYSTEM 上下文）存活；ProgramData 服务日志 04:09:55 Application started 后无 FTL/再停 |
+| S4 | 服务运行中 UI 经服务端点连接（服务页/日志页数据来自服务 Worker） | 通过 | 2026-11-03 桌面截图目检：服务运行中重启 UI，总览连接态「已连接 · PhotoPrivacyCleaner.Service · 服务模式」（帧 `S4-overview-service-mode.png`），Worker 卡片 Worker 模式=服务模式、上报模式=service、服务 IPC=可达、协议=v1、ExifTool=13.60、往返次数=14（单帧读数）；进程侧仅一个 Worker（pid 8996）且在 Services 会话，UI 未拉起后台 Worker——UI 连的是服务端点（#70 修复后服务管道 DACL 生效） |
+| S5 | 服务模式下改配置保存 → ReloadConfig 热生效 | 未回填 | 归 #85 ReloadConfig 缺陷票的探针与 #58 核销覆盖（票面既定口径） |
+| S6 | 停止服务 → 状态回落 | 未回填 | 未探活（#88 范围外） |
+| S7 | 卸载服务 → 回到未安装态 | 未回填 | 未探活（#88 范围外）；本轮收尾用 `install-service.ps1 -Action uninstall` 卸载并复核 SC 1060，但那是脚本通道，不是 S7 要验的 UI 提权链路 |
+| S8 | 服务模式日志通道在日志页可见（与后台模式区分） | 通过 | 2026-11-03 桌面截图 + 文件系统取证（帧 `S8-logs-page-service.png`）：同一服务模式会话切日志页，04:09:55「Service started mode=live」、04:09:56「ExifTool started」在列；04:13:08–09 投入 `hot/` 的带 Artist/Copyright 样本被服务 Worker 就地清洗 3648→626 B，日志页实时出「Cleaned attempt=1/wipe_result=Cleaned, Modified」×2 +「backup_sidecar_version… content_diverged_sidecar_written」，exiftool 复查标签已空；条目与 `pkg/hot/_audit/audit-2026-11-03.jsonl`、`processed.ndjson`（两文件 mtime 均落在投放后的 04:13）及 ProgramData 服务日志同刻。与后台模式的区分锚在连接态：本会话状态卡是「PhotoPrivacyCleaner.Service · 服务模式」+ Worker 卡片「服务 IPC=可达」（K1 记录的后台形态是 Background · 不可达） |
 
 ### #49 D11 功能对等核销（切换判据）
 
@@ -291,6 +291,9 @@
   在当前取证机上不存在（无 D: 盘），旧条目留着只会让 `sha256sum -c` 恒红，故不在文件里保留。
   这 24 条哈希仍可从 git 历史取回（`git show fb388507:docs/agents/ui-smoke-evidence.sha256`，
   即本票第二轮起始基准那一版），但对应的 24 张图已无法找回——引用本记录时按这个前提打折，别把它当成可复核的原始证据。
+  **勘误（2026-11-03 #88 窗口，随 S 组换轮）**：上面「现在装的是本轮 20 条哈希」只对 #152 合并后的
+  main 顶成立；#88 的 S 组取证已把同一路径换成本票 6 条哈希，本轮 20 条改从
+  `git show 4db2583:docs/agents/ui-smoke-evidence.sha256` 取回（对应 20 张图仍在取证机 `photo-smoke-113r2\evidence\`）。
 - 结果：**K1 通过、K2 通过（10 locale 逐一）、K3 通过、K4 通过**。
   K4 的取证时刻是本地 10:48（UTC 02:48，本地日期＝UTC 日期），日志页那条腿因此成立；
   另在本地 02:03（UTC 前一日 18:03，两日期分叉）以同一产物复跑一次，日志页恒 0 条，
@@ -358,6 +361,56 @@
   `config.json` 停在「已配置一个有效监控目录」这一状态，`locale` 仍是 `zh-CN`。
   `hot/` 下的两个测试样本、`bak/`、`pkg/hot/_audit` 均为运行产物，全部落在取证目录内，仓库工作区不受影响。
 
+
+### S 组产物记录（2026-11-03，#88 窗口：agent 自查取证，S1/S3/S4/S8 全部通过）
+
+> **口径变更的授权**：本票标签同为 `ready-for-human`（K 组同款）；换 agent 桌面截图自查由用户在 #88
+> 实现窗口明确批准（2026-11-03，同 #125 先例），并批准为取 S3/S4/S8 证据在本机安装/卸载
+> `PhotoPrivacyCleaner` 服务（S2 前置步骤，系统级提权操作，不在本票 AC 内）。
+> 不改变「无证据不虚构」。
+
+- **产物**：复用 Release run [41495388043](https://github.com/Xxx91n/photo/actions/runs/41495388043)
+  （ref `main`，head `fb388507`，version `0.1.0-verify113b`，`create_release=false`）的 `release-win-x64`，
+  即 #113 第二轮已解压到本机的 `C:\Users\Administrator\photo-smoke-113r2\pkg\`。本票起始基线与该产物同 head
+  （`fb388507c082…`），二进制 sha256 与 2026-11-03 记录一致（`PhotoPrivacy.exe a49189b2…`、
+  `PhotoPrivacyWorker.exe 424acf03…`，实测核对），故不重跑 Release——本地未编译，包体全部来自远端 CI。
+- **取证通道**：整屏 `Graphics.CopyFromScreen`（PIL `ImageGrab`）+ 合成点击（`SetCursorPos` + `mouse_event`）；
+  截图存 `C:\Users\Administrator\photo-smoke-88\evidence\`，6 张、按判据命名、不入库，
+  哈希锚 `docs/agents/ui-smoke-evidence.sha256`（实测 6/6 `OK`）。
+  本轮新增的两个操作细节（K 组指引第 7 步的补充）：
+  1. **工具宿主会反复抢前台**：跨进程调用（Bash→python）之间 IDE/宿主窗口会重新激活，`AttachThreadInput`
+     补前台不可靠；可靠做法是对 PhotoPrivacy 主窗 `SetWindowPos(HWND_TOPMOST)` 置顶后操作+截图，
+     一轮交互（置顶→点击→等待→截屏）收在同一个进程里原子完成。
+     另：ctypes 调 `SetWindowPos` 不声明 `argtypes` 时 HWND/-1 传参被静默弄错、返回 0 且 `GetLastError`=1400，
+     看上去像 UIPI 拒绝，实际只是参数编组问题——先修 argtypes 再怀疑权限。
+  2. **导航项坐标按暗像素聚类标定**（K 组指引第 7 步「网格标定」的替代）：对导航条扫描暗像素列并聚类，
+     得到五个导航项的文字中心（总览 656 / 配置 703 / 服务管理 764 / 日志 824 / 规则 871，y≈189，
+     窗口 (462,114) 下），一次到位；缩略图目测的坐标混入显示缩放会连续点空。
+- **前置状态**：服务未安装（SC 1060）、无 UI/Worker 残留进程——恰为 S1 未安装态。
+  `pkg/config/config.json` 保持 #113 二轮收尾状态（`watch.hot_folder` 指向取证目录内 hot\，未改一字），
+  服务 Worker 因此直接进监控形态（对 S8 的实时日志条目是必要条件，对 S1/S3/S4 无影响）。
+- **S2 前置步骤**：`install-service.ps1 -Action install`（High IL 管理员，无 UAC 交互），
+  安装即写 `HKLM:\SOFTWARE\PhotoPrivacy\ServicePipeInstallerSid`（#70 的安装者 SID）再 `Start-Service`。
+- **结果**：**S1 通过、S3 通过、S4 通过、S8 通过**（逐项证据见上文 S1-S8 行）；S2/S5/S6/S7 不在本票 AC，未回填。
+- **本轮新观察（不自行开票，是否成票待用户裁决）**：
+  1. **服务 Worker 与后台 Worker 同 config 并存时服务自停**：两形态 Worker 共用同一
+     `hot/_audit/processed.ndjson`，后启动者在 `FileProcessedRecordStore` 构造处抛
+     `IOException`（文件被另一进程占用），`HostOptions.BackgroundServiceExceptionBehavior=StopHost`
+     令整个服务 Host 自停——`C:\ProgramData\PhotoPrivacy\logs` 03:52 两轮
+     START→`BackgroundService failed`→FTL→STOP 可证（SCM 事件 7036 运行/停止成对出现）。
+     该状态在当前产品里**可达**：服务已安装未运行时 UI 连接编排回落后台端点并拉起后台 Worker
+     （`worker_connection.rs` 的 `connect_worker`，#70 Design 注释明示本版行为），此时在服务页点
+     「启动」即触发上述冲突。本轮取证通过「先杀后台 Worker、仅留 UI，再点启动」绕开。
+     这是 #70 连接编排的伴生缺陷候选，与本票 AC 无冲突（S3 的判据形态下服务正常驻留运行）。
+  2. **审计事件 `service_started` 的口径**：它是「Worker 进程启动」事件，后台与服务的 Worker 都会写
+     （本轮审计里 04:07:03 是后台 Worker、04:09:55 是服务 Worker），日志页上连排两条
+     「Service started」不代表 Windows 服务重启了两次——归因要结合进程会话（Services vs Console）与
+     ProgramData 日志的 Application started 行。
+- **收尾状态**：服务已按脚本卸载（SC 1060 复核），`ServicePipeInstallerSid` 注册表值随 uninstall 清除；
+  UI 已停、无 Worker 残留进程（任务表复核 0/0）；本轮投放的 `hot/s88-sample.jpg` 及其清洗产物已删除，
+  hot\ 目录回到 #113 二轮收尾内容；`config.json` 未动。
+  服务 Worker 的诊断日志留存在 `C:\ProgramData\PhotoPrivacy\logs\worker-20261103.log`
+  （含两轮 #70 相关崩溃栈），未入仓库。
 
 ### 切换日实机执行记录（2026-10-28，#61 实现窗口）
 
