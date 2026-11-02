@@ -164,7 +164,7 @@
 | # | 操作 | 结果 | 证据 |
 |---|---|---|---|
 | K1 | 双击 `PhotoPrivacy.exe`（出厂空 `hot_folder`）→ 状态栏连接态显示「已连接」，不是「连接中/已断开」 | 通过 | 2026-11-03 桌面截图目检（产物见下文 2026-11-03 产物记录）。**启动方式按判据字面走双击路径**：`cmd /c start "" …\PhotoPrivacy.exe` 经 ShellExecute 拉起包内 exe（与资源管理器双击同一条 API，非 `CreateProcess`），主窗 996×759、无控制台黑窗，UI（pid 5664）与 Worker（pid 7324）两进程均起——帧 `K1-window.png`（启动后约 8 s 的整屏帧 `K1-launch-standby.png` 是同一窗口更早一拍）：状态栏绿点 +「已连接 · PhotoPrivacyCleaner.Background · 后台模式」，右侧「上次往返 1 ms」；Worker 卡片 Worker 模式=后台模式、上报模式=background、服务 IPC=不可达、协议=v1、ExifTool=unknown（待机不拉 ExifTool 进程，属预期，非失败）；「往返次数」两帧读数不同（整屏帧 13 → 窗口帧 28），是 1 s 一次 GetStatus 心跳的递增，不是两个值矛盾 |
-| K2 | 状态栏出现 warning 色提示「请前往配置页设置监控目录」（`status.configure_watch_folder`，切 locale 后各自可见） | 通过 | 2026-11-03 桌面截图目检：10 个 locale 逐一取概览页帧（`K2-locale-<code>.png` ×10，另附逐行拼合的 `K2-hint-strip.png`）。切语言走「外部改写 `config.ui.locale` → 500 ms 内容指纹轮询回灌」（`config_service.rs` 的 `ExternalReload`，代码内的正式路径），不点坐标，因此避开指引第 7 步记的「导航项宽度随 locale 漂移」。10 行全部是 warning 色（琥珀）落在连接态下一行：zh-CN「请前往配置页设置监控目录」、en「Go to Settings to set the watch folder」（与 `locales/en.json` 该键逐字一致）、ja「設定ページで監視フォルダーを設定してください」、ko/de/fr/es/pt/ru 各随其 locale；ar 在 RTL 镜像布局（导航靠右、正文右对齐）下同一提示。只判「该 locale 的文案存在、渲染在判据位置且颜色正确」。**字形本身不判**：ar 帧上的阿拉伯文呈孤立字形、整行读起来词序是反的（`K2-hint-strip.png` 末行可见），而 B 组 B3 只覆盖「选 العربية 布局翻转为 RTL」、不含字形连写，所以这条观感当前**没有票覆盖**，本轮只如实记录、不据此判 K2 失败，也不自行开票。取证后 `config.json` 已逐字节还原（sha256 回到出厂 `aa2d36ee…`） |
+| K2 | 状态栏出现 warning 色提示「请前往配置页设置监控目录」（`status.configure_watch_folder`，切 locale 后各自可见） | 通过 | 2026-11-03 桌面截图目检：10 个 locale 逐一取概览页帧（`K2-locale-<code>.png` ×10，另附逐行拼合的 `K2-hint-strip.png`）。切语言走「外部改写 `config.ui.locale` → 500 ms 内容指纹轮询回灌」（`config_service.rs` 的 `ExternalReload`，代码内的正式路径），不点坐标，因此避开指引第 7 步记的「导航项宽度随 locale 漂移」。10 行全部是 warning 色（琥珀）落在连接态下一行：zh-CN「请前往配置页设置监控目录」、en「Go to Settings to set the watch folder」（与 `locales/en.json` 该键逐字一致）、ja「設定ページで監視フォルダーを設定してください」、ko/de/fr/es/pt/ru 各随其 locale；ar 在 RTL 镜像布局（导航靠右、正文右对齐）下同一提示。只判「该 locale 的文案存在、渲染在判据位置且颜色正确」——「通过」按票面判据「切 locale 后各自可见」计（10/10 可见）。**字形本身不判**：ar 帧上的阿拉伯文呈孤立字形、整行读起来词序是反的（`K2-hint-strip.png` 末行可见），而 B 组 B3 只覆盖「选 العربية 布局翻转为 RTL」、不含字形连写，所以这条观感当前**没有票覆盖**，本轮只如实记录、不据此判 K2 失败，也不自行开票。取证后 `config.json` 已逐字节还原（sha256 回到出厂 `aa2d36ee…`） |
 | K3 | 点该提示 → 直接进配置页（`app.rs` 的 `configure-watch-folder` on_click 置 `Page::Config`） | 通过 | 2026-11-03 桌面截图目检（zh-CN 帧）：点提示文本前「总览」高亮（`K3-before-click.png`），点后导航高亮跳到「配置」、页面标题变「配置」（`K3-after-click-hint.png`），不是只高亮也不是无响应。点击用 `SetCursorPos` + `mouse_event`，坐标由 `GetWindowRect` 换算成窗口内偏移，非缩略图目测 |
 | K4 | 选有效目录保存 → 提示消失、监控启动；放入照片被处理（日志页出条目、审计目录 `processed.ndjson` 增长） | 通过 | 2026-11-03 桌面截图 + 文件系统取证（产物见下文 2026-11-03 产物记录）。配置页「监控目录」填 `C:\Users\Administrator\photo-smoke-113r2\hot`（`K4-1-typed.png`）→ 500 ms 防抖写盘 + `ReloadConfig` 成功；回总览：琥珀提示消失、`ExifTool` 行由 `unknown` 变 `13.60`、连接仍「已连接」（`K4-3-overview-after-save.png`）；预置 3666 B 含 Artist/Copyright 的 jpg 被就地清为 626 B、标签查空，`hot/bak/k4-sample-src.jpg.bak` 留 3666 B 原件（标签仍在）；随后放入 790 B 新照片验证实时处理 → 634 B、标签清空，`processed.ndjson` 2→4 条，日志页 4→7 条并实时刷新（`K4-4-logs.png`、`K4-5-logs-live.png`，02:13:28~02:14:37，含 `ExifTool started` / `Cleaned` / `backup_sidecar_version…`）。**环境前提**：本机 ExifTool 装在模板默认路径（13.60），出厂包一字未改即可启用监控，故这是本体证据而非 dry-run 旁证；真裸机（未装 ExifTool）仍归 #108。**时刻**：本地 02:14＝UTC 前一日 18:14（两日期分叉），日志页照样出 7 条，即 #129 的修复在本产物上成立。**顺带观察**：每张照片产生 2 条 `Cleaned` + 1 条 sidecar（`#133` 形态，不按本票 AC3 另开票，见产物记录） |
 
@@ -224,7 +224,10 @@
    （不应再有控制台黑窗：#99 之后 release 构建带 `windows_subsystem = "windows"`，
    看到黑窗说明拿的是 debug 产物或旧包，先别往下验。）
 4. **K2**：同一屏找 warning 色提示「请前往配置页设置监控目录」；把 **10 个 locale 逐一**过一遍，
-   确认该文案在每个 locale 下都出现且可读——口径与 B1 的「逐一切换 10 locale」一致，只切一个不算覆盖。
+   确认该文案在每个 locale 下都出现、且内容与该 locale 对应——口径与 B1 的「逐一切换 10 locale」一致，只切一个不算覆盖。
+   **判据边界（2026-11-03 裁决）**：本项判的是「各自可见」，**不含字形连写质量**。ar 帧上阿拉伯文呈孤立字形、
+   整行词序读起来是反的，属另一层缺陷（当前无票承接，见产物记录第 3 项观察），不据此把 K2 记失败；
+   若要把「可读」并入本项判据，那是改需求，须先改票面再重判。
 5. **K3**：点该提示文本，是否直接落到配置页（不是只高亮、也不是无响应）。
 6. **K4**：在配置页选一个有效目录并保存 → 提示应消失、监控应启动；往该目录放一张带元数据的照片 →
    日志页出现处理条目、审计目录生成 `processed.ndjson` 且新增记录。命中 #108 的校验失败按 #108 记，不重复开票。
@@ -283,9 +286,11 @@
   （导航项宽度随 locale 变，固定坐标点不中，见指引第 7 步），两条路都取到概览页截图。
   取证结束把 `config.json` 还原成出厂样。
   **证据的可核验性是一条已接受的缺口**：图不入库，后来者无法独立复看 10 locale 覆盖与 K4 观察；
-  仓内只留 `docs/agents/ui-smoke-evidence.sha256`（24 条哈希，校验命令写在该清单自己的文件头里，
-  实测 24/24 `OK`、退出码 0、stderr 无警告）作为「当时确实存在且内容未被替换」的锚。目录一旦被清理，锚退化成裸哈希，
-  图就再也拿不回来了——引用本记录时按这个前提打折，别把它当成可复核的原始证据。
+  当时仓内只留 `docs/agents/ui-smoke-evidence.sha256`（24 条哈希）作为「当时确实存在且内容未被替换」的锚。
+  **该锚已随 2026-11-03 重取而下线**：同一路径现在装的是本轮 20 条哈希，`D:\Aworker\photo-smoke-125\evidence\`
+  在当前取证机上不存在（无 D: 盘），旧条目留着只会让 `sha256sum -c` 恒红，故不在文件里保留。
+  这 24 条哈希仍可从 git 历史取回（`git show fb388507:docs/agents/ui-smoke-evidence.sha256`，
+  即本票第二轮起始基准那一版），但对应的 24 张图已无法找回——引用本记录时按这个前提打折，别把它当成可复核的原始证据。
 - 结果：**K1 通过、K2 通过（10 locale 逐一）、K3 通过、K4 通过**。
   K4 的取证时刻是本地 10:48（UTC 02:48，本地日期＝UTC 日期），日志页那条腿因此成立；
   另在本地 02:03（UTC 前一日 18:03，两日期分叉）以同一产物复跑一次，日志页恒 0 条，
