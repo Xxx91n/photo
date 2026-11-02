@@ -1,3 +1,5 @@
+using PhotoPrivacy.Core.Constants;
+
 namespace PhotoPrivacy.Core.Configuration;
 
 public static class AppConfigValidator
@@ -122,9 +124,10 @@ public static class AppConfigValidator
             }
         }
         else if (!IsSystemBinDirectory(exifToolDirectory)
+                 && !IsOnPathVariable(exifToolDirectory)
                  && !Directory.Exists(Path.Combine(exifToolDirectory, "lib")))
         {
-            // 系统级安装（/usr/bin 等）由发行版自带 lib 搜索路径解析，不要求同级目录；
+            // 由环境解析自身 lib 搜索路径的安装（系统目录、PATH 可见目录）不要求同级目录；
             // 其余位置（含发布包内置的 ExifTool/）必须是自包含的一份，否则就是打包漏了文件。
             throw new AppConfigValidationException(
                 $"exiftool_files directory missing（{exifToolDirectory} 下既没有 exiftool_files 也没有 lib 目录）。" +
@@ -162,6 +165,30 @@ public static class AppConfigValidator
         var normalized = Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory));
 
         return systemBins.Any(bin => string.Equals(bin, normalized, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// 目录是否出现在 PATH 里：与 <c>DefaultPaths</c> 的 PATH 探测同口径——这类安装由系统/包管理器
+    /// 解析自身 lib 搜索路径，不要求同级的 <c>lib/</c>。少了这条，PATH 里探测到的 exiftool 会被
+    /// 下面那条「缺运行时目录」拒掉，而 UI 侧显示「已自动检测到」，同一台机器给出两处矛盾结论（#108 审查）。
+    /// </summary>
+    private static bool IsOnPathVariable(string directory)
+    {
+        var normalized = Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory));
+        var comparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+
+        foreach (var entry in DefaultPaths.EnumerateAbsolutePathEntries(
+                     Environment.GetEnvironmentVariable("PATH")))
+        {
+            if (string.Equals(Path.TrimEndingDirectorySeparator(entry), normalized, comparison))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>

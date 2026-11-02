@@ -38,39 +38,95 @@ public static class DefaultPaths
 
     private static string ResolveExifToolPath()
     {
-        if (OperatingSystem.IsWindows())
-        {
-            var candidates = new[]
-            {
-                System.IO.Path.Combine(AppContext.BaseDirectory, "ExifTool", "exiftool.exe"),
-                System.IO.Path.Combine(AppContext.BaseDirectory, "exiftool.exe"),
-                @"C:\Program Files\ExifTool\exiftool.exe",
-                @"C:\Program Files (x86)\ExifTool\exiftool.exe",
-                @"C:\Windows\exiftool.exe",
-            };
+        var candidates = OperatingSystem.IsWindows() ? WindowsCandidates() : UnixCandidates();
 
-            foreach (var path in candidates)
-            {
-                if (System.IO.File.Exists(path)) return path;
-            }
-
-            return @"C:\Program Files\ExifTool\exiftool.exe";
-        }
-
-        var unixCandidates = new[]
-        {
-            System.IO.Path.Combine(AppContext.BaseDirectory, "exiftool"),
-            System.IO.Path.Combine(AppContext.BaseDirectory, "ExifTool", "exiftool"),
-            "/usr/bin/exiftool",
-            "/usr/local/bin/exiftool",
-            "/opt/homebrew/bin/exiftool",
-        };
-
-        foreach (var path in unixCandidates)
+        foreach (var path in candidates)
         {
             if (System.IO.File.Exists(path)) return path;
         }
 
-        return "exiftool";
+        // 只装在 PATH 里的 ExifTool 也算可用——与 UI 的 resolve_exiftool_from_path 同口径，
+        // 否则 UI 显示「已自动检测到」而 Worker 把监控配置拒掉，同一台机器给出两处矛盾的结论。
+        // Design(#108): 固定候选全落空后按 PATH 解析 exiftool，与 UI 的探测规则一致。
+        var fromPath = FindExifToolOnPathVariable();
+        if (fromPath is not null) return fromPath;
+
+        return OperatingSystem.IsWindows()
+            ? @"C:\Program Files\ExifTool\exiftool.exe"
+            : "exiftool";
+    }
+
+    internal static string[] WindowsCandidates() =>
+    [
+        System.IO.Path.Combine(AppContext.BaseDirectory, "ExifTool", "exiftool.exe"),
+        System.IO.Path.Combine(AppContext.BaseDirectory, "exiftool.exe"),
+        @"C:\Program Files\ExifTool\exiftool.exe",
+        @"C:\Program Files (x86)\ExifTool\exiftool.exe",
+        @"C:\Windows\exiftool.exe",
+    ];
+
+    /// <summary>
+    /// Unix 候选顺序与 UI 的 <c>resolve_default_exiftool_path</c> 一致：先包内 <c>ExifTool/</c>，
+    /// 再包根裸 <c>exiftool</c>，最后系统安装位置。
+    /// 顺序不能反：包内那份自带同级 <c>lib/</c>，包根裸文件通常没有；包根优先会选中一个
+    /// 缺运行时目录的副本，<c>AppConfigValidator</c> 随即拒绝启用监控（#108）。
+    /// </summary>
+    internal static string[] UnixCandidates() =>
+    [
+        System.IO.Path.Combine(AppContext.BaseDirectory, "ExifTool", "exiftool"),
+        System.IO.Path.Combine(AppContext.BaseDirectory, "exiftool"),
+        "/usr/bin/exiftool",
+        "/usr/local/bin/exiftool",
+        "/opt/homebrew/bin/exiftool",
+    ];
+
+    /// <summary>
+    /// 扫 PATH 找 exiftool。只接受绝对路径片段：相对片段（如 <c>.</c>）解析结果依赖进程工作目录，
+    /// 而 Worker 的启动目录不确定，且 <c>AppConfigValidator</c> 要求绝对路径。
+    /// 这里有意的取舍是：PATH 解析结果可能被同机同用户篡改，但配置里的显式路径始终优先，
+    /// 且 UI 侧早已按同一规则探测，两边一致比单边收紧更重要。
+    /// </summary>
+    private static string? FindExifToolOnPathVariable()
+        => FindExifToolInPathValue(
+            Environment.GetEnvironmentVariable("PATH"),
+            OperatingSystem.IsWindows() ? "exiftool.exe" : "exiftool");
+
+    /// <summary>
+    /// PATH 里可用的绝对路径片段（去引号、丢弃非绝对片段）。解析口径只在这一个地方定义：
+    /// <see cref="ResolveExifToolPath"/> 用它找可执行文件，<c>AppConfigValidator</c> 用它判断
+    /// 「这个目录是不是 PATH 可见的安装」——两处各写一份会再次分叉。
+    /// </summary>
+    internal static IEnumerable<string> EnumerateAbsolutePathEntries(string? pathValue)
+    {
+        if (string.IsNullOrWhiteSpace(pathValue))
+        {
+            yield break;
+        }
+
+        foreach (var entry in pathValue.Split(
+                     System.IO.Path.PathSeparator,
+                     StringSplitOptions.RemoveEmptyEntries))
+        {
+            var directory = entry.Trim('"');
+            if (System.IO.Path.IsPathFullyQualified(directory))
+            {
+                yield return directory;
+            }
+        }
+    }
+
+    /// <summary>在给定 PATH 值里找可执行文件；抽成纯函数便于按固定 PATH 值做回归（不碰进程环境）。</summary>
+    internal static string? FindExifToolInPathValue(string? pathValue, string fileName)
+    {
+        foreach (var directory in EnumerateAbsolutePathEntries(pathValue))
+        {
+            var candidate = System.IO.Path.Combine(directory, fileName);
+            if (System.IO.File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return null;
     }
 }
