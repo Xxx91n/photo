@@ -132,7 +132,7 @@
 | T3 | 关闭主窗口进程驻守（销毁+重建；主题/连接状态/日志缓冲/服务快照保留，位置/尺寸回中——#59 已登记取舍） | 通过 | 2026-10-28 实机：`CloseMainWindow()` 后进程存活、无 PhotoPrivacy 主窗、Worker 保持 1 个；再启动第二实例（exit 0）主窗重建 |
 | T4 | `ui.hide_main_window_on_startup=true` 时启动仅托盘不弹窗 | 通过 | 2026-10-28 实机：hide=true 启动后无 PhotoPrivacy 主窗（`MainWindowTitle` 仅托盘辅助窗）、进程与 Worker 正常 |
 | T5 | 二次启动不重开：第二实例退出并唤起既有窗口（`Global\PhotoPrivacyUi_Instance`） | 通过 | 2026-10-28 实机 ×3：第二实例 6s 内退出（exit code 0），第一实例存活且主窗可见（title=PhotoPrivacy） |
-| T6 | 首次配置待机态下停机收敛（托盘 Exit / 停服务时 `StopAsync` 不挂满 `ShutdownTimeout`，`#117`） | 未回填 | 待 #117 PR 合并后按「#117 实机停机证据」段补证（自动化侧已由 #113 待机用例断言 CI 绿） |
+| T6 | 首次配置待机态下停机收敛（托盘 Exit / 停服务时 `StopAsync` 不挂满 `ShutdownTimeout`，`#117`） | 未回填 | 待 #117 PR 合并后按「#117 实机停机证据」段补证（自动化侧已由 #113 待机用例断言 CI 绿；#117 PR 当前 head 的 test job 通过，run [41349510663](https://github.com/Xxx91n/photo/actions/runs/41349510663)） |
 
 ### 首次配置待机 4 项（#100 定形，#113 补自动化，#125 桌面截图取证）
 
