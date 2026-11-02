@@ -47,7 +47,7 @@ public static class DefaultPaths
 
         // 只装在 PATH 里的 ExifTool 也算可用——与 UI 的 resolve_exiftool_from_path 同口径，
         // 否则 UI 显示「已自动检测到」而 Worker 把监控配置拒掉，同一台机器给出两处矛盾的结论。
-        // Design(#108): 固定候选全落空后按 PATH 解析 exiftool，与 UI 的探测规则一致。
+        // Design(#82): 固定候选全落空后按 PATH 解析 exiftool，与 UI 的探测规则一致。
         var fromPath = FindExifToolOnPathVariable();
         if (fromPath is not null) return fromPath;
 

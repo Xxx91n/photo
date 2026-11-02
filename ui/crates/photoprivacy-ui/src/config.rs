@@ -102,7 +102,7 @@ impl AppConfig {
             self.exiftool.path = path;
         }
 
-        // Design(#108): exiftool.path 留空必须原样保留——空串是「按运行时探测」的持久化形态，
+        // Design(#82): exiftool.path 留空必须原样保留——空串是「按运行时探测」的持久化形态，
         // 由 Worker 侧 AppConfigLoader 在加载时解析（它不写回 config.json）。
         // UI 是 config.json 的写入方：在这里解析成绝对路径，一次保存就会把「探测」冻结成
         // 那台机器当时的绝对路径，发布包换个目录解压后 Worker 仍指向旧位置。
@@ -851,7 +851,7 @@ mod tests {
         )
         .expect("显式 null 必须可解析");
 
-        // Design(#108): 空 / null 的 exiftool.path 原样保留（空串 = 运行时探测的持久化形态），
+        // Design(#82): 空 / null 的 exiftool.path 原样保留（空串 = 运行时探测的持久化形态），
         // 由 Worker 侧 loader 在加载时解析；UI 不在这里解析，否则一次保存会把它冻结成绝对路径。
         assert_eq!(config.exiftool.path, "");
         assert!(config.exiftool.extra_exiftool_args.is_empty());
