@@ -454,14 +454,17 @@
      审计与处理记录的原样输出见 `S5-10-audit-records.txt`（这两份文件收尾后仍在磁盘上，
      可事后原样取；截图与探针输出不可重取，故入锚）；
   5. **服务管道独立探针**（不经 UI，按帧协议直连 `\\.\pipe\PhotoPrivacyCleaner.Service`）：
-     `GetStatus` 1–2 ms；三次运行的两次 `ReloadConfig` 往返落在 **0.44–0.62 s**（锚定的那一轮
-     0.59 / 0.55 s），全部回 `ok:true`、`mode=service`、`v=1`，无一次触及 10 s 预算
-     ——`S5-06-service-pipe-probe.txt`。这是事故形态「服务管道 10 s/15 s 无响应」在
-     Windows 命名管道上的直接反证；
+     `GetStatus` 1–2 ms；三轮各两次 `ReloadConfig` 的往返落在 **0.44–0.62 s**（锚定的那一轮
+     0.59 / 0.55 s，另两轮控制台读数 0.589/0.567 与 0.437/0.623，未入锚），全部回 `ok:true`、
+     `mode=service`、`v=1`，无一次触及 10 s 预算——`S5-06-service-pipe-probe.txt`。这是事故形态
+     「服务管道 10 s/15 s 无响应」在 Windows 命名管道上的直接反证；
   6. **端到端计时**（第二轮回改为原目录）：粘贴生效后 **0.52 s** 配置落盘、**0.64 s**
      `GetStatus.watchDirectory` 切到新值，同帧界面绿字「已保存 · Worker 已重载」
-     ——`S5-08-e2e-timing.png` / `S5-08-e2e-timing.txt`，读侧预算 10 s
-     （该文件首行 `watched_before=` 为空串：退格清空与粘贴之间 UI 把空目录落盘了一次，
+     ——`S5-08-e2e-timing.png` / `S5-08-e2e-timing.txt`，读侧预算 10 s。该文案是
+     `locales/zh-CN.json` 的 `saved_reloaded`，只在 `ConfigEvent::Saved` 的 `worker_error=None`
+     （即 `ReloadConfig` 没回错）时出现（`ui/crates/photoprivacy-ui/src/config_service.rs`），
+     所以它本身就是「UI 侧没拿到重载失败」的判据
+     （文件首行 `watched_before=` 为空串：退格清空与粘贴之间 UI 把空目录落盘了一次，
      worker 因而短暂回待机，属合成输入手法的产物，不参与判定）。
 - **收尾状态**：UI 已退出、服务已卸载（SC 1060 复核）、`ServicePipeInstallerSid` 值随 uninstall 清除、
   任务表 0/0 残留；`pkg/config/config.json` 回到取证前的 `watch.hot_folder`（`…\photo-smoke-113r2\hot`），
