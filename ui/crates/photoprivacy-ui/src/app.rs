@@ -217,7 +217,11 @@ impl ConfigUiState {
         // 旧 UI 的 ResolveExifToolPath：首次加载时当前路径不存在则探测并显示提示；
         // 外部回灌/保存回读不清掉已有提示（旧 UI 只在启动时设置 hint）。
         if auto_detect_exiftool {
-            if let Some(detected) = detect_exiftool_path(&config.exiftool.path) {
+            // Design(#108): 空路径 = 按运行时探测，只探测给提示，绝不写回 config.exiftool.path——
+            // UI 是 config.json 的写入方，写回会把「探测」冻结成绝对路径，包换个目录就指向旧位置。
+            if config.exiftool.path.trim().is_empty() {
+                self.exiftool_hint = detect_exiftool_path(&config.exiftool.path);
+            } else if let Some(detected) = detect_exiftool_path(&config.exiftool.path) {
                 config.exiftool.path = detected.clone();
                 self.exiftool_hint = Some(detected);
             } else {
@@ -2882,6 +2886,23 @@ mod tests {
         let _ = state.apply_event(ConfigEvent::SaveFailed("磁盘只读".to_string()));
         assert!(matches!(&state.save_state, SaveState::Failed(_)));
         assert_eq!(state.save_status_deadline, None);
+    }
+
+    /// 防的具体回潮形态（CodeRabbit #155 Major）：加载时把空的 `exiftool.path` 填成探测到的绝对路径，
+    /// UI 一保存就写进 config.json——发布包换个目录解压后 Worker 仍指向旧位置。
+    #[test]
+    fn blank_exiftool_path_is_not_written_back_on_load() {
+        let mut state = ConfigUiState::new(None);
+        let mut config = AppConfig::default();
+        config.exiftool.path = String::new();
+
+        let _ = state.set_config(config, true);
+
+        assert_eq!(state.config.exiftool.path, "");
+        // 探测结果只作为提示展示，不进配置值。
+        if let Some(hint) = &state.exiftool_hint {
+            assert!(!hint.trim().is_empty());
+        }
     }
 
     /// 最小 AppDeps：不接 Worker/服务/配置后台，只支撑渲染与焦点链。

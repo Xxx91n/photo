@@ -1,4 +1,4 @@
-param(
+﻿param(
   [string]$Version = "0.1.0-preview",
   [string]$Runtime = "win-x64",
   [string]$Framework = "",
