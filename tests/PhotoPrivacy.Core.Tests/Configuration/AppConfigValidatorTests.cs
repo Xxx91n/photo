@@ -211,6 +211,50 @@ public sealed class AppConfigValidatorTests
         }
     }
 
+    /// <summary>
+    /// 符号链接安装：<c>bin/exiftool</c> 链接到另一目录，<c>lib/</c> 在目标旁边。
+    /// 防的具体回潮形态（#108 审查）：按链接所在目录查运行时目录，把可用安装误判成装坏。
+    /// </summary>
+    [Fact]
+    public void Validate_Should_Accept_Symlinked_ExifTool_With_Lib_Beside_The_Target()
+    {
+        // Windows 建符号链接需要特权（开发者模式/管理员），且 dotnet 测试在 CI 只跑 Linux；
+        // 这条断言在 Windows 上跳过，不赌宿主机权限。
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var root = Path.Combine(Path.GetTempPath(), "pp-link-" + Guid.NewGuid().ToString("N"));
+        var targetDirectory = Path.Combine(root, "ExifTool");
+        var linkDirectory = Path.Combine(root, "bin");
+        Directory.CreateDirectory(targetDirectory);
+        Directory.CreateDirectory(linkDirectory);
+
+        var target = Path.Combine(targetDirectory, "exiftool");
+        File.WriteAllText(target, "#!/bin/sh\n");
+        Directory.CreateDirectory(Path.Combine(targetDirectory, "lib"));
+
+        var link = Path.Combine(linkDirectory, "exiftool");
+        _ = File.CreateSymbolicLink(link, target);
+
+        try
+        {
+            var cfg = AppConfig.Default with
+            {
+                ExifTool = AppConfig.Default.ExifTool with { DryRun = false, Path = link },
+                Watch = AppConfig.Default.Watch with { HotFolder = linkDirectory },
+                Backup = AppConfig.Default.Backup with { Enabled = false }
+            };
+
+            Assert.Null(Record.Exception(() => AppConfigValidator.Validate(cfg)));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     // ---------------------------------------------------------------------------------------
     // 空隔离/审计目录必须被拒（loader 已兜底，这里是第二层保险 + 可读错误）
     // ---------------------------------------------------------------------------------------

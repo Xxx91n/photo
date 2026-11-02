@@ -119,7 +119,10 @@ public static class AppConfigValidator
                 "发布包内置的 ExifTool 缺失时请重新解压发布包；或安装 ExifTool 后在配置页指定 exiftool 可执行文件的完整路径。");
         }
 
-        var exifToolDirectory = Path.GetDirectoryName(config.ExifTool.Path)
+        // 符号链接要先解到最终目标：`~/bin/exiftool -> ~/ExifTool/exiftool` 这类安装的 lib/
+        // 在目标旁边而不在链接旁边，按链接所在目录查运行时目录会把可用安装误判成装坏（#108 审查）。
+        var exifToolPath = ResolveFinalTarget(config.ExifTool.Path);
+        var exifToolDirectory = Path.GetDirectoryName(exifToolPath)
             ?? throw new AppConfigValidationException("exiftool.path parent directory missing");
 
         // 伴随运行时目录：Windows 包是 exiftool_files（官方要求与 exiftool.exe 同级），
@@ -159,6 +162,26 @@ public static class AppConfigValidator
             {
                 throw new AppConfigValidationException("备份目录不能与监控目录相同，请指定监控目录的子目录(如 bak)或其他路径。");
             }
+        }
+    }
+
+    /// <summary>
+    /// 解到符号链接的最终目标；不是链接或解析失败时原样返回。
+    /// 用于「运行时目录在链接目标旁边」的安装（Unix 上 <c>~/bin/exiftool -> ~/ExifTool/exiftool</c>）。
+    /// </summary>
+    private static string ResolveFinalTarget(string path)
+    {
+        try
+        {
+            return File.ResolveLinkTarget(path, returnFinalTarget: true)?.FullName ?? path;
+        }
+        catch (IOException)
+        {
+            return path;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return path;
         }
     }
 
