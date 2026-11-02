@@ -102,6 +102,12 @@ impl AppConfig {
             self.exiftool.path = path;
         }
 
+        // Design(#108): exiftool.path 留空 = 按运行时探测（优先发布包内置的 ExifTool/ 目录），
+        // 与 C# AppConfigLoader 的空串回落同口径。发布包模板因此不再写死绝对路径。
+        if self.exiftool.path.trim().is_empty() {
+            self.exiftool.path = default_exiftool_path();
+        }
+
         if self.backup.suffix.trim().is_empty() {
             self.backup.suffix = ".bak".to_string();
         }
@@ -845,7 +851,8 @@ mod tests {
         )
         .expect("显式 null 必须可解析");
 
-        assert_eq!(config.exiftool.path, "");
+        // Design(#108): 空 / null 的 exiftool.path 与 C# AppConfigLoader 同口径，回落运行时探测。
+        assert_eq!(config.exiftool.path, default_exiftool_path());
         assert!(config.exiftool.extra_exiftool_args.is_empty());
         assert_eq!(config.watch.hot_folder, "");
         assert!(config.watch.auto_excluded_directories.is_empty());
@@ -858,6 +865,20 @@ mod tests {
         assert_eq!(config.audit.log_level, "info");
         assert_eq!(config.ui.theme_variant, "system");
         assert_eq!(config.ui.locale, "zh-CN");
+    }
+
+    #[test]
+    fn blank_exiftool_path_resolves_to_runtime_probe() {
+        // Design(#108): 发布包模板把 exiftool.path 留空（内置 ExifTool 由运行时探测），
+        // 空串必须落到探测结果，而不是让配置页显示空路径、保存后把 Worker 卡在「must be absolute」。
+        let config = AppConfig::from_json(r#"{"exiftool":{"path":""}}"#).unwrap();
+        assert_eq!(config.exiftool.path, default_exiftool_path());
+        assert!(!config.exiftool.path.trim().is_empty());
+
+        // 用户手填的绝对路径优先，不被探测覆盖。
+        let explicit =
+            AppConfig::from_json(r#"{"exiftool":{"path":"D:\\tools\\exiftool.exe"}}"#).unwrap();
+        assert_eq!(explicit.exiftool.path, r"D:\tools\exiftool.exe");
     }
 
     #[test]

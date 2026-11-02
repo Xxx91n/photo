@@ -188,16 +188,25 @@ impl ConfigUiState {
                 // 保存期间又有新编辑时保留草稿，等下一次 Saved 再刷新，避免输入被回滚。
                 let theme =
                     (revision == self.edit_revision).then(|| self.set_config(*config, false));
+                let reload_failed = worker_error.is_some();
                 self.save_state = match worker_error {
                     Some(error) => SaveState::SavedWorkerDown(error),
                     None => SaveState::Saved,
                 };
-                self.save_status_deadline = Some(Instant::now() + SAVE_STATUS_TTL);
+                // Design(#108): 只有成功态按 TTL 淡出。失败态（配置已落盘但 Worker 未重载）
+                // 常驻到下一次保存成功——否则阻断原因随 3 s 消失，用户被绕回「请前往配置页」，
+                // 看不到「ExifTool 缺失 / 目录不可写」这类真正原因。
+                self.save_status_deadline = if reload_failed {
+                    None
+                } else {
+                    Some(Instant::now() + SAVE_STATUS_TTL)
+                };
                 theme
             }
             ConfigEvent::SaveFailed(error) => {
                 self.save_state = SaveState::Failed(error);
-                self.save_status_deadline = Some(Instant::now() + SAVE_STATUS_TTL);
+                // 同上：保存失败原因常驻，不随 3 s 过期。
+                self.save_status_deadline = None;
                 None
             }
         }
@@ -1882,6 +1891,19 @@ impl AppView {
             ConnectionState::Disconnected => self.t(k::STATUS_DISCONNECTED),
         };
 
+        // Design(#108): 保存已落盘但未生效（或保存本身失败）时，原因必须在概览页常驻可见，
+        // 并可直接点回配置页。以前它只是配置页里一条 3 s 淡出的状态文本，用户在概览页只看到
+        // 「请前往配置页设置监控目录」，被绕回同一步。
+        let reload_block = match &self.save_state {
+            SaveState::SavedWorkerDown(error) => {
+                Some((self.tr(k::STATUS_SAVED_WORKER_DOWN, &[error]), theme.warning))
+            }
+            SaveState::Failed(error) => {
+                Some((self.tr(k::MSG_SAVE_FAILED_EXCEPTION, &[error]), theme.danger))
+            }
+            _ => None,
+        };
+
         let status_card = div()
             .flex()
             .flex_col()
@@ -1961,7 +1983,23 @@ impl AppView {
                         .text_color(theme.warning)
                         .child(self.t(k::STATUS_CONFIGURE_WATCH_FOLDER))
                 }),
-            );
+            )
+            .children(reload_block.map(|(text, color)| {
+                div()
+                    .id("reload-blocked")
+                    .cursor_pointer()
+                    .hover(|element| element.text_color(theme.text))
+                    .focusable()
+                    .tab_stop(true)
+                    .focus(focus_ring(theme.accent))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.page = Page::Config;
+                        cx.notify();
+                    }))
+                    .text_size(px(12.))
+                    .text_color(color)
+                    .child(text)
+            }));
 
         let rows = [
             (self.t(k::OVERVIEW_WORKER_MODE), mode.clone()),
@@ -2815,6 +2853,33 @@ mod tests {
         element_ids.sort_unstable();
         element_ids.dedup();
         assert_eq!(element_ids.len(), FIELD_SPECS.len(), "element_id 不可重复");
+    }
+
+    /// 防的回潮形态：重载失败原因随 `SAVE_STATUS_TTL` 一起消失，用户被绕回「请前往配置页」。
+    // Design(#108): 失败态不挂 3 s TTL，只有成功态按 TTL 淡出。
+    #[test]
+    fn save_failure_status_stays_visible_instead_of_expiring() {
+        let mut state = ConfigUiState::new(Some(AppConfig::default()));
+
+        let _ = state.apply_event(ConfigEvent::Saved {
+            config: Box::new(AppConfig::default()),
+            revision: 0,
+            worker_error: Some("exiftool.path not found".to_string()),
+        });
+        assert!(matches!(&state.save_state, SaveState::SavedWorkerDown(_)));
+        assert_eq!(state.save_status_deadline, None);
+
+        let _ = state.apply_event(ConfigEvent::Saved {
+            config: Box::new(AppConfig::default()),
+            revision: 0,
+            worker_error: None,
+        });
+        assert!(matches!(&state.save_state, SaveState::Saved));
+        assert!(state.save_status_deadline.is_some());
+
+        let _ = state.apply_event(ConfigEvent::SaveFailed("磁盘只读".to_string()));
+        assert!(matches!(&state.save_state, SaveState::Failed(_)));
+        assert_eq!(state.save_status_deadline, None);
     }
 
     /// 最小 AppDeps：不接 Worker/服务/配置后台，只支撑渲染与焦点链。

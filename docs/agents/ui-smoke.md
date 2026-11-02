@@ -184,6 +184,7 @@
   （`dry_run` 保持 `false`，未手改任何配置项），不需要 #113 设想的 dry-run 旁证。
   这不等于 #108 已解决：真裸机（未装 ExifTool）保存有效目录仍会撞 `exiftool.path not found`，
   该票的「裸机解压发布包 → 配置目录 → 监控确实启动」AC 依旧未达，别拿本轮证据去关它。
+  （该结论是 2026-10-31 的事实；#108 落地后的判据变化见本节末尾「#108 落地后的判据变化」。）
 - **#117 已修（2026-11-01 实现窗口）**：待机态 `StopAsync` 挂住曾由 .NET 10 的
   `SemaphoreSlim.Dispose` 语义导致——Dispose 只清空等待队列，不会让挂起的 `WaitAsync` 完成，
   首次配置待机这条路径靠「Dispose + catch ObjectDisposedException」兜不住。
@@ -193,6 +194,25 @@
   不再等满 10 s（`HostOptions.ShutdownTimeout`）。自动化侧已由 #113 待机用例改回
   「断言 `StopAsync` 在预算内完成」（CI 绿，run 号见 PR 正文）；实机停机证据（托盘 Exit /
   停服务）待 #117 PR 合并后回填 T6，见下文「#117 实机停机证据」段。
+
+### #108 落地后的判据变化（代码侧已改，实机未重取）
+
+> 写在这里是为了不把上面的历史证据读成「#108 之后仍然成立」。以下变化都在代码里，
+> CI 侧由 `PhotoPrivacy.Core.Tests`（校验分层、模板一致性）与 `PhotoPrivacy.IntegrationTests`
+> （非 dry-run 待机→启用、缺 ExifTool 拒绝）覆盖；**界面呈现与真裸机形态仍需按本文件规矩重取**。
+
+1. **出厂包自带 ExifTool**：发布脚本把固定版本解到 `<包根>/ExifTool/`（Windows：`exiftool.exe` +
+   `exiftool_files/`；Linux/macOS：`exiftool` + `lib/`，需系统 `perl`），模板 `exiftool.path` 改为空串，
+   空串 = 运行时探测（内置优先，其次系统安装位置）。因此「出厂原样」的字节核对口径不变，
+   但 `exiftool.path` 的期望值从 `C:\Program Files\ExifTool\exiftool.exe` 变成 `""`。
+2. **真裸机 K4 的正向证据可重取**：不再需要「本机恰好装了 ExifTool」这个前提；
+   下一轮实机取证应在没装 ExifTool 的机器上用出厂包跑 K1–K4，并在证据列写明「宿主未安装 ExifTool」。
+3. **失败原因常驻**：`exiftool.path not found` / `exiftool_files directory missing` 这类重载失败原因
+   不再随 3 s `SAVE_STATUS_TTL` 消失——概览页（`reload-blocked`）与配置页状态行都保持到下一次保存成功。
+   判据：故意把 `<包根>/ExifTool/exiftool.exe` 改名后保存有效目录，概览页应出现常驻的失败行，
+   点击可跳配置页；恢复文件并重新保存后该行消失。
+4. **校验分层**：待机态（空 `hot_folder`）只跳过监控资源校验（ExifTool、`exiftool_files`/`lib`、
+   隔离/审计目录、备份目录冲突）；连接池大小与被禁的 `extra_exiftool_args` 在任何形态下照常 fail-closed。
 
 ### #117 实机停机证据（待回填）
 
