@@ -72,7 +72,7 @@ public static class AppConfigLoader
                     : dto.Quarantine.Directory),
             Audit: new AuditOptions(
                 // 同上——审计日志目录空串回落 DefaultPaths，绝不落 CWD。
-                // Design(#108): audit.log_directory 空串保留 <BaseDirectory>/hot/... 回落（不改成空串）；空监控目录下的校验范围由 #108 裁定。
+                // Design(#108): audit.log_directory 空串保留 <BaseDirectory>/hot/... 回落（不改成空串）；空监控目录下的校验范围已裁为「只跳过监控资源」，见 AppConfigValidator.Validate 的分层标记。
                 LogDirectory: string.IsNullOrWhiteSpace(dto.Audit.LogDirectory)
                     ? DefaultPaths.DefaultAuditLogDirectory
                     : dto.Audit.LogDirectory,
@@ -91,14 +91,17 @@ public static class AppConfigLoader
 
     private static string ResolveExifToolPath(string nestedPath, string? legacyPath, bool hasNestedExifToolPath)
     {
-        if (hasNestedExifToolPath)
-        {
-            return nestedPath;
-        }
+        var resolved = hasNestedExifToolPath
+            ? nestedPath
+            : !string.IsNullOrWhiteSpace(legacyPath)
+                ? legacyPath
+                : nestedPath;
 
-        return !string.IsNullOrWhiteSpace(legacyPath)
-            ? legacyPath
-            : nestedPath;
+        // 空串回落口径与 quarantine.directory / audit.log_directory 一致：
+        // 发布包内置 ExifTool 后模板不再写死绝对路径，留空 = 优先 <BaseDirectory>/ExifTool/，
+        // 其次系统安装位置；用户手填的绝对路径仍然优先，不被覆盖。
+        // Design(#108): exiftool.path 留空按运行时探测回落（DefaultPaths.ExifToolPath），不覆盖用户手填的绝对路径。
+        return string.IsNullOrWhiteSpace(resolved) ? DefaultPaths.ExifToolPath : resolved;
     }
 
     private static (string? LegacyExifToolPath, bool HasNestedExifToolPath) ReadLegacyHints(string json)

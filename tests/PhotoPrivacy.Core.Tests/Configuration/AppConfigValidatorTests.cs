@@ -84,6 +84,134 @@ public sealed class AppConfigValidatorTests
     }
 
     // ---------------------------------------------------------------------------------------
+    // 校验分层（Design(#108)）：无条件层在待机/ dry-run 形态同样执行；
+    // 监控资源层只在启用监控时 fail-closed。
+    // ---------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// 本票的核心收窄：空监控目录不再整体 return，禁用参数这类与监控无关的项必须照常拒。
+    /// </summary>
+    [Fact]
+    public void Validate_Should_Throw_When_ExtraArgs_Forbidden_Even_If_HotFolder_Is_Empty()
+    {
+        var cfg = AppConfig.Default with
+        {
+            ExifTool = AppConfig.Default.ExifTool with
+            {
+                DryRun = false,
+                ExtraExifToolArgs = ["-stay_open"]
+            },
+            Watch = AppConfig.Default.Watch with { HotFolder = "" }
+        };
+
+        var ex = Assert.Throws<AppConfigValidationException>(() => AppConfigValidator.Validate(cfg));
+        Assert.Contains("extra_exiftool_args", ex.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// dry-run 以前是整体早退，禁用参数也被一并跳过；分层后该判断上移到 dry-run 之前。
+    /// </summary>
+    [Fact]
+    public void Validate_Should_Throw_When_ExtraArgs_Forbidden_Even_In_DryRun()
+    {
+        var cfg = AppConfig.Default with
+        {
+            ExifTool = AppConfig.Default.ExifTool with
+            {
+                DryRun = true,
+                ExtraExifToolArgs = ["-execute"]
+            }
+        };
+
+        var ex = Assert.Throws<AppConfigValidationException>(() => AppConfigValidator.Validate(cfg));
+        Assert.Contains("extra_exiftool_args", ex.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// 待机态只推迟监控资源校验：缺 ExifTool、缺 exiftool_files 都不阻断待机，
+    /// 否则裸机连待机都进不去（#100）。启用监控时它们仍 fail-closed——见下面的启用形态用例。
+    /// </summary>
+    [Fact]
+    public void Validate_Should_Not_Evaluate_Monitor_Resources_While_HotFolder_Is_Empty()
+    {
+        var cfg = AppConfig.Default with
+        {
+            ExifTool = AppConfig.Default.ExifTool with
+            {
+                DryRun = false,
+                Path = Path.Combine(Path.GetTempPath(), "no-such-exiftool", "exiftool.exe")
+            },
+            Watch = AppConfig.Default.Watch with { HotFolder = "" }
+        };
+
+        Assert.Null(Record.Exception(() => AppConfigValidator.Validate(cfg)));
+    }
+
+    /// <summary>
+    /// 同一份配置一旦启用监控（有目录），监控资源校验立刻 fail-closed——这是待机→启用链路的拒绝侧。
+    /// </summary>
+    [Fact]
+    public void Validate_Should_Throw_When_Monitor_Resources_Missing_And_HotFolder_Is_Set()
+    {
+        var tempHot = Path.Combine(Path.GetTempPath(), "pp-hot-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempHot);
+
+        try
+        {
+            var cfg = AppConfig.Default with
+            {
+                ExifTool = AppConfig.Default.ExifTool with
+                {
+                    DryRun = false,
+                    Path = Path.Combine(Path.GetTempPath(), "no-such-exiftool", "exiftool.exe")
+                },
+                Watch = AppConfig.Default.Watch with { HotFolder = tempHot },
+                Backup = AppConfig.Default.Backup with { Enabled = false }
+            };
+
+            var ex = Assert.Throws<AppConfigValidationException>(() => AppConfigValidator.Validate(cfg));
+            Assert.Contains("exiftool.path not found", ex.Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(tempHot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Validate_Should_Throw_When_Backup_Directory_Equals_HotFolder()
+    {
+        var tempHot = Path.Combine(Path.GetTempPath(), "pp-hot-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempHot);
+        File.WriteAllText(Path.Combine(tempHot, "exiftool.exe"), "x");
+        // 两个平台的伴随运行时目录都建：Windows 要求 exiftool_files，Unix 要求同级 lib/
+        // （见 Design(#108) 的分层与 IsSystemBinDirectory 例外），否则本用例会先撞运行时目录缺失。
+        Directory.CreateDirectory(Path.Combine(tempHot, "exiftool_files"));
+        Directory.CreateDirectory(Path.Combine(tempHot, "lib"));
+
+        try
+        {
+            var cfg = AppConfig.Default with
+            {
+                ExifTool = AppConfig.Default.ExifTool with
+                {
+                    DryRun = false,
+                    Path = Path.Combine(tempHot, "exiftool.exe")
+                },
+                Watch = AppConfig.Default.Watch with { HotFolder = tempHot },
+                Backup = AppConfig.Default.Backup with { Enabled = true, Directory = tempHot }
+            };
+
+            var ex = Assert.Throws<AppConfigValidationException>(() => AppConfigValidator.Validate(cfg));
+            Assert.Contains("备份目录", ex.Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(tempHot, recursive: true);
+        }
+    }
+
+    // ---------------------------------------------------------------------------------------
     // 空隔离/审计目录必须被拒（loader 已兜底，这里是第二层保险 + 可读错误）
     // ---------------------------------------------------------------------------------------
 

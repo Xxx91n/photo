@@ -188,6 +188,10 @@ public sealed class AppConfigRoundTripTests
         Assert.Equal(AppConfig.Default.SchemaVersion, root.GetProperty("schema_version").GetInt32());
 
         var exiftool = root.GetProperty("exiftool");
+        // Design(#108): 模板不再写死绝对路径——留空表示按运行时探测（优先发布包内置的 ExifTool/），
+        // 裸机解压即用；用户手填的绝对路径仍然优先，不被覆盖。
+        // 关联 issue #108。
+        Assert.Equal(string.Empty, exiftool.GetProperty("path").GetString());
         Assert.Equal(AppConfig.Default.ExifTool.EnableWindowsLongPath, exiftool.GetProperty("enable_windows_long_path").GetBoolean());
         Assert.Equal(AppConfig.Default.ExifTool.EnableLargeFileSupport, exiftool.GetProperty("enable_large_file_support").GetBoolean());
         Assert.Equal(AppConfig.Default.ExifTool.DryRun, exiftool.GetProperty("dry_run").GetBoolean());
