@@ -56,6 +56,20 @@ public sealed class WorkerIpcServerHostedService : BackgroundService
         {
             transport = IpcTransportFactory.CreateServer(endpoint, _runtime.Mode == RuntimeMode.Service);
             await transport.ListenAsync(stoppingToken);
+
+            // 服务模式命名熵（#7）：通告失败回退静态名时必须可观测——否则防抢占面静默回到 #7 前。
+            if (transport is NamedPipeIpcTransport pipeTransport
+                && _runtime.Mode == RuntimeMode.Service
+                && pipeTransport.ServicePipeBind == ServicePipeBindOutcome.StaticFallback)
+            {
+                SafeLog.Try(() => _logger.LogWarning(
+                    "Service pipe name advertisement failed ({Key}\\{Value}); bound static name as fallback — " +
+                    "anti-preemption entropy is OFF and the pre-#7 static-name squatting surface is back. " +
+                    "Check the service account can write HKLM (LocalSystem default). " +
+                    "The CWE-732 instance-creation split in the DACL remains active. (#7)",
+                    WindowsServicePipeAcl.RegistrySubKeyName,
+                    WindowsServicePipeAcl.AdvertisedServicePipeValueName));
+            }
         }
         catch (Exception ex)
         {
