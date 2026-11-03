@@ -52,7 +52,9 @@
 **SIGHUP Reload**：SIGHUP 触发配置热载，异常只记日志、不阻塞信号线程。
 **Zombie Reap**：ExifTool 子进程经 Exited→WaitForExit 回收，防 Unix 僵尸。
 **Shared Group Model**：服务与 GUI 用户共享组和 setgid 目录。
-**Service Pipe ACL**：Windows 服务管道显式 DACL（#70/#1）——授权 SID 集合（安装者保底，`-AuthorizedUsers` opt-in 扩展）由 install-service.ps1 登记为单值 + MULTI_SZ 集合，服务端建例时逐 SID 授予读写；集合缺失回退安装者单值，全缺失 fail-closed 回退 CurrentUserOnly。
+**Service Pipe ACL**：Windows 服务管道显式 DACL（#70/#1/#7）——授权 SID 集合（安装者保底，`-AuthorizedUsers` opt-in 扩展）由 install-service.ps1 登记为单值 + MULTI_SZ 集合，服务端建例时逐 SID 授予读写**去位掩码**（#7 拆位：剥除 FILE_CREATE_PIPE_INSTANCE 0x4，建例权仅授服务身份）；集合缺失回退安装者单值，全缺失 fail-closed 回退 CurrentUserOnly。
+**Service Pipe Name Advertisement**：服务管道通告名（#7 命名熵）——服务每次监听生成 crypto-random 后缀（基名.32hex），先建首例再写入 `HKLM\SOFTWARE\PhotoPrivacy\ServicePipeName`；UI 动态解析服务端点优先读它，缺失/非法回退静态名。随机名防预蹲，HKLM 管理员可写防指针伪造；通告失败服务回退静态名（fail-safe）。
+**IPC Client Access Mask**：IPC 客户端细粒度请求掩码（#7/CWE-732）——FILE_GENERIC_READ|WRITE 剥除 0x4 后的 0x12019B，与服务端拆位 DACL 同值；C# 走 PipeAccessRights 构造重载，Rust 原生 CreateFileW，双端冒充级别 Identification。
 **IPC Protocol Version**：消息可选 `v` 字段（默认 1），新功能以方法名扩展。
 **Mode-Scoped Shutdown**：仅 CLI 模式可经 IPC 触发 Shutdown。
 **Post-Action Probe Retry**：服务操作后指数退避重试探测。

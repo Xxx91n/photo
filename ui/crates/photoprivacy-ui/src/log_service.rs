@@ -115,7 +115,7 @@ async fn run_backfill(link: WorkerLink, commands: mpsc::UnboundedSender<LogComma
         mut endpoint,
     } = link;
 
-    let endpoint = loop {
+    let mut target = loop {
         if let Some(endpoint) = (*endpoint.borrow_and_update()).clone() {
             break endpoint;
         }
@@ -125,7 +125,12 @@ async fn run_backfill(link: WorkerLink, commands: mpsc::UnboundedSender<LogComma
     };
 
     loop {
-        match client.recent_logs(&endpoint).await {
+        // #7：每轮重试前重读端点 watch——服务模式重启换随机名后，心跳/版本的重解析会推送新值，
+        // backfill 5s 重试自愈；后台端点静态，重读恒等。
+        if let Some(latest) = endpoint.borrow_and_update().clone() {
+            target = latest;
+        }
+        match client.recent_logs(&target).await {
             // 旧 UI 的实际行为：空数组也继续重试，直到拿到历史行。这样即使本地 tail 读不到文件，
             // Worker 侧后写入的审计仍能经 backfill 补上。
             Ok(lines) if lines.is_empty() => tokio::time::sleep(BACKFILL_RETRY_INTERVAL).await,

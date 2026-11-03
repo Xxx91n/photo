@@ -3,7 +3,8 @@ namespace PhotoPrivacy.IntegrationTests.Ipc;
 /// <summary>
 /// IPC 与部署安全不变量守卫：每条断言都直接对账代码/脚本/配置，改措辞不会让它变红。
 /// 1) install-systemd-service.sh 的 unit 模板必须钉住 RuntimeDirectoryMode=0750 并提供 GUI 用户组供给；
-/// 2) NamedPipeIpcTransport 的 FirstPipeInstance 仅施加于 ListenAsync 预建的首实例。
+/// 2) NamedPipeIpcTransport 的 FirstPipeInstance 仅施加于 listen 期首例（#7 拓扑：后台直建/
+///    服务随机名建例/通告失败回退静态名重绑，恰 3 处；accept 后预建的后续实例不得携带）。
 /// 每组守卫都带 negative self-proof：把源码改坏后备守卫必须变红，防止守卫空转。
 /// 原 UiSingleInstance ACL 守卫随旧 Ui 工程退役（#61）；新 UI 单实例管线的 DACL 决策见
 /// ui/crates/photoprivacy-ipc/src/single_instance.rs（Design(#49)），由 cargo test 守护。
@@ -76,20 +77,23 @@ public sealed class IpcAuthClaimReconciliationTests
         Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
     }
 
-    // ---------- 3. FirstPipeInstance 仅首实例 ----------
+    // ---------- 3. FirstPipeInstance 仅 listen 期首例 ----------
 
     internal static List<string> ClassifyFirstInstanceOnly(string strippedTransportSource)
     {
         var violations = new List<string>();
-        var firstInstanceCalls = CountOccurrences(strippedTransportSource, "CreatePipeServer(_pipeName, isFirstInstance: true)");
-        var nextInstanceCalls = CountOccurrences(strippedTransportSource, "CreatePipeServer(_pipeName, isFirstInstance: false)");
-        if (firstInstanceCalls != 1)
+        // #7 后的首例建例点恰 3 处：ListenAsync 后台分支直建、服务模式随机名建例、
+        // 通告失败回退静态名重绑——三处都是 listen 期首例（语义等价于拆分前的单一调用点）；
+        // 后续实例（accept 后预建）恰 1 处且不得携带 FirstPipeInstance。
+        var firstInstanceCalls = CountOccurrences(strippedTransportSource, "isFirstInstance: true");
+        var nextInstanceCalls = CountOccurrences(strippedTransportSource, "isFirstInstance: false");
+        if (firstInstanceCalls != 3)
         {
-            violations.Add("首实例调用点应恰为 1 处（ListenAsync 预建），实测 " + firstInstanceCalls);
+            violations.Add("首例建例点应恰为 3 处（后台直建/服务随机名/通告失败回退静态名，#7 拓扑），实测 " + firstInstanceCalls);
         }
         if (nextInstanceCalls != 1)
         {
-            violations.Add("后续实例调用点应恰为 1 处（accept 后预建），实测 " + nextInstanceCalls);
+            violations.Add("后续实例建例点应恰为 1 处（accept 后预建），实测 " + nextInstanceCalls);
         }
 
         var flagIdx = strippedTransportSource.IndexOf("PipeOptions.FirstPipeInstance", StringComparison.Ordinal);
@@ -122,7 +126,7 @@ public sealed class IpcAuthClaimReconciliationTests
         var green = SourceLint.ReadStripped("src", "PhotoPrivacy.Ipc", "NamedPipeIpcTransport.cs");
         var failing = new (string Source, string Reason)[]
         {
-            (green.Replace("CreatePipeServer(_pipeName, isFirstInstance: true)", "CreatePipeServer(_pipeName, isFirstInstance: false)"), "首实例调用点被改为后续实例"),
+            (green.Replace("isFirstInstance: true", "isFirstInstance: false"), "首例建例点被改为后续实例"),
             (green.Replace("if (isFirstInstance)", "if (true)"), "FirstPipeInstance 守卫被短路"),
         };
 

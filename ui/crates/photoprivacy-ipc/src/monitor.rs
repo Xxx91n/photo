@@ -96,16 +96,24 @@ pub fn next_backoff(current: Duration) -> Duration {
 
 /// 心跳循环：成功每 1s 一次，失败按退避步进；状态经 `watch` 广播给 UI。
 ///
+/// 端点经 `resolve` 动态获取（#7）：服务管道随机化后服务重启会换名——失败时重解析，
+/// 否则永远重试旧名；后台端点静态，重解析是零成本恒等。初始端点在任务启动时解析一次，
+/// 成功期间不重解析（注册表零读）。
 /// 探针用 GetStatus 而非旧 UI 的 Ping：每跳顺带刷新协议版本、模式与 ExifTool 版本；代价是
 /// 「Ping 通但 GetStatus 失败」会被判为不可用（旧 UI 不用这些字段，所以只发 Ping）。
 // Design(#49): 心跳探针固定为 GetStatus，版本可见性优先于 Ping 的纯活性语义。
-pub fn spawn_monitor(
+// Design(#7): 心跳失败即重解析端点（服务重启换随机名后自愈）；解析器由调用方按模式注入。
+pub fn spawn_monitor<F>(
     client: Arc<IpcClient>,
-    endpoint: Endpoint,
+    resolve: F,
     tx: watch::Sender<ConnectionSnapshot>,
-) -> tokio::task::JoinHandle<()> {
+) -> tokio::task::JoinHandle<()>
+where
+    F: Fn() -> Endpoint + Send + 'static,
+{
     tokio::spawn(async move {
         let mut backoff = HEARTBEAT_INTERVAL;
+        let mut endpoint = resolve();
         loop {
             let started = Instant::now();
             let result = client.status(&endpoint).await;
@@ -120,6 +128,8 @@ pub fn spawn_monitor(
                     tokio::time::sleep(HEARTBEAT_INTERVAL).await;
                 }
                 Err(err) => {
+                    // #7：失败即重解析端点——服务模式拿到（可能的）新通告名；后台模式恒等。
+                    endpoint = resolve();
                     backoff = next_backoff(backoff);
                     tx.send_modify(|snapshot| apply_failure(snapshot, &err));
                     tokio::time::sleep(backoff).await;
@@ -383,5 +393,39 @@ mod tests {
         assert_eq!(snapshot.exif_tool_version.as_deref(), Some("13.20"));
         assert_eq!(snapshot.last_round_trip, Some(Duration::from_millis(3)));
         assert!(snapshot.last_error.is_some());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn monitor_re_resolves_endpoint_after_failure() {
+        // 防（#7）：服务管道随机化后服务重启会换名——心跳失败必须重解析端点，否则 UI 永远
+        // 重试旧名（60s 退避下的表现是「服务回来了也连不上」直到 UI 重启）。
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let calls_for_resolve = calls.clone();
+        let (tx, _rx) = watch::channel(ConnectionSnapshot::connecting());
+        let client = Arc::new(IpcClient::new());
+        let handle = spawn_monitor(
+            client,
+            move || {
+                let n = calls_for_resolve.fetch_add(1, Ordering::SeqCst);
+                // 不存在的端点：status() 必失败，驱动失败分支的重解析（Windows 上 UnixSocket
+                // 端点立即 InvalidInput，Unix 上 NotFound 耗尽连接预算，殊途同归）。
+                Endpoint::UnixSocket(std::path::PathBuf::from(format!(
+                    "/nonexistent/pp-t7-{n}.sock"
+                )))
+            },
+            tx,
+        );
+
+        // 跑过至少两轮「失败 → 退避」：初始解析 1 次 + 每次失败后重解析（paused 时间自动推进）。
+        tokio::time::sleep(Duration::from_secs(10)).await;
+        let resolved = calls.load(Ordering::SeqCst);
+        assert!(
+            resolved >= 3,
+            "monitor must re-resolve endpoint on failure, got {resolved} resolve calls"
+        );
+
+        handle.abort();
     }
 }

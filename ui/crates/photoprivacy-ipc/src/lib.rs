@@ -13,7 +13,8 @@ pub mod single_instance;
 
 pub use client::{IpcClient, IpcError};
 pub use endpoints::{
-    Endpoint, HostPlatform, WorkerMode, current_home, current_platform, resolve_endpoint,
+    Endpoint, HostPlatform, WorkerMode, current_home, current_platform, current_service_endpoint,
+    resolve_endpoint, service_pipe_endpoint_with_advertised,
 };
 pub use monitor::{
     ConnectionSnapshot, ConnectionState, HEARTBEAT_INTERVAL, SERVICE_POLL_INTERVAL,

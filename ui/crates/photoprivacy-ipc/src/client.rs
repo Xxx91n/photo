@@ -16,6 +16,24 @@ const CONNECT_TIMEOUT: Duration = Duration::from_millis(700);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(3);
 const CONNECT_RETRY_INTERVAL: Duration = Duration::from_millis(25);
 
+// ------------------------------------------------------------------
+// #7 / CWE-732：IPC 客户端请求掩码（与服务端拆位后的授权用户掩码同值，双端同构）
+// ------------------------------------------------------------------
+
+/// FILE_GENERIC_READ（winnt.h）：READ_DATA|READ_ATTRIBUTES|READ_EA|READ_CONTROL|SYNCHRONIZE。
+const FILE_GENERIC_READ: u32 = 0x0012_0089;
+/// FILE_GENERIC_WRITE（winnt.h）：WRITE_DATA|APPEND_DATA|WRITE_ATTRIBUTES|WRITE_EA|READ_CONTROL|SYNCHRONIZE。
+/// APPEND_DATA(0x4) 与 FILE_CREATE_PIPE_INSTANCE 同值——微软 Named Pipe 文档登记的位碰撞缺陷源。
+const FILE_GENERIC_WRITE: u32 = 0x0012_0116;
+/// FILE_CREATE_PIPE_INSTANCE：仅服务端建例需要；客户端请求掩码必须剥除（#7），否则对拆位后的
+/// 服务端 DACL 连接被 AccessCheck 整体拒绝（UI 完全连不上服务 Worker）。
+const FILE_CREATE_PIPE_INSTANCE: u32 = 0x0000_0004;
+/// IPC 客户端请求掩码（#7）：FILE_GENERIC_READ|WRITE 剥除 0x4 后的 0x0012019B，与 C# 侧
+/// `WindowsServicePipeAcl.ServiceClientAccessMask` 同值（位级行为断言见本文件测试）。
+/// pub：双端契约锚（C# 侧同为 public const），也使 Linux 编译面（无 windows 打开路径）不判死码。
+pub const IPC_CLIENT_DESIRED_ACCESS: u32 =
+    FILE_GENERIC_READ | (FILE_GENERIC_WRITE & !FILE_CREATE_PIPE_INSTANCE);
+
 /// ReloadConfig 会停 watcher → 重建 bridge → 重启 watcher；旧 UI 的 3s 读超时覆盖不了，
 /// 会把「正在重载」误判成 Worker 掉线。契约要求 ≥6s，这里取 10s 留余量。
 // Design(#49): ReloadConfig 的读超时独立于普通请求（10s），避免热重载被 3s 超时误杀。
@@ -201,15 +219,53 @@ impl IpcClient {
 // 自相矛盾（服务 Worker 以 LocalSystem 运行，属主是 SYSTEM，用户 UI 必然被拒）——换栈调研 §2.6 已把
 // 「Windows 服务模式管道认证」登记为既有缺陷，属主边界改由服务端 DACL 承担，客户端不复制该校验。
 // Design(#49): IPC 认证以 OS 身份为边界（服务端 DACL），客户端不做属主校验。
+//
+// #7 起客户端改以细粒度掩码打开（IPC_CLIENT_DESIRED_ACCESS）：tokio 1.54 的 ClientOptions 无
+// desired_access 重载（#7 票内评论所述 API 不存在，docs.rs 核实），故镜像 tokio open() 的原生
+// CreateFileW（share=0、OPEN_EXISTING、FILE_FLAG_OVERLAPPED、SECURITY_IDENTIFICATION）再经
+// NamedPipeClient::from_raw_handle 交还 tokio IOCP 注册；busy/not-found 重试仍由上层 connect 的
+// 预算循环承担（错误码不变）。SECURITY_IDENTIFICATION 与 C# 侧 TokenImpersonationLevel.Identification
+// 对齐：防伪服务端（预蹲者）对客户端发起 ImpersonateNamedPipeClient 冒充；产品服务端从不冒充
+// 客户端，收紧不改变合法链路。
+// Design(#7): 客户端请求掩码剥除 FILE_CREATE_PIPE_INSTANCE（0x4）并固定 Identification 冒充级别。
 #[cfg(windows)]
 async fn connect_once(endpoint: &Endpoint) -> io::Result<Stream> {
+    use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
+    use windows_sys::Win32::Storage::FileSystem::{CreateFileW, FILE_FLAG_OVERLAPPED, OPEN_EXISTING};
+    use windows_sys::Win32::System::SystemServices::SECURITY_IDENTIFICATION;
+
     let Endpoint::Pipe(name) = endpoint else {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "Windows 只支持命名管道端点",
         ));
     };
-    tokio::net::windows::named_pipe::ClientOptions::new().open(format!(r"\\.\pipe\{name}"))
+
+    let path: Vec<u16> = format!(r"\\.\pipe\{name}")
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
+
+    // SAFETY: path 是 NUL 结尾的有效 UTF-16 缓冲；其余指针实参均为 null（无安全属性/模板，
+    // 与 tokio open() 同参形态）。句柄所有权随后转移给 from_raw_handle，失败路径由其内部处置。
+    let handle = unsafe {
+        CreateFileW(
+            path.as_ptr(),
+            IPC_CLIENT_DESIRED_ACCESS,
+            0,
+            std::ptr::null_mut(),
+            OPEN_EXISTING,
+            SECURITY_IDENTIFICATION | FILE_FLAG_OVERLAPPED,
+            std::ptr::null_mut(),
+        )
+    };
+    if handle == INVALID_HANDLE_VALUE {
+        return Err(io::Error::last_os_error());
+    }
+
+    // SAFETY: handle 是刚由 CreateFileW 成功返回的、未被共享的所有权句柄（from_raw_handle
+    // 接管关闭与 IOCP 注册；运行时缺失/IO 未启用时返回 Err 并负责句柄处置）。
+    unsafe { Stream::from_raw_handle(handle) }
 }
 
 #[cfg(unix)]
@@ -272,5 +328,18 @@ mod tests {
         // 防：配置热重载沿用 3s 读超时，Worker 重建 watcher 期间 UI 把成功重载误报成掉线（#55）。
         assert!(RELOAD_CONFIG_TIMEOUT >= Duration::from_secs(6));
         assert!(RELOAD_CONFIG_TIMEOUT > Duration::from_secs(3));
+    }
+
+    #[test]
+    fn client_desired_access_drops_create_pipe_instance_bit() {
+        // 防（#7/CWE-732 回潮）：客户端掩码带回 0x4 —— 对拆位后的服务端 DACL 连接被整体拒绝
+        // （UI 完全连不上服务 Worker）；位级值必须与 C# 侧 WindowsServicePipeAcl.ServiceClientAccessMask
+        // 同构（FILE_GENERIC_READ|WRITE 去位 = 0x0012019B）。
+        assert_eq!(0, IPC_CLIENT_DESIRED_ACCESS & FILE_CREATE_PIPE_INSTANCE);
+        assert_eq!(
+            FILE_GENERIC_READ | (FILE_GENERIC_WRITE & !FILE_CREATE_PIPE_INSTANCE),
+            IPC_CLIENT_DESIRED_ACCESS
+        );
+        assert_eq!(0x0012_019B, IPC_CLIENT_DESIRED_ACCESS);
     }
 }

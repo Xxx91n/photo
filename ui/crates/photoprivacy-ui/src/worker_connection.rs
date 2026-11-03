@@ -1,7 +1,7 @@
 use photoprivacy_ipc::{
-    ConnectionSnapshot, ConnectionState, Endpoint, IpcClient, WorkerMode, current_home,
-    current_platform, resolve_endpoint, spawn_monitor, spawn_show_window_server,
-    watch_service_reachability, watch_version,
+    ConnectionSnapshot, ConnectionState, Endpoint, HostPlatform, IpcClient, WorkerMode,
+    current_home, current_platform, current_service_endpoint, resolve_endpoint, spawn_monitor,
+    spawn_show_window_server, watch_service_reachability, watch_version,
 };
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -67,16 +67,15 @@ pub fn start(
 
     // 服务态 3s 拍：与连接编排并行起跑（旧 UI 的服务模式轮询同样独立于心跳）。
     // 短连接预算：服务未安装时不值得每拍耗满 700ms 的重试预算。
-    if let Some(endpoint) = resolve_endpoint(
-        current_platform(),
-        WorkerMode::Service,
-        current_home().as_deref(),
-    ) {
+    // #7：服务端点每拍动态解析（通告名优先、静态名兜底）——服务重启换随机名后探测不悬死。
+    if current_service_endpoint(current_platform(), current_home().as_deref()).is_some() {
+        let probe_platform = current_platform();
+        let probe_home = current_home();
         let probe = Arc::new(IpcClient::with_connect_timeout(Duration::from_millis(250)));
         runtime.spawn(watch_service_reachability(
             move || {
                 let probe = probe.clone();
-                let endpoint = endpoint.clone();
+                let endpoint = probe_service_endpoint(probe_platform, probe_home.as_deref());
                 async move { probe.is_alive(&endpoint).await }
             },
             snapshots.clone(),
@@ -99,13 +98,24 @@ pub fn start(
                     snapshot.endpoint = Some(endpoint.display());
                     snapshot.worker_mode = Some(mode);
                 });
-                spawn_monitor(client, endpoint.clone(), snapshots.clone());
+                // 端点解析器（#7）：后台 = 静态契约名（恒等）；服务 = 动态解析（通告名优先、静态兜底），
+                // 解析结果推送 endpoint watch（backfill 每 5s 重试时重读，服务重启换名后自愈）。
+                // 心跳与版本轮询共用：服务重启换名后两者都不悬死在旧名。
+                let resolve = endpoint_resolver(
+                    mode,
+                    current_platform(),
+                    current_home(),
+                    endpoint.clone(),
+                    endpoint_tx.clone(),
+                );
+                spawn_monitor(client, resolve.clone(), snapshots.clone());
                 // 独立 1s 版本轮询：单独客户端避免与心跳的单飞锁互相拖慢；心跳退避不影响版本节拍。
                 let version_client = Arc::new(IpcClient::new());
+                let version_resolve = resolve;
                 tokio::spawn(watch_version(
                     move || {
                         let client = version_client.clone();
-                        let endpoint = endpoint.clone();
+                        let endpoint = version_resolve();
                         async move { client.exif_tool_version(&endpoint).await.ok() }
                     },
                     snapshots,
@@ -124,6 +134,43 @@ pub fn start(
     link
 }
 
+/// 服务探测端点（#7）：每拍重解析——Windows 通告名优先、静态名兜底；解析不到的平台形态
+/// （mac 无 HOME，仅理论可达：探测任务仅在初始解析成功时起跑）退静态 Windows 名，
+/// 探测必然失败等价「服务不可达」，不产生误导性成功。
+fn probe_service_endpoint(platform: HostPlatform, home: Option<&Path>) -> Endpoint {
+    current_service_endpoint(platform, home)
+        .unwrap_or_else(|| Endpoint::Pipe("PhotoPrivacyCleaner.Service".to_string()))
+}
+
+/// 按模式构造端点解析器（#7）：后台 = 静态契约名（恒等返回）；服务 = 每次调用重读通告名
+/// （随机化后服务重启会换名），解析不到时退连接时的端点。服务模式解析结果推送 `endpoint_tx`
+/// （backfill 持 receiver 每 5s 重试时重读自愈）；同值不写——避免 1s 版本节拍制造稳定的
+/// watch 唤醒（与 watch_service_reachability 的同值抑制同口径）。
+fn endpoint_resolver(
+    mode: WorkerMode,
+    platform: HostPlatform,
+    home: Option<PathBuf>,
+    connected: Endpoint,
+    endpoint_tx: watch::Sender<Option<Endpoint>>,
+) -> impl Fn() -> Endpoint + Clone {
+    move || match mode {
+        WorkerMode::Background => connected.clone(),
+        WorkerMode::Service => {
+            let resolved = current_service_endpoint(platform, home.as_deref())
+                .unwrap_or_else(|| connected.clone());
+            endpoint_tx.send_if_modified(|current| {
+                if current.as_ref() == Some(&resolved) {
+                    false
+                } else {
+                    *current = Some(resolved.clone());
+                    true
+                }
+            });
+            resolved
+        }
+    }
+}
+
 /// 连接顺序与旧 UI `WorkerProcessManager.ConnectOrLaunchAsync` 对齐：服务端点优先，其次后台端点，
 /// 都不可用时启动后台 Worker 并轮询 5s。服务「已安装未运行」时本版会落到后台 Worker，而不是像旧 UI
 /// 停在服务壳；服务态本身由服务页独立探测。
@@ -134,7 +181,8 @@ async fn connect_worker(
 ) -> Option<(Endpoint, WorkerMode)> {
     let platform = current_platform();
     let home = current_home();
-    let service = resolve_endpoint(platform, WorkerMode::Service, home.as_deref());
+    // #7：服务端点动态解析（通告名优先、静态名兜底）——随机化后的服务端点只有通告名可发现。
+    let service = current_service_endpoint(platform, home.as_deref());
     let background = resolve_endpoint(platform, WorkerMode::Background, home.as_deref());
 
     for (mode, endpoint) in [
@@ -264,5 +312,28 @@ mod tests {
             .map(|arg| arg.to_string_lossy().into_owned())
             .collect();
         assert_eq!(args, vec!["--mode", "background"]);
+    }
+
+    #[test]
+    fn background_resolver_is_identity_and_leaves_watch_untouched() {
+        // 防（#7）：后台端点是静态契约名——解析器必须恒等返回，且不把后台端点误推进
+        // 服务专用的 endpoint watch（backfill 重读通道只该反映服务模式的重解析）。
+        // 服务臂依赖机器注册表（通告名），不做单测——纯逻辑归 photoprivacy-ipc 的
+        // endpoints 测试，实机行为归 S4 复测（同仓 CI 平台限制先例）。
+        let (tx, mut rx) = watch::channel(None);
+        let connected = Endpoint::Pipe("PhotoPrivacyCleaner.Background".into());
+        let resolve = endpoint_resolver(
+            WorkerMode::Background,
+            HostPlatform::Windows,
+            None,
+            connected,
+            tx,
+        );
+
+        assert_eq!(
+            resolve(),
+            Endpoint::Pipe("PhotoPrivacyCleaner.Background".into())
+        );
+        assert_eq!(*rx.borrow_and_update(), None);
     }
 }
