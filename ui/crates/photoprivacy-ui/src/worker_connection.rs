@@ -1,9 +1,8 @@
 use photoprivacy_ipc::{
     ConnectFailureCause, ConnectionSnapshot, ConnectionState, Endpoint, HostPlatform, IpcClient,
-    WorkerMode, current_home, current_platform, current_service_endpoint,
-    is_service_access_denied, protocol::methods, resolve_endpoint,
-    service_pipe_endpoint_with_advertised, spawn_monitor, spawn_show_window_server,
-    watch_service_reachability, watch_version,
+    WorkerMode, current_home, current_platform, current_service_endpoint, is_service_access_denied,
+    protocol::methods, resolve_endpoint, service_pipe_endpoint_with_advertised, spawn_monitor,
+    spawn_show_window_server, watch_service_reachability, watch_version,
 };
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
