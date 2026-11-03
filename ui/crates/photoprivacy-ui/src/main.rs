@@ -128,8 +128,9 @@ fn main() -> anyhow::Result<()> {
         .enable_all()
         .build()?;
 
-    // Design(#32): Service 页同源探测结果落 JSON 后即退出——虚拟环境（CI macOS runner）
-    // 机器可读取证入口；不建窗、不连 Worker，探测链与 Service 页首拍一致。只读探针不受
+    // Design(#58): Service 页同源探测结果落 JSON 后即退出——虚拟环境（CI macOS runner）
+    // 机器可读取证入口；不建窗、不连 Worker，探测链与 Service 页首拍一致（#32 落地后关票，
+    // 探测链归 #58；GUI 用户语境 launchctl 查询域缺陷登记在 #172）。只读探针不受
     // 单实例守卫约束：并存 UI 不应挡掉报告产出（CodeRabbit 审查意见）。
     if let Some(report_path) = &args.service_probe_report {
         let probe_options = ConnectOptions::discover()
