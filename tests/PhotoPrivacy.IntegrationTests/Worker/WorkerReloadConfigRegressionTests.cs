@@ -687,8 +687,10 @@ public sealed class WorkerReloadConfigRegressionTests
     /// <c>/run/photoprivacy</c> 需 root，CI 绑不了，也不能与真实 worker 抢端点）。因此绑定
     /// 行为用同一工厂的形态访问策略在临时端点上验证，形态→端点选择映射
     /// （<c>ResolveEndpoint</c> 的形态分支，与宿主内同一调用）单独逐 OS 断言钉住。
-    /// 在 Windows 宿主上跑本用例时，服务形态一行会走 #70 的显式 DACL 建例路径
-    /// （CI test job 为 ubuntu，Windows 侧由发版机构建与实机 S4/S5 承担，见 ipc-contract.md）。
+    /// 在 Windows 宿主上跑本用例时，服务形态一行直接构造 ServiceShared 传输并注入通告器
+    /// （#7：随机名路径 + 细粒度客户端；不经工厂避免生产 HKLM 通告——elevated 运行会真实
+    /// 写/清注册表且覆盖路径随运行身份漂移；Unix 形态保持工厂，宿主形态本就只为工厂服务）。
+    /// （CI test job 为 ubuntu，Windows 侧由发版机构建与实机 S4/S5 承担，见 ipc-contract.md。）
     /// </summary>
     [Theory]
     [InlineData(RuntimeMode.Background, "background")]
@@ -732,7 +734,14 @@ public sealed class WorkerReloadConfigRegressionTests
                 Assert.Fail("未覆盖的 OS：形态→端点选择映射断言被静默跳过");
             }
 
-            transport = IpcTransportFactory.CreateServer(endpoint, isServiceMode);
+            // 审查返修（m2）：Windows + 服务形态直接构造并注入通告器，永不触碰真实注册表；
+            // 其余形态/平台走工厂（后台无熵，Unix 工厂选 UDS）。
+            transport = OperatingSystem.IsWindows() && isServiceMode
+                ? new NamedPipeIpcTransport(
+                    endpoint,
+                    WindowsPipeAccessMode.ServiceShared,
+                    servicePipeAdvertiser: _ => true)
+                : IpcTransportFactory.CreateServer(endpoint, isServiceMode);
 
             var handler = CreateHandler(fixture, runtimeMode);
 

@@ -15,6 +15,8 @@ namespace PhotoPrivacy.Ipc;
 /// SID 缺失或无效时 fail-closed：回退 CurrentUserOnly，桌面用户仍被拒，不多授任何账户。
 /// 重装/升级会覆盖登记值，ACL 随最新安装者；未列入授权集合的账户仍被拒（#1）。
 /// 后台管道不经过本类，保持 CurrentUserOnly。
+/// 授权用户掩码自 #7（CWE-732）起剥除 FILE_CREATE_PIPE_INSTANCE（见 <see cref="ServiceClientAccessMask"/>）；
+/// 服务管道随机名（#7 命名熵）由服务进程建例后经 <see cref="TryAdvertiseServicePipeName"/> 通告。
 /// 本类全平台可编译（CI test job 只跑 ubuntu）：注册表读取 + SID 校验是平台无关 API；
 /// DACL 组装在 WindowsPipeNative（PP_WINDOWS_HOST 分区）——managed PipeAccessRights 在
 /// Linux net10 编译面缺失（CI 实证），不得在全平台编译的代码里引用。
@@ -25,16 +27,30 @@ public static class WindowsServicePipeAcl
     public const string InstallerSidValueName = "ServicePipeInstallerSid";
     /// <summary>授权用户 SID 集合（安装者 + -AuthorizedUsers 显式授权，#1 opt-in）；REG_MULTI_SZ。</summary>
     public const string AllowedSidsValueName = "ServicePipeAllowedSids";
+    /// <summary>
+    /// 服务管道通告名（#7 命名熵）：服务建首例成功后由服务进程（LocalSystem）写入（REG_SZ），
+    /// UI 动态解析服务端点优先读它，缺失/非法回退静态名。每次服务启动随新随机名覆盖。
+    /// 键默认 ACL 仅管理员/SYSTEM 可写——发现通道的完整性高于管道客户端集合（授权用户只可读）。
+    /// </summary>
+    public const string AdvertisedServicePipeValueName = "ServicePipeName";
 
     /// <summary>
-    /// 服务管道客户端（安装者账户）被授予的访问掩码（原始位，经强转进 PipeAccessRights）。
-    /// 客户端按 GENERIC_READ|GENERIC_WRITE 打开，AccessCheck 映射为
-    /// FILE_GENERIC_READ|FILE_GENERIC_WRITE（含 READ_CONTROL/SYNCHRONIZE 等位），缺任一位都会整体拒绝。
+    /// 服务管道客户端（安装者/授权用户）被授予的访问掩码（原始位，经强转进 PipeAccessRights）。
+    /// 客户端按 FILE_GENERIC_READ|FILE_GENERIC_WRITE 语义打开（含 READ_CONTROL/SYNCHRONIZE 等位），
+    /// 缺任一位都会整体拒绝；#7（CWE-732）起刻意剥除 FILE_CREATE_PIPE_INSTANCE（0x4）——该位与
+    /// 客户端 GENERIC_WRITE 必需位 FILE_APPEND_DATA 同值（微软 Named Pipe 文档登记的 API 位碰撞缺陷），
+    /// 不拆则被授权用户可创建后续管道实例（FirstPipeInstance 只保护首实例）→ 冒充服务端/抢占连接/DoS。
+    /// 掩码同时是客户端侧细粒度打开的请求值（双端同值：服务端授多少，客户端要多少）；
+    /// 服务身份（SYSTEM/Administrators）保留 FILE_ALL_ACCESS 含该位，服务自建 2..N 实例
+    /// 不受影响（38142f9b 教训保位）。
     /// </summary>
-    internal const uint ServiceClientAccessMask = FileGenericRead | FileGenericWrite;
+    // Design(#7): 授权用户掩码剥除 FILE_CREATE_PIPE_INSTANCE（0x4），建例权仅授服务身份；双端客户端同步改为同值细粒度请求掩码。
+    public const uint ServiceClientAccessMask = (FileGenericRead | FileGenericWrite) & ~FileCreatePipeInstance;
     internal const uint FileAllAccess = 0x001F01FF;
     private const uint FileGenericRead = 0x00120089;
     private const uint FileGenericWrite = 0x00120116;
+    /// <summary>FILE_CREATE_PIPE_INSTANCE：与 FILE_APPEND_DATA 同值 0x4（GENERIC_WRITE 映射必含，位碰撞缺陷源）。</summary>
+    private const uint FileCreatePipeInstance = 0x00000004;
 
     /// <summary>
     /// 读取安装期登记的安装者 SID（install-service.ps1 写入；SID 字符串非敏感，键默认继承 Users 可读）。
@@ -75,7 +91,7 @@ public static class WindowsServicePipeAcl
     /// 调用方回退安装者单值路径，不因集合损坏而放宽或收紧任何边界。
     /// 非 Windows、键缺失、值缺失或无合法条目均返回 false。
     /// </summary>
-    // Design(#1): 服务管道授权集合 opt-in——优先 MULTI_SZ 全集（安装者+显式授权用户），无该值回退安装者单值（默认不扩权），非法条目剔除、空集视为缺失；未列入集合的账户仍被拒。
+    // Design(#82): 服务管道授权集合 opt-in——优先 MULTI_SZ 全集（安装者+显式授权用户），无该值回退安装者单值（默认不扩权），非法条目剔除、空集视为缺失；未列入集合的账户仍被拒（opt-in 落地于已关闭的 #1，存续出处改指 #82；授权用户可建实例的加固已由 #7 拆位）。
     public static bool TryResolveAllowedSids([NotNullWhen(true)] out IReadOnlyList<string>? allowedSids)
     {
         allowedSids = null;
@@ -126,5 +142,58 @@ public static class WindowsServicePipeAcl
 
         allowedSids = valid;
         return true;
+    }
+
+    /// <summary>
+    /// 通告服务管道随机名（#7 命名熵）：服务（LocalSystem）建首例成功后调用——先建例后通告，
+    /// 预蹲者无从得知未诞生的名字。键不存在则创建（LocalSystem 有权，默认 ACL 继承自 HKLM\SOFTWARE：
+    /// 管理员可写、Users 可读）；非 Windows、名字空白或写入失败（如非 LocalSystem 服务账户）返回
+    /// false，调用方回退静态名重绑（fail-safe 可用性优先，宿主记 warning 观测）。
+    /// </summary>
+    public static bool TryAdvertiseServicePipeName(string pipeName)
+    {
+        if (!OperatingSystem.IsWindows() || string.IsNullOrWhiteSpace(pipeName))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var key = Registry.LocalMachine.CreateSubKey(RegistrySubKeyName, writable: true);
+            if (key is null)
+            {
+                return false;
+            }
+
+            key.SetValue(AdvertisedServicePipeValueName, pipeName, RegistryValueKind.String);
+            return true;
+        }
+        catch (Exception)
+        {
+            // 登记动作不得炸绑定路径：失败由调用方回退静态名承担。
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 清除服务管道通告名（#7）：服务优雅停机时调用（best-effort，不抛）；崩溃/被杀的残留由
+    /// 下一次启动覆盖或卸载清除，客户端对陈旧通告名按「探不到」处理（回退静态名 → 后台）。
+    /// </summary>
+    public static void TryClearAdvertisedServicePipeName()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        try
+        {
+            using var key = Registry.LocalMachine.OpenSubKey(RegistrySubKeyName, writable: true);
+            key?.DeleteValue(AdvertisedServicePipeValueName, throwOnMissingValue: false);
+        }
+        catch (Exception)
+        {
+            // best-effort：停机路径不得被登记清理炸掉。
+        }
     }
 }
