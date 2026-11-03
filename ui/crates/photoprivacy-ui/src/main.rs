@@ -120,6 +120,7 @@ fn audit_fallback_directory() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("hot").join("_audit"))
 }
 
+/// 入口：解析 CLI 参数，初始化运行时与平台层，依据静默启动/--open-page 决定是否建窗出页，随后由事件泵守护直至退出。
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
