@@ -53,7 +53,8 @@ pub enum ServiceReachability {
 /// 未授权用户唯一正确的行动线索）；其次才是后台 Worker 启动未就绪（含 #163 单写者让位退出）
 /// 与未找到可拉起的 Worker 程序。连接成功即清空（`apply_success`）；心跳失败不清——授权拒绝
 /// 是编排期事实，心跳掉线不推翻它。
-// Design(#169): 连接失败提示按三态分类呈现，不把授权拒绝混同为 Worker 缺失的 os error 2。
+// Design(#82): 连接失败提示按三态分类呈现，不把授权拒绝混同为 Worker 缺失的 os error 2
+// （三态定形于已关闭的 #169，存续出处改指 #82）。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ConnectFailureCause {
     /// 服务端点存在但连接被服务管道 DACL 拒绝（未列入授权集合的账户，#1/#160）。

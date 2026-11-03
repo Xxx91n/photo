@@ -180,7 +180,8 @@ fn endpoint_resolver(
 /// 都不可用时启动后台 Worker 并轮询 5s。服务「已安装未运行」时本版会落到后台 Worker，而不是像旧 UI
 /// 停在服务壳；服务态本身由服务页独立探测。
 // Design(#82): 连接编排维持「服务端点优先、不可用回落后台 Worker」；同 config 双 Worker 并存的审计争用由 #162 单写者准入门兜底，编排预防归 #58。
-// Design(#169): 编排顺序与轮询预算不变，只把每一步的真实失败原因（服务端点 DACL 拒、后台拉起结果）带出给呈现层分类。
+// Design(#82): 编排顺序与轮询预算不变，只把每一步的真实失败原因（服务端点 DACL 拒、后台拉起结果）带出给呈现层分类
+// （三态定形于已关闭的 #169，存续出处改指 #82）。
 async fn connect_worker(
     client: &IpcClient,
     options: &ConnectOptions,
