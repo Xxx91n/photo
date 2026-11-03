@@ -6,12 +6,14 @@ namespace PhotoPrivacy.IntegrationTests.Smoke;
 public sealed class SingleWriterGateYieldSmokeTests : IntegrationTestBase
 {
     /// <summary>
-    /// #162 进程级冒烟：同 config 的两个后台 Worker 并存时，后启动者必须在准入门让位——
-    /// 干净退出（exit 1）、stderr 有让位提示、审计留痕 instance_conflict/reason=single_writer_gate，
-    /// 而不是炸成 store 句柄冲突的 IOException。CI 不跑 Smoke；Windows 实机复测归票面 AC。
+    /// #162 进程级冒烟：同 config 跨模式（服务 owner + 后台 contender）并存时，后启动者必须在准入门
+    /// 让位——干净退出（exit 1）、stderr 有 yielding 提示、审计留痕 instance_conflict/reason=single_writer_gate，
+    /// 而不是炸成 store 句柄冲突的 IOException。owner 必须用 --mode service：两个 background 会先撞
+    /// 按模式分的实例守卫（Global\PhotoPrivacyWorker_Background），到不了门（CodeRabbit #163 指正）。
+    /// CI 不跑 Smoke；Windows 实机复测归票面 AC。
     /// </summary>
     [Fact]
-    public async Task BackgroundWorker_SecondInstance_Should_Yield_Cleanly_When_Audit_Directory_Held()
+    public async Task CrossModeWorker_SecondInstance_Should_Yield_Cleanly_When_Audit_Directory_Held()
     {
         var root = Path.Combine(Path.GetTempPath(), "photo-single-writer-" + Guid.NewGuid().ToString("N"));
         var hot = Path.Combine(root, "hot");
@@ -68,10 +70,10 @@ public sealed class SingleWriterGateYieldSmokeTests : IntegrationTestBase
             """);
 
             var repoRoot = FindRepoRoot();
-            using var owner = StartBackgroundWorker(repoRoot, configPath);
+            using var owner = StartWorker(repoRoot, configPath, mode: "service");
             WaitForAuditEvent(audit, "service_started", TimeSpan.FromSeconds(15));
 
-            var yieldRun = await RunBackgroundWorkerOnceAsync(repoRoot, configPath, TimeSpan.FromSeconds(30));
+            var yieldRun = await RunYieldingWorkerOnceAsync(repoRoot, configPath, TimeSpan.FromSeconds(30));
             Assert.Equal(1, yieldRun.ExitCode);
             // 断 ASCII 行而非中文：Windows 非 UTF-8 控制台码页下中文可能变「?」，让位本身以英文行为准（CodeRabbit #163）
             Assert.Contains("yielding", yieldRun.Stderr, StringComparison.OrdinalIgnoreCase);
@@ -101,16 +103,16 @@ public sealed class SingleWriterGateYieldSmokeTests : IntegrationTestBase
         }
     }
 
-    private static Process StartBackgroundWorker(string repoRoot, string configPath)
+    private static Process StartWorker(string repoRoot, string configPath, string mode)
     {
-        var psi = BuildWorkerStartInfo(repoRoot, configPath, extraArgs: "");
+        var psi = BuildWorkerStartInfo(repoRoot, configPath, mode);
         return Process.Start(psi)!;
     }
 
-    private static async Task<(int ExitCode, string Stdout, string Stderr)> RunBackgroundWorkerOnceAsync(
+    private static async Task<(int ExitCode, string Stdout, string Stderr)> RunYieldingWorkerOnceAsync(
         string repoRoot, string configPath, TimeSpan timeout)
     {
-        var psi = BuildWorkerStartInfo(repoRoot, configPath, extraArgs: "");
+        var psi = BuildWorkerStartInfo(repoRoot, configPath, mode: "background");
         using var process = Process.Start(psi)!;
         var stdoutTask = process.StandardOutput.ReadToEndAsync();
         var stderrTask = process.StandardError.ReadToEndAsync();
@@ -129,7 +131,7 @@ public sealed class SingleWriterGateYieldSmokeTests : IntegrationTestBase
         return (process.ExitCode, await stdoutTask, await stderrTask);
     }
 
-    private static ProcessStartInfo BuildWorkerStartInfo(string repoRoot, string configPath, string extraArgs)
+    private static ProcessStartInfo BuildWorkerStartInfo(string repoRoot, string configPath, string mode)
     {
         var workerDll = Path.Combine(repoRoot, "src", "PhotoPrivacy.Worker", "bin", "Debug", "net10.0", "PhotoPrivacyWorker.dll");
         if (!File.Exists(workerDll))
@@ -139,7 +141,7 @@ public sealed class SingleWriterGateYieldSmokeTests : IntegrationTestBase
                 workerDll);
         }
 
-        return new ProcessStartInfo("dotnet", $"\"{workerDll}\" --mode background --config \"{configPath}\"{extraArgs}")
+        return new ProcessStartInfo("dotnet", $"\"{workerDll}\" --mode {mode} --config \"{configPath}\"")
         {
             WorkingDirectory = repoRoot,
             RedirectStandardOutput = true,
