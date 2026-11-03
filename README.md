@@ -23,6 +23,7 @@ PhotoPrivacy 自动清除热文件夹中图片/视频/PDF 的隐私元数据（E
 - `stay_open` 单进程长驻协议，避免每文件启停开销
 - Probe + Wipe 两阶段：先 `-json` 探测元数据，有隐私字段才执行 `-all=` 清除
 - 支持连接池（`stay_open_pool_size`）并发处理
+- **随包内置**：发布包在 `<包根>/ExifTool/` 带一份固定版本（Windows 为自带 Perl 运行时的 `exiftool.exe` + `exiftool_files/`；Linux/macOS 为 `exiftool` 脚本 + `lib/`，需目标机有 `perl`）。配置模板的 `exiftool.path` 留空即按运行时探测：内置目录优先，其次系统安装位置
 
 ### 格式支持
 - **34 种扩展名**（与擦除策略映射表一一对应）：JPEG（jpg/jpeg/jpe/jps/jph）、TIFF/DNG、RAW（cr2/cr3/arw/nef/orf/raf/rw2/pef/srw/sr2）、PNG/APNG、HEIF/AVIF、MOV/MP4（mov/mp4/m4v/qt/3gp/3g2）、PDF、EPS/PS/AI
@@ -41,9 +42,8 @@ PhotoPrivacy 自动清除热文件夹中图片/视频/PDF 的隐私元数据（E
 ## Quick Start
 
 1. 复制 `config/config.sample.json` 为 `config/config.json` 并按环境修改。
-2. 确认 ExifTool 路径可用：
-   `C:\Program Files\ExifTool\exiftool.exe`
-   且同级存在 `exiftool_files`。
+2. 确认 ExifTool 可用：发布包自带 `<包根>/ExifTool/`，不必另装；自行安装时把 `exiftool.path` 指到可执行文件
+   （Windows 需同级 `exiftool_files`，Linux/macOS 需同级 `lib/` 或放在 `/usr/bin`、`/usr/local/bin` 等系统目录）。
 3. 本地一次性验证（命令行单次执行）：
 
 ```bash
@@ -139,7 +139,7 @@ sudo bash scripts/install-systemd-service.sh --install-dir /opt/photoprivacy --c
 
 | 字段 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `path` | string | (系统默认) | ExifTool 可执行文件路径 |
+| `path` | string | `""` | ExifTool 可执行文件路径；留空 = 运行时探测（发布包内置 `ExifTool/` 优先，其次系统安装位置） |
 | `stay_open_pool_size` | int | `1` | ExifTool 连接池大小 |
 | `max_parallel_drain` | int | `1` | 并行处理文件数 |
 | `dry_run` | bool | `false` | 仅模拟，不实际调用 ExifTool |

@@ -1,9 +1,11 @@
-param(
+﻿param(
   [string]$Version = "0.1.0-preview",
   [string]$Runtime = "win-x64",
   [string]$Framework = "",
   [string]$SelfContained = "true",
-  [string]$Zip = "true"
+  [string]$Zip = "true",
+  [string]$ExifToolVersion = "13.60",
+  [string]$ExifToolZip = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -115,6 +117,67 @@ Copy-Item (Join-Path $repoRoot "config" | Join-Path -ChildPath "config.sample.js
 Copy-Item (Join-Path $repoRoot "config" | Join-Path -ChildPath "config.sample.json") (Join-Path $configDir "config.json") -Force
 Copy-Item (Join-Path $repoRoot "config" | Join-Path -ChildPath "README.md") (Join-Path $configDir "README.md") -Force
 Copy-Item (Join-Path $repoRoot "README.md") (Join-Path $targetDir "README.md") -Force
+
+# --- 内置 ExifTool（#108）---
+# 裸机不再要求预装 ExifTool：Windows 版 exiftool.exe 自带私有 Perl 运行时，与同级
+# exiftool_files/ 一起放进 <包根>/ExifTool/。配置模板的 exiftool.path 留空，运行时探测
+# 优先命中这里（DefaultPaths.ExifToolPath 与 UI 的 resolve_default_exiftool_path 同口径）。
+# 版本必须显式钉扎校验值：未登记的版本直接失败，避免把被替换或半截的归档打进发布包。
+$exifToolSha256 = @{
+  "13.60" = "548b1f4e0b713cd2a26824b34080c35db4e2d2edd166468eb38b1d55ada90c2e"
+}
+
+$expectedSha = $exifToolSha256[$ExifToolVersion]
+if (-not $expectedSha) {
+  throw "No pinned SHA256 for ExifTool $ExifToolVersion. 更新 scripts/publish-app.ps1 的 `$exifToolSha256 表（校验值取自 https://exiftool.org/checksums.txt）后再发版。"
+}
+
+$exifToolDir = Join-Path $targetDir "ExifTool"
+$exifToolStage = Join-Path $env:TEMP ("photoprivacy-exiftool-" + [Guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory -Force -Path $exifToolStage | Out-Null
+
+$archivePath = if ([string]::IsNullOrWhiteSpace($ExifToolZip)) {
+  $downloaded = Join-Path $exifToolStage ("exiftool-{0}_64.zip" -f $ExifToolVersion)
+  # gpui 只支持 win-x64，故固定取 64 位包。
+  $url = "https://downloads.sourceforge.net/project/exiftool/exiftool-{0}_64.zip" -f $ExifToolVersion
+  Write-Host "Downloading ExifTool $ExifToolVersion ..."
+  Invoke-WebRequest -Uri $url -OutFile $downloaded -UseBasicParsing
+  $downloaded
+} else {
+  if (-not (Test-Path -LiteralPath $ExifToolZip)) {
+    throw "ExifToolZip not found: $ExifToolZip"
+  }
+  (Resolve-Path -LiteralPath $ExifToolZip).Path
+}
+
+$actualSha = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($actualSha -ne $expectedSha) {
+  throw "ExifTool archive SHA256 mismatch for $ExifToolVersion. Expected $expectedSha, got $actualSha"
+}
+
+Expand-Archive -LiteralPath $archivePath -DestinationPath $exifToolStage -Force
+$innerDir = Join-Path $exifToolStage ("exiftool-{0}_64" -f $ExifToolVersion)
+if (-not (Test-Path -LiteralPath $innerDir)) {
+  throw "Unexpected ExifTool archive layout: $innerDir not found"
+}
+
+New-Item -ItemType Directory -Force -Path $exifToolDir | Out-Null
+# 官方包内可执行文件名为 "exiftool(-k).exe"（双击看文档的形态），命令行用必须改名。
+Move-Item -LiteralPath (Join-Path $innerDir "exiftool_files") -Destination $exifToolDir -Force
+Move-Item -LiteralPath (Join-Path $innerDir "exiftool(-k).exe") -Destination (Join-Path $exifToolDir "exiftool.exe") -Force
+# README.txt 是 Windows 构建的来源与许可说明，保留随包（许可证本体在 exiftool_files/LICENSE）。
+if (Test-Path -LiteralPath (Join-Path $innerDir "README.txt")) {
+  Move-Item -LiteralPath (Join-Path $innerDir "README.txt") -Destination (Join-Path $exifToolDir "README.txt") -Force
+}
+Remove-Item -LiteralPath $exifToolStage -Recurse -Force
+
+# 缺任何一半都会让裸机首次启用监控失败，故在打包期就断言（exiftool_files 内含 LICENSE）。
+foreach ($required in @("exiftool.exe", "exiftool_files\exiftool.pl", "exiftool_files\LICENSE")) {
+  if (-not (Test-Path -LiteralPath (Join-Path $exifToolDir $required))) {
+    throw "Bundled ExifTool incomplete: missing $required under $exifToolDir"
+  }
+}
+Write-Host "Bundled ExifTool $ExifToolVersion -> $exifToolDir"
 
 if (Test-Path $workerPublishDir) {
   Remove-Item $workerPublishDir -Recurse -Force
