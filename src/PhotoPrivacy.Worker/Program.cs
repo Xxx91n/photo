@@ -100,6 +100,48 @@ if (mode != RuntimeMode.Cli)
     builder.Logging.AddFilter("Microsoft.Extensions.Hosting", LogLevel.Warning);
 }
 
+// 单写者准入门（#162）：实例守卫按模式分锁（Service/Background 各一把）是 UI 回落场景的有意设计，
+// 代价是同 config 的服务与后台 Worker 可并存、争用同一 processed.ndjson——后启动者的 store 常驻句柄
+// 打不开即 IOException，被 BackgroundServiceExceptionBehavior.StopHost 放大成服务自停。此门以
+// 「有效审计目录」为身份补上跨模式互斥：拿不到锁 = 让位干净退出（日志 + 审计留痕），不触碰审计文件。
+// 门获取失败按 fail-open 放行（与既有风险面一致，不把环境怪癖放大成整机拒启）。
+// Design(#162): 常驻 Worker 触碰审计文件前必须过准入门；后启动者让位，禁静默降级。
+ISingleInstanceGuard? singleWriterGate = null;
+if (requestedMode != RuntimeMode.Cli)
+{
+    try
+    {
+        var gateConfig = InstanceConflictAudit.LoadConfigFromArgs(args);
+        var admission = SingleWriterGate.TryAcquire(gateConfig.Audit.LogDirectory);
+        if (admission.Error is not null)
+        {
+            Log.Error(
+                admission.Error,
+                "single-writer admission gate unavailable for {AuditDirectory}; continuing without it (fail-open)",
+                admission.AuditDirectory);
+        }
+        else if (admission.Guard is null)
+        {
+            Console.Error.WriteLine("[PhotoPrivacyWorker] 另一 Worker 正在使用同一审计目录，本进程让位退出。 ");
+            Console.Error.WriteLine("[PhotoPrivacyWorker] audit directory held by another worker; yielding.");
+            Log.Error(
+                "audit directory {AuditDirectory} is held by another worker; yielding cleanly instead of crashing (single-writer gate #162)",
+                admission.AuditDirectory);
+            await InstanceConflictAudit.TryWriteSingleWriterYieldAsync(args, requestedMode, admission.AuditDirectory);
+            Log.CloseAndFlush();
+            return 1;
+        }
+        else
+        {
+            singleWriterGate = admission.Guard;
+        }
+    }
+    catch (Exception ex)
+    {
+        Log.Error(ex, "single-writer admission gate could not run; continuing without it (fail-open)");
+    }
+}
+
 builder.Services.Configure<HostOptions>(options =>
 {
     options.ShutdownTimeout = TimeSpan.FromSeconds(10);
@@ -180,6 +222,7 @@ TaskScheduler.UnobservedTaskException += (_, e) =>
 RegisterBestEffortShutdown(shutdownCoordinator, ref cancelKeyHandler, ref processExitHandler);
 
 await app.RunAsync();
+singleWriterGate?.Dispose();
 UnregisterBestEffortShutdown(cancelKeyHandler, processExitHandler);
 posixHooks.Dispose();
 Log.CloseAndFlush();
