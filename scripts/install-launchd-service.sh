@@ -86,7 +86,29 @@ resolve_group_gid() {
   return 1
 }
 
-GROUP_GID="$(resolve_group_gid)" || { echo "No free GID in 400-499" >&2; exit 1; }
+# 既有账户一律不覆写属性（dscl -create 会替换既有值；重装写穿他人 shell/home/GID 属数据完整性
+# 事故，CodeRabbit 审查意见）——已存在的组/用户必须已有可解析 GID/UID，缺了就中止交人工处置，
+# 只有新建账户才写属性。GID/UID 选空位逻辑见 resolve_*（400 起步避让系统占用，#32）。
+GROUP_EXISTED=0
+if dscl . -read "/Groups/${GROUP_NAME}" >/dev/null 2>&1; then
+  GROUP_EXISTED=1
+fi
+USER_EXISTED=0
+if dscl . -read "/Users/${USER_NAME}" >/dev/null 2>&1; then
+  USER_EXISTED=1
+fi
+
+if [[ "$GROUP_EXISTED" -eq 1 ]]; then
+  GROUP_GID="$(dscl . -read "/Groups/${GROUP_NAME}" PrimaryGroupID 2>/dev/null | awk 'NR==1 && $2 ~ /^[0-9]+$/ {print $2}')"
+  if [[ -z "$GROUP_GID" ]]; then
+    echo "Existing group ${GROUP_NAME} has no readable PrimaryGroupID; 请人工处置该账户后重试" >&2
+    exit 1
+  fi
+else
+  GROUP_GID="$(resolve_group_gid)" || { echo "No free GID in 400-499" >&2; exit 1; }
+  dscl_ensure /Groups/${GROUP_NAME}
+  dscl_ensure /Groups/${GROUP_NAME} PrimaryGroupID "$GROUP_GID"
+fi
 
 # 用户侧同理：无 UniqueID 的记录对 getpwnam 不可见，chown 会报 illegal user name（#32 实测）。
 resolve_user_uid() {
@@ -107,20 +129,20 @@ resolve_user_uid() {
   return 1
 }
 
-USER_UID="$(resolve_user_uid)" || { echo "No free UID in 400-499" >&2; exit 1; }
-
-if ! dscl . -read /Groups/${GROUP_NAME} >/dev/null 2>&1; then
-  dscl_ensure /Groups/${GROUP_NAME}
-fi
-dscl_ensure /Groups/${GROUP_NAME} PrimaryGroupID "$GROUP_GID"
-
-if ! dscl . -read /Users/${USER_NAME} >/dev/null 2>&1; then
+if [[ "$USER_EXISTED" -eq 1 ]]; then
+  USER_UID="$(dscl . -read "/Users/${USER_NAME}" UniqueID 2>/dev/null | awk 'NR==1 && $2 ~ /^[0-9]+$/ {print $2}')"
+  if [[ -z "$USER_UID" ]]; then
+    echo "Existing user ${USER_NAME} has no readable UniqueID; 请人工处置该账户后重试" >&2
+    exit 1
+  fi
+else
+  USER_UID="$(resolve_user_uid)" || { echo "No free UID in 400-499" >&2; exit 1; }
   dscl_ensure /Users/${USER_NAME}
+  dscl_ensure /Users/${USER_NAME} UniqueID "$USER_UID"
+  dscl_ensure /Users/${USER_NAME} UserShell /usr/bin/false
+  dscl_ensure /Users/${USER_NAME} NFSHomeDirectory "${INSTALL_DIR}"
+  dscl_ensure /Users/${USER_NAME} PrimaryGroupID "$GROUP_GID"
 fi
-dscl_ensure /Users/${USER_NAME} UniqueID "$USER_UID"
-dscl_ensure /Users/${USER_NAME} UserShell /usr/bin/false
-dscl_ensure /Users/${USER_NAME} NFSHomeDirectory "${INSTALL_DIR}"
-dscl_ensure /Users/${USER_NAME} PrimaryGroupID "$GROUP_GID"
 
 mkdir -p "$HOT_FOLDER" "$AUDIT_FOLDER" "$QUARANTINE_FOLDER"
 chown -R "${USER_NAME}:${GROUP_NAME}" "$INSTALL_DIR" "$HOT_FOLDER" "$AUDIT_FOLDER" "$QUARANTINE_FOLDER"
