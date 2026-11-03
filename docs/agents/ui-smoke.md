@@ -97,7 +97,7 @@
 | S2 | 安装服务（提权 UAC/pkexec/osascript 流） | 未回填 | 不在 #88 AC 内；本轮仅作为 S3/S4/S8 的前置步骤用 `scripts/install-service.ps1`（agent 以 High IL 管理员运行，无 UAC 交互）执行，安装即登记 #70 的 `ServicePipeInstallerSid` |
 | S3 | 启动服务 → 状态变运行中 | 通过 | 2026-11-03 桌面截图目检 + `sc query`：前态帧 `S3-before-stopped.png` 服务状态「已停止」，启动钮深色可点、停止/安装置灰、卸载红钮可点（与 `button_state` 一致）；点 UI「启动」后帧 `S3-after-running.png` 状态变「运行中」并出绿字反馈「Operation succeeded」，同时刻 `sc query PhotoPrivacyCleaner` STATE 4 RUNNING，服务 Worker 进程在 Services 会话（SYSTEM 上下文）存活；ProgramData 服务日志 04:09:55 Application started 后无 FTL/再停 |
 | S4 | 服务运行中 UI 经服务端点连接（服务页/日志页数据来自服务 Worker） | 通过 | 2026-11-03 桌面截图目检：服务运行中重启 UI，总览连接态「已连接 · PhotoPrivacyCleaner.Service · 服务模式」（帧 `S4-overview-service-mode.png`），Worker 卡片 Worker 模式=服务模式、上报模式=service、服务 IPC=可达、协议=v1、ExifTool=13.60、往返次数=14（单帧读数）；进程侧仅一个 Worker（pid 8996）且在 Services 会话，UI 未拉起后台 Worker——UI 连的是服务端点（#70 修复后服务管道 DACL 生效） |
-| S5 | 服务模式下改配置保存 → ReloadConfig 热生效 | 通过（基线 `fb388507`）；当前 head 待复测 | 2026-11-03 桌面截图 + 服务管道探针（产物见下文「S5 复测产物记录（#85 窗口）」；该节「基线口径」说明为何当前 head 需重取）：服务运行中 UI 走服务端点（帧 `S5-00-overview-before.png`：「已连接 · PhotoPrivacyCleaner.Service · 服务模式」，进程侧仅一个 Worker 在 Services 会话）；配置页把「监控目录」改为 `…\photo-smoke-85\hot-s5` 后界面绿字「已保存 · Worker 已重载」（帧 `S5-08-e2e-timing.png`），端到端 **0.52 s 配置落盘 / 0.64 s 热生效**（第二轮同法计时，读侧预算 10 s，`S5-08-e2e-timing.txt`）；投放 `sample.jpg` 后由服务 Worker 就地清洗 3,648→626 B，日志页出 `Cleaned attempt=1;wipe_result=Cleaned_Modified` + `backup_sidecar_version…`（帧 `S5-03-logs-after-reload.png`），重开配置页显示持久化值（`S5-05-config-persisted.png`）；不经 UI 的独立探针经 `\\.\pipe\PhotoPrivacyCleaner.Service` 两次 `ReloadConfig` 各回 `ok:true`/`mode=service`，往返 0.44–0.62 s（锚定那轮 0.59 / 0.55 s，`S5-06-service-pipe-probe.txt`） |
+| S5 | 服务模式下改配置保存 → ReloadConfig 热生效 | 通过（当前 head 已复测） | 2026-11-03 两轮实机，产物与逐帧证据见下文「S5 复测产物记录」两节：一轮基线 `fb388507`；二轮当前 head（`main@13a831c` + 发布脚本修复 #164，run 41563514193）复测——服务模式 UI 把监控目录从空改为 `…\photo-smoke-85head\hot-s5` 后绿字「已保存 · Worker 已重载」，**0.52 s 配置落盘 / 0.62 s 热生效**（读侧预算 10 s，`S5r2-02-e2e-timing.txt`）；投放样本由服务 Worker 清洗 3,648→626 B（`S5r2-03-logs-after-reload.png`、`S5r2-07-audit-records.txt`）；**标准用户**（`ppverify`，Medium IL、非管理员）经服务管道 `GetStatus` + 两次 `ReloadConfig` 全 `ok:true`/`mode=service`，往返 0.90 / 0.50 s（`S5r2-05-nonadmin-probe.txt`）|
 | S6 | 停止服务 → 状态回落 | 未回填 | 未探活（#88 范围外） |
 | S7 | 卸载服务 → 回到未安装态 | 未回填 | 未探活（#88 范围外）；本轮收尾用 `install-service.ps1 -Action uninstall` 卸载并复核 SC 1060，但那是脚本通道，不是 S7 要验的 UI 提权链路 |
 | S8 | 服务模式日志通道在日志页可见（与后台模式区分） | 通过 | 2026-11-03 桌面截图 + 文件系统取证（帧 `S8-logs-page-service.png`）：同一服务模式会话切日志页，04:09:55「Service started mode=live」、04:09:56「ExifTool started」在列；04:13:08–09 投入 `hot/` 的带 Artist/Copyright 样本被服务 Worker 就地清洗 3648→626 B，日志页实时出「Cleaned attempt=1/wipe_result=Cleaned, Modified」×2 +「backup_sidecar_version… content_diverged_sidecar_written」，exiftool 复查标签已空；条目与 `pkg/hot/_audit/audit-2026-11-03.jsonl`、`processed.ndjson`（两文件 mtime 均落在投放后的 04:13）及 ProgramData 服务日志同刻。与后台模式的区分锚在连接态：本会话状态卡是「PhotoPrivacyCleaner.Service · 服务模式」+ Worker 卡片「服务 IPC=可达」（K1 记录的后台形态是 Background · 不可达） |
@@ -441,9 +441,8 @@
 > **基线口径（必读）**：本节结论的适用范围是**产物 head `fb388507` 的代码**。#108（PR #155）此后
 > 并入 main，改动了 UI 的配置保存路径与校验（`ui/crates/photoprivacy-ui/src/config.rs` 的
 > `exiftool.path` 归一化、`app.rs` 的保存状态、`AppConfigLoader` 的加载校验）——都在 S5 这条链路上。
-> 因此当前 head（`caf8578`）的 S5 **尚未取证**，需用当前 head 的 Release 产物重做一次
-> （`release.yml` 仅 `workflow_dispatch`，由人执行，agent 不触发）。在那之前，S5 的「通过」只能按
-> 「旧基线证据」引用，不能当作当前基线通过。
+> 因此本节只能按「旧基线证据」引用；**当前 head 的缺口已由下一节（二轮）用当前 head 产物补齐**，
+> 两节合起来才是 S5 的完整结论。
 
 - **产物**：复用 Release run [41495388043](https://github.com/Xxx91n/photo/actions/runs/41495388043)
   的 `release-win-x64`（已解压 `C:\Users\Administrator\photo-smoke-113r2\pkg\`，head `fb388507`）。
@@ -500,6 +499,54 @@
   二进制未变；`hot-s5\` 内留 626 B 已清洗样本与其备份，全部落在取证目录内，仓库工作区不受影响。
 - **边界**：仅 Windows 命名管道。Linux/macOS 服务端点（Unix socket 0660 + 组边界）未实机，仍归 #31/#32；
   CI `test` job 为 ubuntu，服务形态那一行走的是 Unix 策略——两侧证据互补，互不替代。
+
+### S5 复测产物记录（2026-11-03 二轮，#85 窗口：当前 head）
+
+> **为什么要二轮**：一轮的产物 head `fb388507` 早于 #108（PR #155），而 #155 改的正是 UI 保存路径与
+> 配置校验（CodeRabbit 对本 PR 的 Major，判定成立）。二轮用**当前 head 的产物**复测同一判据。
+
+- **产物**：Release run [41563514193](https://github.com/Xxx91n/photo/actions/runs/41563514193)，
+  ref `t164-exiftool-download-retry`、head `6d1307b`、version `0.1.0-verify85head2`、`create_release=false`。
+  该 ref = `main@13a831c` + `scripts/publish-app.ps1` 的 ExifTool 下载重取修复（#164），**运行时二进制与
+  main 同源**：本票分支合并 main 后（`caf8578`）与其代码一致，差异只有文档与注释编号。
+  同一 ref 的首次 dispatch（run [41559854911](https://github.com/Xxx91n/photo/actions/runs/41559854911)）
+  在打包步骤失败——ExifTool 归档哈希不符，即 #164；四个非 Windows 构建成功、win-x64 未出包。
+- **二进制**：`PhotoPrivacy.exe` `ef2d3489…`、`PhotoPrivacyWorker.exe` `959e0109…`；包内
+  `ExifTool/exiftool.exe` `44b336d7…`，`exiftool -ver` 实测 **13.60**；出厂 `config/config.json` 的
+  `watch.hot_folder` 与 `exiftool.path` 均为空串（#108 形态：路径按运行时探测）。
+- **取证通道**：同一轮（整屏 `ImageGrab` + 合成点击/键入）；证据 10 个文件存
+  `C:\Users\Administrator\photo-smoke-85head\evidence\`（不入库），哈希锚为
+  `docs/agents/ui-smoke-evidence.sha256` 的当前版（实测 10/10 `OK`）。
+- **步骤与结果**：
+  1. 服务安装（`install-service.ps1 -InstallerSid S-1-5-21-…-1002`，即标准用户 `ppverify`）并启动：
+     `sc query` STATE 4 RUNNING、Worker pid 11772 在 Services 会话；服务日志 10:11:07 记
+     「Worker is ready but no watch folder is configured」——出厂空配置的待机形态（#100/#108），无 FTL；
+  2. UI（工作目录 `pkg\win-x64`）走服务端点：连接态「已连接 · PhotoPrivacyCleaner.Service · 服务模式」，
+     首帧 `ExifTool=unknown`（桥惰性，尚未解析）且提示「请前往配置页设置监控目录」
+     ——`S5r2-00-overview-standby.png`；
+  3. 配置页：`ExifTool 路径` 留空、右侧提示「已自动检测到 …\pkg\win-x64\ExifTo…」（#108 的包内探测），
+     `监控目录` 为空——`S5r2-01-config-page.png`；
+  4. 填 `监控目录` = `C:\Users\Administrator\photo-smoke-85head\hot-s5` → 绿字「已保存 · Worker 已重载」，
+     **0.52 s 配置落盘 / 0.62 s `watchDirectory` 切到新值**（读侧预算 10 s）
+     ——`S5r2-02-e2e-timing.png` / `S5r2-02-e2e-timing.txt`；`config.json` mtime 10:16:38.302（`S5r2-06`）；
+  5. 投放 `sample.jpg`（3,648 B）：10:17:03 被清洗为 626 B，日志页 6 条（`ExifTool started` +
+     `Cleaned` ×2 + `backup_sidecar_version…`）——`S5r2-03-logs-after-reload.png`；审计与
+     `processed.ndjson` 原样输出——`S5r2-07-audit-records.txt`；
+  6. 处理后总览：`ExifTool=13.60`、往返 164、仍服务模式、待机提示消失——`S5r2-04-overview-after.png`
+     （顺带复核 #86「版本按需解析」在服务模式的表现：首帧 unknown → 首文件后 13.60）；
+  7. **非提权**：标准用户 `ppverify`（`whoami /groups` 为 Medium Mandatory Level、不在 Administrators）
+     经计划任务（`/rl LIMITED`）跑传输级探针：`GetStatus` 0.050 s、两次 `ReloadConfig` 0.908 / 0.495 s，
+     全部 `ok:true`、`mode=service`、`watch=…\hot-s5`——`S5r2-05-nonadmin-probe.txt`。
+     这同时是 #70「普通用户对服务管道往返」的实机证据（票面流转归 #70）。
+- **收尾状态**：UI 退出、服务卸载（SC 1060）、`ServicePipeInstallerSid` 随卸载清除、任务表 0/0；
+  临时标准用户 `ppverify` 与其配置目录已删除，取证借用的 `SeBatchLogonRight` 已按导出备份回滚，
+  计划任务与 `C:\ProgramData\pp85`（探针脚本）已删除；`pkg` 内只剩 hot-s5 的 626 B 已清洗样本与备份，
+  全部落在取证目录内。
+- **边界**：只覆盖 Windows 命名管道；Linux/macOS 服务端点仍归 #31/#32。UI 帧本身跑在管理员会话——
+  本机 `EnableLUA=0`，管理员账户不存在过滤令牌，非提权面由「独立标准账户 + 传输级往返」覆盖，
+  它不是「非提权 UI 点到点」的等价物。
+- **旧一轮的去向**：`fb388507` 那 12 个文件的哈希不再逐条收录，可从
+  `git show 8a56a7e:docs/agents/ui-smoke-evidence.sha256` 取回（图仍在 `photo-smoke-85\evidence\`）。
 
 ### 切换日实机执行记录（2026-10-28，#61 实现窗口）
 

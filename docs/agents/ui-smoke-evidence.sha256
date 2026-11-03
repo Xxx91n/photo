@@ -1,35 +1,33 @@
-# S5 复测证据 SHA256 清单 — #85（2026-11-03）
+# S5 复测证据 SHA256 清单 — #85（2026-11-03，二轮：当前 head）
 #
-# 产物：Release run 41495388043 / ref main / head fb388507 / version 0.1.0-verify113b
-# （与 #88、#113 第二轮同一产物；本票基线 5298b6466 与该 head 的差异经 git 核对仅 4 个 docs 提交，
-# 二进制 sha256 一致：PhotoPrivacy.exe a49189b2…、PhotoPrivacyWorker.exe 424acf03…）。
-# 取证之后 main 又并入 #108（PR #155，改动 UI 保存路径与配置校验），故这套证据的有效范围是
-# `fb388507` 的代码；当前 head 的 S5 需用当前 head 的 Release 产物重取，见 ui-smoke.md 的「基线口径」。
+# 产物：Release run 41563514193 / ref t164-exiftool-download-retry / head 6d1307b /
+# version 0.1.0-verify85head2 / create_release=false。
+# 该 ref = main@13a831c + scripts/publish-app.ps1 的 ExifTool 下载重取修复（#164），运行时二进制与
+# main 同源（本票分支合并 main 后代码一致，差异只有文档与注释编号）。二进制实测：
+#   PhotoPrivacy.exe ef2d3489… / PhotoPrivacyWorker.exe 959e0109… / ExifTool/exiftool.exe 44b336d7…（-ver = 13.60）
 # 图片与探针输出按既有约定不入库，只存于取证机目录
-#   C:\Users\Administrator\photo-smoke-85\evidence\（12 个文件，1,184,809 字节）。
+#   C:\Users\Administrator\photo-smoke-85head\evidence\（10 个文件，764,853 字节）。
 # 本清单给这些一次性证据一个可校验的锚：当下能证明它们存在且内容未被事后替换；
 # 目录被清理后只剩哈希本身，无法再复现其中内容——这是已接受的缺口，不是遗漏。
 #
-# 上一版清单（2026-11-03，#88 窗口，S 组 6 个文件，目录
-# C:\Users\Administrator\photo-smoke-88\evidence\）不再逐条收录：同一路径一个锚只装
-# 「当前一轮」，旧条目留着会让 sha256sum -c 恒红。该轮 6 条哈希可从 git 历史取回
-# （git show 5298b64:docs/agents/ui-smoke-evidence.sha256），对应图片仍在取证机上。
+# 一轮（产物 head fb388507，目录 C:\Users\Administrator\photo-smoke-85\evidence\，12 个文件）
+# 不再逐条收录：同一路径一个锚只装「当前一轮」，旧条目留着会让 sha256sum -c 恒红。该轮哈希可从
+# git 历史取回（git show 8a56a7e:docs/agents/ui-smoke-evidence.sha256），对应图片仍在取证机上。
+# 更早的 #88 轮（6 个文件，photo-smoke-88\evidence）同样在历史里（git show 5298b64:…）。
 #
 # 校验（在取证机上，从仓库根跑；清单在仓库里、图在取证目录，两者不同目录，
 # 所以必须先 grep 出清单再进图目录喂给 sha256sum——反过来 cd 进图目录就找不到这份清单了）：
 #   cd <仓库根> && grep -vE '^(#|$)' docs/agents/ui-smoke-evidence.sha256 \
-#     | (cd 'C:\Users\Administrator\photo-smoke-85\evidence' && sha256sum -c -)
-# 期望：12 行全部 ': OK'、退出码 0、stderr 无 improperly formatted 警告（2026-11-03 实测 12/12 OK）。
+#     | (cd 'C:\Users\Administrator\photo-smoke-85head\evidence' && sha256sum -c -)
+# 期望：10 行全部 ': OK'、退出码 0、stderr 无 improperly formatted 警告（2026-11-03 实测 10/10 OK）。
 
-df97c2597f6241988c949966d6bb155f82cd3851aaf6ed2c47fa196c67009364  S5-00-overview-before.png
-89be71733f24def06c7daa27e394e5a2d3414fc1259104a98359bfe1ffd92a0d  S5-01-config-page.png
-46ea0a1341ffaa6ced71a365808992403c6607228561b322e7806f8033f66195  S5-02-field-edited.png
-ede0ead7804dcde211ace4f84ed31da65fe0585df246c8549cd5809d9b777ec2  S5-03-logs-after-reload.png
-6e33c330e62c545b534a92658d4cb185b1441e83b425f3401494c2e77699d290  S5-04-overview-after-reload.png
-0b83b98ad13d4ad3aa118f1240de12885968a30039e190ecde1b0af4800aceed  S5-05-config-persisted.png
-5de7c5130de72d45f55673ac794cc528c40154116587b022de556224f1dcf795  S5-06-service-pipe-probe.txt
-2d59c50d748bd67e927bf06c8804a10518b4768e2b704198927f1d67b5fffb29  S5-07-process-and-service.txt
-b6c828f131dead69f564085016e165852702dbc79ed73e36a645fc6709d09d35  S5-08-e2e-timing.png
-a16cbdee98505e3fc6d68ceed39f3deffabee42776c58458402da35e545c1c0f  S5-08-e2e-timing.txt
-de7186c730cd0924124cf96a3fd958ea744c31e58c8bc34f8c1c50f1d40e8a87  S5-09-service-log.txt
-13466fbd4cd34b7cee1b7227e72026dfcfc81b9155febacdf41035299e860b4b  S5-10-audit-records.txt
+8b09310e9ee53f52295770319122eafea6c5e75fdb5c235a7d6261a2cbd4fba1  S5r2-00-overview-standby.png
+8d786d1c9664a57e23e50bfe0cd524ba3d4f0bf0573a59a74af22dabbe7a926c  S5r2-01-config-page.png
+7a8c50ccab8bc3c1bc5a99a99f0b318f76a477f728bc6431909813c40ee02d3b  S5r2-02-e2e-timing.png
+2a0b28344e75d1cf129b4322b644c13f1a2e48b6210dde47004588fa3351123b  S5r2-02-e2e-timing.txt
+0ad36d6e8ad9ff9224002049fadd4d437cc0aff503e6c416644de526a59c17cd  S5r2-03-logs-after-reload.png
+1b00ff526720adda1fda3c7c7f9553521cfb902f1279879550448a1214c18e87  S5r2-04-overview-after.png
+20ede1f54d5c8f45e23971f2627297ace94b3fdb1a553cf6b3a61d741f336f56  S5r2-05-nonadmin-probe.txt
+26d4ac19de3b9071af4901383078b45d8a57051e2571cfee76ca3bff394c2de1  S5r2-06-process-service.txt
+d0125d717b5ac1372641f486d4d7645d16244b89d89268acd0f8b7ad6b4733d0  S5r2-07-audit-records.txt
+d7c77ce71d8019a009f9ed2d8e1679dbd214632fe9baf43c05c4f91d1accac99  S5r2-08-service-log.txt
