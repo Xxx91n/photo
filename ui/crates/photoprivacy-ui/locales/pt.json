@@ -47,6 +47,7 @@
     "config_error": "Erro de config.json: {0}",
     "copy_error": "Copiar erro",
     "connect_denied": "Esta conta não está autorizada a usar o modo de serviço. Peça ao instalador para adicioná-la a -AuthorizedUsers",
+    "connect_denied_unix": "Esta conta não está autorizada a usar o modo de serviço. Peça ao administrador para adicioná-la ao grupo de acesso ao serviço",
     "worker_startup_failed": "Falha ao conectar ao Worker: o Worker em segundo plano não está pronto ({0}); se o modo de serviço estiver em execução nesta máquina, a instância em segundo plano encerra para ceder a vez (portão de escritor único)",
     "worker_not_installed": "Falha ao conectar ao Worker: executável do Worker não encontrado. Instale ou repare e tente novamente"
   },

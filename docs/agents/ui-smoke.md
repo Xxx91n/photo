@@ -108,12 +108,15 @@
 > 不再把「服务授权拒绝」混同为「Worker 缺失」的 os error 2（`ui/crates/photoprivacy-ui/src/worker_connection.rs`
 > 编排收集 → `ConnectionSnapshot.connect_failure` 广播 → 概览页 `connect_failure_text` 呈现；
 > 连接顺序与轮询预算不变）。三态判据与文案键：服务端点 DACL 拒（raw 5，端点存在的证明）→
-> `status.connect_denied`（warning 色）；后台拉起未就绪（spawn 失败 / 已退出——含 #163 单写者
+> `status.connect_denied`（warning 色，CodeRabbit 返修后**按平台分键**：Windows 指引加入安装脚本的
+> `-AuthorizedUsers`，Unix 用 `status.connect_denied_unix` 指引加入服务授权组——0660+共享组边界）；
+> 后台拉起未就绪（spawn 失败 / 已退出——含 #163 单写者
 > 准入门让位 / 5s 超时）→ `status.worker_startup_failed`（附 spawn 错误或退出码细节）；
 > 未找到可拉起的 Worker 程序 → `status.worker_not_installed`。心跳连上即清空（`apply_success`），
 > 心跳掉线不清。三态的 Rust 行为侧（分类判据、退出码上报、10 locale 键集全等）由 CI 测试守护
 > （`classify_connect_failure` 三态/退出码/未就绪、`is_service_access_denied` raw 5 判定、
-> `connect_failure_texts_map_to_distinct_guidance` 文案映射）；本表只锚实机目检（#169 AC3）。
+> `connect_failure_texts_map_to_distinct_guidance` 文案映射）；本表锚实机目检（#169 AC3，
+> Windows 平台口径）。
 
 | # | 操作 | 结果 | 证据 |
 |---|---|---|---|

@@ -47,6 +47,7 @@
     "config_error": "Erreur config.json : {0}",
     "copy_error": "Copier l'erreur",
     "connect_denied": "Ce compte n'est pas autorisé à utiliser le mode service. Demandez à l'installateur de l'ajouter à -AuthorizedUsers",
+    "connect_denied_unix": "Ce compte n'est pas autorisé à utiliser le mode service. Demandez à l'administrateur de l'ajouter au groupe d'accès au service",
     "worker_startup_failed": "Échec de connexion au Worker : le Worker en arrière-plan n'est pas prêt ({0}) ; si le mode service tourne sur cette machine, l'instance en arrière-plan cède sa place (verrou d'écriture unique)",
     "worker_not_installed": "Échec de connexion au Worker : exécutable du Worker introuvable. Installez ou réparez, puis réessayez"
   },

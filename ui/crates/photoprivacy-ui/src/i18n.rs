@@ -224,6 +224,7 @@ pub mod keys {
     pub const STATUS_COPY_ERROR: &str = "status.copy_error";
     pub const STATUS_AUTO_DETECTED: &str = "status.auto_detected";
     pub const STATUS_CONNECT_DENIED: &str = "status.connect_denied";
+    pub const STATUS_CONNECT_DENIED_UNIX: &str = "status.connect_denied_unix";
     pub const STATUS_WORKER_STARTUP_FAILED: &str = "status.worker_startup_failed";
     pub const STATUS_WORKER_NOT_INSTALLED: &str = "status.worker_not_installed";
     pub const MSG_SAVE_FAILED_EXCEPTION: &str = "msg.save_failed_exception";
@@ -509,6 +510,7 @@ mod tests {
             keys::STATUS_COPY_ERROR,
             keys::STATUS_AUTO_DETECTED,
             keys::STATUS_CONNECT_DENIED,
+            keys::STATUS_CONNECT_DENIED_UNIX,
             keys::STATUS_WORKER_STARTUP_FAILED,
             keys::STATUS_WORKER_NOT_INSTALLED,
             keys::MSG_SAVE_FAILED_EXCEPTION,

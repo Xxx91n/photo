@@ -459,12 +459,21 @@ fn mode_key(mode: WorkerMode) -> &'static str {
     }
 }
 
-/// 连接失败三态 → 分类文案（#169）：授权拒绝给行动指引（找安装者加授权）；
-/// 后台未就绪附启动/退出细节；未安装引导重装。WorkerStartupFailed 的 `{0}` 是
-/// 编排侧生成的自描述细节（spawn 错误 / 退出码 / 5s 未就绪）。
+/// 连接失败三态 → 分类文案（#169）：授权拒绝给行动指引——指引按平台分键（CodeRabbit 返修）：
+/// Windows 是安装脚本的 `-AuthorizedUsers` 集合，Unix 是服务 socket 的 0660+共享组边界
+/// （`install-systemd-service.sh --gui-user` / launchd 同构）；后台未就绪附启动/退出细节；
+/// 未安装引导重装。WorkerStartupFailed 的 `{0}` 是编排侧生成的自描述细节
+/// （spawn 错误 / 退出码 / 5s 未就绪）。
 fn connect_failure_text(catalog: &Catalog, locale: &str, cause: &ConnectFailureCause) -> String {
     match cause {
-        ConnectFailureCause::ServiceAccessDenied => catalog.get(locale, k::STATUS_CONNECT_DENIED),
+        ConnectFailureCause::ServiceAccessDenied => {
+            let key = if cfg!(windows) {
+                k::STATUS_CONNECT_DENIED
+            } else {
+                k::STATUS_CONNECT_DENIED_UNIX
+            };
+            catalog.get(locale, key)
+        }
         ConnectFailureCause::WorkerStartupFailed(detail) => {
             catalog.get_format(locale, k::STATUS_WORKER_STARTUP_FAILED, &[detail])
         }
@@ -2913,7 +2922,13 @@ mod tests {
         let denied =
             connect_failure_text(&catalog, "zh-CN", &ConnectFailureCause::ServiceAccessDenied);
         assert!(denied.contains("未被授权"), "denied: {denied}");
-        assert!(denied.contains("-AuthorizedUsers"), "denied: {denied}");
+        // 授权拒绝的行动指引按平台分键（CodeRabbit 返修）：Windows 指向安装脚本的
+        // -AuthorizedUsers 集合，Unix 指向 0660+共享组边界——两平台都不混入 os error 口径。
+        if cfg!(windows) {
+            assert!(denied.contains("-AuthorizedUsers"), "denied: {denied}");
+        } else {
+            assert!(denied.contains("授权组"), "denied: {denied}");
+        }
         assert!(
             !denied.contains("os error"),
             "授权拒绝文案不得混入端点缺失的 os error 口径: {denied}"
