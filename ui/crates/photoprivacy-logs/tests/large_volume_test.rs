@@ -1,5 +1,5 @@
 use photoprivacy_logs::{
-    AuditLevel, AuditRecord, EventTone, LevelFilter, LogBuffer, MAX_LOG_ENTRIES, parse_line,
+    AuditRecord, LevelFilter, LogBuffer, MAX_LOG_ENTRIES, parse_line,
 };
 use std::fs::File;
 use std::io::{BufRead, BufReader};
