@@ -1,9 +1,13 @@
+using PhotoPrivacy.Ipc;
+
 namespace PhotoPrivacy.IntegrationTests.Ipc;
 
 /// <summary>
 /// IPC 与部署安全不变量守卫：每条断言都直接对账代码/脚本/配置，改措辞不会让它变红。
 /// 1) install-systemd-service.sh 的 unit 模板必须钉住 RuntimeDirectoryMode=0750 并提供 GUI 用户组供给；
-/// 2) NamedPipeIpcTransport 的 FirstPipeInstance 仅施加于 ListenAsync 预建的首实例。
+/// 2) NamedPipeIpcTransport 的 FirstPipeInstance 仅施加于 listen 期首例（#7 拓扑：后台直建/
+///    服务随机名建例/通告失败回退静态名重绑，恰 3 处；accept 后预建的后续实例不得携带）；
+/// 3) 服务管道通告名登记键的 Rust 读侧与 C# 写侧字面量对账（#7 命名熵的发现通道主缝）。
 /// 每组守卫都带 negative self-proof：把源码改坏后备守卫必须变红，防止守卫空转。
 /// 原 UiSingleInstance ACL 守卫随旧 Ui 工程退役（#61）；新 UI 单实例管线的 DACL 决策见
 /// ui/crates/photoprivacy-ipc/src/single_instance.rs（Design(#49)），由 cargo test 守护。
@@ -76,20 +80,23 @@ public sealed class IpcAuthClaimReconciliationTests
         Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
     }
 
-    // ---------- 3. FirstPipeInstance 仅首实例 ----------
+    // ---------- 2. FirstPipeInstance 仅 listen 期首例 ----------
 
     internal static List<string> ClassifyFirstInstanceOnly(string strippedTransportSource)
     {
         var violations = new List<string>();
-        var firstInstanceCalls = CountOccurrences(strippedTransportSource, "CreatePipeServer(_pipeName, isFirstInstance: true)");
-        var nextInstanceCalls = CountOccurrences(strippedTransportSource, "CreatePipeServer(_pipeName, isFirstInstance: false)");
-        if (firstInstanceCalls != 1)
+        // #7 后的首例建例点恰 3 处：ListenAsync 后台分支直建、服务模式随机名建例、
+        // 通告失败回退静态名重绑——三处都是 listen 期首例（语义等价于拆分前的单一调用点）；
+        // 后续实例（accept 后预建）恰 1 处且不得携带 FirstPipeInstance。
+        var firstInstanceCalls = CountOccurrences(strippedTransportSource, "isFirstInstance: true");
+        var nextInstanceCalls = CountOccurrences(strippedTransportSource, "isFirstInstance: false");
+        if (firstInstanceCalls != 3)
         {
-            violations.Add("首实例调用点应恰为 1 处（ListenAsync 预建），实测 " + firstInstanceCalls);
+            violations.Add("首例建例点应恰为 3 处（后台直建/服务随机名/通告失败回退静态名，#7 拓扑），实测 " + firstInstanceCalls);
         }
         if (nextInstanceCalls != 1)
         {
-            violations.Add("后续实例调用点应恰为 1 处（accept 后预建），实测 " + nextInstanceCalls);
+            violations.Add("后续实例建例点应恰为 1 处（accept 后预建），实测 " + nextInstanceCalls);
         }
 
         var flagIdx = strippedTransportSource.IndexOf("PipeOptions.FirstPipeInstance", StringComparison.Ordinal);
@@ -122,7 +129,7 @@ public sealed class IpcAuthClaimReconciliationTests
         var green = SourceLint.ReadStripped("src", "PhotoPrivacy.Ipc", "NamedPipeIpcTransport.cs");
         var failing = new (string Source, string Reason)[]
         {
-            (green.Replace("CreatePipeServer(_pipeName, isFirstInstance: true)", "CreatePipeServer(_pipeName, isFirstInstance: false)"), "首实例调用点被改为后续实例"),
+            (green.Replace("isFirstInstance: true", "isFirstInstance: false"), "首例建例点被改为后续实例"),
             (green.Replace("if (isFirstInstance)", "if (true)"), "FirstPipeInstance 守卫被短路"),
         };
 
@@ -135,6 +142,71 @@ public sealed class IpcAuthClaimReconciliationTests
                 continue;
             }
             if (ClassifyFirstInstanceOnly(source).Count == 0)
+            {
+                failures.Add("MISSED (should be red): " + reason);
+            }
+        }
+
+        Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
+    }
+
+    // ---------- 3. 服务管道通告名登记键的 Rust/C# 两侧对账（#7） ----------
+
+    /// <summary>needle 构造与断言同一处，供正向断言与 negative self-proof 共用（本类惯例）。</summary>
+    internal static List<string> ClassifyServicePipeAdvertisementRegistryNames(
+        string strippedRustSource, string subkey, string valueName)
+    {
+        var violations = new List<string>();
+        // Rust 源码里反斜杠以 \\ 转义形态出现：C# 侧常量按同规则转义后比对。
+        var subkeyLiteral = subkey.Replace(@"\", @"\\");
+        if (!strippedRustSource.Contains($"wide(\"{subkeyLiteral}\")", StringComparison.Ordinal))
+        {
+            violations.Add($"Rust 读侧缺少通告键字面量 wide(\"{subkeyLiteral}\")（endpoints.rs）");
+        }
+        if (!strippedRustSource.Contains($"wide(\"{valueName}\")", StringComparison.Ordinal))
+        {
+            violations.Add($"Rust 读侧缺少通告值名字面量 wide(\"{valueName}\")（endpoints.rs）");
+        }
+        return violations;
+    }
+
+    [Fact]
+    public void Service_Pipe_Advertisement_Registry_Names_Match_Rust_Client_Literals()
+    {
+        // 防（#7 审查返修 m-R1）：命名熵闭环押在 C# 写侧（WindowsServicePipeAcl）与 Rust 读侧
+        // （endpoints.rs 的 read_advertised_service_pipe_name）的注册表键/值名一致上——漂移形态是
+        // UI 静默读不到通告值、永久退回静态名（熵关闭，回到 #7 前攻击面），且无行为测试会红
+        // （Rust 无法引用 C# 常量）。按本类的 source-lint 对账先例钉住两侧字面量；安装脚本侧的
+        // 同类重复自 #70 起即无守卫（既有先例，卸载清三值清单已在 ipc-contract 登记），不扩本票面。
+        var rust = SourceLint.ReadStripped("ui", "crates", "photoprivacy-ipc", "src", "endpoints.rs");
+        var violations = ClassifyServicePipeAdvertisementRegistryNames(
+            rust, WindowsServicePipeAcl.RegistrySubKeyName, WindowsServicePipeAcl.AdvertisedServicePipeValueName);
+        Assert.True(violations.Count == 0, string.Join(Environment.NewLine, violations));
+    }
+
+    [Fact]
+    public void Service_Pipe_Advertisement_Registry_Names_Guard_Negative_Self_Proof()
+    {
+        // 失效即红自证（终审 M-F1，本类惯例）：改坏 Rust 源码的键/值名字面量后守卫必须变红，
+        // 防止对账断言随字面量漂移而空转。verbatim 字面量保持与 Rust 源码一致的双反斜杠字节。
+        var green = SourceLint.ReadStripped("ui", "crates", "photoprivacy-ipc", "src", "endpoints.rs");
+        var failing = new (string Source, string Reason)[]
+        {
+            (green.Replace(@"SOFTWARE\\PhotoPrivacy", @"SOFTWARE\\PhotoPrivacyX"), "通告键被改写"),
+            (green.Replace("ServicePipeName", "ServicePipeNameX"), "通告值名被改写"),
+        };
+
+        var failures = new List<string>();
+        foreach (var (source, reason) in failing)
+        {
+            if (source == green)
+            {
+                failures.Add("MUTATION DID NOT APPLY (sample equals green): " + reason);
+                continue;
+            }
+            if (ClassifyServicePipeAdvertisementRegistryNames(
+                    source, WindowsServicePipeAcl.RegistrySubKeyName, WindowsServicePipeAcl.AdvertisedServicePipeValueName)
+                .Count == 0)
             {
                 failures.Add("MISSED (should be red): " + reason);
             }

@@ -1,4 +1,5 @@
 #if PP_WINDOWS_HOST
+using System.IO;
 using System.IO.Pipes;
 using System.Security.AccessControl;
 using System.Security.Principal;
@@ -6,9 +7,11 @@ using System.Security.Principal;
 namespace PhotoPrivacy.Ipc;
 
 /// <summary>
-/// Windows 服务模式管道建例（#70 起，#1 扩展授权集合）：以显式 DACL 走 managed 正典路径
-/// <see cref="NamedPipeServerStreamAcl.Create"/>（内部即带 SECURITY_ATTRIBUTES 的
-/// CreateNamedPipe）。public 供行为测试直接驱动 DACL 组装与建例；仅 Windows 宿主编译
+/// Windows 服务模式管道原生路径（#70 起，#1 扩展授权集合，#7 拆位）：服务端以显式 DACL 走
+/// managed 正典 <see cref="NamedPipeServerStreamAcl.Create"/>（内部即带 SECURITY_ATTRIBUTES 的
+/// CreateNamedPipe）；客户端经 <see cref="CreateClientStream"/> 以细粒度掩码打开（拆位后的
+/// DACL 不再授 FILE_CREATE_PIPE_INSTANCE，GENERIC 打开会被整体拒绝）。
+/// public 供行为测试直接驱动 DACL 组装、建例与客户端打开；仅 Windows 宿主编译
 /// （csproj PP_WINDOWS_HOST）：PipeAccessRights 在 Linux net10 编译面缺失（CI 实证 CS0246）。
 /// 本文件在 Windows 本体编译——win-x64 发布构建（release.yml windows runner /
 /// 发版机）是它的编译门禁，CI test job（ubuntu）不覆盖，见 PR Merge Danger。
@@ -64,6 +67,26 @@ public static class WindowsPipeNative
             inBufferSize: 0,
             outBufferSize: 0,
             pipeSecurity: BuildServicePipeSecurity(allowedSids));
+    }
+
+    /// <summary>
+    /// 以 <see cref="WindowsServicePipeAcl.ServiceClientAccessMask"/> 的细粒度掩码构造服务管道
+    /// 客户端（#7 / CWE-732）：<see cref="NamedPipeClientStream"/> 的 PipeAccessRights 重载直接
+    /// 向 CreateFile 传具体权限位，不走 GENERIC 映射（GENERIC_WRITE 会带入 FILE_APPEND_DATA = 0x4
+    /// = FILE_CREATE_PIPE_INSTANCE，拆位后的 DACL 会整体拒绝）。掩码含 ReadData|WriteData → 方向
+    /// InOut；重试语义（ERROR_PIPE_BUSY/FILE_NOT_FOUND）与 GENERIC 路径同实现（ConnectAsync 内部循环）。
+    /// 冒充级别固定 Identification：防伪服务端（预蹲者）对客户端发起 ImpersonateNamedPipeClient
+    /// 冒充（tokio 客户端默认同姿态）；产品服务端从不冒充客户端，收紧不改变合法链路。
+    /// </summary>
+    public static NamedPipeClientStream CreateClientStream(string pipeName)
+    {
+        return new NamedPipeClientStream(
+            serverName: ".",
+            pipeName: pipeName,
+            desiredAccessRights: (PipeAccessRights)WindowsServicePipeAcl.ServiceClientAccessMask,
+            options: PipeOptions.Asynchronous,
+            impersonationLevel: TokenImpersonationLevel.Identification,
+            inheritability: HandleInheritability.None);
     }
 }
 #endif

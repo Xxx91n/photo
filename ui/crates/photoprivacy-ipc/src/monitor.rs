@@ -46,6 +46,25 @@ pub enum ServiceReachability {
     Unreachable,
 }
 
+/// 连接编排的最终失败分类：区分「被服务授权拒绝」与「Worker 缺失」，让 UI 对两种截然不同的
+/// 处境给出各自的行动指引（找安装者加授权 vs 检查 Worker 安装），不再统一归到 os error 2。
+///
+/// 三态互斥，按最近一次真实失败原因归类：服务端点权限拒绝优先（它是回落链的第一环，也是
+/// 未授权用户唯一正确的行动线索）；其次才是后台 Worker 启动未就绪（含 #163 单写者让位退出）
+/// 与未找到可拉起的 Worker 程序。连接成功即清空（`apply_success`）；心跳失败不清——授权拒绝
+/// 是编排期事实，心跳掉线不推翻它。
+// Design(#82): 连接失败提示按三态分类呈现，不把授权拒绝混同为 Worker 缺失的 os error 2。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ConnectFailureCause {
+    /// 服务端点存在但连接被服务管道 DACL 拒绝（未列入授权集合的账户，#1/#160）。
+    ServiceAccessDenied,
+    /// 服务端点不可用，UI 拉起的后台 Worker 未能就绪（spawn 失败 / 已退出 / 5s 未就绪，
+    /// 含 #163 单写者准入门让位退出）；附带的字符串是自描述细节（如退出码）。
+    WorkerStartupFailed(String),
+    /// 端点均不可用且未找到可拉起的后台 Worker 可执行文件。
+    WorkerNotInstalled,
+}
+
 #[derive(Clone, Debug)]
 pub struct ConnectionSnapshot {
     pub state: ConnectionState,
@@ -59,6 +78,8 @@ pub struct ConnectionSnapshot {
     pub round_trips: u64,
     pub last_round_trip: Option<Duration>,
     pub last_error: Option<String>,
+    /// 连接编排的失败分类（#169）：`None` = 已连接或编排未给出结论；UI 呈现时优先于 `last_error`。
+    pub connect_failure: Option<ConnectFailureCause>,
 }
 
 impl ConnectionSnapshot {
@@ -75,6 +96,7 @@ impl ConnectionSnapshot {
             round_trips: 0,
             last_round_trip: None,
             last_error: None,
+            connect_failure: None,
         }
     }
 }
@@ -96,16 +118,25 @@ pub fn next_backoff(current: Duration) -> Duration {
 
 /// 心跳循环：成功每 1s 一次，失败按退避步进；状态经 `watch` 广播给 UI。
 ///
+/// 端点经 `resolve` 动态获取（#7）：服务管道随机化后服务重启会换名——失败时重解析，
+/// 否则永远重试旧名；后台端点静态，重解析是零成本恒等。初始端点在任务启动时解析一次，
+/// 心跳成功期不重解析（心跳零注册表读；服务模式下 1s 版本轮询与 3s 探测拍仍按拍重读，
+/// 见 ipc-contract 的登记）。
 /// 探针用 GetStatus 而非旧 UI 的 Ping：每跳顺带刷新协议版本、模式与 ExifTool 版本；代价是
 /// 「Ping 通但 GetStatus 失败」会被判为不可用（旧 UI 不用这些字段，所以只发 Ping）。
 // Design(#49): 心跳探针固定为 GetStatus，版本可见性优先于 Ping 的纯活性语义。
-pub fn spawn_monitor(
+// Design(#7): 心跳失败即重解析端点（服务重启换随机名后自愈）；解析器由调用方按模式注入。
+pub fn spawn_monitor<F>(
     client: Arc<IpcClient>,
-    endpoint: Endpoint,
+    resolve: F,
     tx: watch::Sender<ConnectionSnapshot>,
-) -> tokio::task::JoinHandle<()> {
+) -> tokio::task::JoinHandle<()>
+where
+    F: Fn() -> Endpoint + Send + 'static,
+{
     tokio::spawn(async move {
         let mut backoff = HEARTBEAT_INTERVAL;
+        let mut endpoint = resolve();
         loop {
             let started = Instant::now();
             let result = client.status(&endpoint).await;
@@ -120,6 +151,8 @@ pub fn spawn_monitor(
                     tokio::time::sleep(HEARTBEAT_INTERVAL).await;
                 }
                 Err(err) => {
+                    // #7：失败即重解析端点——服务模式拿到（可能的）新通告名；后台模式恒等。
+                    endpoint = resolve();
                     backoff = next_backoff(backoff);
                     tx.send_modify(|snapshot| apply_failure(snapshot, &err));
                     tokio::time::sleep(backoff).await;
@@ -200,11 +233,15 @@ fn apply_success(
     snapshot.round_trips += 1;
     snapshot.last_round_trip = Some(elapsed);
     snapshot.last_error = None;
+    // 连上即作废编排期的失败结论：Worker 已就绪，分类文案不再成立（#169）。
+    snapshot.connect_failure = None;
 }
 
 // 失败时清掉连接期字段：它们只代表上一次成功往返，留在界面上会被读成 Worker 的当前状态。
 // `last_round_trip` 保留——界面文案本身就是「上次往返」的历史语义。
 /// 心跳失败后清掉连接期字段；保留历史往返、ExifTool 版本与服务可达性。
+/// `connect_failure` 也保留：编排期的授权拒绝等结论不因心跳掉线被推翻，`last_error`
+/// 才是心跳自身的错误面（#169）。
 fn apply_failure(snapshot: &mut ConnectionSnapshot, err: &IpcError) {
     snapshot.state = ConnectionState::Reconnecting;
     snapshot.protocol_version = None;
@@ -383,5 +420,80 @@ mod tests {
         assert_eq!(snapshot.exif_tool_version.as_deref(), Some("13.20"));
         assert_eq!(snapshot.last_round_trip, Some(Duration::from_millis(3)));
         assert!(snapshot.last_error.is_some());
+    }
+
+    #[test]
+    fn success_clears_connect_failure_but_heartbeat_failure_keeps_it() {
+        // 防：连上后台 Worker 后界面仍显示编排期的失败分类（#169）——分类只代表「当前断开」的原因。
+        let mut snapshot = ConnectionSnapshot::connecting();
+        snapshot.connect_failure = Some(ConnectFailureCause::ServiceAccessDenied);
+
+        apply_success(
+            &mut snapshot,
+            &Status::default(),
+            Some(1),
+            Duration::from_millis(3),
+        );
+        assert_eq!(snapshot.connect_failure, None);
+
+        // 防：心跳掉线顺手清掉授权拒绝结论——os error 2 重新盖住「未被授权」，#169 回潮。
+        snapshot.connect_failure = Some(ConnectFailureCause::ServiceAccessDenied);
+        apply_failure(&mut snapshot, &IpcError::Timeout);
+        assert_eq!(
+            snapshot.connect_failure,
+            Some(ConnectFailureCause::ServiceAccessDenied)
+        );
+        assert!(snapshot.last_error.is_some());
+    }
+
+    #[test]
+    fn connect_failure_variants_carry_their_payload() {
+        // 防：三态判别式在快照克隆/比较中错位，UI 把启动失败细节显示成未授权文案（#169）。
+        let variants = vec![
+            ConnectFailureCause::ServiceAccessDenied,
+            ConnectFailureCause::WorkerStartupFailed("exited with code 1".to_string()),
+            ConnectFailureCause::WorkerNotInstalled,
+        ];
+        let cloned = variants.clone();
+        assert_eq!(variants, cloned);
+        assert_eq!(
+            ConnectionSnapshot::connecting().connect_failure,
+            None,
+            "初始快照不应预置失败分类"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn monitor_re_resolves_endpoint_after_failure() {
+        // 防（#7）：服务管道随机化后服务重启会换名——心跳失败必须重解析端点，否则 UI 永远
+        // 重试旧名（60s 退避下的表现是「服务回来了也连不上」直到 UI 重启）。
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let calls_for_resolve = calls.clone();
+        let (tx, _rx) = watch::channel(ConnectionSnapshot::connecting());
+        let client = Arc::new(IpcClient::new());
+        let handle = spawn_monitor(
+            client,
+            move || {
+                let n = calls_for_resolve.fetch_add(1, Ordering::SeqCst);
+                // 不存在的端点：status() 必失败，驱动失败分支的重解析（Windows 上 UnixSocket
+                // 端点立即 InvalidInput，Unix 上 NotFound 耗尽连接预算，殊途同归）。
+                Endpoint::UnixSocket(std::path::PathBuf::from(format!(
+                    "/nonexistent/pp-t7-{n}.sock"
+                )))
+            },
+            tx,
+        );
+
+        // 跑过至少两轮「失败 → 退避」：初始解析 1 次 + 每次失败后重解析（paused 时间自动推进）。
+        tokio::time::sleep(Duration::from_secs(10)).await;
+        let resolved = calls.load(Ordering::SeqCst);
+        assert!(
+            resolved >= 3,
+            "monitor must re-resolve endpoint on failure, got {resolved} resolve calls"
+        );
+
+        handle.abort();
     }
 }

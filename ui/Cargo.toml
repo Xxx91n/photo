@@ -31,6 +31,10 @@ version = "0.61"
 features = [
     "Win32_Foundation",
     "Win32_System_Threading",
+    # #7：服务管道细粒度客户端打开（CreateFileW）与服务通告名注册表读取（advapi32）。
+    # SQOS/打开 flags 常量为本地定义（client.rs），无需 SystemServices 特性（审查返修 n-R1 移除）。
+    "Win32_Storage_FileSystem",
+    "Win32_System_Registry",
 ]
 
 [workspace.dependencies.libc]
