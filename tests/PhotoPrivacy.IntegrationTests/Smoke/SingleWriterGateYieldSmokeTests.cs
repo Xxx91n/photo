@@ -71,27 +71,34 @@ public sealed class SingleWriterGateYieldSmokeTests : IntegrationTestBase
 
             var repoRoot = FindRepoRoot();
             using var owner = StartWorker(repoRoot, configPath, mode: "service");
-            WaitForAuditEvent(audit, "service_started", TimeSpan.FromSeconds(15));
-
-            var yieldRun = await RunYieldingWorkerOnceAsync(repoRoot, configPath, TimeSpan.FromSeconds(30));
-            Assert.Equal(1, yieldRun.ExitCode);
-            // 断 ASCII 行而非中文：Windows 非 UTF-8 控制台码页下中文可能变「?」，让位本身以英文行为准（CodeRabbit #163）
-            Assert.Contains("yielding", yieldRun.Stderr, StringComparison.OrdinalIgnoreCase);
-
-            var auditFile = WaitForAuditFile(audit, TimeSpan.FromSeconds(5));
-            var content = File.ReadAllText(auditFile);
-            Assert.Contains("\"event_type\":\"instance_conflict\"", content, StringComparison.OrdinalIgnoreCase);
-            Assert.Contains("single_writer_gate", content, StringComparison.OrdinalIgnoreCase);
-
-            owner.Kill(entireProcessTree: true);
-            using var exitCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             try
             {
-                await owner.WaitForExitAsync(exitCts.Token);
+                WaitForAuditEvent(audit, "service_started", TimeSpan.FromSeconds(15));
+
+                var yieldRun = await RunYieldingWorkerOnceAsync(repoRoot, configPath, TimeSpan.FromSeconds(30));
+                Assert.Equal(1, yieldRun.ExitCode);
+                // 断 ASCII 行而非中文：Windows 非 UTF-8 控制台码页下中文可能变「?」，让位本身以英文行为准（CodeRabbit #163）
+                Assert.Contains("yielding", yieldRun.Stderr, StringComparison.OrdinalIgnoreCase);
+
+                var auditFile = WaitForAuditFile(audit, TimeSpan.FromSeconds(5));
+                var content = File.ReadAllText(auditFile);
+                Assert.Contains("\"event_type\":\"instance_conflict\"", content, StringComparison.OrdinalIgnoreCase);
+                Assert.Contains("single_writer_gate", content, StringComparison.OrdinalIgnoreCase);
             }
-            catch (OperationCanceledException)
+            finally
             {
-                throw new TimeoutException("Owner worker did not exit within 10s after tree-kill.");
+                // owner 清场必须无条件执行：readiness/断言失败时跳过 Kill 会残留常驻 Worker 进程
+                //（Dispose Process 不终止子进程）。CodeRabbit #163。
+                owner.Kill(entireProcessTree: true);
+                using var exitCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                try
+                {
+                    await owner.WaitForExitAsync(exitCts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw new TimeoutException("Owner worker did not exit within 10s after tree-kill.");
+                }
             }
         }
         finally
