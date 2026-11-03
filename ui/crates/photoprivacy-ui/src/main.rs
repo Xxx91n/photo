@@ -269,7 +269,9 @@ fn main() -> anyhow::Result<()> {
         })
         .detach();
 
-        if !start_hidden {
+        // --open-page 显式给出时覆盖静默启动（#174）：显式 CLI 请求优先于隐式静默默认，
+        // 取证脚本在配置了静默启动的机器上仍能建窗出页；未给出时维持静默语义不变。
+        if !start_hidden || deps.open_page.is_some() {
             open_main_window(cx, deps);
         }
     });
