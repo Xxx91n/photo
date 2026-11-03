@@ -75,7 +75,7 @@ public static class WindowsServicePipeAcl
     /// 调用方回退安装者单值路径，不因集合损坏而放宽或收紧任何边界。
     /// 非 Windows、键缺失、值缺失或无合法条目均返回 false。
     /// </summary>
-    // Design(#1): 服务管道授权集合 opt-in——优先 MULTI_SZ 全集（安装者+显式授权用户），无该值回退安装者单值（默认不扩权），非法条目剔除、空集视为缺失；未列入集合的账户仍被拒。
+    // Design(#7): 服务管道授权集合 opt-in——优先 MULTI_SZ 全集（安装者+显式授权用户），无该值回退安装者单值（默认不扩权），非法条目剔除、空集视为缺失；未列入集合的账户仍被拒。残余：授权用户可建管道实例的加固归 #7；未授权侧提示语义归 #169，两项均不折算进本决策。
     public static bool TryResolveAllowedSids([NotNullWhen(true)] out IReadOnlyList<string>? allowedSids)
     {
         allowedSids = null;
