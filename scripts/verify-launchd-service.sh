@@ -276,16 +276,19 @@ ui_shot() {
     rec FAIL "UI 截图 ${tag}：截图脚本缺失（${SHOT_SCRIPT}）"
     return 0
   fi
-  local uid out
+  local uid out shot_dir
   uid="$(id -u "$SUDO_USER")"
   out="$EVIDENCE_DIR/ui-shot-$tag.txt"
-  # 证据目录是 root 建的：交还 GUI 用户可写，否则截图/配对状态落不了盘（首轮实测）
-  chown "$SUDO_USER" "$EVIDENCE_DIR" 2>/dev/null || true
+  # 截图只给 GUI 用户开一个专用子目录可写：root 侧证据文件不交出去，消除符号链接
+  # 截断攻击面（CodeRabbit 审查意见，CWE-59）
+  shot_dir="$EVIDENCE_DIR/ui-shots"
+  mkdir -p "$shot_dir"
+  chown "$SUDO_USER" "$shot_dir" 2>/dev/null || true
   local rc=0
   run_with_timeout 60 "$out" launchctl asuser "$uid" sudo -u "$SUDO_USER" \
-    bash "$SHOT_SCRIPT" --install-dir "$INSTALL_DIR" --tag "$tag" --out-dir "$EVIDENCE_DIR" || rc=$?
-  if [[ -s "$EVIDENCE_DIR/ui-$tag.png" ]]; then
-    rec PASS "UI Service 页截图文件已产出（${tag}，内容待目检；无图形加速 VM 里 gpui 可能黑屏）：ui-$tag.png"
+    bash "$SHOT_SCRIPT" --install-dir "$INSTALL_DIR" --tag "$tag" --out-dir "$shot_dir" || rc=$?
+  if [[ $rc -eq 0 ]] && [[ -s "$shot_dir/ui-$tag.png" ]]; then
+    rec PASS "UI Service 页截图文件已产出（${tag}，内容待目检；无图形加速 VM 里 gpui 可能黑屏）：ui-shots/ui-$tag.png"
   else
     rec FAIL "UI Service 页截图未产出（${tag}，rc=${rc}，见 ui-shot-$tag.txt）"
   fi

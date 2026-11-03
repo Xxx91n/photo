@@ -56,6 +56,8 @@ fi
 mkdir -p "$OUT_DIR"
 PNG="${OUT_DIR}/ui-${TAG}.png"
 LAUNCHCTL_TXT="${OUT_DIR}/ui-${TAG}-launchctl.txt"
+# 清掉旧产物：同目录重跑时残留 PNG 会让上层“文件非空”断言假绿（CodeRabbit 审查意见）
+rm -f "$PNG"
 
 # --worker 指向不存在路径：截图场景只看 Service 页探测，不拉起后台 Worker
 # （避免与服务 Worker 同 config 并存的单写者让位场景混入，#162）。

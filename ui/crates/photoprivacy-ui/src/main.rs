@@ -128,6 +128,32 @@ fn main() -> anyhow::Result<()> {
         .enable_all()
         .build()?;
 
+    // Design(#32): Service 页同源探测结果落 JSON 后即退出——虚拟环境（CI macOS runner）
+    // 机器可读取证入口；不建窗、不连 Worker，探测链与 Service 页首拍一致。只读探针不受
+    // 单实例守卫约束：并存 UI 不应挡掉报告产出（CodeRabbit 审查意见）。
+    if let Some(report_path) = &args.service_probe_report {
+        let probe_options = ConnectOptions::discover()
+            .with_overrides(args.config_path.clone(), args.worker_path.clone());
+        let probe_manager = platform_manager(
+            probe_options.worker_path.clone(),
+            probe_options.config_path.clone(),
+        );
+        let probe_state = probe_manager.state();
+        std::fs::write(
+            report_path,
+            format!("{{\"state\":\"{:?}\"}}\n", probe_state),
+        )?;
+        return Ok(());
+    }
+
+    // 单实例守卫：与旧 UI 同名同命名空间，任一入口已运行时，第二个实例只唤起不重开。
+    let guard = SingleInstanceGuard::acquire(UI_INSTANCE_NAME);
+    if !guard.is_owner() {
+        let notified = runtime.block_on(notify_existing_instance(Duration::from_millis(500)));
+        eprintln!("[photoprivacy-ui] 已有实例在运行（唤起窗口: {notified}），本实例退出");
+        return Ok(());
+    }
+
     let options = ConnectOptions::discover().with_overrides(args.config_path, args.worker_path);
     // 不回落到 CWD：Worker 以 AppContext.BaseDirectory 为基准，UI 若用相对路径会读写不同文件。
     let config_path = options.config_path.clone().ok_or_else(|| {
@@ -153,24 +179,6 @@ fn main() -> anyhow::Result<()> {
     ));
     // Design(#49): 启动路径在 main 线程同步首探安装态，上限 PROBE_TIMEOUT；托盘与静默启动据此在建窗前定档。
     let initial_service_state = service_manager.state();
-    // Design(#32): Service 页同源探测结果落 JSON 后即退出——虚拟环境（CI macOS runner）
-    // 机器可读取证入口；不建窗、不连 Worker，探测链与 Service 页首拍一致。
-    if let Some(report_path) = &args.service_probe_report {
-        std::fs::write(
-            report_path,
-            format!("{{\"state\":\"{:?}\"}}\n", initial_service_state),
-        )?;
-        return Ok(());
-    }
-    // 单实例守卫：与旧 UI 同名同命名空间，任一入口已运行时，第二个实例只唤起不重开。
-    // 放在探测报告出口之后：--service-probe-report 是只读探针，不应被并存 UI 的实例锁挡掉
-    // 报告产出（CodeRabbit 审查意见，#32）。
-    let guard = SingleInstanceGuard::acquire(UI_INSTANCE_NAME);
-    if !guard.is_owner() {
-        let notified = runtime.block_on(notify_existing_instance(Duration::from_millis(500)));
-        eprintln!("[photoprivacy-ui] 已有实例在运行（唤起窗口: {notified}），本实例退出");
-        return Ok(());
-    }
     let (service_snapshots, service_commands) =
         service_page::start(runtime.handle(), service_manager, initial_service_state);
     let link = worker_connection::start(runtime.handle(), options, snapshot_tx, event_tx);
