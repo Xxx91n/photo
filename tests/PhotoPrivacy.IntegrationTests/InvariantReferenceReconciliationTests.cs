@@ -17,7 +17,7 @@ namespace PhotoPrivacy.IntegrationTests;
 /// 圆圈数字按引用计——覆盖「不变量①④」连写与「不变量①fail-closed ④驻守可观测」同句间隔
 /// 两种存量形态；纯枚举用圆圈数字的行（如 WorkerIpcServerHostedService 的 ①② 行为清单）
 /// 不含「不变量」字样，不进候选；同句混排枚举与引用会过计，撞红按 TEST-CONVENTIONS R2 处置。
-/// 定义口径：GLOSSARY 表体行 = `- **不变量N（名称）**：` 列表行（词条导语行无列表前缀，不匹配）。
+/// 定义口径：GLOSSARY 表体行 = `- **不变量N（名称）**：非空正文` 列表行——名称与非空正文缺一不计（词条导语行无列表前缀，不匹配）。
 /// ③ 在现行代码零引用点属预期（考古恢复，见词条正文），故对账为单向包含：引用集 ⊆ 定义集。
 /// 读原始行不剥注释（TEST-CONVENTIONS §3 的必要偏离）：引用本体住在 /// 与 // 里，
 /// 剥除即扫描恒空（主 Fact 的 NotEmpty 会红，偏离可见、自保护）。
@@ -27,9 +27,9 @@ public sealed class InvariantReferenceReconciliationTests
     /// <summary>圆圈数字 ①–⑳（U+2460–U+2473）：引用与定义共用的编号字符域，未来 ⑥⑦… 同域可判。</summary>
     private static readonly Regex CircledNumber = new(@"[①-⑳]", RegexOptions.Compiled, TimeSpan.FromSeconds(5));
 
-    /// <summary>GLOSSARY 表体定义行：`- **不变量N（…）**：` 列表行。</summary>
+    /// <summary>GLOSSARY 表体定义行：`- **不变量N（名称）**：非空正文` 列表行——名称与非空正文缺一不计。</summary>
     private static readonly Regex GlossaryDefinitionLine =
-        new(@"^\s*-\s*\*\*不变量([①-⑳])", RegexOptions.Compiled, TimeSpan.FromSeconds(5));
+        new(@"^\s*-\s*\*\*不变量([①-⑳])（[^（）]+）\*\*：\S", RegexOptions.Compiled, TimeSpan.FromSeconds(5));
 
     private const string SelfFileName = "InvariantReferenceReconciliationTests.cs";
 
@@ -57,14 +57,21 @@ public sealed class InvariantReferenceReconciliationTests
 
         foreach (var line in File.ReadAllLines(glossaryPath, Encoding.UTF8))
         {
-            var match = GlossaryDefinitionLine.Match(line);
-            if (match.Success)
+            var number = ParseDefinitionNumber(line);
+            if (number is not null)
             {
-                defined.Add(match.Groups[1].Value[0]);
+                defined.Add(number.Value);
             }
         }
 
         return defined;
+    }
+
+    /// <summary>单行解析定义编号：形态不完整的行（丢名称或丢正文）一律不算定义。</summary>
+    private static char? ParseDefinitionNumber(string line)
+    {
+        var match = GlossaryDefinitionLine.Match(line);
+        return match.Success ? match.Groups[1].Value[0] : null;
     }
 
     private static List<Reference> ScanReferences()
@@ -167,5 +174,23 @@ public sealed class InvariantReferenceReconciliationTests
         Assert.Empty(ExtractInvariantNumbers("① 「accept 循环无 sync-over-async、重启重载不阻塞后续 accept」（WorkerIpcServerLoopTests）；"));
         Assert.Empty(ExtractInvariantNumbers("② 「ReloadConfig 真 await 而不是 sync-over-async」（WorkerIpcRequestHandlerTests）。"));
         Assert.Empty(ExtractInvariantNumbers("安全不变量：RAW 永不 -all=（MakerNotes 删后毁渲染），全擦意图展开为全部安全组。"));
+    }
+
+    [Fact]
+    public void Definition_Parsing_Negative_Self_Proof()
+    {
+        // 失效即红自证：定义行解析必须要求「（名称）**：非空正文」完整在场——空壳行（丢名称或丢正文）
+        // 若计入定义，表体被撞空后对账仍恒绿（CodeRabbit 点名的形态：`- **不变量③**：` 两
+        // 条 Fact 照样过）。正样本取自 GLOSSARY 表体③行，负样本覆盖丢名称、空名称与丢正文
+        // （名称在场正文为空——钉住 `\S` 子句：删掉 `\S` 后本样本即返回 ③ 转红；删掉本样本
+        // 则该回归恒绿（自证失明））。关联 issue #63。
+        var real = ParseDefinitionNumber(
+            "- **不变量③（最小攻击面，全档执行不降档）**：攻击面保持最小且任何执行档位不降档豁免；");
+        Assert.Equal('③', real);
+
+        Assert.Null(ParseDefinitionNumber("- **不变量③**："));
+        Assert.Null(ParseDefinitionNumber("- **不变量③：正文"));
+        Assert.Null(ParseDefinitionNumber("- **不变量③（）**：正文"));
+        Assert.Null(ParseDefinitionNumber("- **不变量③（最小攻击面）**："));
     }
 }
