@@ -9,6 +9,8 @@
 )
 
 $ErrorActionPreference = "Stop"
+# Invoke-WebRequest 的逐块进度会刷满 CI 日志（11 MB 归档 ≈ 上千行，重试时成倍放大），全脚本静默。
+$ProgressPreference = "SilentlyContinue"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $releaseRoot = Join-Path $repoRoot "release"
@@ -136,13 +138,50 @@ $exifToolDir = Join-Path $targetDir "ExifTool"
 $exifToolStage = Join-Path $env:TEMP ("photoprivacy-exiftool-" + [Guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Force -Path $exifToolStage | Out-Null
 
+# 下载通道不稳（#164）：CI runner 上曾取到 SourceForge 的跳转/拦截页（约 5 s 就返回，
+# 哈希必然不符）。故「校验不过就重取」，取满次数仍不符才失败——pin 值不变、判定标准不放宽，
+# 镜像返回任何别的内容都会被 SHA256 拒掉。
+# 顺序：先走直链镜像（`?viasf=1` 免跳转页），失败再换回带跳转的常规下载地址。
+$exifToolUrls = @(
+  ("https://master.dl.sourceforge.net/project/exiftool/exiftool-{0}_64.zip?viasf=1" -f $ExifToolVersion),
+  ("https://downloads.sourceforge.net/project/exiftool/exiftool-{0}_64.zip?viasf=1" -f $ExifToolVersion),
+  ("https://downloads.sourceforge.net/project/exiftool/exiftool-{0}_64.zip" -f $ExifToolVersion)
+)
+function Get-ExifToolArchive {
+  param(
+    [string[]]$Urls,
+    [string]$Destination,
+    [string]$ExpectedSha,
+    [int]$Attempts = 3
+  )
+  $diagnostics = @()
+  for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
+    $url = $Urls[($attempt - 1) % $Urls.Count]
+    try {
+      if (Test-Path -LiteralPath $Destination) { Remove-Item -LiteralPath $Destination -Force }
+      Invoke-WebRequest -Uri $url -OutFile $Destination -UseBasicParsing `
+        -UserAgent "PhotoPrivacyRelease/1.0" -MaximumRedirection 10 -TimeoutSec 300
+      $length = (Get-Item -LiteralPath $Destination).Length
+      $actual = (Get-FileHash -LiteralPath $Destination -Algorithm SHA256).Hash.ToLowerInvariant()
+      if ($actual -eq $ExpectedSha) {
+        Write-Host ("ExifTool archive verified on attempt {0}/{1} ({2} bytes)" -f $attempt, $Attempts, $length)
+        return $Destination
+      }
+      $diagnostics += ("attempt {0}: {1} -> {2} bytes, sha256 {3}" -f $attempt, $url, $length, $actual)
+    } catch {
+      $diagnostics += ("attempt {0}: {1} -> {2}" -f $attempt, $url, $_.Exception.Message)
+    }
+    if ($attempt -lt $Attempts) { Start-Sleep -Seconds (2 * $attempt) }
+  }
+  throw ("ExifTool archive download failed after {0} attempts (expected sha256 {1}).`n  {2}" -f `
+      $Attempts, $ExpectedSha, ($diagnostics -join "`n  "))
+}
+
 $archivePath = if ([string]::IsNullOrWhiteSpace($ExifToolZip)) {
   $downloaded = Join-Path $exifToolStage ("exiftool-{0}_64.zip" -f $ExifToolVersion)
   # gpui 只支持 win-x64，故固定取 64 位包。
-  $url = "https://downloads.sourceforge.net/project/exiftool/exiftool-{0}_64.zip" -f $ExifToolVersion
   Write-Host "Downloading ExifTool $ExifToolVersion ..."
-  Invoke-WebRequest -Uri $url -OutFile $downloaded -UseBasicParsing
-  $downloaded
+  Get-ExifToolArchive -Urls $exifToolUrls -Destination $downloaded -ExpectedSha $expectedSha
 } else {
   if (-not (Test-Path -LiteralPath $ExifToolZip)) {
     throw "ExifToolZip not found: $ExifToolZip"
@@ -150,9 +189,10 @@ $archivePath = if ([string]::IsNullOrWhiteSpace($ExifToolZip)) {
   (Resolve-Path -LiteralPath $ExifToolZip).Path
 }
 
+$archiveLength = (Get-Item -LiteralPath $archivePath).Length
 $actualSha = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($actualSha -ne $expectedSha) {
-  throw "ExifTool archive SHA256 mismatch for $ExifToolVersion. Expected $expectedSha, got $actualSha"
+  throw "ExifTool archive SHA256 mismatch for $ExifToolVersion. Expected $expectedSha, got $actualSha ($archiveLength bytes) from $archivePath"
 }
 
 Expand-Archive -LiteralPath $archivePath -DestinationPath $exifToolStage -Force
