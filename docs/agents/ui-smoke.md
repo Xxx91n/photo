@@ -117,12 +117,17 @@
 > （`classify_connect_failure` 三态/退出码/未就绪、`is_service_access_denied` raw 5 判定、
 > `connect_failure_texts_map_to_distinct_guidance` 文案映射）；本表锚实机目检（#169 AC3，
 > Windows 平台口径）。
+>
+> **本表结论的取证口径（2026-11-03）**：Release run [41614025539](https://github.com/Xxx91n/photo/actions/runs/41614025539)
+> `win-x64` 产物（对应 head `9aa1c27`，含全部 UI 行为改动；后续提交仅注释治理与 merge），
+> agent 桌面截图自查（同 #125/#88 先例，用户已批准该取证方式）；测试后服务已卸载、
+> 临时用户已删除、进程已清，环境无残留。
 
 | # | 操作 | 结果 | 证据 |
 |---|---|---|---|
-| C1 | 装有服务的机器上，未列入 `-AuthorizedUsers` 的标准用户启动 UI，等回落链走完（约 5 s+） | 未回填 | 目检锚：状态卡出「当前账户未被授权使用服务模式，请联系安装者将账户加入 -AuthorizedUsers」（warning 色），而非「连接 Worker 失败: 系统找不到指定的文件。 (os error 2)」 |
-| C2 | 真实缺 Worker 场景（发布包内移走 `PhotoPrivacyWorker.exe`、无服务）启动 UI | 未回填 | 目检锚：状态卡出「未找到 Worker 程序」引导安装/修复，不误报为未授权 |
-| C3 | 断连恢复：UI 保持运行时后台 Worker 就绪（或账户获授权后重启 UI 连上服务端点） | 未回填 | 目检锚：分类文案消失、状态卡回「已连接」——失败结论不比连接本身活得更久 |
+| C1 | 装有服务的机器上，未列入 `-AuthorizedUsers` 的标准用户启动 UI，等回落链走完（约 5 s+） | 通过（2026-11-03，`9aa1c27` 构建） | 实机（Windows，本机）：临时标准用户 `pp169-out`（仅 Users 组）+ 装服务（`-AuthorizedUsers pp169-ok`，2 授权 SID）下启动 UI → 状态卡 warning 色警告行逐字「当前账户未被授权使用服务模式，请联系安装者将账户加入 -AuthorizedUsers」，无任何 os error 2；后台 Worker 确实撞 #163 让位退出（服务侧审计 `instance_conflict`/`single_writer_gate`，`hot/_audit/audit-2026-11-03.jsonl`）；**对称验证**：同服务下授权用户 `pp169-ok` 启动 UI → 「已连接 · PhotoPrivacyCleaner.Service · 服务模式」（绿点、服务 IPC 可达、往返 495 次），无误报——截图 `C1-unauthorized.png` / `C1-symmetric-authorized.png`（桌面取证归档） |
+| C2 | 真实缺 Worker 场景（发布包内移走 `PhotoPrivacyWorker.exe`、无服务）启动 UI | 通过（2026-11-03，`9aa1c27` 构建） | 实机（Windows，本机）：确认服务未装（sc query 1060）+ 移走 Worker.exe 后启动 UI → 状态卡红色错误行逐字「连接 Worker 失败：未找到 Worker 程序，请安装或修复后重试」，不误报为未授权——截图 `C2-worker-missing.png` |
+| C3 | 断连恢复：UI 保持运行时后台 Worker 就绪（或账户获授权后重启 UI 连上服务端点） | 通过（2026-11-03，`9aa1c27` 构建） | 实机（Windows，本机）：C2 同一 UI 进程保持运行，放回 Worker.exe 并以 `--mode background` 拉起 → 状态回「已连接 · PhotoPrivacyCleaner.Background · 后台模式」（绿点、协议 v1、往返 8 次），分类文案消失（`apply_success` 清空生效），仅剩出厂待机的正常引导行「请前往配置页设置监控目录」——截图 `C3-recovered.png` |
 
 ### #49 D11 功能对等核销（切换判据）
 
