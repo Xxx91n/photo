@@ -57,16 +57,30 @@ internal static class InstanceConflictAudit
 
             try
             {
-                await logger.WriteAsync(
-                    new AuditEvent(
-                        EventType: "instance_conflict",
-                        Level: AuditLevel.Warn,
-                        TimestampUtc: DateTimeOffset.UtcNow,
-                        TaskId: Guid.NewGuid().ToString("N"),
-                        SourcePath: config.Watch.HotFolder,
-                        Message: message,
-                        Data: payload),
-                    CancellationToken.None).ConfigureAwait(false);
+                // 有界重试：常驻 Worker 的 JsonLineAuditLogger 按次打开 audit-*.jsonl（FileShare.Read），
+                // 让位留痕/冲突留痕与其短暂撞上会被共享冲突打掉——best-effort 留痕值得 3 次机会，
+                // 仍失败就吞（留痕永不阻断退出；stderr 与 Serilog 文件日志是另外两路可观测面）。
+                for (var attempt = 1; ; attempt++)
+                {
+                    try
+                    {
+                        await logger.WriteAsync(
+                            new AuditEvent(
+                                EventType: "instance_conflict",
+                                Level: AuditLevel.Warn,
+                                TimestampUtc: DateTimeOffset.UtcNow,
+                                TaskId: Guid.NewGuid().ToString("N"),
+                                SourcePath: config.Watch.HotFolder,
+                                Message: message,
+                                Data: payload),
+                            CancellationToken.None).ConfigureAwait(false);
+                        break;
+                    }
+                    catch (IOException) when (attempt < 3)
+                    {
+                        await Task.Delay(300, CancellationToken.None).ConfigureAwait(false);
+                    }
+                }
             }
             finally
             {

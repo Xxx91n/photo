@@ -117,6 +117,33 @@ public sealed class SingleWriterGateTests
         }
     }
 
+    [Fact]
+    public void ResolveEffectiveAuditDirectory_SymlinkAlias_ResolvesToSameIdentity()
+    {
+        // 防回归点（CodeRabbit #163）：锁身份必须跟物理目录走，别名路径不得各持一锁绕过准入门。
+        // Windows 建 symlink 需要特权，此断言只在 POSIX 上跑；Windows 的 junction 口径由实现内
+        // ResolveLinkTarget 同一通道覆盖，不另做特权测试。
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var real = NewTempAuditDir();
+        var alias = real + "-alias";
+        Directory.CreateSymbolicLink(alias, real);
+        try
+        {
+            var viaReal = SingleWriterGate.ResolveEffectiveAuditDirectory(real);
+            var viaAlias = SingleWriterGate.ResolveEffectiveAuditDirectory(alias);
+            Assert.Equal(SingleWriterGate.BuildLockName(viaReal), SingleWriterGate.BuildLockName(viaAlias));
+        }
+        finally
+        {
+            TryDeleteDir(real);
+            try { Directory.Delete(alias); } catch { /* best effort */ }
+        }
+    }
+
     private static string NewTempAuditDir()
     {
         var dir = Path.Combine(Path.GetTempPath(), "phprvtest-swg-" + Guid.NewGuid().ToString("N"));

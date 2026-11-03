@@ -10,7 +10,10 @@ namespace PhotoPrivacy.Core.Runtime;
 /// 拿不到锁的 Worker 必须让位干净退出（日志 + 审计留痕由 Program 层负责），禁止静默降级凑合跑，
 /// 也不得让 store 常驻句柄冲突炸成 IOException → StopHost 服务自停。
 /// 门自身异常（权限/环境）同样让位：无法确证独占就不写审计——fail-safe 方向是宁可不起，
-/// 不是带着未知争用风险放行。服务/后台探测编排的体验面归 #58。
+/// 不是带着未知争用风险放行。
+/// 残余：锁身份的别名归一只解析最终链接目标，路径中间分量的别名（subst/逐段符号链接）未逐段展开，
+/// 该形态下两侧仍可能各持一锁；真正的防线还有审计文件自身的 FileShare 语义兜底。
+/// 服务/后台探测编排的体验面归 #58。
 /// </summary>
 // Design(#162): 常驻 Worker 触碰审计文件前必须过本准入门；拿不到锁或门异常一律让位（禁静默降级/禁带险放行），编排预防归 #58。
 public static class SingleWriterGate
@@ -40,12 +43,26 @@ public static class SingleWriterGate
         }
     }
 
-    /// <summary>与 FileProcessedRecordStore 构造的目录回退逐字对齐：空配置回落 BaseDirectory/_audit。</summary>
+    /// <summary>
+    /// 与 FileProcessedRecordStore 构造的目录回退逐字对齐：空配置回落 BaseDirectory/_audit。
+    /// 随后 best-effort 归一别名（symlink/junction 最终目标）：锁身份必须跟「同一个物理目录」走，
+    /// 否则别名路径下的两个 Worker 会各自获锁、绕过准入门。归一失败（不存在/无权限）按原路径继续，
+    /// 中间路径分量上的别名未逐段解析，残余记录在类注释。
+    /// </summary>
     public static string ResolveEffectiveAuditDirectory(string? configuredAuditDirectory)
     {
-        return string.IsNullOrWhiteSpace(configuredAuditDirectory)
+        var directory = string.IsNullOrWhiteSpace(configuredAuditDirectory)
             ? Path.Combine(AppContext.BaseDirectory, "_audit")
             : configuredAuditDirectory;
+        try
+        {
+            var fullPath = Path.GetFullPath(directory);
+            return Directory.ResolveLinkTarget(fullPath, returnFinalTarget: true)?.FullName ?? fullPath;
+        }
+        catch
+        {
+            return Path.GetFullPath(directory);
+        }
     }
 
     /// <summary>

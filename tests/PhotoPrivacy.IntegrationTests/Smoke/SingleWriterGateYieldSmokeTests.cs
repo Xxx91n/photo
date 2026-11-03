@@ -73,7 +73,8 @@ public sealed class SingleWriterGateYieldSmokeTests : IntegrationTestBase
 
             var yieldRun = await RunBackgroundWorkerOnceAsync(repoRoot, configPath, TimeSpan.FromSeconds(30));
             Assert.Equal(1, yieldRun.ExitCode);
-            Assert.Contains("让位", yieldRun.Stderr, StringComparison.OrdinalIgnoreCase);
+            // 断 ASCII 行而非中文：Windows 非 UTF-8 控制台码页下中文可能变「?」，让位本身以英文行为准（CodeRabbit #163）
+            Assert.Contains("yielding", yieldRun.Stderr, StringComparison.OrdinalIgnoreCase);
 
             var auditFile = WaitForAuditFile(audit, TimeSpan.FromSeconds(5));
             var content = File.ReadAllText(auditFile);
