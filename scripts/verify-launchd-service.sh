@@ -347,6 +347,11 @@ if wait_until 30 test -S "$SERVICE_SOCKET"; then
   rec PASS "服务模式 UDS 端点已绑定（${SERVICE_SOCKET}）"
 else
   capture 06-socket.txt find "$INSTALL_DIR" \( -name "*.sock" -o -name "*.log" \)
+  # 诊断 HOME 解析分歧：.NET UserProfile 取 HOME/或 passwd home，落点不同 socket 路径就不同
+  CUR_PID="$(get_pid)"
+  if [[ -n "$CUR_PID" ]]; then
+    capture 06-socket.txt ps eww -p "$CUR_PID"
+  fi
   rec FAIL "30s 内未见服务模式 UDS 端点（${SERVICE_SOCKET}）"
 fi
 
