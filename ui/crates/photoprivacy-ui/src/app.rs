@@ -1963,8 +1963,8 @@ impl AppView {
         };
 
         // Design(#82): 连接失败行优先呈现编排结论的分类文案——服务授权拒绝与 Worker 缺失
-        // 是两种截然不同的处境，统一归到心跳的 os error 2 会让未授权用户无从采取正确动作。
-        // 无分类时维持 last_error 原样（未分类错误的兜底口径不变）；#169 定形并已关票，存续出处改指 #82。
+        // 是两种截然不同的处境（#169 落地后关票，决策归档），统一归到心跳的 os error 2 会让未授权用户无从采取正确动作。
+        // 无分类时维持 last_error 原样（未分类错误的兜底口径不变）。
         let failure_line = match &self.snapshot.connect_failure {
             Some(cause) => Some((
                 connect_failure_text(&self.i18n, &self.config.ui.locale, cause),
