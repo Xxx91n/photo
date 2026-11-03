@@ -285,7 +285,7 @@ ui_shot() {
   run_with_timeout 60 "$out" launchctl asuser "$uid" sudo -u "$SUDO_USER" \
     bash "$SHOT_SCRIPT" --install-dir "$INSTALL_DIR" --tag "$tag" --out-dir "$EVIDENCE_DIR" || rc=$?
   if [[ -s "$EVIDENCE_DIR/ui-$tag.png" ]]; then
-    rec PASS "UI Service 页截图已产出（${tag}，内容待目检）：ui-$tag.png"
+    rec PASS "UI Service 页截图文件已产出（${tag}，内容待目检；无图形加速 VM 里 gpui 可能黑屏）：ui-$tag.png"
   else
     rec FAIL "UI Service 页截图未产出（${tag}，rc=${rc}，见 ui-shot-$tag.txt）"
   fi
@@ -340,15 +340,25 @@ ui_probe_report pre-install
 ui_shot pre-install
 
 # ---------- 2. 安装（install-launchd-service.sh，MacOps::install 同款通道） ----------
+{
+  echo "---- install 前 dscl 现状（#32 诊断） ----"
+  echo '$ dscl . -list /Groups gid'
+  dscl . -list /Groups gid 2>&1 || true
+  echo '$ dscl . -read /Groups/'"${SERVICE_USER}"
+  dscl . -read "/Groups/${SERVICE_USER}" 2>&1 || true
+  echo '$ dscl . -read /Users/'"${SERVICE_USER}"
+  dscl . -read "/Users/${SERVICE_USER}" 2>&1 || true
+  echo "---- install -x trace ----"
+} > "${EVIDENCE_DIR}/02-install.txt"
 set +e
-bash "$INSTALL_SCRIPT" \
+bash -x "$INSTALL_SCRIPT" \
   --install-dir "$INSTALL_DIR" \
   --config "$CONFIG_PATH" \
   --hot-folder "$HOT_FOLDER" \
   --audit-folder "$AUDIT_FOLDER" \
   --quarantine "$QUARANTINE_FOLDER" \
   --user "$SERVICE_USER" \
-  --group "$SERVICE_GROUP" > "${EVIDENCE_DIR}/02-install.txt" 2>&1
+  --group "$SERVICE_GROUP" >> "${EVIDENCE_DIR}/02-install.txt" 2>&1
 INSTALL_RC=$?
 set -e
 echo "[exit ${INSTALL_RC}]" >> "${EVIDENCE_DIR}/02-install.txt"

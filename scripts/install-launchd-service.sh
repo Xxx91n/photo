@@ -53,18 +53,29 @@ if [[ ! -x "$EXE_PATH" ]]; then
   exit 1
 fi
 
-# Create service group and user if needed
+# Create service group and user if needed.
+# dscl -create 对已存在记录回 eDSRecordAlreadyExists（exit 55）：安装必须可重入，且 CI 虚拟环境
+# （macOS runner，#32）实测出现 -read 守卫与 -create 结果不一致的形态——这里按幂等处理：
+# 55 视为“已在位”继续，其余退出码照旧中止（不吞真错误）。
+dscl_ensure() {
+  local rc=0
+  dscl . -create "$@" || rc=$?
+  if [[ $rc -ne 0 && $rc -ne 55 ]]; then
+    return "$rc"
+  fi
+}
+
 if ! dscl . -read /Groups/${GROUP_NAME} >/dev/null 2>&1; then
-  dscl . -create /Groups/${GROUP_NAME}
-  dscl . -create /Groups/${GROUP_NAME} PrimaryGroupID 400
+  dscl_ensure /Groups/${GROUP_NAME}
 fi
+dscl_ensure /Groups/${GROUP_NAME} PrimaryGroupID 400
 
 if ! dscl . -read /Users/${USER_NAME} >/dev/null 2>&1; then
-  dscl . -create /Users/${USER_NAME}
-  dscl . -create /Users/${USER_NAME} UserShell /usr/bin/false
-  dscl . -create /Users/${USER_NAME} NFSHomeDirectory "${INSTALL_DIR}"
-  dscl . -create /Users/${USER_NAME} PrimaryGroupID 400
+  dscl_ensure /Users/${USER_NAME}
 fi
+dscl_ensure /Users/${USER_NAME} UserShell /usr/bin/false
+dscl_ensure /Users/${USER_NAME} NFSHomeDirectory "${INSTALL_DIR}"
+dscl_ensure /Users/${USER_NAME} PrimaryGroupID 400
 
 mkdir -p "$HOT_FOLDER" "$AUDIT_FOLDER" "$QUARANTINE_FOLDER"
 chown -R "${USER_NAME}:${GROUP_NAME}" "$INSTALL_DIR" "$HOT_FOLDER" "$AUDIT_FOLDER" "$QUARANTINE_FOLDER"
