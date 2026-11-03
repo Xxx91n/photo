@@ -88,6 +88,27 @@ resolve_group_gid() {
 
 GROUP_GID="$(resolve_group_gid)" || { echo "No free GID in 400-499" >&2; exit 1; }
 
+# 用户侧同理：无 UniqueID 的记录对 getpwnam 不可见，chown 会报 illegal user name（#32 实测）。
+resolve_user_uid() {
+  local uid
+  uid="$(dscl . -read "/Users/${USER_NAME}" UniqueID 2>/dev/null | awk 'NR==1 && $2 ~ /^[0-9]+$/ {print $2}')"
+  if [[ -n "$uid" ]]; then
+    echo "$uid"
+    return 0
+  fi
+  local candidate=400
+  while [[ $candidate -lt 500 ]]; do
+    if ! dscl . -list /Users uid 2>/dev/null | awk -v u="$candidate" '$2 == u { found=1 } END { exit !found }'; then
+      echo "$candidate"
+      return 0
+    fi
+    candidate=$((candidate + 1))
+  done
+  return 1
+}
+
+USER_UID="$(resolve_user_uid)" || { echo "No free UID in 400-499" >&2; exit 1; }
+
 if ! dscl . -read /Groups/${GROUP_NAME} >/dev/null 2>&1; then
   dscl_ensure /Groups/${GROUP_NAME}
 fi
@@ -96,6 +117,7 @@ dscl_ensure /Groups/${GROUP_NAME} PrimaryGroupID "$GROUP_GID"
 if ! dscl . -read /Users/${USER_NAME} >/dev/null 2>&1; then
   dscl_ensure /Users/${USER_NAME}
 fi
+dscl_ensure /Users/${USER_NAME} UniqueID "$USER_UID"
 dscl_ensure /Users/${USER_NAME} UserShell /usr/bin/false
 dscl_ensure /Users/${USER_NAME} NFSHomeDirectory "${INSTALL_DIR}"
 dscl_ensure /Users/${USER_NAME} PrimaryGroupID "$GROUP_GID"
