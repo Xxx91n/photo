@@ -120,8 +120,7 @@ fn audit_fallback_directory() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("hot").join("_audit"))
 }
 
-/// 程序入口：解析 CLI 参数并装配 tokio 运行时；`--service-probe-report` 只读探针路径
-/// 落探测状态 JSON 后即退出（不建窗、不连 Worker），其余路径首探服务安装态并进入 gpui 事件循环。
+/// 入口：解析 CLI 参数，初始化运行时与平台层，依据静默启动/--open-page 决定是否建窗出页，随后由事件泵守护直至退出。
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
@@ -271,7 +270,9 @@ fn main() -> anyhow::Result<()> {
         })
         .detach();
 
-        if !start_hidden {
+        // --open-page 显式给出时覆盖静默启动（#174）：显式 CLI 请求优先于隐式静默默认，
+        // 取证脚本在配置了静默启动的机器上仍能建窗出页；未给出时维持静默语义不变。
+        if !start_hidden || deps.open_page.is_some() {
             open_main_window(cx, deps);
         }
     });
