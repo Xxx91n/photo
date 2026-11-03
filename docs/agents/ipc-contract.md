@@ -108,11 +108,14 @@ store/audit）建回来，再按上述契约回 `ok:false`（重建失败带 `re
     拆位前被授权用户可建后续实例（冒充服务端/抢占连接/DoS，PR #160 审查发现登记于 #7）。
   - **客户端双端同步细粒度打开**（与拆位 DACL 同值 0x12019B，GENERIC 打开会因 0x4 位被
     AccessCheck 整体拒绝）：C# 走 `NamedPipeClientStream(serverName, pipeName, PipeAccessRights, …)`
-    重载（.NET 10 实有该 API；#7 票内评论所记「无 access-rights 重载可用」已过时，无需 P/Invoke）；
+    重载（.NET 10 实有该 API；#7 票内评论所记「无 access-rights 重载可用」已过时，无需 P/Invoke）
+    + `TokenImpersonationLevel.Identification`（.NET 内部生成 SECURITY_SQOS_PRESENT|Identification）；
     Rust 侧 tokio 1.54 无 `ClientOptions::desired_access`（评论所记 API 不存在，docs.rs 核实）→
-    原生 CreateFileW 镜像 tokio open() 参形态（share=0、OPEN_EXISTING、FILE_FLAG_OVERLAPPED、
-    SECURITY_IDENTIFICATION）后经 `NamedPipeClient::from_raw_handle` 注册；busy/not-found 重试
-    语义与错误码不变。双端冒充级别固定 Identification：防伪服务端（预蹲者）对客户端发起
+    原生 CreateFileW（share=0、OPEN_EXISTING、SQOS 三件套 `SECURITY_SQOS_PRESENT|
+    SECURITY_IDENTIFICATION|FILE_FLAG_OVERLAPPED`，与 tokio `ClientOptions::new` 默认 flags
+    同构；SECURITY_SQOS_PRESENT 是微软 CreateFileW 文档的前置条件，漏它则 Identification
+    级别不生效——审查返修 M1 钉住）后经 `NamedPipeClient::from_raw_handle` 注册；busy/not-found
+    重试语义与错误码不变。双端冒充级别固定 Identification：防伪服务端（预蹲者）对客户端发起
     ImpersonateNamedPipeClient 冒充；产品服务端从不冒充客户端，收紧不改变合法链路。
   - **命名熵**：服务每次监听生成 crypto-random 后缀（基名.32hex），**先建首例**
     （FirstPipeInstance fail-fast 传感器保留：名被占即绑定失败）**再通告**
@@ -120,7 +123,9 @@ store/audit）建回来，再按上述契约回 `ok:false`（重建失败带 `re
     发现通道完整性 ≥ 管道客户端集合，非提权无法伪造指针）。随机名使预蹲者无从得知未诞生的
     名字，拆位使建例后无法加实例，HKLM 权限使指针不可伪造——三者闭环。通告失败（非
     LocalSystem 服务账户/注册表损坏）回退静态名重绑：fail-safe 可用性优先（与 #70 的 SID
-    缺失回退同构），Worker 记 warning 观测，此时防抢占面回到 #7 前、拆位 DACL 仍生效。
+    缺失回退同构），Worker 记 warning 观测，此时防抢占面回到 #7 前、拆位 DACL 仍生效；
+    回退时 best-effort 清除残留通告值（审查返修 m1：客户端只对缺失/非法回退静态名，不清
+    残留会把 UI 钉死在陈旧名上）。
     优雅停机清除通告值；崩溃残留由下次启动覆盖/卸载清除（卸载脚本一并清三个登记值）。
   - **UI 侧动态发现**：服务端点解析按拍/失败时重读通告名（3s 可达性探测、连接编排、心跳
     失败重解析、1s 版本轮询）；通告缺失/非法（字符集/长度校验防注入）回退静态名——旧版服务
@@ -131,7 +136,9 @@ store/audit）建回来，再按上述契约回 `ok:false`（重建失败带 `re
     认证」边界）；② 混合版本窗口：新服务 + 旧 UI 表现为「服务不可达→回退后台」（发布目录
     同体、升级关 UI，实际窗口≈0）；③ UI 启动恰逢服务重启的毫秒级通告空窗内可能读到陈旧
     通告名——探测失败一拍后自愈；④ 同机授权用户以客户端身份连服务管道发任意请求仍是信任
-    边界内的既有行为（#1 语义）。
+    边界内的既有行为（#1 语义）；⑤ 通告持续失败（权限性）且回退时的残留清除也失败——
+    UI 会钉死在陈旧通告值上（探测恒失败），需修复注册表写入权限后服务重启才恢复
+    （清除是 best-effort，审查返修 m1 已登记）。
 - Unix 服务模式不变（0660 + 组白名单）；Linux/macOS 的服务管道访问按各自机制另行核对（#70 AC）。
 - 客户端**不做**旧 UI 的 `PipeOptions.CurrentUserOnly` 属主校验（服务模式下自相矛盾）；理由见 `ui/crates/photoprivacy-ipc/src/client.rs` 注释。
 

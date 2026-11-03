@@ -34,6 +34,21 @@ const FILE_CREATE_PIPE_INSTANCE: u32 = 0x0000_0004;
 pub const IPC_CLIENT_DESIRED_ACCESS: u32 =
     FILE_GENERIC_READ | (FILE_GENERIC_WRITE & !FILE_CREATE_PIPE_INSTANCE);
 
+// 打开 flags 的本地常量（winnt.h/winbase.h 值；不 import windows_sys 是为了在非 Windows 编译面
+// 也能用测试钉住组合——审查返修 M1：漏 SECURITY_SQOS_PRESENT 会让 Identification 级别失效）。
+/// FILE_FLAG_OVERLAPPED（winbase.h）：tokio IOCP 注册所需。
+const FILE_FLAG_OVERLAPPED: u32 = 0x4000_0000;
+/// OPEN_EXISTING（winbase.h）：管道客户端打开语义（不存在即失败，不创建）。
+const OPEN_EXISTING: u32 = 3;
+/// SECURITY_SQOS_PRESENT（winnt.h）：SQOS 位生效开关——微软 CreateFileW 文档的前置条件，
+/// 不带它则冒充级别不在文档化行为内（tokio 1.54.1 ClientOptions::new 默认值含此位，源码核实）。
+const SECURITY_SQOS_PRESENT: u32 = 0x0010_0000;
+/// SECURITY_IDENTIFICATION（winnt.h）：冒充级别=仅识别——服务端不可对客户端 ImpersonateNamedPipeClient 冒充。
+const SECURITY_IDENTIFICATION: u32 = 0x0001_0000;
+/// IPC 客户端打开 flags（#7）：SQOS 三件套，与 tokio ClientOptions::new 默认 flags 同构（1.54.1 源码核实）。
+const IPC_CLIENT_OPEN_FLAGS: u32 =
+    SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION | FILE_FLAG_OVERLAPPED;
+
 /// ReloadConfig 会停 watcher → 重建 bridge → 重启 watcher；旧 UI 的 3s 读超时覆盖不了，
 /// 会把「正在重载」误判成 Worker 掉线。契约要求 ≥6s，这里取 10s 留余量。
 // Design(#49): ReloadConfig 的读超时独立于普通请求（10s），避免热重载被 3s 超时误杀。
@@ -221,18 +236,19 @@ impl IpcClient {
 // Design(#49): IPC 认证以 OS 身份为边界（服务端 DACL），客户端不做属主校验。
 //
 // #7 起客户端改以细粒度掩码打开（IPC_CLIENT_DESIRED_ACCESS）：tokio 1.54 的 ClientOptions 无
-// desired_access 重载（#7 票内评论所述 API 不存在，docs.rs 核实），故镜像 tokio open() 的原生
-// CreateFileW（share=0、OPEN_EXISTING、FILE_FLAG_OVERLAPPED、SECURITY_IDENTIFICATION）再经
+// desired_access 重载（#7 票内评论所述 API 不存在，docs.rs 核实），故自写原生 CreateFileW 再经
 // NamedPipeClient::from_raw_handle 交还 tokio IOCP 注册；busy/not-found 重试仍由上层 connect 的
-// 预算循环承担（错误码不变）。SECURITY_IDENTIFICATION 与 C# 侧 TokenImpersonationLevel.Identification
-// 对齐：防伪服务端（预蹲者）对客户端发起 ImpersonateNamedPipeClient 冒充；产品服务端从不冒充
-// 客户端，收紧不改变合法链路。
-// Design(#7): 客户端请求掩码剥除 FILE_CREATE_PIPE_INSTANCE（0x4）并固定 Identification 冒充级别。
+// 预算循环承担（错误码不变）。打开 flags 与 tokio ClientOptions::new 默认值同构（1.54.1 源码核实）：
+// share=0、OPEN_EXISTING、SQOS 三件套 SECURITY_SQOS_PRESENT|SECURITY_IDENTIFICATION|
+// FILE_FLAG_OVERLAPPED——SECURITY_SQOS_PRESENT 是微软 CreateFileW 文档的前置条件，不带它则
+// Identification 级别不在文档化行为内（.NET 侧 TokenImpersonationLevel.Identification 内部同样生成
+// PRESENT 位）。与 C# 侧对齐：防伪服务端（预蹲者）对客户端发起 ImpersonateNamedPipeClient 冒充；
+// 产品服务端从不冒充客户端，收紧不改变合法链路。
+// Design(#7): 客户端请求掩码剥除 FILE_CREATE_PIPE_INSTANCE（0x4），SQOS 三件套固定 Identification 冒充级别。
 #[cfg(windows)]
 async fn connect_once(endpoint: &Endpoint) -> io::Result<Stream> {
     use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
-    use windows_sys::Win32::Storage::FileSystem::{CreateFileW, FILE_FLAG_OVERLAPPED, OPEN_EXISTING};
-    use windows_sys::Win32::System::SystemServices::SECURITY_IDENTIFICATION;
+    use windows_sys::Win32::Storage::FileSystem::CreateFileW;
 
     let Endpoint::Pipe(name) = endpoint else {
         return Err(io::Error::new(
@@ -255,7 +271,7 @@ async fn connect_once(endpoint: &Endpoint) -> io::Result<Stream> {
             0,
             std::ptr::null_mut(),
             OPEN_EXISTING,
-            SECURITY_IDENTIFICATION | FILE_FLAG_OVERLAPPED,
+            IPC_CLIENT_OPEN_FLAGS,
             std::ptr::null_mut(),
         )
     };
@@ -341,5 +357,19 @@ mod tests {
             IPC_CLIENT_DESIRED_ACCESS
         );
         assert_eq!(0x0012_019B, IPC_CLIENT_DESIRED_ACCESS);
+    }
+
+    #[test]
+    fn client_open_flags_pin_sqos_identification_and_overlapped() {
+        // 防（#7 审查返修 M1 回潮）：漏 SECURITY_SQOS_PRESENT —— Identification 级别不在微软
+        // CreateFileW 文档化行为内，伪服务端（预蹲者）仍可冒充客户端；漏 FILE_FLAG_OVERLAPPED
+        // ——tokio IOCP 注册失败。组合必须与 tokio ClientOptions::new 默认 flags 同构。
+        assert_eq!(
+            SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION | FILE_FLAG_OVERLAPPED,
+            IPC_CLIENT_OPEN_FLAGS
+        );
+        assert_eq!(0x0010_0000, SECURITY_SQOS_PRESENT);
+        assert_eq!(0x0001_0000, SECURITY_IDENTIFICATION);
+        assert_eq!(0x4000_0000, FILE_FLAG_OVERLAPPED);
     }
 }

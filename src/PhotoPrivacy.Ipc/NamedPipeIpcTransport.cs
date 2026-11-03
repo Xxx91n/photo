@@ -129,6 +129,16 @@ public sealed class NamedPipeIpcTransport : IIpcTransport
         _pipeName = baseName;
         _server = CreatePipeServer(baseName, isFirstInstance: true);
         ServicePipeBind = ServicePipeBindOutcome.StaticFallback;
+
+        // 审查返修（m1）：生产路径通告失败时，注册表可能残留合法形态的旧通告值——客户端只对
+        // 「缺失/非法」回退静态名，会钉死在陈旧名上（探测恒失败，服务页恒不可达）。此处
+        // best-effort 清除残留，让 UI 的下一拍探测落回静态名（本传输此刻就绑在静态名上）。
+        // 只对生产路径生效：注入通告器的测试（含「返回 false」形态）不得触碰真实注册表；
+        // 清除本身失败（权限性）时残留照旧，残余形态登记在 ipc-contract 已知残余。
+        if (_servicePipeAdvertiser is null)
+        {
+            WindowsServicePipeAcl.TryClearAdvertisedServicePipeName();
+        }
     }
 
     /// <summary>通告服务管道名（#7）：注入优先，null 走生产注册表路径；记录是否生产路径供 Dispose 清理。</summary>

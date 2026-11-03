@@ -98,7 +98,8 @@ pub fn next_backoff(current: Duration) -> Duration {
 ///
 /// 端点经 `resolve` 动态获取（#7）：服务管道随机化后服务重启会换名——失败时重解析，
 /// 否则永远重试旧名；后台端点静态，重解析是零成本恒等。初始端点在任务启动时解析一次，
-/// 成功期间不重解析（注册表零读）。
+/// 心跳成功期不重解析（心跳零注册表读；服务模式下 1s 版本轮询与 3s 探测拍仍按拍重读，
+/// 见 ipc-contract 的登记）。
 /// 探针用 GetStatus 而非旧 UI 的 Ping：每跳顺带刷新协议版本、模式与 ExifTool 版本；代价是
 /// 「Ping 通但 GetStatus 失败」会被判为不可用（旧 UI 不用这些字段，所以只发 Ping）。
 // Design(#49): 心跳探针固定为 GetStatus，版本可见性优先于 Ping 的纯活性语义。
