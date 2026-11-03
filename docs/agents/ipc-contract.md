@@ -75,20 +75,25 @@ store/audit）建回来，再按上述契约回 `ok:false`（重建失败带 `re
 ## 认证边界与已知缺陷
 
 - Windows：后台管道 `PipeOptions.CurrentUserOnly`；Unix：0600/0660 + 对端 uid 白名单（fail-closed）。
-- Windows 服务管道（#70，决策 #82 D3）：显式 DACL 取代 `CurrentUserOnly`——安装脚本
-  （`scripts/install-service.ps1`）把安装者 SID 写入 `HKLM\SOFTWARE\PhotoPrivacy\ServicePipeInstallerSid`，
+- Windows 服务管道（#70，决策 #82 D3；#1 opt-in 授权集合）：显式 DACL 取代 `CurrentUserOnly`——
+  安装脚本（`scripts/install-service.ps1`）把安装者 SID 写入 `HKLM\SOFTWARE\PhotoPrivacy\ServicePipeInstallerSid`，
+  并把「安装者 + `-AuthorizedUsers` 显式授权用户」的完整 SID 集合写入 `ServicePipeAllowedSids`
+  （REG_MULTI_SZ，#1 opt-in：不传该参数则集合仍含安装者保底，默认不扩权）；
   服务端经 managed 正典 `NamedPipeServerStreamAcl.Create` 建例（传 `PipeSecurity`，不传
-  `CurrentUserOnly`——它会给创建者专属 DACL 并忽略传入值），授予安装者 SID
+  `CurrentUserOnly`——它会给创建者专属 DACL 并忽略传入值），授予集合内每个 SID
   FILE_GENERIC_READ|WRITE + SYSTEM/Administrators 完全控制。DACL 必须给创建者保留
   FILE_CREATE_PIPE_INSTANCE（0x4）：服务建第 2..N 个实例时内核按 DACL 对创建者令牌做该项检查
   ——38142f9b 的「单文件 UnauthorizedAccessException + 254 实例泄漏」实为旧 WorldSid-ReadWrite
   DACL 缺此位（`PipeAccessRights.Write` 刻意不含它），非单文件问题。
+  解析优先级：授权集合值缺失/空/全非法 → 回退安装者单值（#70 默认行为）→ 仍缺失才回退
+  `CurrentUserOnly`；集合内非法条目逐条剔除，不放大为整体失效。
   ACL 代码按 `PP_WINDOWS_HOST`（csproj 按 `'$(OS)'=='Windows_NT'` 注入，Ipc 与测试工程同口径）
   编译：CI test job 只跑 ubuntu，Windows 编译覆盖由 release.yml win-x64 构建与发版机承担；
   交叉发布（非 Windows 宿主产出 win-x64）时解析与建例均被编译排除，fail-closed 回退
   `CurrentUserOnly`。SID 缺失/无效 fail-closed 回退 `CurrentUserOnly` 并记 warning；
-  重装/升级覆盖登记值，ACL 随最新安装者。
-  安装者账户的非提权 UI 可完成服务端点往返；其他账户仍被拒（多用户/跨账户归 #1）。
+  重装/升级覆盖登记值，ACL 随最新授权集合。
+  授权集合内账户的非提权 UI 可完成服务端点往返；集合外账户仍被拒（授权语义归 #1——
+  被授权账户可读服务侧 GetRecentLogs 审计信息，只应授予信任用户）。
   C# 传输层 `ConnectAsync` 客户端与所连模式同界：后台模式带 `CurrentUserOnly`（不变），
   服务模式不带（与服务端 DACL 同界，否则会在客户端把对 SYSTEM 服务的合法连接整体拒绝）；
   服务端点的产品客户端只有 Rust UI（本就不做属主校验）。

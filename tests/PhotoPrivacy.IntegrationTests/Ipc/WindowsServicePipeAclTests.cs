@@ -8,8 +8,8 @@ using System.IO.Pipes;
 namespace PhotoPrivacy.IntegrationTests.Ipc;
 
 /// <summary>
-/// 行为测试：Windows 服务管道显式 DACL（#70，决策 #82 D3）。
-/// 覆盖三点：
+/// 行为测试：Windows 服务管道显式 DACL（#70，决策 #82 D3；#1 opt-in 授权集合扩展）。
+/// 覆盖四点：
 /// ① 显式 DACL 建例后，被授权 SID（安装者）客户端能完成连接与一次读写——这验证 DACL 权限位
 ///   覆盖 GENERIC_READ|GENERIC_WRITE 的文件系统语义映射（缺 ReadPermissions/Synchronize 等位
 ///   会让 AccessCheck 整体拒绝，连接直接 UnauthorizedAccessException）；
@@ -17,7 +17,10 @@ namespace PhotoPrivacy.IntegrationTests.Ipc;
 ///   边界说明（如实登记）：本套测试的客户端与建例者同用户，证明不了「其他账户确实被拒」——
 ///   CurrentUserOnly 内核拒绝与 DACL 跨令牌 AccessCheck 都只在 Windows 实机上由人工 S4 复测覆盖；
 ///   这里证明的是回退路径与 DACL 建例路径不炸绑定、同用户往返不回归；
-/// ③ 安全描述符内容：安装者读写 + LocalSystem/Administrators 完全控制。
+/// ③ 安全描述符内容：每个授权 SID（#1 集合可含额外用户）各自读写 +
+///   LocalSystem/Administrators 完全控制；
+/// ④ 授权集合解析（#1 opt-in）：集合注入时走集合 DACL；集合为空/全非法时回退安装者单值，
+///   两者皆无时回退 CurrentUserOnly——未 opt-in 不扩权。
 ///
 /// CI 平台限制（如实登记，先例 IpcAuthenticationLayeringTests）：.github/workflows/ci.yml 的
 /// test job 为 ubuntu-latest，Windows 专属断言在 CI 不执行；类型与调用的编译覆盖由 ubuntu
@@ -102,6 +105,109 @@ public sealed class WindowsServicePipeAclTests
         await AssertRoundTripAsync(transport);
     }
 
+    [Fact]
+    public async Task ServiceShared_AllowedSids_Collection_RoundTrip_Does_Not_Regress_Same_User()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        // #1 opt-in 集合路径：注入「本用户 + 一个伪造但格式合法的额外 SID」的集合，
+        // 验证集合 DACL 建例不炸绑定、集合内成员（本用户）往返不回归。
+        // 「集合外账户确实被拒」由内核 AccessCheck 保证，归人工复测（见类注释边界说明）。
+        var ownSid = WindowsIdentity.GetCurrent().User!.Value;
+        var extraSid = "S-1-5-21-1-2-3-4";
+        await using var transport = new NamedPipeIpcTransport(
+            NewPipeName(),
+            WindowsPipeAccessMode.ServiceShared,
+            allowedSidsResolver: () => new[] { ownSid, extraSid });
+        await transport.ListenAsync(CancellationToken.None);
+
+        await AssertRoundTripAsync(transport);
+    }
+
+    [Fact]
+    public async Task ServiceShared_Empty_AllowedSids_Falls_Back_To_InstallerSid()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        // #1 opt-in 语义：集合未 opt-in（空集/未登记）→ 回退安装者单值（#70 默认行为）。
+        var installerSid = WindowsIdentity.GetCurrent().User!.Value;
+        await using var transport = new NamedPipeIpcTransport(
+            NewPipeName(),
+            WindowsPipeAccessMode.ServiceShared,
+            installerSidResolver: () => installerSid,
+            allowedSidsResolver: () => Array.Empty<string>());
+        await transport.ListenAsync(CancellationToken.None);
+
+        await AssertRoundTripAsync(transport);
+    }
+
+    [Fact]
+    public async Task ServiceShared_All_Invalid_AllowedSids_Falls_Back_To_InstallerSid()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        // CodeRabbit 返修锁定：注入集合非空但无任何合法条目（模拟注册表 MULTI_SZ 全损坏）时，
+        // 与生产路径同构——回退安装者单值，而不是直接 CurrentUserOnly；安装者（本用户）往返可用。
+        var installerSid = WindowsIdentity.GetCurrent().User!.Value;
+        await using var transport = new NamedPipeIpcTransport(
+            NewPipeName(),
+            WindowsPipeAccessMode.ServiceShared,
+            installerSidResolver: () => installerSid,
+            allowedSidsResolver: () => new[] { "not-a-sid", "also-not-a-sid" });
+        await transport.ListenAsync(CancellationToken.None);
+
+        await AssertRoundTripAsync(transport);
+    }
+
+    [Fact]
+    public async Task ServiceShared_All_Invalid_AllowedSids_Without_Installer_Resolver_Falls_Back_To_CurrentUserOnly()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        // CodeRabbit 返修锁定（注入边界）：只注入集合解析器（无单值注入）时，注入即完全接管——
+        // 集合无合法条目不回退读注册表单值，直接 CurrentUserOnly，行为不受本机登记影响
+        // （否则本机恰有安装者登记时 DACL 会用机器特定 SID，测试随机器漂移）。
+        await using var transport = new NamedPipeIpcTransport(
+            NewPipeName(),
+            WindowsPipeAccessMode.ServiceShared,
+            allowedSidsResolver: () => new[] { "not-a-sid" });
+        await transport.ListenAsync(CancellationToken.None);
+
+        await AssertRoundTripAsync(transport);
+    }
+
+    [Fact]
+    public async Task ServiceShared_All_Invalid_AllowedSids_And_No_InstallerSid_Falls_Back_To_CurrentUserOnly()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        // 集合全非法（注册表被手改坏）且安装者单值也缺失 → 整体 fail-closed 回退
+        // CurrentUserOnly：不因集合损坏而放宽任何边界。
+        await using var transport = new NamedPipeIpcTransport(
+            NewPipeName(),
+            WindowsPipeAccessMode.ServiceShared,
+            installerSidResolver: () => null,
+            allowedSidsResolver: () => new[] { "not-a-sid", "also-not-a-sid" });
+        await transport.ListenAsync(CancellationToken.None);
+
+        await AssertRoundTripAsync(transport);
+    }
+
 #if PP_WINDOWS_HOST
     [Fact]
     public void ServicePipeSecurity_Grants_Installer_ReadWrite_And_System_Admin_FullControl()
@@ -112,7 +218,7 @@ public sealed class WindowsServicePipeAclTests
         }
 
         var installerSid = WindowsIdentity.GetCurrent().User!.Value;
-        var security = WindowsPipeNative.BuildServicePipeSecurity(new SecurityIdentifier(installerSid));
+        var security = WindowsPipeNative.BuildServicePipeSecurity(new[] { new SecurityIdentifier(installerSid) });
         var rules = security.GetAccessRules(includeExplicit: true, includeInherited: false, targetType: typeof(SecurityIdentifier));
 
         // 掩码与 WindowsServicePipeAcl 的常量同源：FILE_GENERIC_READ|WRITE、FILE_ALL_ACCESS。
@@ -151,6 +257,69 @@ public sealed class WindowsServicePipeAclTests
             () => Assert.True(installerMask.HasValue, "installer ACE must exist"),
             // 客户端按 GENERIC_READ|GENERIC_WRITE 打开，AccessCheck 映射需要全部文件语义位。
             () => Assert.Equal(fileGenericReadWrite, installerMask),
+            () => Assert.True(systemMask.HasValue, "LocalSystem ACE must exist"),
+            () => Assert.Equal(fileAllAccess, systemMask),
+            () => Assert.True(administratorsMask.HasValue, "Administrators ACE must exist"),
+            () => Assert.Equal(fileAllAccess, administratorsMask));
+    }
+
+    [Fact]
+    public void ServicePipeSecurity_Grants_Each_AllowedSid_ReadWrite_And_System_Admin_FullControl()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        // #1 opt-in：授权集合内每个 SID 各自一条读写 ACE（掩码与单 SID 路径同源），
+        // SYSTEM/Administrators 仍各一条完全控制——集合扩权不改变掩码与特权账户规则。
+        var installerSid = WindowsIdentity.GetCurrent().User!.Value;
+        var extraSid = new SecurityIdentifier("S-1-5-21-1-2-3-4");
+        var security = WindowsPipeNative.BuildServicePipeSecurity(
+            new SecurityIdentifier[] { new(installerSid), extraSid });
+        var rules = security.GetAccessRules(includeExplicit: true, includeInherited: false, targetType: typeof(SecurityIdentifier));
+
+        const uint fileGenericReadWrite = 0x00120089u | 0x00120116u;
+        const uint fileAllAccess = 0x001F01FFu;
+
+        uint? installerMask = null;
+        uint? extraMask = null;
+        uint? systemMask = null;
+        uint? administratorsMask = null;
+        var systemSid = new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null).Value;
+        var administratorsSid = new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null).Value;
+        foreach (var rule in rules)
+        {
+            var pipeRule = (PipeAccessRule)rule;
+            if (pipeRule.AccessControlType != AccessControlType.Allow)
+            {
+                continue;
+            }
+            var mask = (uint)pipeRule.PipeAccessRights;
+            var sidValue = pipeRule.IdentityReference.Value;
+            if (string.Equals(sidValue, installerSid, StringComparison.OrdinalIgnoreCase))
+            {
+                installerMask = mask;
+            }
+            else if (string.Equals(sidValue, extraSid.Value, StringComparison.OrdinalIgnoreCase))
+            {
+                extraMask = mask;
+            }
+            else if (sidValue == systemSid)
+            {
+                systemMask = mask;
+            }
+            else if (sidValue == administratorsSid)
+            {
+                administratorsMask = mask;
+            }
+        }
+
+        Assert.Multiple(
+            () => Assert.True(installerMask.HasValue, "installer ACE must exist"),
+            () => Assert.Equal(fileGenericReadWrite, installerMask),
+            () => Assert.True(extraMask.HasValue, "extra allowed SID ACE must exist"),
+            () => Assert.Equal(fileGenericReadWrite, extraMask),
             () => Assert.True(systemMask.HasValue, "LocalSystem ACE must exist"),
             () => Assert.Equal(fileAllAccess, systemMask),
             () => Assert.True(administratorsMask.HasValue, "Administrators ACE must exist"),
