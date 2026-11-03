@@ -128,14 +128,6 @@ fn main() -> anyhow::Result<()> {
         .enable_all()
         .build()?;
 
-    // 单实例守卫：与旧 UI 同名同命名空间，任一入口已运行时，第二个实例只唤起不重开。
-    let guard = SingleInstanceGuard::acquire(UI_INSTANCE_NAME);
-    if !guard.is_owner() {
-        let notified = runtime.block_on(notify_existing_instance(Duration::from_millis(500)));
-        eprintln!("[photoprivacy-ui] 已有实例在运行（唤起窗口: {notified}），本实例退出");
-        return Ok(());
-    }
-
     let options = ConnectOptions::discover().with_overrides(args.config_path, args.worker_path);
     // 不回落到 CWD：Worker 以 AppContext.BaseDirectory 为基准，UI 若用相对路径会读写不同文件。
     let config_path = options.config_path.clone().ok_or_else(|| {
@@ -168,6 +160,15 @@ fn main() -> anyhow::Result<()> {
             report_path,
             format!("{{\"state\":\"{:?}\"}}\n", initial_service_state),
         )?;
+        return Ok(());
+    }
+    // 单实例守卫：与旧 UI 同名同命名空间，任一入口已运行时，第二个实例只唤起不重开。
+    // 放在探测报告出口之后：--service-probe-report 是只读探针，不应被并存 UI 的实例锁挡掉
+    // 报告产出（CodeRabbit 审查意见，#32）。
+    let guard = SingleInstanceGuard::acquire(UI_INSTANCE_NAME);
+    if !guard.is_owner() {
+        let notified = runtime.block_on(notify_existing_instance(Duration::from_millis(500)));
+        eprintln!("[photoprivacy-ui] 已有实例在运行（唤起窗口: {notified}），本实例退出");
         return Ok(());
     }
     let (service_snapshots, service_commands) =
