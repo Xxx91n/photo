@@ -78,7 +78,7 @@ public sealed class IpcAuthClaimReconciliationTests
         Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
     }
 
-    // ---------- 3. FirstPipeInstance 仅 listen 期首例 ----------
+    // ---------- 2. FirstPipeInstance 仅 listen 期首例 ----------
 
     internal static List<string> ClassifyFirstInstanceOnly(string strippedTransportSource)
     {
@@ -148,7 +148,25 @@ public sealed class IpcAuthClaimReconciliationTests
         Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
     }
 
-    // ---------- 4. 服务管道通告名登记键的 Rust/C# 两侧对账（#7） ----------
+    // ---------- 3. 服务管道通告名登记键的 Rust/C# 两侧对账（#7） ----------
+
+    /// <summary>needle 构造与断言同一处，供正向断言与 negative self-proof 共用（本类惯例）。</summary>
+    internal static List<string> ClassifyServicePipeAdvertisementRegistryNames(
+        string strippedRustSource, string subkey, string valueName)
+    {
+        var violations = new List<string>();
+        // Rust 源码里反斜杠以 \\ 转义形态出现：C# 侧常量按同规则转义后比对。
+        var subkeyLiteral = subkey.Replace(@"\", @"\\");
+        if (!strippedRustSource.Contains($"wide(\"{subkeyLiteral}\")", StringComparison.Ordinal))
+        {
+            violations.Add($"Rust 读侧缺少通告键字面量 wide(\"{subkeyLiteral}\")（endpoints.rs）");
+        }
+        if (!strippedRustSource.Contains($"wide(\"{valueName}\")", StringComparison.Ordinal))
+        {
+            violations.Add($"Rust 读侧缺少通告值名字面量 wide(\"{valueName}\")（endpoints.rs）");
+        }
+        return violations;
+    }
 
     [Fact]
     public void Service_Pipe_Advertisement_Registry_Names_Match_Rust_Client_Literals()
@@ -159,12 +177,39 @@ public sealed class IpcAuthClaimReconciliationTests
         // （Rust 无法引用 C# 常量）。按本类的 source-lint 对账先例钉住两侧字面量；安装脚本侧的
         // 同类重复自 #70 起即无守卫（既有先例，卸载清三值清单已在 ipc-contract 登记），不扩本票面。
         var rust = SourceLint.ReadStripped("ui", "crates", "photoprivacy-ipc", "src", "endpoints.rs");
-        // Rust 源码里反斜杠以 \\ 转义形态出现：C# 侧常量按同规则转义后比对。
-        var subkeyLiteral = WindowsServicePipeAcl.RegistrySubKeyName.Replace(@"\", @"\\");
-        Assert.Contains($"wide(\"{subkeyLiteral}\")", rust, StringComparison.Ordinal);
-        Assert.Contains(
-            $"wide(\"{WindowsServicePipeAcl.AdvertisedServicePipeValueName}\")",
-            rust,
-            StringComparison.Ordinal);
+        var violations = ClassifyServicePipeAdvertisementRegistryNames(
+            rust, WindowsServicePipeAcl.RegistrySubKeyName, WindowsServicePipeAcl.AdvertisedServicePipeValueName);
+        Assert.True(violations.Count == 0, string.Join(Environment.NewLine, violations));
+    }
+
+    [Fact]
+    public void Service_Pipe_Advertisement_Registry_Names_Guard_Negative_Self_Proof()
+    {
+        // 失效即红自证（终审 M-F1，本类惯例）：改坏 Rust 源码的键/值名字面量后守卫必须变红，
+        // 防止对账断言随字面量漂移而空转。verbatim 字面量保持与 Rust 源码一致的双反斜杠字节。
+        var green = SourceLint.ReadStripped("ui", "crates", "photoprivacy-ipc", "src", "endpoints.rs");
+        var failing = new (string Source, string Reason)[]
+        {
+            (green.Replace(@"SOFTWARE\\PhotoPrivacy", @"SOFTWARE\\PhotoPrivacyX"), "通告键被改写"),
+            (green.Replace("ServicePipeName", "ServicePipeNameX"), "通告值名被改写"),
+        };
+
+        var failures = new List<string>();
+        foreach (var (source, reason) in failing)
+        {
+            if (source == green)
+            {
+                failures.Add("MUTATION DID NOT APPLY (sample equals green): " + reason);
+                continue;
+            }
+            if (ClassifyServicePipeAdvertisementRegistryNames(
+                    source, WindowsServicePipeAcl.RegistrySubKeyName, WindowsServicePipeAcl.AdvertisedServicePipeValueName)
+                .Count == 0)
+            {
+                failures.Add("MISSED (should be red): " + reason);
+            }
+        }
+
+        Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
     }
 }
