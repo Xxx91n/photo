@@ -17,6 +17,10 @@ on:
       - "config/config.sample.json"
       # 服务探测语义（MacProbe）改动必须过 macOS VM 对拍门禁（#172：S1–S8 macOS 探测项验收口径）
       - "ui/crates/photoprivacy-service/**"
+      # 服务模式 UDS 落点与探测取证（#167）：端点常量在双端各有一份，改动任一侧都要过 macOS VM
+      - "src/PhotoPrivacy.Ipc/**"
+      - "ui/crates/photoprivacy-ipc/**"
+      - "ui/crates/photoprivacy-ui/src/main.rs"
       - ".github/workflows/launchd-verify.yml"
 
 jobs:

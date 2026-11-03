@@ -52,6 +52,11 @@ pub fn current_home() -> Option<PathBuf> {
     std::env::var_os("HOME").map(PathBuf::from)
 }
 
+/// macOS 服务模式 UDS 固定落点，与 `WorkerIpcEndpointNames.MacServiceSocketPath` 逐字一致。
+/// 系统级单一事实源：服务端（LaunchDaemon，服务用户）与客户端（GUI 用户）解析到同一路径，
+/// 权限靠安装脚本建的 0750 目录 + socket 0660 + 服务组边界（#167）。
+pub const MACOS_SERVICE_SOCKET: &str = "/Library/Application Support/photoprivacy/worker.sock";
+
 // IPC 端点名是协议主缝的一部分：与 `WorkerIpcEndpointNames` 逐字一致，不改协议；旧 C# UI 全程硬编码
 // Windows 管道名（Linux/macOS 实际连不上），新客户端（#54）改按 OS 解析，修的是客户端缺陷而非协议。
 // Design(#49): 端点名冻结为既有契约，禁止为解析方便改名。
@@ -72,14 +77,18 @@ pub fn resolve_endpoint(
             WorkerMode::Background => "/run/photoprivacy/worker-background.sock",
             WorkerMode::Service => "/run/photoprivacy/worker.sock",
         }))),
-        HostPlatform::MacOs => {
-            let home = home?;
-            let dir = home.join("Library/Application Support/photoprivacy");
-            Some(Endpoint::UnixSocket(dir.join(match mode {
-                WorkerMode::Background => "worker-background.sock",
-                WorkerMode::Service => "worker.sock",
-            })))
-        }
+        HostPlatform::MacOs => match mode {
+            // 后台模式：per-user，UI 拉起的 Worker 与 UI 同用户，随 HOME 走。
+            WorkerMode::Background => Some(Endpoint::UnixSocket(
+                home?
+                    .join("Library/Application Support/photoprivacy")
+                    .join("worker-background.sock"),
+            )),
+            // 服务模式：系统级固定落点，与调用者身份无关（#167）。LaunchDaemon 以服务用户
+            // （NFSHomeDirectory=/opt/photoprivacy）运行，GUI 用户按自身 HOME 解析只会指向
+            // 本机不存在的幽灵 socket；固定路径才与服务端 `MacServiceSocket` 同一事实源。
+            WorkerMode::Service => Some(Endpoint::UnixSocket(PathBuf::from(MACOS_SERVICE_SOCKET))),
+        },
     }
 }
 
@@ -259,8 +268,8 @@ mod tests {
     }
 
     #[test]
-    fn macos_socket_paths_live_under_user_home() {
-        // 防：macOS 端点落到错误的目录，或缺少 HOME 时静默拼出相对路径（#54）。
+    fn macos_background_socket_lives_under_user_home() {
+        // 防：macOS 后台端点落到错误的目录，或缺少 HOME 时静默拼出相对路径（#54）。
         let home = Path::new("/Users/example");
         assert_eq!(
             resolve_endpoint(HostPlatform::MacOs, WorkerMode::Background, Some(home)),
@@ -270,9 +279,30 @@ mod tests {
             ))
         );
         assert_eq!(
-            resolve_endpoint(HostPlatform::MacOs, WorkerMode::Service, None),
+            resolve_endpoint(HostPlatform::MacOs, WorkerMode::Background, None),
             None
         );
+    }
+
+    #[test]
+    fn macos_service_socket_is_identity_independent() {
+        // 防（#167）：服务端点跟着调用者 HOME 走——LaunchDaemon 以服务用户（home=/opt/photoprivacy）
+        // 落点，GUI 用户按自身 home 解析就指向不存在的幽灵 socket。服务端点必须是系统级固定路径，
+        // 与 home 及其有无都无关（与 Linux /run/photoprivacy 同构）。
+        let expected = Some(Endpoint::UnixSocket(PathBuf::from(
+            "/Library/Application Support/photoprivacy/worker.sock",
+        )));
+        for home in [
+            None,
+            Some(Path::new("/Users/gui")),
+            Some(Path::new("/opt/photoprivacy")),
+            Some(Path::new("/var/root")),
+        ] {
+            assert_eq!(
+                resolve_endpoint(HostPlatform::MacOs, WorkerMode::Service, home),
+                expected
+            );
+        }
     }
 
     #[test]
@@ -331,6 +361,11 @@ mod tests {
                 resolve_endpoint(platform, WorkerMode::Service, home)
             );
         }
-        assert_eq!(current_service_endpoint(HostPlatform::MacOs, None), None);
+        assert_eq!(
+            current_service_endpoint(HostPlatform::MacOs, None),
+            Some(Endpoint::UnixSocket(PathBuf::from(
+                "/Library/Application Support/photoprivacy/worker.sock"
+            )))
+        );
     }
 }

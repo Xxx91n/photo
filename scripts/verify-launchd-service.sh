@@ -38,8 +38,10 @@ WORKER_BIN="${INSTALL_DIR}/PhotoPrivacyWorker"
 # Worker Serilog 落点：相对 CWD 的 logs/worker-.log（Program.cs ResolveLogFilePath 非 Windows 分支），
 # launchd WorkingDirectory=INSTALL_DIR（install 脚本写入的 plist）→ INSTALL_DIR/logs/worker-*.log。
 WORKER_LOG_GLOB="${INSTALL_DIR}/logs/worker-*.log"
-# 服务模式 UDS 端点（WorkerIpcEndpointNames.MacServiceSocket，服务用户 home=NFSHomeDirectory=INSTALL_DIR）。
-SERVICE_SOCKET="${INSTALL_DIR}/Library/Application Support/photoprivacy/worker.sock"
+# 服务模式 UDS 端点（WorkerIpcEndpointNames.MacServiceSocketPath）：系统级固定落点，
+# 与调用者身份无关（#167）。不再随服务用户 home（NFSHomeDirectory=INSTALL_DIR）漂移。
+SERVICE_SOCKET="/Library/Application Support/photoprivacy/worker.sock"
+SERVICE_SOCKET_DIR="/Library/Application Support/photoprivacy"
 
 RELEASE_DIR=""
 EVIDENCE_DIR=""
@@ -249,7 +251,9 @@ ui_probe_report() {
   # 一致 = 「新 UI Service 页探测到服务状态」的机器可读证据（建窗前退出，无需图形会话）。
   # 探测以 GUI 用户语境运行（launchctl asuser + sudo -u，与截图同语境）——对拍结果才代表
   # 真实 Service 页行为；root 语境探测会掩盖 launchctl 域语义缺陷（#172）。
+  # 第二参数 expect_reachable=1 时要求 IPC 真的可达（仅服务应运行阶段）。
   local tag="$1"
+  local expect_reachable="${2:-0}"
   if [[ -z "${SUDO_USER:-}" ]] || [[ "$SUDO_USER" == "root" ]]; then
     rec FAIL "UI 探测 ${tag}：需经 sudo 从 GUI 用户运行（SUDO_USER 缺失）——root 语境对拍不代表真实 Service 页行为"
     return 0
@@ -272,6 +276,7 @@ ui_probe_report() {
   run_with_timeout 30 "$out" launchctl asuser "$uid" sudo -u "$SUDO_USER" \
     "${INSTALL_DIR}/PhotoPrivacy" \
     --service-probe-report "$report" \
+    --service-probe-ipc \
     --worker "$user_dir/no-worker-for-probe" || rc=$?
   if [[ -f "$report" ]]; then
     mv -f "$report" "$EVIDENCE_DIR/ui-probe-$tag.json"
@@ -287,13 +292,35 @@ ui_probe_report() {
     rec FAIL "UI Service 页探测报告未产出（${tag}，rc=${rc}，见 ui-probe-$tag.txt）"
     return 0
   fi
-  local ui_state cli_state
+  local ui_state cli_state ui_ipc ui_endpoint
   ui_state="$(sed -n 's/.*"state":"\([A-Za-z]*\)".*/\1/p' "$report")"
   cli_state="$(probe_state)"
   if [[ -n "$ui_state" ]] && [[ "$ui_state" == "$cli_state" ]]; then
     rec PASS "UI Service 页探测与 launchctl 判定一致（${tag}: ${ui_state}，GUI 用户语境）"
   else
     rec FAIL "UI/CLI 探测分歧（${tag}: ui=${ui_state:-<空>} cli=${cli_state}）"
+  fi
+  # #167：服务模式 UDS 落点必须与调用者身份无关——无论服务在跑还是已停，GUI 用户语境的
+  # 客户端都要解析到安装脚本建的那个系统级 socket，而不是自己 home 下的幽灵路径。
+  ui_ipc="$(sed -n 's/.*"ipc":"\([A-Za-z]*\)".*/\1/p' "$report")"
+  ui_endpoint="$(sed -n 's/.*"endpoint":"\([^"]*\)".*/\1/p' "$report")"
+  if [[ "$ui_endpoint" == "$SERVICE_SOCKET" ]]; then
+    rec PASS "UI 服务模式端点解析一致（${tag}: ${ui_endpoint}，GUI 用户语境）"
+  else
+    rec FAIL "UI 服务模式端点解析分歧（${tag}: endpoint=${ui_endpoint:-<空>}，期望 ${SERVICE_SOCKET}）"
+  fi
+  if [[ "$expect_reachable" == 1 ]]; then
+    # 运行态必须真的连上：目录 0750 / socket 0660 / 组边界 / 服务未就绪，任一项不成立都会在这里露头。
+    if [[ "$ui_ipc" == "Reachable" ]]; then
+      rec PASS "UI 服务模式 IPC 可达（${tag}: ${ui_endpoint}）"
+    else
+      rec FAIL "UI 服务模式 IPC 不可达（${tag}: ipc=${ui_ipc:-<空>}，见 ui-probe-$tag.json）"
+    fi
+  elif [[ "$ui_ipc" == "Reachable" ]]; then
+    # 未装/已停/已卸载阶段仍有人应答，说明进程或 socket 残留，服务页会给出假的「运行中」。
+    rec FAIL "UI 服务模式 IPC 在服务不应运行阶段仍可达（${tag}）——疑似进程或 socket 残留"
+  else
+    rec PASS "UI 服务模式 IPC 在非运行阶段不可达（${tag}: ${ui_ipc:-<空>}）"
   fi
 }
 
@@ -441,7 +468,7 @@ fi
 OLD_PID="$STABLE_PID"
 
 # UI 层取证：运行中态（Service 页同源探测 + 截图），在 KeepAlive 试验前取稳定态
-ui_probe_report running
+ui_probe_report running 1
 ui_shot running
 
 # KeepAlive 常驻（SuccessfulExit=false）：SIGKILL 后 launchd 应拉起新进程
@@ -486,12 +513,25 @@ if grep -q "no watch folder is configured" ${WORKER_LOG_GLOB} 2>/dev/null; then
 fi
 
 # 服务模式 UDS 端点（硬断言：worker 绑定失败会在 Serilog 记 bind error，服务页数据源将不可用）
-capture 06-socket.txt ls -la "${INSTALL_DIR}/Library/Application Support/photoprivacy"
+capture 06-socket.txt ls -la "$SERVICE_SOCKET_DIR"
 if wait_until 30 test -S "$SERVICE_SOCKET"; then
   rec PASS "服务模式 UDS 端点已绑定（${SERVICE_SOCKET}）"
+  # #167：组边界必须真的落在盘上——socket 0660 + 服务用户/服务组，目录 0750。
+  # 权限偏了（umask 收成 0600、目录被改成 0755）意味着 GUI 用户要么连不上、要么谁都能连；
+  # 这里按安装脚本与 UnixDomainSocketIpcTransport 的承诺逐项对拍，而不是只看 socket 在不在。
+  SOCKET_MODE="$(stat -f '%Lp' "$SERVICE_SOCKET" 2>/dev/null)"
+  SOCKET_OWNER="$(stat -f '%Su:%Sg' "$SERVICE_SOCKET" 2>/dev/null)"
+  SOCKET_DIR_MODE="$(stat -f '%Lp' "$SERVICE_SOCKET_DIR" 2>/dev/null)"
+  if [[ "$SOCKET_MODE" == "660" ]] \
+    && [[ "$SOCKET_OWNER" == "${SERVICE_USER}:${SERVICE_GROUP}" ]] \
+    && [[ "$SOCKET_DIR_MODE" == "750" ]]; then
+    rec PASS "服务模式 UDS 权限符合组边界（socket ${SOCKET_MODE} ${SOCKET_OWNER}，目录 ${SOCKET_DIR_MODE}）"
+  else
+    rec FAIL "服务模式 UDS 权限不符（socket=${SOCKET_MODE:-<空>} ${SOCKET_OWNER:-<空>}，目录=${SOCKET_DIR_MODE:-<空>}；期望 660 ${SERVICE_USER}:${SERVICE_GROUP} / 750）"
+  fi
 else
-  capture 06-socket.txt find "$INSTALL_DIR" \( -name "*.sock" -o -name "*.log" \)
-  # 诊断 HOME 解析分歧：.NET UserProfile 取 HOME/或 passwd home，落点不同 socket 路径就不同
+  capture 06-socket.txt find "$SERVICE_SOCKET_DIR" "${INSTALL_DIR}" \( -name "*.sock" -o -name "*.log" \)
+  # 诊断 HOME 解析分歧：落点若仍停在服务用户 home 下，这里会直接列出那个幽灵 socket。
   CUR_PID="$(get_pid)"
   if [[ -n "$CUR_PID" ]]; then
     capture 06-socket.txt ps eww -p "$CUR_PID"

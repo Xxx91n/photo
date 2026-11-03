@@ -9,12 +9,17 @@
 | --- | --- | --- |
 | Windows | 命名管道 `PhotoPrivacyCleaner.Background` | 命名管道 `PhotoPrivacyCleaner.Service.<32hex>`（#7：每次监听随机化，先建首例再通告于 `HKLM\SOFTWARE\PhotoPrivacy\ServicePipeName`；通告缺失/非法回退静态 `PhotoPrivacyCleaner.Service`） |
 | Linux | `/run/photoprivacy/worker-background.sock` | `/run/photoprivacy/worker.sock` |
-| macOS | `~/Library/Application Support/photoprivacy/worker-background.sock` | 同目录 `worker.sock` |
+| macOS | `~/Library/Application Support/photoprivacy/worker-background.sock` | `/Library/Application Support/photoprivacy/worker.sock`（系统级固定落点，#167） |
 
 出处：`src/PhotoPrivacy.Ipc/WorkerIpcEndpointNames.cs`、`src/PhotoPrivacy.Ipc/IpcTransportFactory.cs`、
 `src/PhotoPrivacy.Ipc/NamedPipeIpcTransport.cs`（#7 随机化）、`ui/crates/photoprivacy-ipc/src/endpoints.rs`（客户端动态发现）。
 客户端必须按 OS 解析端点（旧 Avalonia UI 全程硬编码 Windows 管道名，Linux/macOS 因此连不上）；
 Windows 服务端点自 #7 起按通告名动态解析（每次探测/失败重解析，详见认证边界节），其余端点静态。
+
+macOS 服务端点自 #167 起为系统级固定落点：LaunchDaemon 以服务用户运行（`NFSHomeDirectory=/opt/photoprivacy`），
+GUI 用户按自身 home 拼同一相对路径只会指向各自的幽灵 socket，故服务端点不再参与 home 解析（与 Linux `/run/photoprivacy` 同构）。
+目录由 `scripts/install-launchd-service.sh` 以 root 建为 `0750`（属主服务用户:服务组），GUI 用户经 `--gui-user`（默认 `SUDO_USER`）
+加入服务组后，方可穿过目录并连上 `0660` 的 socket；服务端仍以 `UnixPeerCredentialPolicy` 的组白名单做第二层校验。
 
 ## 帧与客户端约束
 

@@ -10,6 +10,12 @@ HOT_FOLDER="/var/lib/photoprivacy/hot"
 AUDIT_FOLDER="/var/log/photoprivacy"
 QUARANTINE_FOLDER="/var/lib/photoprivacy/quarantine"
 CONFIG_PATH="${INSTALL_DIR}/config/config.json"
+# 服务模式 UDS 的系统级目录（WorkerIpcEndpointNames.MacSystemSocketDirectory）：与 Linux
+# RuntimeDirectory（0750）同构——root 建、属主为服务用户、服务组可遍历；GUI 用户入组后
+# 才能穿过目录并连上 0660 的 socket（#167）。
+SERVICE_SOCKET_DIR="/Library/Application Support/photoprivacy"
+# 服务模式 IPC 的调用者：默认取 sudo 的原始用户，显式可用 --gui-user 指定（与 Linux 同口径）。
+GUI_USER="${SUDO_USER:-}"
 
 usage() {
   cat <<EOF
@@ -23,6 +29,8 @@ Options:
   --quarantine <path>    Quarantine folder (default: ${QUARANTINE_FOLDER})
   --user <name>          Service user (default: ${USER_NAME})
   --group <name>         Service group (default: ${GROUP_NAME})
+  --gui-user <name>      GUI user to add to the service group for IPC socket access
+                         (default: SUDO_USER)
   -h, --help             Show this help
 EOF
 }
@@ -36,6 +44,7 @@ while [[ $# -gt 0 ]]; do
     --quarantine) QUARANTINE_FOLDER="$2"; shift 2 ;;
     --user) USER_NAME="$2"; shift 2 ;;
     --group) GROUP_NAME="$2"; shift 2 ;;
+    --gui-user) GUI_USER="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage; exit 1 ;;
   esac
@@ -147,6 +156,29 @@ fi
 mkdir -p "$HOT_FOLDER" "$AUDIT_FOLDER" "$QUARANTINE_FOLDER"
 chown -R "${USER_NAME}:${GROUP_NAME}" "$INSTALL_DIR" "$HOT_FOLDER" "$AUDIT_FOLDER" "$QUARANTINE_FOLDER"
 chmod 2770 "$HOT_FOLDER" "$AUDIT_FOLDER" "$QUARANTINE_FOLDER"
+
+# 服务模式 UDS 目录：0750 + 服务组，与 Linux RuntimeDirectory 同构（#167）。
+# 不用 /var/run：macOS 上重启即清，非 root 的 Worker 无权重建目录。
+mkdir -p "$SERVICE_SOCKET_DIR"
+chown "${USER_NAME}:${GROUP_NAME}" "$SERVICE_SOCKET_DIR"
+chmod 0750 "$SERVICE_SOCKET_DIR"
+
+# 组边界供给：socket 为 0660 + 服务组，GUI 用户不入组就连不上（#167）。
+# 与 Linux 的 usermod -aG 同义；组变更对已运行进程不生效，需该用户重新登录。
+if [[ -n "$GUI_USER" ]]; then
+  if ! dscl . -read "/Users/${GUI_USER}" UniqueID >/dev/null 2>&1; then
+    echo "Warning: GUI user '${GUI_USER}' not found; skipped group supply." >&2
+  elif dseditgroup -o checkmember -m "$GUI_USER" "$GROUP_NAME" >/dev/null 2>&1; then
+    echo "GUI user '${GUI_USER}' already in group '${GROUP_NAME}'."
+  elif dseditgroup -o edit -a "$GUI_USER" -t user "$GROUP_NAME" >/dev/null 2>&1; then
+    echo "Added GUI user '${GUI_USER}' to group '${GROUP_NAME}' (IPC socket 0660 group boundary)."
+    echo "Note: re-login required for the new group membership to reach existing sessions."
+  else
+    echo "Warning: failed to add '${GUI_USER}' to '${GROUP_NAME}'; service-mode UI cannot reach the IPC socket." >&2
+  fi
+else
+  echo "Warning: no GUI user resolved (--gui-user / SUDO_USER empty); service-mode UI will not reach the IPC socket." >&2
+fi
 
 PLIST_PATH="/Library/LaunchDaemons/${LABEL}.plist"
 cat > "$PLIST_PATH" <<EOF
