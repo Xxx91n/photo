@@ -1,0 +1,80 @@
+name: Launchd verify
+
+# #32 macOS launchd 安装/卸载/日志——虚拟环境验证链（GitHub macOS runner 即 macOS VM）。
+# 发布构建走 scripts/publish.sh（与 release.yml 同口径，发布属性不经 csproj），再由
+# scripts/verify-launchd-service.sh 做 launchd 生命周期断言（安装→注册→常驻→日志→
+# 停止/启动→卸载→清理），操作与判定口径对齐 ui/crates/photoprivacy-service/src/unix.rs。
+# UI Service 页联动两路取证：--service-probe-report 与 CLI 判定对拍（硬断言）+ --ui-shots
+# 整屏截图（内容供目检）；截图依赖 runner 图形会话与屏幕录制权限，失败按 FAIL 如实记录。
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "scripts/install-launchd-service.sh"
+      - "scripts/verify-launchd-service.sh"
+      - "scripts/capture-ui-service-page.sh"
+      - "scripts/publish.sh"
+      - "config/config.sample.json"
+      - ".github/workflows/launchd-verify.yml"
+
+jobs:
+  launchd-lifecycle:
+    name: launchd lifecycle (${{ matrix.rid }})
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # runner 映射与 release.yml 发布矩阵一致
+        include:
+          - rid: osx-arm64
+            os: macos-latest
+          - rid: osx-x64
+            os: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.201"
+      # GUI 入口为 cargo 构建的 photoprivacy-ui，工具链随 runner 预装 rustup 就绪（release.yml 同款）
+      - name: Ensure Rust toolchain
+        run: rustup default stable
+
+      - name: Publish (scripts/publish.sh, osx)
+        shell: bash
+        run: |
+          chmod +x scripts/publish.sh
+          ./scripts/publish.sh --version 0.0.0-ci --runtime "${{ matrix.rid }}" --zip false
+
+      - name: Verify launchd lifecycle (install/uninstall/logs + UI Service 页取证)
+        shell: bash
+        run: |
+          chmod +x scripts/verify-launchd-service.sh scripts/capture-ui-service-page.sh
+          sudo ./scripts/verify-launchd-service.sh \
+            --release-dir "release/${{ matrix.rid }}" \
+            --evidence-dir "$RUNNER_TEMP/launchd-verify-${{ matrix.rid }}" \
+            --ui-shots
+
+      - name: Publish summary
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f "$RUNNER_TEMP/launchd-verify-${{ matrix.rid }}/summary.txt" ]]; then
+            {
+              echo "### launchd verify (${{ matrix.rid }})"
+              echo '```'
+              cat "$RUNNER_TEMP/launchd-verify-${{ matrix.rid }}/summary.txt"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: launchd-verify-${{ matrix.rid }}
+          path: ${{ runner.temp }}/launchd-verify-${{ matrix.rid }}
+          if-no-files-found: warn
