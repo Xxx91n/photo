@@ -21,7 +21,7 @@ public enum WindowsPipeAccessMode
 /// 服务模式以安装者 SID 显式 DACL 认证（managed NamedPipeServerStreamAcl.Create 建例，
 /// 仅 Windows 宿主编译，见 PhotoPrivacy.Ipc.csproj 的 PP_WINDOWS_HOST）。
 /// </summary>
-// Design(#70): 服务模式管道以安装者 SID 显式 DACL 取代 CurrentUserOnly（SID 缺失/无效时 fail-closed 回退 CurrentUserOnly），后台管道保持 CurrentUserOnly；不承诺多用户/跨账户（归 #1）。
+// Design(#82): 服务模式管道以安装者 SID 显式 DACL 取代 CurrentUserOnly（SID 缺失/无效时 fail-closed 回退 CurrentUserOnly），后台管道保持 CurrentUserOnly；不承诺多用户/跨账户（归 #1）。
 public sealed class NamedPipeIpcTransport : IIpcTransport
 {
     private readonly string _pipeName;
