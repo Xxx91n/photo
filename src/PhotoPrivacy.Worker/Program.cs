@@ -106,7 +106,7 @@ if (mode != RuntimeMode.Cli)
 // 「有效审计目录」为身份补上跨模式互斥：拿不到锁 = 让位干净退出（日志 + 审计留痕），不触碰审计文件。
 // 门自身异常（含跨账户打不开既有锁）同样让位——无法确证独占就不写审计；放行 = 带未知争用风险，
 // 与本票要消灭的故障同类。
-// Design(#162): 常驻 Worker 触碰审计文件前必须过准入门；拿不到锁或门异常一律让位，禁静默降级。
+// Design(#82): 常驻 Worker 触碰审计文件前必须过准入门；拿不到锁或门异常一律让位，禁静默降级。
 ISingleInstanceGuard? singleWriterGate = null;
 if (requestedMode != RuntimeMode.Cli)
 {
