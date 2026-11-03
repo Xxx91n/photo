@@ -102,6 +102,8 @@
 | S7 | 卸载服务 → 回到未安装态 | 未回填 | 未探活（#88 范围外）；本轮收尾用 `install-service.ps1 -Action uninstall` 卸载并复核 SC 1060，但那是脚本通道，不是 S7 要验的 UI 提权链路 |
 | S8 | 服务模式日志通道在日志页可见（与后台模式区分） | 通过 | 2026-11-03 桌面截图 + 文件系统取证（帧 `S8-logs-page-service.png`）：同一服务模式会话切日志页，04:09:55「Service started mode=live」、04:09:56「ExifTool started」在列；04:13:08–09 投入 `hot/` 的带 Artist/Copyright 样本被服务 Worker 就地清洗 3648→626 B，日志页实时出「Cleaned attempt=1/wipe_result=Cleaned, Modified」×2 +「backup_sidecar_version… content_diverged_sidecar_written」，exiftool 复查标签已空；条目与 `pkg/hot/_audit/audit-2026-11-03.jsonl`、`processed.ndjson`（两文件 mtime 均落在投放后的 04:13）及 ProgramData 服务日志同刻。与后台模式的区分锚在连接态：本会话状态卡是「PhotoPrivacyCleaner.Service · 服务模式」+ Worker 卡片「服务 IPC=可达」（K1 记录的后台形态是 Background · 不可达） |
 
+> **macOS 探测项验收口径（#172）**：S1/S3/S6/S7 等服务页探测项在 macOS 侧不以人工读屏为准，以 `scripts/verify-launchd-service.sh` 的修后对拍为准——`ui_probe_report` 以 **GUI 用户**语境跑 `PhotoPrivacy --service-probe-report`（与截图同语境），与 CLI `probe_state`（`launchctl print system/<label>`，显式系统域）判定一致即探测项通过；截图与 legacy `launchctl list`/`print` 对照留证仅供目检。对拍链由 `.github/workflows/launchd-verify.yml`（GitHub macOS runner 虚拟环境）执行。
+
 ### #49 D11 功能对等核销（切换判据）
 
 | 判据 | 结论 | 证据/出处 |

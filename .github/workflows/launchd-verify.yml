@@ -15,6 +15,8 @@ on:
       - "scripts/capture-ui-service-page.sh"
       - "scripts/publish.sh"
       - "config/config.sample.json"
+      # 服务探测语义（MacProbe）改动必须过 macOS VM 对拍门禁（#172：S1–S8 macOS 探测项验收口径）
+      - "ui/crates/photoprivacy-service/**"
       - ".github/workflows/launchd-verify.yml"
 
 jobs:

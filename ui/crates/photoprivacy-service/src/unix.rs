@@ -145,7 +145,7 @@ mod linux {
 #[cfg(any(target_os = "macos", test))]
 mod macos {
     use super::*;
-    use crate::parse::parse_launchctl_list;
+    use crate::parse::parse_launchctl_print;
 
     pub const LAUNCHD_LABEL: &str = "com.photoprivacy.cleaner";
     pub const LAUNCHD_PLIST: &str = "/Library/LaunchDaemons/com.photoprivacy.cleaner.plist";
@@ -161,10 +161,13 @@ mod macos {
     }
 
     impl ServiceProbe for MacProbe {
+        // Design(#172): 状态探测只认显式系统域查询 `launchctl print system/<label>`；禁回落
+        // legacy `launchctl list <label>`——后者按调用者 bootstrap 域查找，GUI 用户查不到系统
+        // LaunchDaemon（误报已停止）。PID>0 才算运行中，判据在 parse_launchctl_print。
         fn state(&self) -> ServiceRuntimeState {
             let output = self.runner.run(
                 "launchctl",
-                &["list".to_string(), LAUNCHD_LABEL.to_string()],
+                &["print".to_string(), format!("system/{LAUNCHD_LABEL}")],
                 PROBE_TIMEOUT,
             );
             if output.spawn_error.is_some() || output.wait_error.is_some() || output.timed_out {
@@ -183,7 +186,7 @@ mod macos {
         stdout: &str,
         plist_exists: bool,
     ) -> ServiceRuntimeState {
-        let state = parse_launchctl_list(exit_code, stdout);
+        let state = parse_launchctl_print(exit_code, stdout);
         // `launchctl unload` 后 plist 仍在：这是“已安装未运行”，不是未安装。
         if state == ServiceRuntimeState::NotInstalled && plist_exists {
             ServiceRuntimeState::Stopped
@@ -369,13 +372,14 @@ mod tests {
     }
 
     #[test]
-    fn macos_probe_uses_launchctl_list() {
-        // 防：macOS 探测 label/命令漂移，服务态永远 Unknown（#58，旧 LaunchdStateProbe）。
+    fn macos_probe_queries_system_domain_via_print() {
+        // 防：macOS 探测回落 legacy `launchctl list <label>`（只查调用者域）或 label/命令漂移，
+        // GUI 用户把运行中的系统 LaunchDaemon 误报为已停止（#172）；服务态永远 Unknown（#58）。
         let runner = Arc::new(QueueRunner::new(
             "launchctl",
             vec![CommandOutput {
                 exit_code: Some(0),
-                stdout: "{\n  \"PID\" = 4321;\n}".to_string(),
+                stdout: "state = running\npid = 4321".to_string(),
                 ..CommandOutput::default()
             }],
         ));
@@ -385,8 +389,8 @@ mod tests {
         assert_eq!(
             runner.calls(),
             vec![vec![
-                "list".to_string(),
-                "com.photoprivacy.cleaner".to_string()
+                "print".to_string(),
+                "system/com.photoprivacy.cleaner".to_string()
             ]]
         );
     }
@@ -540,16 +544,17 @@ mod tests {
     #[test]
     fn macos_unloaded_plist_is_stopped_not_missing() {
         // 防：launchctl unload 后 plist 仍在，探测却报未安装，UI 放出 Install 并覆盖默认路径（#58 CodeRabbit）。
+        let missing = "Could not find service \"com.photoprivacy.cleaner\" in domain for system";
         assert_eq!(
-            macos::macos_state(113, "Could not find service", true),
+            macos::macos_state(113, missing, true),
             ServiceRuntimeState::Stopped
         );
         assert_eq!(
-            macos::macos_state(113, "Could not find service", false),
+            macos::macos_state(113, missing, false),
             ServiceRuntimeState::NotInstalled
         );
         assert_eq!(
-            macos::macos_state(0, "\"PID\" = 4321;", false),
+            macos::macos_state(0, "state = running\npid = 4321", false),
             ServiceRuntimeState::Running
         );
     }
