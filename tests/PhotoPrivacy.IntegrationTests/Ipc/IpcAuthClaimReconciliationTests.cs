@@ -1,3 +1,5 @@
+using PhotoPrivacy.Ipc;
+
 namespace PhotoPrivacy.IntegrationTests.Ipc;
 
 /// <summary>

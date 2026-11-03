@@ -36,11 +36,14 @@ pub const IPC_CLIENT_DESIRED_ACCESS: u32 =
 
 // 打开 flags 的本地常量（winnt.h/winbase.h 值；不 import windows_sys 是为了在非 Windows 编译面
 // 也能用测试钉住组合——审查返修 M1：漏 SECURITY_SQOS_PRESENT 会让 Identification 级别失效）。
-// 叶常量保持私有：经 pub 的 IPC_CLIENT_OPEN_FLAGS 初始化式可达，非 Windows lib 编译面不判死码
-//（审查返修 M-R1）。
+// 叶常量可达性口径（审查返修 M-R1 + CI 返修）：flags 叶常量经 pub 的 IPC_CLIENT_OPEN_FLAGS
+// 初始化式可达（非 Windows lib 面不判死码）；OPEN_EXISTING 是 dwCreationDisposition 实参
+// 而非 flag，仅 connect_once（cfg(windows)）使用，故单独 cfg——非 Windows 面不编译，
+// Windows 面经调用点可达。
 /// FILE_FLAG_OVERLAPPED（winbase.h）：tokio IOCP 注册所需。
 const FILE_FLAG_OVERLAPPED: u32 = 0x4000_0000;
-/// OPEN_EXISTING（winbase.h）：管道客户端打开语义（不存在即失败，不创建）。
+/// OPEN_EXISTING（winbase.h）：管道客户端打开语义（不存在即失败，不创建）；仅 windows 打开路径使用（CI 返修：非 Windows 面零引用会撞 dead_code）。
+#[cfg(windows)]
 const OPEN_EXISTING: u32 = 3;
 /// SECURITY_SQOS_PRESENT（winnt.h）：SQOS 位生效开关——微软 CreateFileW 文档的前置条件，
 /// 不带它则冒充级别不在文档化行为内（tokio 1.54.1 ClientOptions::new 默认值含此位，源码核实）。
@@ -49,7 +52,7 @@ const SECURITY_SQOS_PRESENT: u32 = 0x0010_0000;
 const SECURITY_IDENTIFICATION: u32 = 0x0001_0000;
 /// IPC 客户端打开 flags（#7）：SQOS 三件套，与 tokio ClientOptions::new 默认 flags 同构（1.54.1 源码核实）。
 /// pub：与 IPC_CLIENT_DESIRED_ACCESS 同理——非 Windows 编译面（无 windows 打开路径）不判死码，
-/// 四个叶常量经本常量可达。
+/// 三个 flags 叶常量经本常量可达。
 pub const IPC_CLIENT_OPEN_FLAGS: u32 =
     SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION | FILE_FLAG_OVERLAPPED;
 
