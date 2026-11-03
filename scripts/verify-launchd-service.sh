@@ -9,11 +9,13 @@
 #   - 停止/启动/卸载用 MacOps 同款 launchctl 命令串；
 #   - 状态判定同 MacProbe::state + parse_launchctl_list：launchctl list <label> 退出码 + PID 行
 #     + plist 存在性（plist 在而未加载 = 已安装未运行，不是未安装）。
-# 因此脚本结论可直接代表新 UI Service 页探测/操作语义；UI 目检截图仍需实机（见 #32 残留项）。
-#
-# 用法：sudo ./scripts/verify-launchd-service.sh --release-dir <dir> [--evidence-dir <dir>]
+# 因此脚本结论可直接代表新 UI Service 页探测/操作语义；UI 层证据两路产出：
+#   - 机器可读：PhotoPrivacy --service-probe-report 与 CLI probe_state 对拍（硬断言，UI/CLI 一致）；
+#   - 截图：--ui-shots 时经 capture-ui-service-page.sh 以 GUI 用户截 Service 页（内容供目检）。
+# 用法：sudo ./scripts/verify-launchd-service.sh --release-dir <dir> [--evidence-dir <dir>] [--ui-shots]
 #   --release-dir   publish.sh 产出目录（须含 PhotoPrivacyWorker 与 config/config.json）
 #   --evidence-dir  证据落盘目录（默认 logs/launchd-verify；CI 传 $RUNNER_TEMP 下路径）
+#   --ui-shots      各生命周期状态截 Service 页整屏（需经 sudo 从 GUI 用户运行；CI 开启）
 #
 # 注意：harness 会把发布包重新铺进 INSTALL_DIR 并整链安装/卸载，只应在实机验证或一次性
 # 虚拟环境（CI macOS runner）里跑；卸载语义与产品一致（unload + 删 plist），不删服务用户与目录。
@@ -39,14 +41,16 @@ SERVICE_SOCKET="${INSTALL_DIR}/Library/Application Support/photoprivacy/worker.s
 
 RELEASE_DIR=""
 EVIDENCE_DIR=""
+UI_SHOTS=0
 
 usage() {
   cat <<EOF
-Usage: sudo $0 --release-dir <dir> [--evidence-dir <dir>]
+Usage: sudo $0 --release-dir <dir> [--evidence-dir <dir>] [--ui-shots]
 
 Options:
   --release-dir <dir>   publish.sh 产出目录（须含 PhotoPrivacyWorker 与 config/config.json）
   --evidence-dir <dir>  证据落盘目录（默认: logs/launchd-verify）
+  --ui-shots            各生命周期状态截 Service 页整屏（需经 sudo 从 GUI 用户运行）
   -h, --help            Show this help
 EOF
 }
@@ -55,6 +59,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --release-dir) RELEASE_DIR="$2"; shift 2 ;;
     --evidence-dir) EVIDENCE_DIR="$2"; shift 2 ;;
+    --ui-shots) UI_SHOTS=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage; exit 1 ;;
   esac
@@ -62,6 +67,7 @@ done
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 INSTALL_SCRIPT="${SCRIPT_DIR}/install-launchd-service.sh"
+SHOT_SCRIPT="${SCRIPT_DIR}/capture-ui-service-page.sh"
 
 # ---------- 预检 ----------
 if [[ "$(uname -s)" != "Darwin" ]]; then
@@ -210,6 +216,84 @@ worker_absent() {
   ! pgrep -f "${WORKER_BIN}" >/dev/null 2>&1
 }
 
+run_with_timeout() {
+  # run_with_timeout <秒> <输出文件> <命令...>：超时杀进程返回 124（macOS 无 GNU timeout）
+  local secs="$1" out="$2"
+  shift 2
+  "$@" > "$out" 2>&1 &
+  local pid=$!
+  local deadline=$(( $(date +%s) + secs ))
+  while kill -0 "$pid" 2>/dev/null; do
+    if [[ "$(date +%s)" -ge "$deadline" ]]; then
+      kill -9 "$pid" 2>/dev/null || true
+      wait "$pid" 2>/dev/null || true
+      return 124
+    fi
+    sleep 1
+  done
+  set +e
+  wait "$pid"
+  local rc=$?
+  set -e
+  return "$rc"
+}
+
+ui_probe_report() {
+  # UI 层 Service 页同源探测（--service-probe-report）与 CLI probe_state 对拍：
+  # 一致 = 「新 UI Service 页探测到服务状态」的机器可读证据（建窗前退出，无需图形会话）。
+  local tag="$1"
+  local report="$EVIDENCE_DIR/ui-probe-$tag.json"
+  local out="$EVIDENCE_DIR/ui-probe-$tag.txt"
+  rm -f "$report"
+  set +e
+  run_with_timeout 30 "$out" "${INSTALL_DIR}/PhotoPrivacy" \
+    --service-probe-report "$report" \
+    --worker "$EVIDENCE_DIR/no-worker-for-probe"
+  local rc=$?
+  set -e
+  if [[ ! -f "$report" ]]; then
+    rec FAIL "UI Service 页探测报告未产出（${tag}，rc=${rc}，见 ui-probe-$tag.txt）"
+    return 0
+  fi
+  local ui_state cli_state
+  ui_state="$(sed -n 's/.*"state":"\([A-Za-z]*\)".*/\1/p' "$report")"
+  cli_state="$(probe_state)"
+  if [[ -n "$ui_state" ]] && [[ "$ui_state" == "$cli_state" ]]; then
+    rec PASS "UI Service 页探测与 launchctl 判定一致（${tag}: ${ui_state}）"
+  else
+    rec FAIL "UI/CLI 探测分歧（${tag}: ui=${ui_state:-<空>} cli=${cli_state}）"
+  fi
+}
+
+ui_shot() {
+  # Service 页整屏截图（GUI 用户，--ui-shots 才启用）：内容供目检，不作像素断言。
+  local tag="$1"
+  if [[ "$UI_SHOTS" != 1 ]]; then
+    return 0
+  fi
+  if [[ -z "${SUDO_USER:-}" ]] || [[ "$SUDO_USER" == "root" ]]; then
+    rec FAIL "UI 截图 ${tag}：--ui-shots 需经 sudo 从 GUI 用户运行（SUDO_USER 缺失）"
+    return 0
+  fi
+  if [[ ! -f "$SHOT_SCRIPT" ]]; then
+    rec FAIL "UI 截图 ${tag}：截图脚本缺失（${SHOT_SCRIPT}）"
+    return 0
+  fi
+  local uid out
+  uid="$(id -u "$SUDO_USER")"
+  out="$EVIDENCE_DIR/ui-shot-$tag.txt"
+  set +e
+  run_with_timeout 60 "$out" launchctl asuser "$uid" sudo -u "$SUDO_USER" \
+    bash "$SHOT_SCRIPT" --install-dir "$INSTALL_DIR" --tag "$tag" --out-dir "$EVIDENCE_DIR"
+  local rc=$?
+  set -e
+  if [[ -s "$EVIDENCE_DIR/ui-$tag.png" ]]; then
+    rec PASS "UI Service 页截图已产出（${tag}，内容待目检）：ui-$tag.png"
+  else
+    rec FAIL "UI Service 页截图未产出（${tag}，rc=${rc}，见 ui-shot-$tag.txt）"
+  fi
+}
+
 new_pid_alive() {
   # 旧 PID 已死、launchd 已拉起新 PID
   local p
@@ -231,6 +315,9 @@ trap cleanup EXIT
 # ---------- 0. 环境留证（虚拟环境/实机识别） ----------
 capture 00-env.txt uname -a
 capture 00-env.txt sw_vers
+if [[ "$UI_SHOTS" != 1 ]]; then
+  rec INFO "UI Service 页截图未启用（需要截图证据请传 --ui-shots）"
+fi
 
 # ---------- 1. staging：按用户口径把发布包解压进安装目录 ----------
 capture 01-staging.txt echo "release dir: ${RELEASE_DIR}"
@@ -250,6 +337,10 @@ else
   echo "PASS=${PASS_COUNT} FAIL=${FAIL_COUNT}" | tee -a "$SUMMARY_FILE"
   exit 1
 fi
+
+# UI 层取证基线：安装前 = 未安装态（Service 页同源探测 + 截图）
+ui_probe_report pre-install
+ui_shot pre-install
 
 # ---------- 2. 安装（install-launchd-service.sh，MacOps::install 同款通道） ----------
 set +e
@@ -303,6 +394,10 @@ else
   rec FAIL "Worker 进程不稳：5s 内 PID ${OLD_PID}→${STABLE_PID}（疑似启动后崩溃循环）"
 fi
 OLD_PID="$STABLE_PID"
+
+# UI 层取证：运行中态（Service 页同源探测 + 截图），在 KeepAlive 试验前取稳定态
+ui_probe_report running
+ui_shot running
 
 # KeepAlive 常驻（SuccessfulExit=false）：SIGKILL 后 launchd 应拉起新进程
 if [[ -n "$OLD_PID" ]]; then
@@ -372,6 +467,10 @@ else
 fi
 expect_state Stopped "停止后状态=已安装未运行（plist 仍在、不再加载）"
 
+# UI 层取证：已停止态
+ui_probe_report stopped
+ui_shot stopped
+
 # ---------- 6. 启动（MacOps::start 同款命令串） ----------
 set +e
 launchctl load -w "$PLIST_PATH" > "${EVIDENCE_DIR}/08-start.txt" 2>&1
@@ -413,6 +512,10 @@ else
   capture 10-final.txt pgrep -fl PhotoPrivacyWorker
   rec FAIL "卸载 15s 后仍有 Worker 进程残留"
 fi
+
+# UI 层取证：卸载后 = 未安装态
+ui_probe_report uninstalled
+ui_shot uninstalled
 
 # ---------- 8. 收口 ----------
 capture 10-final.txt launchctl list "$SERVICE_LABEL"

@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# capture-ui-service-page.sh —— #32 UI Service 页截图取证（以 GUI 用户运行）。
+#
+# 以 --open-page service 启动发布包里的 PhotoPrivacy，等首屏渲染后整屏截图，
+# 连同时刻的 launchctl 状态一并留证，然后退出 UI。供 verify-launchd-service.sh
+# 在各生命周期状态下调用（虚拟环境 = CI macOS runner；也可在实机手动执行）。
+#
+# 用法: ./capture-ui-service-page.sh --install-dir <dir> --tag <name> --out-dir <dir>
+#   --install-dir  已解压发布包的安装目录（含 PhotoPrivacy 与 config/config.json）
+#   --tag          证据标签（如 running / stopped）
+#   --out-dir      证据落盘目录
+#
+# 截图内容（页面呈现）不作机器断言，产物供目检；机器可读的 UI 层探测证据由
+# PhotoPrivacy --service-probe-report 另行产出（verify-launchd-service.sh 负责对拍）。
+# 兼容 macOS 自带 bash 3.2。
+set -euo pipefail
+
+INSTALL_DIR=""
+TAG=""
+OUT_DIR=""
+
+usage() {
+  cat <<EOF
+Usage: $0 --install-dir <dir> --tag <name> --out-dir <dir>
+
+Options:
+  --install-dir <dir>  已解压发布包的安装目录（含 PhotoPrivacy）
+  --tag <name>         证据标签（如 running / stopped）
+  --out-dir <dir>      证据落盘目录
+  -h, --help           Show this help
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --install-dir) INSTALL_DIR="$2"; shift 2 ;;
+    --tag) TAG="$2"; shift 2 ;;
+    --out-dir) OUT_DIR="$2"; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "Unknown argument: $1" >&2; usage; exit 1 ;;
+  esac
+done
+
+if [[ -z "$INSTALL_DIR" ]] || [[ -z "$TAG" ]] || [[ -z "$OUT_DIR" ]]; then
+  echo "Missing required arguments" >&2
+  usage
+  exit 1
+fi
+
+UI_BIN="${INSTALL_DIR}/PhotoPrivacy"
+if [[ ! -x "$UI_BIN" ]]; then
+  echo "UI binary not found: ${UI_BIN}" >&2
+  exit 1
+fi
+
+mkdir -p "$OUT_DIR"
+PNG="${OUT_DIR}/ui-${TAG}.png"
+LAUNCHCTL_TXT="${OUT_DIR}/ui-${TAG}-launchctl.txt"
+
+# --worker 指向不存在路径：截图场景只看 Service 页探测，不拉起后台 Worker
+# （避免与服务 Worker 同 config 并存的单写者让位场景混入，#162）。
+"$UI_BIN" --open-page service --worker "${OUT_DIR}/no-worker-for-shot" >/dev/null 2>&1 &
+UI_PID=$!
+
+# 首屏渲染余量：服务状态在建窗前已同步探测（main.rs 首拍），截图等窗口稳定。
+sleep 6
+
+launchctl list com.photoprivacy.cleaner > "$LAUNCHCTL_TXT" 2>&1 || true
+echo "---- launchctl list (配对状态) ----"
+cat "$LAUNCHCTL_TXT" || true
+
+echo "---- screencapture ----"
+screencapture -x "$PNG" || echo "screencapture failed (TCC 屏幕录制权限或无图形会话?)"
+
+# 收口：先 TERM 后兜底 KILL，不让 UI 残留
+kill "$UI_PID" 2>/dev/null || true
+WAITED=0
+while kill -0 "$UI_PID" 2>/dev/null; do
+  if [[ "$WAITED" -ge 5 ]]; then
+    kill -9 "$UI_PID" 2>/dev/null || true
+    break
+  fi
+  sleep 1
+  WAITED=$((WAITED + 1))
+done
+wait "$UI_PID" 2>/dev/null || true
+
+if [[ -s "$PNG" ]]; then
+  echo "screenshot ok: ${PNG} ($(wc -c < "$PNG") bytes)"
+  exit 0
+fi
+echo "screenshot missing/empty: ${PNG}" >&2
+exit 1

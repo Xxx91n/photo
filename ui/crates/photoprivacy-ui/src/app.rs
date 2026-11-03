@@ -381,7 +381,7 @@ struct FieldView {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Page {
+pub enum Page {
     Overview,
     Config,
     Service,
@@ -411,6 +411,18 @@ impl Page {
         }
     }
 
+    /// `--open-page` 取值解析：与 `id()` 互逆；未知 id 返回 None（调用方按参数错误处理）。
+    pub fn from_id(id: &str) -> Option<Self> {
+        match id {
+            "overview" => Some(Self::Overview),
+            "config" => Some(Self::Config),
+            "service" => Some(Self::Service),
+            "logs" => Some(Self::Logs),
+            "rules" => Some(Self::Rules),
+            _ => None,
+        }
+    }
+
     fn all() -> [Self; 5] {
         [
             Self::Overview,
@@ -437,6 +449,8 @@ pub struct AppDeps {
     pub config_path: PathBuf,
     pub rules: Rc<RefCell<RulesEditor>>,
     pub i18n: Rc<Catalog>,
+    /// `--open-page` 指定的启动页；None 时默认总览（虚拟环境截图取证用，#32）。
+    pub open_page: Option<Page>,
 }
 
 /// RTL 语言下主轴行反向，行内「标签 + 控件」的左右顺序整体镜像。
@@ -534,6 +548,7 @@ impl AppView {
             config_path,
             rules,
             i18n,
+            open_page,
         } = deps;
         let appearance_subscription = cx.observe_window_appearance(window, |_, _, cx| cx.notify());
         let snapshot = snapshots.borrow().clone();
@@ -567,7 +582,7 @@ impl AppView {
         // 启动即聚焦根句柄：无焦点时按键无人认领，Tab 进不了控件链（焦点可见示例同款做法）。
         window.focus(&focus_root, cx);
         let view = Self {
-            page: Page::Overview,
+            page: open_page.unwrap_or(Page::Overview),
             focus_root,
             config_scroll: ScrollHandle::new(),
             config_registry,
@@ -2925,6 +2940,7 @@ mod tests {
                 std::env::temp_dir().join("photoprivacy-ui-focus-tests-rules.json"),
             ))),
             i18n: Rc::new(Catalog::embedded()),
+            open_page: None,
         }
     }
 

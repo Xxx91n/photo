@@ -35,10 +35,12 @@ use worker_connection::{ConnectOptions, UiEvent};
 const USAGE: &str = "\
 PhotoPrivacy 新 UI（gpui）
 
-用法: photoprivacy-ui [--config <config.json>] [--worker <PhotoPrivacyWorker 路径>]
+用法: photoprivacy-ui [--config <config.json>] [--worker <PhotoPrivacyWorker 路径>] [--open-page <id>] [--service-probe-report <path>]
 
   --config  启动后台 Worker 时传入的配置路径（默认同目录 config/config.json，与旧 UI 一致始终传入）
   --worker  后台 Worker 可执行文件路径（默认同目录 PhotoPrivacyWorker[.exe]，存在才用）
+  --open-page  启动即打开指定页（overview|config|service|logs|rules，默认 overview）
+  --service-probe-report  把 Service 页同源服务探测结果写成 JSON（state 字段）后退出，不建窗不连 Worker（虚拟环境取证用）
 ";
 
 /// 托盘/唤起事件的轮询间隔：事件来自托盘库的线程或 tokio 侧，统一切回 UI 线程处理。
@@ -47,18 +49,33 @@ const EVENT_POLL_INTERVAL: Duration = Duration::from_millis(200);
 struct Args {
     config_path: Option<PathBuf>,
     worker_path: Option<PathBuf>,
+    open_page: Option<app::Page>,
+    service_probe_report: Option<PathBuf>,
 }
 
 impl Args {
     fn parse() -> Self {
         let mut config_path = None;
         let mut worker_path = None;
+        let mut open_page = None;
+        let mut service_probe_report = None;
         let mut args = std::env::args_os().skip(1);
 
         while let Some(arg) = args.next() {
             match arg.to_str().unwrap_or_default() {
                 "--config" => config_path = args.next().map(PathBuf::from),
                 "--worker" => worker_path = args.next().map(PathBuf::from),
+                "--open-page" => {
+                    let raw = args.next().unwrap_or_default();
+                    let id = raw.to_str().unwrap_or_default();
+                    open_page = Some(app::Page::from_id(id).unwrap_or_else(|| {
+                        eprintln!("[photoprivacy-ui] 未知 --open-page 值: {id}");
+                        std::process::exit(2);
+                    }));
+                }
+                "--service-probe-report" => {
+                    service_probe_report = args.next().map(PathBuf::from);
+                }
                 "-h" | "--help" => {
                     println!("{USAGE}");
                     std::process::exit(0);
@@ -70,6 +87,8 @@ impl Args {
         Self {
             config_path,
             worker_path,
+            open_page,
+            service_probe_report,
         }
     }
 }
@@ -142,6 +161,15 @@ fn main() -> anyhow::Result<()> {
     ));
     // Design(#49): 启动路径在 main 线程同步首探安装态，上限 PROBE_TIMEOUT；托盘与静默启动据此在建窗前定档。
     let initial_service_state = service_manager.state();
+    // Design(#32): Service 页同源探测结果落 JSON 后即退出——虚拟环境（CI macOS runner）
+    // 机器可读取证入口；不建窗、不连 Worker，探测链与 Service 页首拍一致。
+    if let Some(report_path) = &args.service_probe_report {
+        std::fs::write(
+            report_path,
+            format!("{{\"state\":\"{:?}\"}}\n", initial_service_state),
+        )?;
+        return Ok(());
+    }
     let (service_snapshots, service_commands) =
         service_page::start(runtime.handle(), service_manager, initial_service_state);
     let link = worker_connection::start(runtime.handle(), options, snapshot_tx, event_tx);
@@ -188,6 +216,7 @@ fn main() -> anyhow::Result<()> {
         config_path,
         rules: Rc::new(RefCell::new(RulesEditor::open_default())),
         i18n,
+        open_page: args.open_page,
     };
 
     application().run(move |cx: &mut App| {
