@@ -65,17 +65,40 @@ dscl_ensure() {
   fi
 }
 
+# GID 不再钉死 400：标准 macOS 上 400 已被系统组 com.apple.access_remote_ae 占用，
+# PrimaryGroupID 撞唯一性直接 eDSRecordAlreadyExists（#32 CI 实测）。组已存在取其现值，
+# 否则在 400-499 取第一个空位；用户 PrimaryGroupID 跟组一致，否则 chown 用户:组 解析不了。
+resolve_group_gid() {
+  local gid
+  gid="$(dscl . -read "/Groups/${GROUP_NAME}" PrimaryGroupID 2>/dev/null | awk 'NR==1 && $2 ~ /^[0-9]+$/ {print $2}')"
+  if [[ -n "$gid" ]]; then
+    echo "$gid"
+    return 0
+  fi
+  local candidate=400
+  while [[ $candidate -lt 500 ]]; do
+    if ! dscl . -list /Groups gid 2>/dev/null | awk -v g="$candidate" '$2 == g { found=1 } END { exit !found }'; then
+      echo "$candidate"
+      return 0
+    fi
+    candidate=$((candidate + 1))
+  done
+  return 1
+}
+
+GROUP_GID="$(resolve_group_gid)" || { echo "No free GID in 400-499" >&2; exit 1; }
+
 if ! dscl . -read /Groups/${GROUP_NAME} >/dev/null 2>&1; then
   dscl_ensure /Groups/${GROUP_NAME}
 fi
-dscl_ensure /Groups/${GROUP_NAME} PrimaryGroupID 400
+dscl_ensure /Groups/${GROUP_NAME} PrimaryGroupID "$GROUP_GID"
 
 if ! dscl . -read /Users/${USER_NAME} >/dev/null 2>&1; then
   dscl_ensure /Users/${USER_NAME}
 fi
 dscl_ensure /Users/${USER_NAME} UserShell /usr/bin/false
 dscl_ensure /Users/${USER_NAME} NFSHomeDirectory "${INSTALL_DIR}"
-dscl_ensure /Users/${USER_NAME} PrimaryGroupID 400
+dscl_ensure /Users/${USER_NAME} PrimaryGroupID "$GROUP_GID"
 
 mkdir -p "$HOT_FOLDER" "$AUDIT_FOLDER" "$QUARANTINE_FOLDER"
 chown -R "${USER_NAME}:${GROUP_NAME}" "$INSTALL_DIR" "$HOT_FOLDER" "$AUDIT_FOLDER" "$QUARANTINE_FOLDER"
