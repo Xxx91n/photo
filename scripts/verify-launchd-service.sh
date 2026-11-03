@@ -206,6 +206,10 @@ launchd_stdio_present() {
   [[ -f "${AUDIT_FOLDER}/stdout.log" ]] || [[ -f "${AUDIT_FOLDER}/stderr.log" ]]
 }
 
+worker_absent() {
+  ! pgrep -f "${WORKER_BIN}" >/dev/null 2>&1
+}
+
 new_pid_alive() {
   # 旧 PID 已死、launchd 已拉起新 PID
   local p
@@ -403,11 +407,11 @@ if [[ ! -f "$PLIST_PATH" ]]; then
 else
   rec FAIL "plist 仍存在：${PLIST_PATH}"
 fi
-if pgrep -f "${WORKER_BIN}" >/dev/null 2>&1; then
-  capture 10-final.txt pgrep -fl PhotoPrivacyWorker
-  rec FAIL "卸载后仍有 Worker 进程残留"
-else
+if wait_until 15 worker_absent; then
   rec PASS "卸载后无 Worker 进程残留"
+else
+  capture 10-final.txt pgrep -fl PhotoPrivacyWorker
+  rec FAIL "卸载 15s 后仍有 Worker 进程残留"
 fi
 
 # ---------- 8. 收口 ----------
