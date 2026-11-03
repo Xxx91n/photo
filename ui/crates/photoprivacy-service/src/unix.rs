@@ -217,11 +217,21 @@ mod macos {
         /// macOS 安装命令串：与 Linux 同源构造参数（bash + 校验过的 `--gui-user`），
         /// 再按 shell 语义逐个引用后交给 `do shell script`。
         pub(super) fn install_command(script_path: &Path, gui_user: Option<&str>) -> String {
-            install_args(script_path, gui_user)
-                .iter()
-                .map(|arg| shell_quote(arg))
-                .collect::<Vec<_>>()
-                .join(" ")
+            let args = install_args(script_path, gui_user);
+            let mut parts = Vec::with_capacity(args.len());
+            for (index, arg) in args.iter().enumerate() {
+                // 程序名与 `--` 选项名都是固定字面量，引用它们只会产出 `'bash'` 这类噪声；
+                // 外部取值（脚本路径、用户名）必须按 shell 语义引用。
+                let literal = index == 0
+                    || (arg.starts_with("--")
+                        && arg.chars().all(|c| c.is_ascii_lowercase() || c == '-'));
+                parts.push(if literal {
+                    arg.clone()
+                } else {
+                    shell_quote(arg)
+                });
+            }
+            parts.join(" ")
         }
 
         fn run_admin_shell(&self, command: &str, success_message: &str) -> ServiceCommandResult {
