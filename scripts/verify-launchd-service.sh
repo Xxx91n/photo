@@ -140,8 +140,8 @@ probe_raw() {
 }
 
 extract_pid() {
-  # 从 print 输出提取 PID 行（新式 `pid = N` / 旧式 `"PID" = N;`；无 PID 行则空）
-  printf '%s\n' "$1" | sed -n 's/.*[Pp][Ii][Dd][[:space:]]*=[[:space:]]*\([0-9][0-9]*\).*/\1/p' | head -n 1
+  # 从 print 输出提取 PID 行（新式 `pid = N`，兼容旧式 `"PID" = N;` 的引号；无 PID 行则空）
+  printf '%s\n' "$1" | sed -n 's/.*[Pp][Ii][Dd]"*[[:space:]]*=[[:space:]]*\([0-9][0-9]*\).*/\1/p' | head -n 1
 }
 
 get_pid() {
