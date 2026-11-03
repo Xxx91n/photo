@@ -97,7 +97,7 @@
 | S2 | 安装服务（提权 UAC/pkexec/osascript 流） | 未回填 | 不在 #88 AC 内；本轮仅作为 S3/S4/S8 的前置步骤用 `scripts/install-service.ps1`（agent 以 High IL 管理员运行，无 UAC 交互）执行，安装即登记 #70 的 `ServicePipeInstallerSid` |
 | S3 | 启动服务 → 状态变运行中 | 通过 | 2026-11-03 桌面截图目检 + `sc query`：前态帧 `S3-before-stopped.png` 服务状态「已停止」，启动钮深色可点、停止/安装置灰、卸载红钮可点（与 `button_state` 一致）；点 UI「启动」后帧 `S3-after-running.png` 状态变「运行中」并出绿字反馈「Operation succeeded」，同时刻 `sc query PhotoPrivacyCleaner` STATE 4 RUNNING，服务 Worker 进程在 Services 会话（SYSTEM 上下文）存活；ProgramData 服务日志 04:09:55 Application started 后无 FTL/再停 |
 | S4 | 服务运行中 UI 经服务端点连接（服务页/日志页数据来自服务 Worker） | 通过 | 2026-11-03 桌面截图目检：服务运行中重启 UI，总览连接态「已连接 · PhotoPrivacyCleaner.Service · 服务模式」（帧 `S4-overview-service-mode.png`），Worker 卡片 Worker 模式=服务模式、上报模式=service、服务 IPC=可达、协议=v1、ExifTool=13.60、往返次数=14（单帧读数）；进程侧仅一个 Worker（pid 8996）且在 Services 会话，UI 未拉起后台 Worker——UI 连的是服务端点（#70 修复后服务管道 DACL 生效） |
-| S5 | 服务模式下改配置保存 → ReloadConfig 热生效 | 通过 | 2026-11-03 桌面截图 + 服务管道探针（产物见下文「S5 复测产物记录（#85 窗口）」）：服务运行中 UI 走服务端点（帧 `S5-00-overview-before.png`：「已连接 · PhotoPrivacyCleaner.Service · 服务模式」，进程侧仅一个 Worker 在 Services 会话）；配置页把「监控目录」改为 `…\photo-smoke-85\hot-s5` 后界面绿字「已保存 · Worker 已重载」（帧 `S5-08-e2e-timing.png`），端到端 **0.52 s 配置落盘 / 0.64 s 热生效**（第二轮同法计时，读侧预算 10 s，`S5-08-e2e-timing.txt`）；投放 `sample.jpg` 后由服务 Worker 就地清洗 3,648→626 B，日志页出 `Cleaned attempt=1;wipe_result=Cleaned_Modified` + `backup_sidecar_version…`（帧 `S5-03-logs-after-reload.png`），重开配置页显示持久化值（`S5-05-config-persisted.png`）；不经 UI 的独立探针经 `\\.\pipe\PhotoPrivacyCleaner.Service` 两次 `ReloadConfig` 各回 `ok:true`/`mode=service`，往返 0.44–0.62 s（锚定那轮 0.59 / 0.55 s，`S5-06-service-pipe-probe.txt`） |
+| S5 | 服务模式下改配置保存 → ReloadConfig 热生效 | 通过（基线 `fb388507`）；当前 head 待复测 | 2026-11-03 桌面截图 + 服务管道探针（产物见下文「S5 复测产物记录（#85 窗口）」；该节「基线口径」说明为何当前 head 需重取）：服务运行中 UI 走服务端点（帧 `S5-00-overview-before.png`：「已连接 · PhotoPrivacyCleaner.Service · 服务模式」，进程侧仅一个 Worker 在 Services 会话）；配置页把「监控目录」改为 `…\photo-smoke-85\hot-s5` 后界面绿字「已保存 · Worker 已重载」（帧 `S5-08-e2e-timing.png`），端到端 **0.52 s 配置落盘 / 0.64 s 热生效**（第二轮同法计时，读侧预算 10 s，`S5-08-e2e-timing.txt`）；投放 `sample.jpg` 后由服务 Worker 就地清洗 3,648→626 B，日志页出 `Cleaned attempt=1;wipe_result=Cleaned_Modified` + `backup_sidecar_version…`（帧 `S5-03-logs-after-reload.png`），重开配置页显示持久化值（`S5-05-config-persisted.png`）；不经 UI 的独立探针经 `\\.\pipe\PhotoPrivacyCleaner.Service` 两次 `ReloadConfig` 各回 `ok:true`/`mode=service`，往返 0.44–0.62 s（锚定那轮 0.59 / 0.55 s，`S5-06-service-pipe-probe.txt`） |
 | S6 | 停止服务 → 状态回落 | 未回填 | 未探活（#88 范围外） |
 | S7 | 卸载服务 → 回到未安装态 | 未回填 | 未探活（#88 范围外）；本轮收尾用 `install-service.ps1 -Action uninstall` 卸载并复核 SC 1060，但那是脚本通道，不是 S7 要验的 UI 提权链路 |
 | S8 | 服务模式日志通道在日志页可见（与后台模式区分） | 通过 | 2026-11-03 桌面截图 + 文件系统取证（帧 `S8-logs-page-service.png`）：同一服务模式会话切日志页，04:09:55「Service started mode=live」、04:09:56「ExifTool started」在列；04:13:08–09 投入 `hot/` 的带 Artist/Copyright 样本被服务 Worker 就地清洗 3648→626 B，日志页实时出「Cleaned attempt=1/wipe_result=Cleaned, Modified」×2 +「backup_sidecar_version… content_diverged_sidecar_written」，exiftool 复查标签已空；条目与 `pkg/hot/_audit/audit-2026-11-03.jsonl`、`processed.ndjson`（两文件 mtime 均落在投放后的 04:13）及 ProgramData 服务日志同刻。与后台模式的区分锚在连接态：本会话状态卡是「PhotoPrivacyCleaner.Service · 服务模式」+ Worker 卡片「服务 IPC=可达」（K1 记录的后台形态是 Background · 不可达） |
@@ -437,12 +437,21 @@
 > **授权记录**：在本机执行实机取证（含安装/卸载 `PhotoPrivacyCleaner` 服务、合成点击驱动 UI）
 > 由用户在 #85 实现窗口明确批准（2026-11-03）。不改变「无证据不虚构」：本节每条结论都对应
 > 下文具体帧或探针输出。
+>
+> **基线口径（必读）**：本节结论的适用范围是**产物 head `fb388507` 的代码**。#108（PR #155）此后
+> 并入 main，改动了 UI 的配置保存路径与校验（`ui/crates/photoprivacy-ui/src/config.rs` 的
+> `exiftool.path` 归一化、`app.rs` 的保存状态、`AppConfigLoader` 的加载校验）——都在 S5 这条链路上。
+> 因此当前 head（`caf8578`）的 S5 **尚未取证**，需用当前 head 的 Release 产物重做一次
+> （`release.yml` 仅 `workflow_dispatch`，由人执行，agent 不触发）。在那之前，S5 的「通过」只能按
+> 「旧基线证据」引用，不能当作当前基线通过。
 
 - **产物**：复用 Release run [41495388043](https://github.com/Xxx91n/photo/actions/runs/41495388043)
   的 `release-win-x64`（已解压 `C:\Users\Administrator\photo-smoke-113r2\pkg\`，head `fb388507`）。
   与 #85 起始基线 `5298b6466` 的差异经 `git log fb388507..5298b64` 核对**仅 4 个 docs 提交**；
   二进制 sha256 实测与既有记录一致（`PhotoPrivacy.exe a49189b2…`、`PhotoPrivacyWorker.exe 424acf03…`），
-  故结论对当前 main 的代码成立。本地未编译，包体全部来自远端 CI。
+  故结论对 **`fb388507` 的代码**成立。本地未编译，包体全部来自远端 CI。
+  取证之后 main 又并入 #108（PR #155，改动 UI 保存路径与配置校验），结论的有效范围随之止于
+  `fb388507`——当前 head 的复测待办见上方「基线口径」。
 - **前置**：服务未安装（SC 1060）、无 UI/Worker 残留进程。`scripts/install-service.ps1 -Action install`
   （High IL 管理员，无 UAC 交互）安装并启动，安装即登记 `ServicePipeInstallerSid`（`S-1-5-21-…-500`）；
   `sc query` STATE 4 RUNNING，服务 Worker 落在 Services 会话（pid 3496，SessionId 0）。

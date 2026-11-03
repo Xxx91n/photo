@@ -3,6 +3,8 @@
 # 产物：Release run 41495388043 / ref main / head fb388507 / version 0.1.0-verify113b
 # （与 #88、#113 第二轮同一产物；本票基线 5298b6466 与该 head 的差异经 git 核对仅 4 个 docs 提交，
 # 二进制 sha256 一致：PhotoPrivacy.exe a49189b2…、PhotoPrivacyWorker.exe 424acf03…）。
+# 取证之后 main 又并入 #108（PR #155，改动 UI 保存路径与配置校验），故这套证据的有效范围是
+# `fb388507` 的代码；当前 head 的 S5 需用当前 head 的 Release 产物重取，见 ui-smoke.md 的「基线口径」。
 # 图片与探针输出按既有约定不入库，只存于取证机目录
 #   C:\Users\Administrator\photo-smoke-85\evidence\（12 个文件，1,184,809 字节）。
 # 本清单给这些一次性证据一个可校验的锚：当下能证明它们存在且内容未被事后替换；
