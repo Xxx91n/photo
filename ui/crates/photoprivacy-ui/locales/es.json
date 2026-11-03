@@ -45,7 +45,11 @@
     "saved_reloaded": "Guardado · Worker recargado",
     "saved_worker_down": "Guardado · Worker no recargado: {0}",
     "config_error": "Error de config.json: {0}",
-    "copy_error": "Copiar error"
+    "copy_error": "Copiar error",
+    "connect_denied": "Esta cuenta no está autorizada para usar el modo servicio. Pida al instalador que la añada a -AuthorizedUsers",
+    "connect_denied_unix": "Esta cuenta no está autorizada para usar el modo servicio. Pida al administrador que la añada al grupo de acceso al servicio",
+    "worker_startup_failed": "Error al conectar con el Worker: el Worker en segundo plano no está listo ({0}); si el modo servicio se está ejecutando en este equipo, la instancia en segundo plano cede el paso (puerta de escritor único)",
+    "worker_not_installed": "Error al conectar con el Worker: no se encontró el ejecutable del Worker. Instale o repare y reintente"
   },
   "mode": {
     "tray": "Modo Bandeja",

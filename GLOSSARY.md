@@ -63,6 +63,7 @@
 **IPC Log Pull**：`GetRecentLogs` 从 Worker 拉审计尾部，补 FSW 盲区。
 **Channel&lt;T&gt; File Pipeline**：BoundedChannel 背压的生产-消费文件管线。
 **IpcClient**：UI↔Worker IPC 客户端（Rust 实现 `ui/crates/photoprivacy-ipc`）。
+**Connect Failure Cause**：连接编排失败的三态分类（#169）——服务端点被 DACL 拒 / 后台 Worker 启动未就绪（含单写者让位）/ 未找到 Worker 程序；经 `ConnectionSnapshot.connect_failure` 广播，心跳连上即清、掉线不清，UI 呈现优先于 `last_error`，不再统一归 os error 2。授权拒绝的行动指引按平台分键：Windows 指 `-AuthorizedUsers`，Unix 指服务授权组（0660+共享组边界）。
 
 ## 本地化
 
