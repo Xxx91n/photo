@@ -242,6 +242,25 @@ pub(crate) fn is_retryable(err: &io::Error) -> bool {
     )
 }
 
+/// 连接错误是否为「服务端点存在但被管道 DACL 拒绝」：授权拒绝与端点缺失是两种截然不同的
+/// 处境（#169），前者用户该找安装者加授权，后者该检查 Worker 安装。只认连接阶段错误——
+/// 读写阶段的 `IpcError::Io` 与超时都不携带端点存在性信息。
+pub fn is_service_access_denied(err: &IpcError) -> bool {
+    let IpcError::Connect(io_err) = err else {
+        return false;
+    };
+    #[cfg(windows)]
+    {
+        // ERROR_ACCESS_DENIED = 5。DACL 拒绝发生在 open 管道对象时，该错误本身即端点存在的证明；
+        // io::ErrorKind::PermissionDenied 是 std 对 raw 5 的映射，两判并置防映射表漂移。
+        io_err.raw_os_error() == Some(5) || io_err.kind() == io::ErrorKind::PermissionDenied
+    }
+    #[cfg(not(windows))]
+    {
+        io_err.kind() == io::ErrorKind::PermissionDenied
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -272,5 +291,29 @@ mod tests {
         // 防：配置热重载沿用 3s 读超时，Worker 重建 watcher 期间 UI 把成功重载误报成掉线（#55）。
         assert!(RELOAD_CONFIG_TIMEOUT >= Duration::from_secs(6));
         assert!(RELOAD_CONFIG_TIMEOUT > Duration::from_secs(3));
+    }
+
+    #[test]
+    fn access_denied_is_distinguished_from_endpoint_missing() {
+        // 防：把 DACL 拒绝（raw 5）与端点缺失（raw 2）混为一谈，未授权用户只看到 os error 2（#169）。
+        #[cfg(windows)]
+        {
+            let denied = IpcError::Connect(io::Error::from_raw_os_error(5));
+            assert!(is_service_access_denied(&denied));
+            let missing = IpcError::Connect(io::Error::from_raw_os_error(2));
+            assert!(!is_service_access_denied(&missing));
+            let busy = IpcError::Connect(io::Error::from_raw_os_error(231));
+            assert!(!is_service_access_denied(&busy));
+        }
+        #[cfg(unix)]
+        {
+            let denied = IpcError::Connect(io::Error::from(io::ErrorKind::PermissionDenied));
+            assert!(is_service_access_denied(&denied));
+            let missing = IpcError::Connect(io::Error::from(io::ErrorKind::NotFound));
+            assert!(!is_service_access_denied(&missing));
+        }
+        // 超时与读写错误不携带端点存在性信息，一律不判授权拒绝。
+        assert!(!is_service_access_denied(&IpcError::Timeout));
+        assert!(!is_service_access_denied(&IpcError::Rejected("no".to_string())));
     }
 }

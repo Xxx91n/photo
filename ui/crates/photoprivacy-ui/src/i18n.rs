@@ -223,6 +223,9 @@ pub mod keys {
     pub const STATUS_CONFIG_ERROR: &str = "status.config_error";
     pub const STATUS_COPY_ERROR: &str = "status.copy_error";
     pub const STATUS_AUTO_DETECTED: &str = "status.auto_detected";
+    pub const STATUS_CONNECT_DENIED: &str = "status.connect_denied";
+    pub const STATUS_WORKER_STARTUP_FAILED: &str = "status.worker_startup_failed";
+    pub const STATUS_WORKER_NOT_INSTALLED: &str = "status.worker_not_installed";
     pub const MSG_SAVE_FAILED_EXCEPTION: &str = "msg.save_failed_exception";
     pub const CONFIG_SECTION_PATH: &str = "config.section.path";
     pub const CONFIG_SECTION_BEHAVIOR: &str = "config.section.behavior";
@@ -505,6 +508,9 @@ mod tests {
             keys::STATUS_CONFIG_ERROR,
             keys::STATUS_COPY_ERROR,
             keys::STATUS_AUTO_DETECTED,
+            keys::STATUS_CONNECT_DENIED,
+            keys::STATUS_WORKER_STARTUP_FAILED,
+            keys::STATUS_WORKER_NOT_INSTALLED,
             keys::MSG_SAVE_FAILED_EXCEPTION,
             keys::CONFIG_SECTION_PATH,
             keys::CONFIG_SECTION_BEHAVIOR,

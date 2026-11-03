@@ -45,7 +45,10 @@
     "saved_reloaded": "保存済み · Worker 再読込済み",
     "saved_worker_down": "保存済み · Worker 未再読込: {0}",
     "config_error": "config.json エラー: {0}",
-    "copy_error": "エラーをコピー"
+    "copy_error": "エラーをコピー",
+    "connect_denied": "このアカウントはサービスモードの使用を許可されていません。インストール実行者に -AuthorizedUsers への追加を依頼してください",
+    "worker_startup_failed": "Worker への接続に失敗しました：バックグラウンド Worker が準備できていません（{0}）。このマシンでサービスモードが実行中の場合、バックグラウンド側は単一書き込みゲートにより譲って終了します",
+    "worker_not_installed": "Worker への接続に失敗しました：Worker 実行ファイルが見つかりません。インストールまたは修復後に再試行してください"
   },
   "mode": {
     "tray": "トレイモード",

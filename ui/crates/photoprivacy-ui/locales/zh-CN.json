@@ -45,7 +45,10 @@
     "saved_reloaded": "已保存 · Worker 已重载",
     "saved_worker_down": "已保存 · Worker 未重载：{0}",
     "config_error": "config.json 错误：{0}",
-    "copy_error": "复制错误"
+    "copy_error": "复制错误",
+    "connect_denied": "当前账户未被授权使用服务模式，请联系安装者将账户加入 -AuthorizedUsers",
+    "worker_startup_failed": "连接 Worker 失败：后台 Worker 未就绪（{0}）；若服务模式正在本机运行，后台实例会因单写者准入门让位退出",
+    "worker_not_installed": "连接 Worker 失败：未找到 Worker 程序，请安装或修复后重试"
   },
   "mode": {
     "tray": "托盘模式",

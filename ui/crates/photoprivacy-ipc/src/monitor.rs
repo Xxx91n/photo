@@ -46,6 +46,25 @@ pub enum ServiceReachability {
     Unreachable,
 }
 
+/// 连接编排的最终失败分类：区分「被服务授权拒绝」与「Worker 缺失」，让 UI 对两种截然不同的
+/// 处境给出各自的行动指引（找安装者加授权 vs 检查 Worker 安装），不再统一归到 os error 2。
+///
+/// 三态互斥，按最近一次真实失败原因归类：服务端点权限拒绝优先（它是回落链的第一环，也是
+/// 未授权用户唯一正确的行动线索）；其次才是后台 Worker 启动未就绪（含 #163 单写者让位退出）
+/// 与未找到可拉起的 Worker 程序。连接成功即清空（`apply_success`）；心跳失败不清——授权拒绝
+/// 是编排期事实，心跳掉线不推翻它。
+// Design(#169): 连接失败提示按三态分类呈现，不把授权拒绝混同为 Worker 缺失的 os error 2。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ConnectFailureCause {
+    /// 服务端点存在但连接被服务管道 DACL 拒绝（未列入授权集合的账户，#1/#160）。
+    ServiceAccessDenied,
+    /// 服务端点不可用，UI 拉起的后台 Worker 未能就绪（spawn 失败 / 已退出 / 5s 未就绪，
+    /// 含 #163 单写者准入门让位退出）；附带的字符串是自描述细节（如退出码）。
+    WorkerStartupFailed(String),
+    /// 端点均不可用且未找到可拉起的后台 Worker 可执行文件。
+    WorkerNotInstalled,
+}
+
 #[derive(Clone, Debug)]
 pub struct ConnectionSnapshot {
     pub state: ConnectionState,
@@ -59,6 +78,8 @@ pub struct ConnectionSnapshot {
     pub round_trips: u64,
     pub last_round_trip: Option<Duration>,
     pub last_error: Option<String>,
+    /// 连接编排的失败分类（#169）：`None` = 已连接或编排未给出结论；UI 呈现时优先于 `last_error`。
+    pub connect_failure: Option<ConnectFailureCause>,
 }
 
 impl ConnectionSnapshot {
@@ -75,6 +96,7 @@ impl ConnectionSnapshot {
             round_trips: 0,
             last_round_trip: None,
             last_error: None,
+            connect_failure: None,
         }
     }
 }
@@ -200,11 +222,15 @@ fn apply_success(
     snapshot.round_trips += 1;
     snapshot.last_round_trip = Some(elapsed);
     snapshot.last_error = None;
+    // 连上即作废编排期的失败结论：Worker 已就绪，分类文案不再成立（#169）。
+    snapshot.connect_failure = None;
 }
 
 // 失败时清掉连接期字段：它们只代表上一次成功往返，留在界面上会被读成 Worker 的当前状态。
 // `last_round_trip` 保留——界面文案本身就是「上次往返」的历史语义。
 /// 心跳失败后清掉连接期字段；保留历史往返、ExifTool 版本与服务可达性。
+/// `connect_failure` 也保留：编排期的授权拒绝等结论不因心跳掉线被推翻，`last_error`
+/// 才是心跳自身的错误面（#169）。
 fn apply_failure(snapshot: &mut ConnectionSnapshot, err: &IpcError) {
     snapshot.state = ConnectionState::Reconnecting;
     snapshot.protocol_version = None;
@@ -383,5 +409,46 @@ mod tests {
         assert_eq!(snapshot.exif_tool_version.as_deref(), Some("13.20"));
         assert_eq!(snapshot.last_round_trip, Some(Duration::from_millis(3)));
         assert!(snapshot.last_error.is_some());
+    }
+
+    #[test]
+    fn success_clears_connect_failure_but_heartbeat_failure_keeps_it() {
+        // 防：连上后台 Worker 后界面仍显示编排期的失败分类（#169）——分类只代表「当前断开」的原因。
+        let mut snapshot = ConnectionSnapshot::connecting();
+        snapshot.connect_failure = Some(ConnectFailureCause::ServiceAccessDenied);
+
+        apply_success(
+            &mut snapshot,
+            &Status::default(),
+            Some(1),
+            Duration::from_millis(3),
+        );
+        assert_eq!(snapshot.connect_failure, None);
+
+        // 防：心跳掉线顺手清掉授权拒绝结论——os error 2 重新盖住「未被授权」，#169 回潮。
+        snapshot.connect_failure = Some(ConnectFailureCause::ServiceAccessDenied);
+        apply_failure(&mut snapshot, &IpcError::Timeout);
+        assert_eq!(
+            snapshot.connect_failure,
+            Some(ConnectFailureCause::ServiceAccessDenied)
+        );
+        assert!(snapshot.last_error.is_some());
+    }
+
+    #[test]
+    fn connect_failure_variants_carry_their_payload() {
+        // 防：三态判别式在快照克隆/比较中错位，UI 把启动失败细节显示成未授权文案（#169）。
+        let variants = vec![
+            ConnectFailureCause::ServiceAccessDenied,
+            ConnectFailureCause::WorkerStartupFailed("exited with code 1".to_string()),
+            ConnectFailureCause::WorkerNotInstalled,
+        ];
+        let cloned = variants.clone();
+        assert_eq!(variants, cloned);
+        assert_eq!(
+            ConnectionSnapshot::connecting().connect_failure,
+            None,
+            "初始快照不应预置失败分类"
+        );
     }
 }

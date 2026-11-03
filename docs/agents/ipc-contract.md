@@ -69,8 +69,10 @@ store/audit）建回来，再按上述契约回 `ok:false`（重建失败带 `re
 
 ## Worker 启动
 
-`PhotoPrivacyWorker --mode background [--config <config.json>]`。UI 侧连接顺序：服务端点 → 后台端点 → 启动后台 Worker 并轮询 5 s（`ui/crates/photoprivacy-ipc/src/monitor.rs`；旧栈实现 `src/PhotoPrivacy.Ui/Services/WorkerProcessManager.cs` 已随旧 Ui 工程退役，#61）。
+`PhotoPrivacyWorker --mode background [--config <config.json>]`。UI 侧连接顺序：服务端点 → 后台端点 → 启动后台 Worker 并轮询 5s（`ui/crates/photoprivacy-ipc/src/monitor.rs`；旧栈实现 `src/PhotoPrivacy.Ui/Services/WorkerProcessManager.cs` 已随旧 Ui 工程退役，#61）。
 当 `watch.hot_folder` 为空时，Worker 仍建立 IPC 并保持待机；`GetStatus.data.watchDirectory` 为空，UI 应引导用户到配置页选择监控目录。保存有效目录后通过 `ReloadConfig` 启动监控，无需重启 Worker（#100）。
+
+连接全部失败时，UI 按最近一次真实失败原因三态分类呈现（#169，编排顺序与轮询预算不变）：服务端点连接被管道 DACL 拒（`ERROR_ACCESS_DENIED`，端点存在的证明）→「未被授权使用服务模式，联系安装者加入 `-AuthorizedUsers`」；UI 拉起的后台 Worker 未就绪（spawn 失败 / 已退出——含 #163 单写者准入门让位退出码 1 / 5s 超时）→ Worker 缺失语义并附退出细节；未找到可拉起的 Worker 可执行文件 → 引导安装。分类经 `ConnectionSnapshot.connect_failure` 广播，心跳连上即清空；心跳掉线不清（授权拒绝是编排期事实）。
 
 ## 认证边界与已知缺陷
 
@@ -108,3 +110,5 @@ store/audit）建回来，再按上述契约回 `ok:false`（重建失败带 `re
 ## 改动规则
 
 协议扩展**只加 method 名**，不改既有字段语义（`Design(#49)`）。改完同步：本文件、`ui/crates/photoprivacy-ipc/src/protocol.rs`、对应 Rust 测试与 .NET 侧契约测试。
+
+> AI生成

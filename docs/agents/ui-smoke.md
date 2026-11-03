@@ -102,6 +102,25 @@
 | S7 | 卸载服务 → 回到未安装态 | 未回填 | 未探活（#88 范围外）；本轮收尾用 `install-service.ps1 -Action uninstall` 卸载并复核 SC 1060，但那是脚本通道，不是 S7 要验的 UI 提权链路 |
 | S8 | 服务模式日志通道在日志页可见（与后台模式区分） | 通过 | 2026-11-03 桌面截图 + 文件系统取证（帧 `S8-logs-page-service.png`）：同一服务模式会话切日志页，04:09:55「Service started mode=live」、04:09:56「ExifTool started」在列；04:13:08–09 投入 `hot/` 的带 Artist/Copyright 样本被服务 Worker 就地清洗 3648→626 B，日志页实时出「Cleaned attempt=1/wipe_result=Cleaned, Modified」×2 +「backup_sidecar_version… content_diverged_sidecar_written」，exiftool 复查标签已空；条目与 `pkg/hot/_audit/audit-2026-11-03.jsonl`、`processed.ndjson`（两文件 mtime 均落在投放后的 04:13）及 ProgramData 服务日志同刻。与后台模式的区分锚在连接态：本会话状态卡是「PhotoPrivacyCleaner.Service · 服务模式」+ Worker 卡片「服务 IPC=可达」（K1 记录的后台形态是 Background · 不可达） |
 
+### 连接失败三态提示 3 项（#169 定形）
+
+> 场景：连接编排按 #82 顺序回落失败后，概览页状态卡按最近一次真实失败原因分类呈现，
+> 不再把「服务授权拒绝」混同为「Worker 缺失」的 os error 2（`ui/crates/photoprivacy-ui/src/worker_connection.rs`
+> 编排收集 → `ConnectionSnapshot.connect_failure` 广播 → 概览页 `connect_failure_text` 呈现；
+> 连接顺序与轮询预算不变）。三态判据与文案键：服务端点 DACL 拒（raw 5，端点存在的证明）→
+> `status.connect_denied`（warning 色）；后台拉起未就绪（spawn 失败 / 已退出——含 #163 单写者
+> 准入门让位 / 5s 超时）→ `status.worker_startup_failed`（附 spawn 错误或退出码细节）；
+> 未找到可拉起的 Worker 程序 → `status.worker_not_installed`。心跳连上即清空（`apply_success`），
+> 心跳掉线不清。三态的 Rust 行为侧（分类判据、退出码上报、10 locale 键集全等）由 CI 测试守护
+> （`classify_connect_failure` 三态/退出码/未就绪、`is_service_access_denied` raw 5 判定、
+> `connect_failure_texts_map_to_distinct_guidance` 文案映射）；本表只锚实机目检（#169 AC3）。
+
+| # | 操作 | 结果 | 证据 |
+|---|---|---|---|
+| C1 | 装有服务的机器上，未列入 `-AuthorizedUsers` 的标准用户启动 UI，等回落链走完（约 5 s+） | 未回填 | 目检锚：状态卡出「当前账户未被授权使用服务模式，请联系安装者将账户加入 -AuthorizedUsers」（warning 色），而非「连接 Worker 失败: 系统找不到指定的文件。 (os error 2)」 |
+| C2 | 真实缺 Worker 场景（发布包内移走 `PhotoPrivacyWorker.exe`、无服务）启动 UI | 未回填 | 目检锚：状态卡出「未找到 Worker 程序」引导安装/修复，不误报为未授权 |
+| C3 | 断连恢复：UI 保持运行时后台 Worker 就绪（或账户获授权后重启 UI 连上服务端点） | 未回填 | 目检锚：分类文案消失、状态卡回「已连接」——失败结论不比连接本身活得更久 |
+
 ### #49 D11 功能对等核销（切换判据）
 
 | 判据 | 结论 | 证据/出处 |
@@ -629,3 +648,5 @@
      （勘误，2026-10-31 #125：K1-K4 已按桌面截图通道实机取证并全部通过，见上文「首次配置待机 4 项」表；本条的「未探活」只描述写下它时的状态。）
   4. **GUI 文本不可划选复制**：gpui 纯文本展示未支持鼠标划选高亮与系统剪贴板复制，报错无法直接复制排障。
   5. **主题设置入口冗余**：右上角快捷切换与设置页平铺切换并存，交互体验重叠。
+
+> AI生成

@@ -45,7 +45,10 @@
     "saved_reloaded": "Saved · Worker reloaded",
     "saved_worker_down": "Saved · Worker not reloaded: {0}",
     "config_error": "config.json error: {0}",
-    "copy_error": "Copy error"
+    "copy_error": "Copy error",
+    "connect_denied": "This account is not authorized to use service mode. Ask the installer to add it to -AuthorizedUsers",
+    "worker_startup_failed": "Failed to connect to Worker: background worker not ready ({0}); if service mode is running on this machine, the background instance exits to yield (single-writer gate)",
+    "worker_not_installed": "Failed to connect to Worker: worker executable not found. Install or repair, then retry"
   },
   "mode": {
     "tray": "Tray Mode",
