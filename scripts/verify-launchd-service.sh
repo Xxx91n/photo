@@ -277,6 +277,12 @@ ui_probe_report() {
     mv -f "$report" "$EVIDENCE_DIR/ui-probe-$tag.json"
     report="$EVIDENCE_DIR/ui-probe-$tag.json"
   fi
+  # 命令失败/超时（rc!=0）时报告不作数：异常退出/超时杀（rc=124）后的残留报告
+  # 即使文件在、状态对拍一致也不得洗成 PASS（CodeRabbit #175 审查意见，fail-closed）。
+  if [[ $rc -ne 0 ]]; then
+    rec FAIL "UI Service 页探测命令失败/超时（${tag}: rc=${rc}）——报告不采信，见 ui-probe-$tag.txt"
+    return 0
+  fi
   if [[ ! -f "$report" ]]; then
     rec FAIL "UI Service 页探测报告未产出（${tag}，rc=${rc}，见 ui-probe-$tag.txt）"
     return 0
