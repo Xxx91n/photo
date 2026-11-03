@@ -34,16 +34,11 @@ jobs:
       - name: Ensure Rust toolchain
         run: rustup default stable
 
-      - name: Rust tests (photoprivacy-logs)
-        working-directory: ui
-        run: cargo test -p photoprivacy-logs --locked
-
-      - name: Run logs parity verification script
+      - name: Run logs parity verification script (generates data & tests LogBuffer)
         shell: bash
         run: |
           chmod +x scripts/verify-logs-parity.sh
           ./scripts/verify-logs-parity.sh \
-            --release-dir "ui/target" \
             --evidence-dir "$RUNNER_TEMP/logs-parity-verify" \
             --count "${{ github.event.inputs.log_count || '600' }}"
 

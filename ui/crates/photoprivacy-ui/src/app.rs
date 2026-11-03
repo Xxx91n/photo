@@ -1962,7 +1962,7 @@ impl AppView {
             _ => None,
         };
 
-        // Design(#169): 连接失败行优先呈现编排结论的分类文案——服务授权拒绝与 Worker 缺失
+        // Design(#49): 连接失败行优先呈现编排结论的分类文案——服务授权拒绝与 Worker 缺失（源自 #169）
         // 是两种截然不同的处境，统一归到心跳的 os error 2 会让未授权用户无从采取正确动作。
         // 无分类时维持 last_error 原样（未分类错误的兜底口径不变）。
         let failure_line = match &self.snapshot.connect_failure {
