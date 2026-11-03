@@ -61,11 +61,23 @@ rm -f "$PNG"
 
 # --worker 指向不存在路径：截图场景只看 Service 页探测，不拉起后台 Worker
 # （避免与服务 Worker 同 config 并存的单写者让位场景混入，#162）。
-"$UI_BIN" --open-page service --worker "${OUT_DIR}/no-worker-for-shot" >/dev/null 2>&1 &
+UI_LOG="${OUT_DIR}/ui-${TAG}-ui.log"
+"$UI_BIN" --open-page service --worker "${OUT_DIR}/no-worker-for-shot" > "$UI_LOG" 2>&1 &
 UI_PID=$!
 
 # 首屏渲染余量：服务状态在建窗前已同步探测（main.rs 首拍），截图等窗口稳定。
-sleep 6
+sleep 4
+# 单实例唤起兜底：若首实例静默驻守无窗，第二个实例只唤起不重开（main.rs 单实例守卫语义），
+# 会把主窗带出来；再点名置前台，避免截图截到别的应用/壁纸。
+"$UI_BIN" --open-page service --worker "${OUT_DIR}/no-worker-for-shot" >/dev/null 2>&1 || true
+sleep 3
+osascript -e 'tell application "System Events" to tell process "PhotoPrivacy" to set frontmost to true' 2>&1 || true
+sleep 1
+
+# 窗口实存与几何留证（无窗时本文件只有报错，配合 UI 日志定位）
+echo "---- window info ----"
+osascript -e 'tell application "System Events" to tell process "PhotoPrivacy" to get {position, size} of window 1' 2>&1 || true
+pgrep -fl "PhotoPrivacy" 2>&1 || true
 
 launchctl list com.photoprivacy.cleaner > "$LAUNCHCTL_TXT" 2>&1 || true
 echo "---- launchctl list (配对状态) ----"
