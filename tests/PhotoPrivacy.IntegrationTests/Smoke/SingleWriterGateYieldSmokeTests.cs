@@ -81,7 +81,7 @@ public sealed class SingleWriterGateYieldSmokeTests : IntegrationTestBase
                 Assert.Contains("yielding", yieldRun.Stderr, StringComparison.OrdinalIgnoreCase);
 
                 var auditFile = WaitForAuditFile(audit, TimeSpan.FromSeconds(5));
-                var content = File.ReadAllText(auditFile);
+                var content = ReadAuditTolerantly(auditFile);
                 Assert.Contains("\"event_type\":\"instance_conflict\"", content, StringComparison.OrdinalIgnoreCase);
                 Assert.Contains("single_writer_gate", content, StringComparison.OrdinalIgnoreCase);
             }
@@ -235,7 +235,9 @@ public sealed class SingleWriterGateYieldSmokeTests : IntegrationTestBase
             {
                 try
                 {
-                    var content = File.ReadAllText(file);
+                    // 容忍读（FileShare.ReadWrite）：File.ReadAllText 的 FileShare.Read 会与 Worker 的
+                    // flush append 互撞，打掉含 service_started 的批次（CodeRabbit #163）。
+                    var content = ReadAuditTolerantly(file);
                     if (content.Contains($"\"event_type\":\"{eventType}\"", StringComparison.OrdinalIgnoreCase))
                     {
                         return;
@@ -251,5 +253,12 @@ public sealed class SingleWriterGateYieldSmokeTests : IntegrationTestBase
         }
 
         throw new TimeoutException($"audit event '{eventType}' not found within timeout.");
+    }
+
+    private static string ReadAuditTolerantly(string path)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
     }
 }
