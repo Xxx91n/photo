@@ -104,6 +104,38 @@
 
 > **macOS 探测项验收口径（#172）**：S1/S3/S6/S7 等服务页探测项在 macOS 侧不以人工读屏为准，以 `scripts/verify-launchd-service.sh` 的修后对拍为准——`ui_probe_report` 以 **GUI 用户**语境跑 `PhotoPrivacy --service-probe-report`（与截图同语境），与 CLI `probe_state`（`launchctl print system/<label>`，显式系统域）判定一致即探测项通过；截图与 legacy `launchctl list`/`print` 对照留证仅供目检。对拍链由 `.github/workflows/launchd-verify.yml`（GitHub macOS runner 虚拟环境）执行。
 
+### 连接失败三态提示 3 项（#169 定形）
+
+> 场景：连接编排按 #82 顺序回落失败后，概览页状态卡按最近一次真实失败原因分类呈现，
+> 不再把「服务授权拒绝」混同为「Worker 缺失」的 os error 2（`ui/crates/photoprivacy-ui/src/worker_connection.rs`
+> 编排收集 → `ConnectionSnapshot.connect_failure` 广播 → 概览页 `connect_failure_text` 呈现；
+> 连接顺序与轮询预算不变）。三态判据与文案键：服务端点 DACL 拒（raw 5，端点存在的证明）→
+> `status.connect_denied`（warning 色，CodeRabbit 返修后**按平台分键**：Windows 指引加入安装脚本的
+> `-AuthorizedUsers`，Unix 用 `status.connect_denied_unix` 指引加入服务授权组——0660+共享组边界）；
+> 后台拉起未就绪（spawn 失败 / 已退出——含 #163 单写者
+> 准入门让位 / 5s 超时）→ `status.worker_startup_failed`（附 spawn 错误或退出码细节）；
+> 未找到可拉起的 Worker 程序 → `status.worker_not_installed`。心跳连上即清空（`apply_success`），
+> 心跳掉线不清。三态的 Rust 行为侧（分类判据、退出码上报、10 locale 键集全等）由 CI 测试守护
+> （`classify_connect_failure` 三态/退出码/未就绪、`is_service_access_denied` raw 5 判定、
+> `connect_failure_texts_map_to_distinct_guidance` 文案映射）；本表锚实机目检（#169 AC3，
+> Windows 平台口径）。
+>
+> **本表结论的构建口径（2026-11-03）**：`workflow_dispatch` 触发 release.yml 于本票分支
+> `t169-conn-fail-semantics`（run [41614025539](https://github.com/Xxx91n/photo/actions/runs/41614025539)），
+> `version=0.1.0-169smoke`、`create_release=false`——产物仅留 artifact，未发布 GitHub Release；
+> 取 `win-x64` 产物实机测试。产物对应 head `9aa1c27`（即「授权拒绝指引按平台分键」返修后），
+> 含全部 UI 行为改动（实现 `b718e63` + review 修复 `97be999` + fmt 对齐 `0c7b7f2` + 平台分键
+> `9aa1c27`）；其后 `0e51291`（`Design(#32)` 注释治理 + merge main）与 `3016a37`（本表回填）
+> 均无行为 diff，故目检结论对当前 HEAD 依然成立。本地零编译口径（同 #168 虚拟环境验证先例），
+> agent 桌面截图自查（同 #125/#88 先例，用户已批准该取证方式）；产物解包于本机私有临时目录，
+> 测试后服务已卸载、临时标准用户已删除、进程与注册表授权键已清，环境无残留。
+
+| # | 操作 | 结果 | 证据 |
+|---|---|---|---|
+| C1 | 装有服务的机器上，未列入 `-AuthorizedUsers` 的标准用户启动 UI，等回落链走完（约 5 s+） | 通过（2026-11-03，`9aa1c27` 构建） | 实机（Windows，本机）：临时标准用户 `pp169-out`（仅 Users 组）+ 装服务（`-AuthorizedUsers pp169-ok`，2 授权 SID）下启动 UI → 状态卡 warning 色警告行逐字「当前账户未被授权使用服务模式，请联系安装者将账户加入 -AuthorizedUsers」，无任何 os error 2；后台 Worker 确实撞 #163 让位退出（服务侧审计 `instance_conflict`/`single_writer_gate`，`hot/_audit/audit-2026-11-03.jsonl`）；**对称验证**：同服务下授权用户 `pp169-ok` 启动 UI → 「已连接 · PhotoPrivacyCleaner.Service · 服务模式」（绿点、服务 IPC 可达、往返 495 次），无误报——截图 `C1-unauthorized.png` / `C1-symmetric-authorized.png`（桌面取证归档） |
+| C2 | 真实缺 Worker 场景（发布包内移走 `PhotoPrivacyWorker.exe`、无服务）启动 UI | 通过（2026-11-03，`9aa1c27` 构建） | 实机（Windows，本机）：确认服务未装（sc query 1060）+ 移走 Worker.exe 后启动 UI → 状态卡红色错误行逐字「连接 Worker 失败：未找到 Worker 程序，请安装或修复后重试」，不误报为未授权——截图 `C2-worker-missing.png` |
+| C3 | 断连恢复：UI 保持运行时后台 Worker 就绪（或账户获授权后重启 UI 连上服务端点） | 通过（2026-11-03，`9aa1c27` 构建） | 实机（Windows，本机）：C2 同一 UI 进程保持运行，放回 Worker.exe 并以 `--mode background` 拉起 → 状态回「已连接 · PhotoPrivacyCleaner.Background · 后台模式」（绿点、协议 v1、往返 8 次），分类文案消失（`apply_success` 清空生效），仅剩出厂待机的正常引导行「请前往配置页设置监控目录」——截图 `C3-recovered.png` |
+
 ### #49 D11 功能对等核销（切换判据）
 
 | 判据 | 结论 | 证据/出处 |
@@ -631,3 +663,5 @@
      （勘误，2026-10-31 #125：K1-K4 已按桌面截图通道实机取证并全部通过，见上文「首次配置待机 4 项」表；本条的「未探活」只描述写下它时的状态。）
   4. **GUI 文本不可划选复制**：gpui 纯文本展示未支持鼠标划选高亮与系统剪贴板复制，报错无法直接复制排障。
   5. **主题设置入口冗余**：右上角快捷切换与设置页平铺切换并存，交互体验重叠。
+
+> AI生成

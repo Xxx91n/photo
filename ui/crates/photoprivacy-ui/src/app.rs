@@ -15,7 +15,9 @@ use gpui::{
     Render, Rgba, ScrollHandle, Stateful, StyleRefinement, Styled, Subscription,
     UniformListScrollHandle, Window, actions, div, px, uniform_list,
 };
-use photoprivacy_ipc::{ConnectionSnapshot, ConnectionState, ServiceReachability, WorkerMode};
+use photoprivacy_ipc::{
+    ConnectFailureCause, ConnectionSnapshot, ConnectionState, ServiceReachability, WorkerMode,
+};
 use photoprivacy_logs::{AuditRecord, EventTone, LevelFilter, LogBuffer};
 use photoprivacy_rules::RulesEditor;
 use photoprivacy_service::{ServiceRuntimeState, button_state};
@@ -468,6 +470,41 @@ fn mode_key(mode: WorkerMode) -> &'static str {
     match mode {
         WorkerMode::Background => k::MODE_BACKGROUND,
         WorkerMode::Service => k::MODE_SERVICE,
+    }
+}
+
+/// 连接失败三态 → 分类文案（#169）：授权拒绝给行动指引——指引按平台分键（CodeRabbit 返修）：
+/// Windows 是安装脚本的 `-AuthorizedUsers` 集合，Unix 是服务 socket 的 0660+共享组边界
+/// （`install-systemd-service.sh --gui-user` / launchd 同构）；后台未就绪附启动/退出细节；
+/// 未安装引导重装。WorkerStartupFailed 的 `{0}` 是编排侧生成的自描述细节
+/// （spawn 错误 / 退出码 / 5s 未就绪）。
+fn connect_failure_text(catalog: &Catalog, locale: &str, cause: &ConnectFailureCause) -> String {
+    match cause {
+        ConnectFailureCause::ServiceAccessDenied => {
+            let key = if cfg!(windows) {
+                k::STATUS_CONNECT_DENIED
+            } else {
+                k::STATUS_CONNECT_DENIED_UNIX
+            };
+            catalog.get(locale, key)
+        }
+        ConnectFailureCause::WorkerStartupFailed(detail) => {
+            catalog.get_format(locale, k::STATUS_WORKER_STARTUP_FAILED, &[detail])
+        }
+        ConnectFailureCause::WorkerNotInstalled => {
+            catalog.get(locale, k::STATUS_WORKER_NOT_INSTALLED)
+        }
+    }
+}
+
+/// 连接失败三态 → 呈现色（#169）：授权拒绝是「找安装者」的引导（warning，同配置页引导色）；
+/// Worker 缺失/未就绪维持错误红。
+fn connect_failure_color(cause: &ConnectFailureCause, theme: &Theme) -> Rgba {
+    match cause {
+        ConnectFailureCause::ServiceAccessDenied => theme.warning,
+        ConnectFailureCause::WorkerStartupFailed(_) | ConnectFailureCause::WorkerNotInstalled => {
+            theme.danger
+        }
     }
 }
 
@@ -1925,6 +1962,21 @@ impl AppView {
             _ => None,
         };
 
+        // Design(#169): 连接失败行优先呈现编排结论的分类文案——服务授权拒绝与 Worker 缺失
+        // 是两种截然不同的处境，统一归到心跳的 os error 2 会让未授权用户无从采取正确动作。
+        // 无分类时维持 last_error 原样（未分类错误的兜底口径不变）。
+        let failure_line = match &self.snapshot.connect_failure {
+            Some(cause) => Some((
+                connect_failure_text(&self.i18n, &self.config.ui.locale, cause),
+                connect_failure_color(cause, theme),
+            )),
+            None => self
+                .snapshot
+                .last_error
+                .clone()
+                .map(|error| (error, theme.danger)),
+        };
+
         let status_card = div()
             .flex()
             .flex_col()
@@ -1960,7 +2012,7 @@ impl AppView {
                             .child(round_trip),
                     ),
             )
-            .children(self.snapshot.last_error.clone().map(|error| {
+            .children(failure_line.map(|(error, color)| {
                 div()
                     .flex()
                     .items_center()
@@ -1968,7 +2020,7 @@ impl AppView {
                     .child(
                         div()
                             .text_size(px(12.))
-                            .text_color(theme.danger)
+                            .text_color(color)
                             .child(error.clone()),
                     )
                     .child(self.copy_button(
@@ -2874,6 +2926,59 @@ mod tests {
         element_ids.sort_unstable();
         element_ids.dedup();
         assert_eq!(element_ids.len(), FIELD_SPECS.len(), "element_id 不可重复");
+    }
+
+    /// 防的回潮形态：#169 之前未授权用户最终只看到统一的「连接 Worker 失败: os error 2」，
+    /// 三态文案映射错位会把这层混同原样带回（未授权被引导去重装、缺 Worker 被引导去找安装者）。
+    #[test]
+    fn connect_failure_texts_map_to_distinct_guidance() {
+        let catalog = Catalog::embedded();
+
+        let denied =
+            connect_failure_text(&catalog, "zh-CN", &ConnectFailureCause::ServiceAccessDenied);
+        assert!(denied.contains("未被授权"), "denied: {denied}");
+        // 授权拒绝的行动指引按平台分键（CodeRabbit 返修）：Windows 指向安装脚本的
+        // -AuthorizedUsers 集合，Unix 指向 0660+共享组边界——两平台都不混入 os error 口径。
+        if cfg!(windows) {
+            assert!(denied.contains("-AuthorizedUsers"), "denied: {denied}");
+        } else {
+            assert!(denied.contains("授权组"), "denied: {denied}");
+        }
+        assert!(
+            !denied.contains("os error"),
+            "授权拒绝文案不得混入端点缺失的 os error 口径: {denied}"
+        );
+
+        let startup = connect_failure_text(
+            &catalog,
+            "zh-CN",
+            &ConnectFailureCause::WorkerStartupFailed("worker exited with code 1".to_string()),
+        );
+        assert!(startup.contains("未就绪"), "startup: {startup}");
+        assert!(
+            startup.contains("worker exited with code 1"),
+            "startup: {startup}"
+        );
+
+        let not_installed =
+            connect_failure_text(&catalog, "zh-CN", &ConnectFailureCause::WorkerNotInstalled);
+        assert!(
+            not_installed.contains("未找到 Worker 程序"),
+            "{not_installed}"
+        );
+
+        // 三态文案互异：全部落到同一键等于没有分类。
+        assert_ne!(denied, startup);
+        assert_ne!(denied, not_installed);
+        assert_ne!(startup, not_installed);
+
+        // 占位符替换在非中文语言下同样成立。
+        let en_startup = connect_failure_text(
+            &catalog,
+            "en",
+            &ConnectFailureCause::WorkerStartupFailed("spawn: boom".to_string()),
+        );
+        assert!(en_startup.contains("spawn: boom"), "en: {en_startup}");
     }
 
     /// 防的回潮形态：重载失败原因随 `SAVE_STATUS_TTL` 一起消失，用户被绕回「请前往配置页」。

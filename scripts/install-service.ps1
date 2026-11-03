@@ -27,6 +27,9 @@ $RegistryValueName = "ServicePipeInstallerSid"
 # 授权 SID 集合（安装者 + -AuthorizedUsers，#1 opt-in）；服务端优先读该 MULTI_SZ 值，
 # 值不存在时回退安装者单值（未 opt-in 不扩权）。卸载时两个值一并清除。
 $RegistryAllowedValueName = "ServicePipeAllowedSids"
+# 服务管道通告名（#7 命名熵）：服务进程（LocalSystem）建例后写入，UI 动态解析服务端点优先读它；
+# 不由安装脚本登记，但卸载时一并清除（服务被删后残留的随机名对 UI 是「探不到」的陈旧值）。
+$RegistryAdvertisedValueName = "ServicePipeName"
 
 $ErrorActionPreference = "Stop"
 
@@ -105,6 +108,7 @@ switch ($Action.ToLower()) {
     # 注册表清理不依赖服务是否仍在：服务已被手工删除时也要清掉孤儿 SID 登记。
     Remove-ItemProperty -Path $RegistryPath -Name $RegistryValueName -ErrorAction SilentlyContinue
     Remove-ItemProperty -Path $RegistryPath -Name $RegistryAllowedValueName -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path $RegistryPath -Name $RegistryAdvertisedValueName -ErrorAction SilentlyContinue
     if (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
       Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
       Remove-ServiceCompat $ServiceName
