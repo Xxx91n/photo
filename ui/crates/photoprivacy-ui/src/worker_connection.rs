@@ -323,7 +323,8 @@ mod tests {
         #[cfg(unix)]
         {
             use std::os::unix::process::ExitStatusExt;
-            std::process::ExitStatus::from_raw((code as u32) << 8)
+            // Unix 的 from_raw 收 i32 wait status（Windows 才是 u32）；退出码在高位 8 比特。
+            std::process::ExitStatus::from_raw(code << 8)
         }
     }
 
