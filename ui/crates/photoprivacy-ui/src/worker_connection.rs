@@ -127,7 +127,7 @@ pub fn start(
 /// 连接顺序与旧 UI `WorkerProcessManager.ConnectOrLaunchAsync` 对齐：服务端点优先，其次后台端点，
 /// 都不可用时启动后台 Worker 并轮询 5s。服务「已安装未运行」时本版会落到后台 Worker，而不是像旧 UI
 /// 停在服务壳；服务态本身由服务页独立探测。
-// Design(#82): 连接编排维持「服务端点优先、不可用回落后台 Worker」；服务与后台 Worker 并存的审计文件争用观察已上报（PR #156 产物记录），待用户裁决是否成票。
+// Design(#82): 连接编排维持「服务端点优先、不可用回落后台 Worker」；同 config 双 Worker 并存的审计争用由 #162 单写者准入门兜底，编排预防归 #58。
 async fn connect_worker(
     client: &IpcClient,
     options: &ConnectOptions,
