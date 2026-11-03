@@ -167,19 +167,21 @@ async fn connect_worker(
         background.as_ref(),
         options.worker_path.as_ref().filter(|path| path.exists()),
     ) {
-        launch = Some(match launch_background_worker(worker, options.config_path.as_deref()) {
-            Ok(exit_slot) => LaunchObservation {
-                spawn_error: None,
-                exit_slot: Some(exit_slot),
-            },
-            Err(err) => {
-                eprintln!("[photoprivacy-ui] 启动后台 Worker 失败: {err}");
-                LaunchObservation {
-                    spawn_error: Some(err),
-                    exit_slot: None,
+        launch = Some(
+            match launch_background_worker(worker, options.config_path.as_deref()) {
+                Ok(exit_slot) => LaunchObservation {
+                    spawn_error: None,
+                    exit_slot: Some(exit_slot),
+                },
+                Err(err) => {
+                    eprintln!("[photoprivacy-ui] 启动后台 Worker 失败: {err}");
+                    LaunchObservation {
+                        spawn_error: Some(err),
+                        exit_slot: None,
+                    }
                 }
-            }
-        });
+            },
+        );
 
         let deadline = Instant::now() + Duration::from_secs(5);
         while Instant::now() < deadline {

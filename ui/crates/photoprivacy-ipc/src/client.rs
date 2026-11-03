@@ -314,6 +314,8 @@ mod tests {
         }
         // 超时与读写错误不携带端点存在性信息，一律不判授权拒绝。
         assert!(!is_service_access_denied(&IpcError::Timeout));
-        assert!(!is_service_access_denied(&IpcError::Rejected("no".to_string())));
+        assert!(!is_service_access_denied(&IpcError::Rejected(
+            "no".to_string()
+        )));
     }
 }

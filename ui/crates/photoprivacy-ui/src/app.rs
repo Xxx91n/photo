@@ -2932,7 +2932,10 @@ mod tests {
 
         let not_installed =
             connect_failure_text(&catalog, "zh-CN", &ConnectFailureCause::WorkerNotInstalled);
-        assert!(not_installed.contains("未找到 Worker 程序"), "{not_installed}");
+        assert!(
+            not_installed.contains("未找到 Worker 程序"),
+            "{not_installed}"
+        );
 
         // 三态文案互异：全部落到同一键等于没有分类。
         assert_ne!(denied, startup);
