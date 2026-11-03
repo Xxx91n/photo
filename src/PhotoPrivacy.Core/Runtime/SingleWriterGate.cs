@@ -12,8 +12,7 @@ namespace PhotoPrivacy.Core.Runtime;
 /// 门自身异常（权限/环境）同样让位：无法确证独占就不写审计——fail-safe 方向是宁可不起，
 /// 不是带着未知争用风险放行。服务/后台探测编排的体验面归 #58。
 /// </summary>
-// Design(#162): 常驻 Worker（后台/服务）触碰审计文件前必须过本准入门；拿不到锁或门异常一律
-// 让位干净退出（禁静默降级、禁带未知争用风险放行），编排预防归 #58。
+// Design(#162): 常驻 Worker 触碰审计文件前必须过本准入门；拿不到锁或门异常一律让位（禁静默降级/禁带险放行），编排预防归 #58。
 public static class SingleWriterGate
 {
     /// <summary>
