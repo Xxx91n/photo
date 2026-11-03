@@ -217,7 +217,8 @@ worker_absent() {
 }
 
 run_with_timeout() {
-  # run_with_timeout <秒> <输出文件> <命令...>：超时杀进程返回 124（macOS 无 GNU timeout）
+  # run_with_timeout <秒> <输出文件> <命令...>：超时杀进程返回 124（macOS 无 GNU timeout）。
+  # 不在函数内动 set -e：errexit 是全局态，函数内重开会让非零 return 把调用方打崩。
   local secs="$1" out="$2"
   shift 2
   "$@" > "$out" 2>&1 &
@@ -231,10 +232,8 @@ run_with_timeout() {
     fi
     sleep 1
   done
-  set +e
-  wait "$pid"
-  local rc=$?
-  set -e
+  local rc=0
+  wait "$pid" || rc=$?
   return "$rc"
 }
 
@@ -245,12 +244,10 @@ ui_probe_report() {
   local report="$EVIDENCE_DIR/ui-probe-$tag.json"
   local out="$EVIDENCE_DIR/ui-probe-$tag.txt"
   rm -f "$report"
-  set +e
+  local rc=0
   run_with_timeout 30 "$out" "${INSTALL_DIR}/PhotoPrivacy" \
     --service-probe-report "$report" \
-    --worker "$EVIDENCE_DIR/no-worker-for-probe"
-  local rc=$?
-  set -e
+    --worker "$EVIDENCE_DIR/no-worker-for-probe" || rc=$?
   if [[ ! -f "$report" ]]; then
     rec FAIL "UI Service 页探测报告未产出（${tag}，rc=${rc}，见 ui-probe-$tag.txt）"
     return 0
@@ -282,11 +279,11 @@ ui_shot() {
   local uid out
   uid="$(id -u "$SUDO_USER")"
   out="$EVIDENCE_DIR/ui-shot-$tag.txt"
-  set +e
+  # 证据目录是 root 建的：交还 GUI 用户可写，否则截图/配对状态落不了盘（首轮实测）
+  chown "$SUDO_USER" "$EVIDENCE_DIR" 2>/dev/null || true
+  local rc=0
   run_with_timeout 60 "$out" launchctl asuser "$uid" sudo -u "$SUDO_USER" \
-    bash "$SHOT_SCRIPT" --install-dir "$INSTALL_DIR" --tag "$tag" --out-dir "$EVIDENCE_DIR"
-  local rc=$?
-  set -e
+    bash "$SHOT_SCRIPT" --install-dir "$INSTALL_DIR" --tag "$tag" --out-dir "$EVIDENCE_DIR" || rc=$?
   if [[ -s "$EVIDENCE_DIR/ui-$tag.png" ]]; then
     rec PASS "UI Service 页截图已产出（${tag}，内容待目检）：ui-$tag.png"
   else
