@@ -129,10 +129,10 @@ fn main() -> anyhow::Result<()> {
         .enable_all()
         .build()?;
 
-    // Design(#172): Service 页同源探测结果落 JSON 后即退出——虚拟环境（CI macOS runner）
+    // Design(#82): Service 页同源探测结果落 JSON 后即退出——虚拟环境（CI macOS runner）
     // 机器可读取证入口；不建窗、不连 Worker，探测链与 Service 页首拍一致。只读探针不受
-    // 单实例守卫约束：并存 UI 不应挡掉报告产出（CodeRabbit 审查意见）。残余：macOS 系统域
-    // 探测误报（launchctl list 单域查找）归 #172，修后取证以 GUI 语境对拍为准。
+    // 单实例守卫约束：并存 UI 不应挡掉报告产出（CodeRabbit 审查意见；launchd 取证链落地
+    // 于已关闭的 #32，存续出处改指 #82 的验证门禁域）。
     if let Some(report_path) = &args.service_probe_report {
         let probe_options = ConnectOptions::discover()
             .with_overrides(args.config_path.clone(), args.worker_path.clone());
