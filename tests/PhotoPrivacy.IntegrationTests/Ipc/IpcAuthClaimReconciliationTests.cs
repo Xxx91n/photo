@@ -4,7 +4,8 @@ namespace PhotoPrivacy.IntegrationTests.Ipc;
 /// IPC 与部署安全不变量守卫：每条断言都直接对账代码/脚本/配置，改措辞不会让它变红。
 /// 1) install-systemd-service.sh 的 unit 模板必须钉住 RuntimeDirectoryMode=0750 并提供 GUI 用户组供给；
 /// 2) NamedPipeIpcTransport 的 FirstPipeInstance 仅施加于 listen 期首例（#7 拓扑：后台直建/
-///    服务随机名建例/通告失败回退静态名重绑，恰 3 处；accept 后预建的后续实例不得携带）。
+///    服务随机名建例/通告失败回退静态名重绑，恰 3 处；accept 后预建的后续实例不得携带）；
+/// 3) 服务管道通告名登记键的 Rust 读侧与 C# 写侧字面量对账（#7 命名熵的发现通道主缝）。
 /// 每组守卫都带 negative self-proof：把源码改坏后备守卫必须变红，防止守卫空转。
 /// 原 UiSingleInstance ACL 守卫随旧 Ui 工程退役（#61）；新 UI 单实例管线的 DACL 决策见
 /// ui/crates/photoprivacy-ipc/src/single_instance.rs（Design(#49)），由 cargo test 守护。
@@ -145,5 +146,25 @@ public sealed class IpcAuthClaimReconciliationTests
         }
 
         Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
+    }
+
+    // ---------- 4. 服务管道通告名登记键的 Rust/C# 两侧对账（#7） ----------
+
+    [Fact]
+    public void Service_Pipe_Advertisement_Registry_Names_Match_Rust_Client_Literals()
+    {
+        // 防（#7 审查返修 m-R1）：命名熵闭环押在 C# 写侧（WindowsServicePipeAcl）与 Rust 读侧
+        // （endpoints.rs 的 read_advertised_service_pipe_name）的注册表键/值名一致上——漂移形态是
+        // UI 静默读不到通告值、永久退回静态名（熵关闭，回到 #7 前攻击面），且无行为测试会红
+        // （Rust 无法引用 C# 常量）。按本类的 source-lint 对账先例钉住两侧字面量；安装脚本侧的
+        // 同类重复自 #70 起即无守卫（既有先例，卸载清三值清单已在 ipc-contract 登记），不扩本票面。
+        var rust = SourceLint.ReadStripped("ui", "crates", "photoprivacy-ipc", "src", "endpoints.rs");
+        // Rust 源码里反斜杠以 \\ 转义形态出现：C# 侧常量按同规则转义后比对。
+        var subkeyLiteral = WindowsServicePipeAcl.RegistrySubKeyName.Replace(@"\", @"\\");
+        Assert.Contains($"wide(\"{subkeyLiteral}\")", rust, StringComparison.Ordinal);
+        Assert.Contains(
+            $"wide(\"{WindowsServicePipeAcl.AdvertisedServicePipeValueName}\")",
+            rust,
+            StringComparison.Ordinal);
     }
 }

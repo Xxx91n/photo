@@ -36,6 +36,8 @@ pub const IPC_CLIENT_DESIRED_ACCESS: u32 =
 
 // 打开 flags 的本地常量（winnt.h/winbase.h 值；不 import windows_sys 是为了在非 Windows 编译面
 // 也能用测试钉住组合——审查返修 M1：漏 SECURITY_SQOS_PRESENT 会让 Identification 级别失效）。
+// 叶常量保持私有：经 pub 的 IPC_CLIENT_OPEN_FLAGS 初始化式可达，非 Windows lib 编译面不判死码
+//（审查返修 M-R1）。
 /// FILE_FLAG_OVERLAPPED（winbase.h）：tokio IOCP 注册所需。
 const FILE_FLAG_OVERLAPPED: u32 = 0x4000_0000;
 /// OPEN_EXISTING（winbase.h）：管道客户端打开语义（不存在即失败，不创建）。
@@ -46,7 +48,9 @@ const SECURITY_SQOS_PRESENT: u32 = 0x0010_0000;
 /// SECURITY_IDENTIFICATION（winnt.h）：冒充级别=仅识别——服务端不可对客户端 ImpersonateNamedPipeClient 冒充。
 const SECURITY_IDENTIFICATION: u32 = 0x0001_0000;
 /// IPC 客户端打开 flags（#7）：SQOS 三件套，与 tokio ClientOptions::new 默认 flags 同构（1.54.1 源码核实）。
-const IPC_CLIENT_OPEN_FLAGS: u32 =
+/// pub：与 IPC_CLIENT_DESIRED_ACCESS 同理——非 Windows 编译面（无 windows 打开路径）不判死码，
+/// 四个叶常量经本常量可达。
+pub const IPC_CLIENT_OPEN_FLAGS: u32 =
     SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION | FILE_FLAG_OVERLAPPED;
 
 /// ReloadConfig 会停 watcher → 重建 bridge → 重启 watcher；旧 UI 的 3s 读超时覆盖不了，

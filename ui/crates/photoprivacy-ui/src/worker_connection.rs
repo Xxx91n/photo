@@ -1,7 +1,8 @@
 use photoprivacy_ipc::{
     ConnectionSnapshot, ConnectionState, Endpoint, HostPlatform, IpcClient, WorkerMode,
-    current_home, current_platform, current_service_endpoint, resolve_endpoint, spawn_monitor,
-    spawn_show_window_server, watch_service_reachability, watch_version,
+    current_home, current_platform, current_service_endpoint, resolve_endpoint,
+    service_pipe_endpoint_with_advertised, spawn_monitor, spawn_show_window_server,
+    watch_service_reachability, watch_version,
 };
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -135,11 +136,12 @@ pub fn start(
 }
 
 /// 服务探测端点（#7）：每拍重解析——Windows 通告名优先、静态名兜底；解析不到的平台形态
-/// （mac 无 HOME，仅理论可达：探测任务仅在初始解析成功时起跑）退静态 Windows 名，
+/// （mac 无 HOME，仅理论可达：探测任务仅在初始解析成功时起跑）退静态服务名（经
+/// service_pipe_endpoint_with_advertised 的单一出处派生，消除字面量重复——审查返修 n-R2），
 /// 探测必然失败等价「服务不可达」，不产生误导性成功。
 fn probe_service_endpoint(platform: HostPlatform, home: Option<&Path>) -> Endpoint {
     current_service_endpoint(platform, home)
-        .unwrap_or_else(|| Endpoint::Pipe("PhotoPrivacyCleaner.Service".to_string()))
+        .unwrap_or_else(|| service_pipe_endpoint_with_advertised(None))
 }
 
 /// 按模式构造端点解析器（#7）：后台 = 静态契约名（恒等返回）；服务 = 每次调用重读通告名
