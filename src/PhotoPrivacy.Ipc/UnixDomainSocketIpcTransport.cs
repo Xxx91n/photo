@@ -23,6 +23,20 @@ public sealed class UnixDomainSocketIpcTransport : IIpcTransport
     /// <summary>Service 模式默认 socket 组名（与 install-systemd-service.sh 的 GROUP_NAME 默认值对齐）。</summary>
     public const string DefaultServiceGroupName = "photoprivacy";
 
+    /// <summary>
+    /// 覆盖 socket 组名的环境变量：只有该组成员能连 Service 模式 socket（#167）。
+    /// 安装脚本把「socket 访问组」与「数据目录组」分开后，由 plist/systemd 注入实际组名，
+    /// 服务端对端白名单必须跟着走，否则会拒掉合法 GUI 调用者。
+    /// </summary>
+    public const string ServiceGroupEnvironmentVariable = "PHOTOPRIVACY_SERVICE_GROUP";
+
+    /// <summary>解析实际生效的 socket 组名：环境变量优先，缺省回落到 <see cref="DefaultServiceGroupName"/>。</summary>
+    public static string ResolveServiceGroupName()
+    {
+        var fromEnvironment = Environment.GetEnvironmentVariable(ServiceGroupEnvironmentVariable);
+        return string.IsNullOrWhiteSpace(fromEnvironment) ? DefaultServiceGroupName : fromEnvironment.Trim();
+    }
+
     private readonly string _socketPath;
     private readonly UnixSocketAccessMode _accessMode;
     private readonly string _serviceGroupName;
@@ -33,12 +47,14 @@ public sealed class UnixDomainSocketIpcTransport : IIpcTransport
     public UnixDomainSocketIpcTransport(
         string socketPath,
         UnixSocketAccessMode accessMode = UnixSocketAccessMode.BackgroundOnly,
-        string serviceGroupName = DefaultServiceGroupName,
+        string? serviceGroupName = null,
         UnixPeerCredentialPolicy? peerCredentialPolicy = null)
     {
         _socketPath = socketPath;
         _accessMode = accessMode;
-        _serviceGroupName = serviceGroupName;
+        _serviceGroupName = string.IsNullOrWhiteSpace(serviceGroupName)
+            ? ResolveServiceGroupName()
+            : serviceGroupName;
         _peerPolicy = peerCredentialPolicy ?? new UnixPeerCredentialPolicy();
     }
 

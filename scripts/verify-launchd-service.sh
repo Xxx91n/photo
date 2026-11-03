@@ -34,6 +34,9 @@ QUARANTINE_FOLDER="/var/lib/photoprivacy/quarantine"
 CONFIG_PATH="${INSTALL_DIR}/config/config.json"
 SERVICE_USER="photoprivacy"
 SERVICE_GROUP="photoprivacy"
+# socket 访问组独立于数据组：GUI 用户只进这个组，拿不到 hot/audit/quarantine 的组写权限
+# （评审 CWE-732：同组可绕过 IPC 直接删审计与隔离文件）。
+SOCKET_GROUP="photoprivacy-ipc"
 WORKER_BIN="${INSTALL_DIR}/PhotoPrivacyWorker"
 # Worker Serilog 落点：相对 CWD 的 logs/worker-.log（Program.cs ResolveLogFilePath 非 Windows 分支），
 # launchd WorkingDirectory=INSTALL_DIR（install 脚本写入的 plist）→ INSTALL_DIR/logs/worker-*.log。
@@ -423,7 +426,8 @@ bash -x "$INSTALL_SCRIPT" \
   --audit-folder "$AUDIT_FOLDER" \
   --quarantine "$QUARANTINE_FOLDER" \
   --user "$SERVICE_USER" \
-  --group "$SERVICE_GROUP" >> "${EVIDENCE_DIR}/02-install.txt" 2>&1
+  --group "$SERVICE_GROUP" \
+  --socket-group "$SOCKET_GROUP" >> "${EVIDENCE_DIR}/02-install.txt" 2>&1
 INSTALL_RC=$?
 set -e
 echo "[exit ${INSTALL_RC}]" >> "${EVIDENCE_DIR}/02-install.txt"
@@ -516,18 +520,41 @@ fi
 capture 06-socket.txt ls -la "$SERVICE_SOCKET_DIR"
 if wait_until 30 test -S "$SERVICE_SOCKET"; then
   rec PASS "服务模式 UDS 端点已绑定（${SERVICE_SOCKET}）"
-  # #167：组边界必须真的落在盘上——socket 0660 + 服务用户/服务组，目录 0750。
+  # #167：组边界必须真的落在盘上——socket 0660 + 服务用户/socket 访问组，目录 0750。
   # 权限偏了（umask 收成 0600、目录被改成 0755）意味着 GUI 用户要么连不上、要么谁都能连；
   # 这里按安装脚本与 UnixDomainSocketIpcTransport 的承诺逐项对拍，而不是只看 socket 在不在。
   SOCKET_MODE="$(stat -f '%Lp' "$SERVICE_SOCKET" 2>/dev/null)"
   SOCKET_OWNER="$(stat -f '%Su:%Sg' "$SERVICE_SOCKET" 2>/dev/null)"
   SOCKET_DIR_MODE="$(stat -f '%Lp' "$SERVICE_SOCKET_DIR" 2>/dev/null)"
   if [[ "$SOCKET_MODE" == "660" ]] \
-    && [[ "$SOCKET_OWNER" == "${SERVICE_USER}:${SERVICE_GROUP}" ]] \
+    && [[ "$SOCKET_OWNER" == "${SERVICE_USER}:${SOCKET_GROUP}" ]] \
     && [[ "$SOCKET_DIR_MODE" == "750" ]]; then
     rec PASS "服务模式 UDS 权限符合组边界（socket ${SOCKET_MODE} ${SOCKET_OWNER}，目录 ${SOCKET_DIR_MODE}）"
   else
-    rec FAIL "服务模式 UDS 权限不符（socket=${SOCKET_MODE:-<空>} ${SOCKET_OWNER:-<空>}，目录=${SOCKET_DIR_MODE:-<空>}；期望 660 ${SERVICE_USER}:${SERVICE_GROUP} / 750）"
+    rec FAIL "服务模式 UDS 权限不符（socket=${SOCKET_MODE:-<空>} ${SOCKET_OWNER:-<空>}，目录=${SOCKET_DIR_MODE:-<空>}；期望 660 ${SERVICE_USER}:${SOCKET_GROUP} / 750）"
+  fi
+
+  # 评审 CWE-732：审计目录给 GUI 用户的只能是「组读」——能看日志页，不能写、不能删。
+  AUDIT_MODE="$(stat -f '%Lp' "$AUDIT_FOLDER" 2>/dev/null)"
+  AUDIT_GROUP="$(stat -f '%Sg' "$AUDIT_FOLDER" 2>/dev/null)"
+  if [[ "$AUDIT_MODE" == "2750" && "$AUDIT_GROUP" == "$SOCKET_GROUP" ]]; then
+    rec PASS "审计目录组边界正确（${AUDIT_FOLDER} ${AUDIT_MODE} ${AUDIT_GROUP}：组只读，无组写）"
+  else
+    rec FAIL "审计目录组边界不符（${AUDIT_FOLDER} ${AUDIT_MODE:-<空>} ${AUDIT_GROUP:-<空>}；期望 2750 ${SOCKET_GROUP} 的组只读视图）"
+  fi
+
+  # GUI 用户只应进 socket 访问组：进了数据组就等于拿到 2770 的组写权限，可绕过 IPC 删审计/隔离文件。
+  if [[ -n "$SUDO_USER" ]]; then
+    if dseditgroup -o checkmember -m "$SUDO_USER" "$SOCKET_GROUP" >/dev/null 2>&1; then
+      rec PASS "GUI 用户 ${SUDO_USER} 已在 socket 访问组 ${SOCKET_GROUP}"
+    else
+      rec FAIL "GUI 用户 ${SUDO_USER} 不在 socket 访问组 ${SOCKET_GROUP}——服务模式 UI 连不上端点"
+    fi
+    if dseditgroup -o checkmember -m "$SUDO_USER" "$SERVICE_GROUP" >/dev/null 2>&1; then
+      rec FAIL "GUI 用户 ${SUDO_USER} 仍在数据组 ${SERVICE_GROUP}——可绕过 IPC 直接删审计/隔离文件"
+    else
+      rec PASS "GUI 用户未获授数据组 ${SERVICE_GROUP}（无组写）"
+    fi
   fi
 else
   capture 06-socket.txt find "$SERVICE_SOCKET_DIR" "${INSTALL_DIR}" \( -name "*.sock" -o -name "*.log" \)

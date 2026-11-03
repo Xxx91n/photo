@@ -18,8 +18,13 @@ Windows 服务端点自 #7 起按通告名动态解析（每次探测/失败重�
 
 macOS 服务端点自 #167 起为系统级固定落点：LaunchDaemon 以服务用户运行（`NFSHomeDirectory=/opt/photoprivacy`），
 GUI 用户按自身 home 拼同一相对路径只会指向各自的幽灵 socket，故服务端点不再参与 home 解析（与 Linux `/run/photoprivacy` 同构）。
-目录由 `scripts/install-launchd-service.sh` 以 root 建为 `0750`（属主服务用户:服务组），GUI 用户经 `--gui-user`（默认 `SUDO_USER`）
-加入服务组后，方可穿过目录并连上 `0660` 的 socket；服务端仍以 `UnixPeerCredentialPolicy` 的组白名单做第二层校验。
+目录由 `scripts/install-launchd-service.sh` 以 root 建为 `0750`（属主服务用户:socket 访问组 `photoprivacy-ipc`），
+GUI 用户经 `--gui-user`（默认 `SUDO_USER`）**只加入 socket 访问组**，方可穿过目录并连上 `0660` 的 socket。
+socket 访问组与数据组（`hot`/`audit`/`quarantine` 的 `2770` 组）严格分离：GUI 用户不进数据组，即拿不到组写，
+无法绕过 IPC 直接删审计或隔离文件（PR #180 评审 CWE-732）。审计目录是唯一例外——本地 tail 工具
+（`photoprivacy-logs`）与取证脚本以 GUI 用户身份直接读日志，故该目录组改为 socket 访问组并收成 `2750`
+（组只读）、文件 `0640`，能看不能改。服务端以 `UnixPeerCredentialPolicy` 的组白名单做第二层校验，
+组名由 plist/systemd 注入 `PHOTOPRIVACY_SERVICE_GROUP`，缺省回落 `photoprivacy`。
 
 ## 帧与客户端约束
 

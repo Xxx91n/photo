@@ -6,13 +6,17 @@ LABEL="com.photoprivacy.cleaner"
 INSTALL_DIR="/opt/photoprivacy"
 USER_NAME="photoprivacy"
 GROUP_NAME="photoprivacy"
+# socket 访问组与数据组分离（#167 评审 CWE-732）：数据目录（hot/audit/quarantine）以 2770
+# 归数据组，若把 GUI 用户加进数据组，它就能绕过 IPC 直接删审计与隔离文件。socket 单独一组，
+# 只有该组成员能连 0660 的 worker.sock；服务用户同属两组，数据目录写入靠「属主」身份。
+SOCKET_GROUP="photoprivacy-ipc"
 HOT_FOLDER="/var/lib/photoprivacy/hot"
 AUDIT_FOLDER="/var/log/photoprivacy"
 QUARANTINE_FOLDER="/var/lib/photoprivacy/quarantine"
 CONFIG_PATH="${INSTALL_DIR}/config/config.json"
 # 服务模式 UDS 的系统级目录（WorkerIpcEndpointNames.MacSystemSocketDirectory）：与 Linux
-# RuntimeDirectory（0750）同构——root 建、属主为服务用户、服务组可遍历；GUI 用户入组后
-# 才能穿过目录并连上 0660 的 socket（#167）。
+# RuntimeDirectory（0750）同构——root 建、属主为服务用户、socket 访问组可遍历；GUI 用户
+# 加入 socket 访问组后才能穿过目录并连上 0660 的 socket（#167）。
 SERVICE_SOCKET_DIR="/Library/Application Support/photoprivacy"
 # 服务模式 IPC 的调用者：默认取 sudo 的原始用户，显式可用 --gui-user 指定（与 Linux 同口径）。
 GUI_USER="${SUDO_USER:-}"
@@ -28,8 +32,10 @@ Options:
   --audit-folder <path>  Audit folder (default: ${AUDIT_FOLDER})
   --quarantine <path>    Quarantine folder (default: ${QUARANTINE_FOLDER})
   --user <name>          Service user (default: ${USER_NAME})
-  --group <name>         Service group (default: ${GROUP_NAME})
-  --gui-user <name>      GUI user to add to the service group for IPC socket access
+  --group <name>         Service group, owns data dirs hot/audit/quarantine (default: ${GROUP_NAME})
+  --socket-group <name>  IPC socket access group, distinct from the data group and granted to the
+                         GUI user (default: ${SOCKET_GROUP}); must be non-empty and differ from --group
+  --gui-user <name>      GUI user to add to the socket access group
                          (default: SUDO_USER)
   -h, --help             Show this help
 EOF
@@ -44,6 +50,7 @@ while [[ $# -gt 0 ]]; do
     --quarantine) QUARANTINE_FOLDER="$2"; shift 2 ;;
     --user) USER_NAME="$2"; shift 2 ;;
     --group) GROUP_NAME="$2"; shift 2 ;;
+    --socket-group) SOCKET_GROUP="$2"; shift 2 ;;
     --gui-user) GUI_USER="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage; exit 1 ;;
@@ -153,28 +160,77 @@ else
   dscl_ensure /Users/${USER_NAME} PrimaryGroupID "$GROUP_GID"
 fi
 
+# socket 访问组必须独立于数据组：数据目录 2770 归数据组，同组成员可绕过 IPC 直接删审计与隔离
+# 文件（#167 评审 CWE-732）。同名或空值一律拒绝，避免静默退化成「GUI 用户拥有数据写权限」。
+if [[ -z "$SOCKET_GROUP" ]]; then
+  echo "Error: --socket-group must not be empty (IPC socket access group)." >&2
+  exit 1
+fi
+if [[ "$SOCKET_GROUP" == "$GROUP_NAME" ]]; then
+  echo "Error: --socket-group must differ from --group '${GROUP_NAME}';" >&2
+  echo "       granting GUI users the data group would let them delete audit/quarantine files directly." >&2
+  exit 1
+fi
+
+if dscl . -read "/Groups/${SOCKET_GROUP}" >/dev/null 2>&1; then
+  SOCKET_GID="$(dscl . -read "/Groups/${SOCKET_GROUP}" PrimaryGroupID 2>/dev/null | awk 'NR==1 && $2 ~ /^[0-9]+$/ {print $2}')"
+  if [[ -z "$SOCKET_GID" ]]; then
+    echo "Existing group ${SOCKET_GROUP} has no readable PrimaryGroupID; 请人工处置该组后重试" >&2
+    exit 1
+  fi
+else
+  SOCKET_GID="$(resolve_group_gid)" || { echo "No free GID in 400-499 for ${SOCKET_GROUP}" >&2; exit 1; }
+  dscl_ensure /Groups/${SOCKET_GROUP}
+  dscl_ensure /Groups/${SOCKET_GROUP} PrimaryGroupID "$SOCKET_GID"
+fi
+
+# 服务用户必须是 socket 组成员：plist 以 GroupName=SOCKET_GROUP 起 Worker，非成员会被 launchd 拒绝；
+# 数据目录写入仍靠「属主」身份，不依赖该组。
+if ! dseditgroup -o checkmember -m "$USER_NAME" "$SOCKET_GROUP" >/dev/null 2>&1; then
+  if ! dseditgroup -o edit -a "$USER_NAME" -t user "$SOCKET_GROUP" >/dev/null 2>&1; then
+    echo "Failed to add service user '${USER_NAME}' to socket group '${SOCKET_GROUP}'" >&2
+    exit 1
+  fi
+fi
+
 mkdir -p "$HOT_FOLDER" "$AUDIT_FOLDER" "$QUARANTINE_FOLDER"
 chown -R "${USER_NAME}:${GROUP_NAME}" "$INSTALL_DIR" "$HOT_FOLDER" "$AUDIT_FOLDER" "$QUARANTINE_FOLDER"
 chmod 2770 "$HOT_FOLDER" "$AUDIT_FOLDER" "$QUARANTINE_FOLDER"
 
+# 审计目录例外：UI 日志页以本地 tail 为主通道（photoprivacy-logs），GUI 用户必须能读；
+# 评审要求「先移除受保护目录的组写权限，再给 GUI 用户访问」——所以组换成 socket 访问组，
+# 目录 2750（组只有 r-x，删不掉），文件 0640（组只读，改不了），属主仍是服务用户（Worker 继续落盘）。
+# hot / quarantine 保持数据组 2770：GUI 用户不进数据组，就完全不可见。
+chown -R "${USER_NAME}:${SOCKET_GROUP}" "$AUDIT_FOLDER"
+find "$AUDIT_FOLDER" -type d -exec chmod 2750 {} +
+find "$AUDIT_FOLDER" -type f -exec chmod 0640 {} +
+
 # 服务模式 UDS 目录：0750 + 服务组，与 Linux RuntimeDirectory 同构（#167）。
 # 不用 /var/run：macOS 上重启即清，非 root 的 Worker 无权重建目录。
 mkdir -p "$SERVICE_SOCKET_DIR"
-chown "${USER_NAME}:${GROUP_NAME}" "$SERVICE_SOCKET_DIR"
+chown "${USER_NAME}:${SOCKET_GROUP}" "$SERVICE_SOCKET_DIR"
 chmod 0750 "$SERVICE_SOCKET_DIR"
 
-# 组边界供给：socket 为 0660 + 服务组，GUI 用户不入组就连不上（#167）。
+# 组边界供给：socket 为 0660 + SOCKET_GROUP，GUI 用户不入该组就连不上（#167）。
+# 只加 socket 组、不加数据组——否则 GUI 用户拿到 hot/audit/quarantine 的组写权限，
+# 可绕过 IPC 直接删审计与隔离文件（评审 CWE-732）。
 # 与 Linux 的 usermod -aG 同义；组变更对已运行进程不生效，需该用户重新登录。
 if [[ -n "$GUI_USER" ]]; then
   if ! dscl . -read "/Users/${GUI_USER}" UniqueID >/dev/null 2>&1; then
     echo "Warning: GUI user '${GUI_USER}' not found; skipped group supply." >&2
-  elif dseditgroup -o checkmember -m "$GUI_USER" "$GROUP_NAME" >/dev/null 2>&1; then
-    echo "GUI user '${GUI_USER}' already in group '${GROUP_NAME}'."
-  elif dseditgroup -o edit -a "$GUI_USER" -t user "$GROUP_NAME" >/dev/null 2>&1; then
-    echo "Added GUI user '${GUI_USER}' to group '${GROUP_NAME}' (IPC socket 0660 group boundary)."
+  elif dseditgroup -o checkmember -m "$GUI_USER" "$SOCKET_GROUP" >/dev/null 2>&1; then
+    echo "GUI user '${GUI_USER}' already in group '${SOCKET_GROUP}'."
+  elif dseditgroup -o edit -a "$GUI_USER" -t user "$SOCKET_GROUP" >/dev/null 2>&1; then
+    echo "Added GUI user '${GUI_USER}' to group '${SOCKET_GROUP}' (IPC socket 0660 group boundary)."
     echo "Note: re-login required for the new group membership to reach existing sessions."
   else
-    echo "Warning: failed to add '${GUI_USER}' to '${GROUP_NAME}'; service-mode UI cannot reach the IPC socket." >&2
+    echo "Warning: failed to add '${GUI_USER}' to '${SOCKET_GROUP}'; service-mode UI cannot reach the IPC socket." >&2
+  fi
+  # 若历史安装已把该用户加进数据组，提示但不自动移除（撤销他人既有授权需人工确认）。
+  if dseditgroup -o checkmember -m "$GUI_USER" "$GROUP_NAME" >/dev/null 2>&1; then
+    echo "Warning: '${GUI_USER}' is also a member of data group '${GROUP_NAME}' (2770 on hot/audit/quarantine);" >&2
+    echo "         that grants direct file deletion bypassing IPC. Remove it with:" >&2
+    echo "         sudo dseditgroup -o edit -d ${GUI_USER} -t user ${GROUP_NAME}" >&2
   fi
 else
   echo "Warning: no GUI user resolved (--gui-user / SUDO_USER empty); service-mode UI will not reach the IPC socket." >&2
@@ -210,7 +266,12 @@ cat > "$PLIST_PATH" <<EOF
     <key>UserName</key>
     <string>${USER_NAME}</string>
     <key>GroupName</key>
-    <string>${GROUP_NAME}</string>
+    <string>${SOCKET_GROUP}</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PHOTOPRIVACY_SERVICE_GROUP</key>
+        <string>${SOCKET_GROUP}</string>
+    </dict>
     <key>WorkingDirectory</key>
     <string>${INSTALL_DIR}</string>
     <key>StandardOutPath</key>
