@@ -9,17 +9,17 @@ namespace PhotoPrivacy.Core.Runtime;
 /// 锁生命周期 = 进程生命周期（Mutex/flock 随持有者消亡自动释放，无 stale lock、无 PID 探活）。
 /// 拿不到锁的 Worker 必须让位干净退出（日志 + 审计留痕由 Program 层负责），禁止静默降级凑合跑，
 /// 也不得让 store 常驻句柄冲突炸成 IOException → StopHost 服务自停。
-/// 准入门获取失败（环境异常）按 fail-open 放行：与既有风险面一致，不把环境怪癖放大成整机拒启；
-/// 审计文件自身的 FileShare 语义仍是内核级最终兜底。服务/后台探测编排的体验面归 #58。
+/// 门自身异常（权限/环境）同样让位：无法确证独占就不写审计——fail-safe 方向是宁可不起，
+/// 不是带着未知争用风险放行。服务/后台探测编排的体验面归 #58。
 /// </summary>
-// Design(#162): 常驻 Worker（后台/服务）触碰审计文件前必须过本准入门；后启动者让位干净退出，
-// 禁静默降级；门获取失败 fail-open 放行（与既有风险面一致），编排预防归 #58。
+// Design(#162): 常驻 Worker（后台/服务）触碰审计文件前必须过本准入门；拿不到锁或门异常一律
+// 让位干净退出（禁静默降级、禁带未知争用风险放行），编排预防归 #58。
 public static class SingleWriterGate
 {
     /// <summary>
     /// 尝试以给定配置的审计目录取得单写者准入锁。
     /// Guard 非空 = 获锁（进程生命周期内持有）；Guard 空、Error 空 = 已有 Worker 持锁，调用方让位；
-    /// Error 非空 = 门自身不可用（权限/环境），调用方决定放行策略。
+    /// Error 非空 = 门自身不可用（权限/环境，含跨账户打不开既有锁），调用方同样让位（无法确证独占就不写）。
     /// </summary>
     public static SingleWriterAdmission TryAcquire(string? configuredAuditDirectory)
     {
