@@ -118,10 +118,15 @@
 > `connect_failure_texts_map_to_distinct_guidance` 文案映射）；本表锚实机目检（#169 AC3，
 > Windows 平台口径）。
 >
-> **本表结论的取证口径（2026-11-03）**：Release run [41614025539](https://github.com/Xxx91n/photo/actions/runs/41614025539)
-> `win-x64` 产物（对应 head `9aa1c27`，含全部 UI 行为改动；后续提交仅注释治理与 merge），
-> agent 桌面截图自查（同 #125/#88 先例，用户已批准该取证方式）；测试后服务已卸载、
-> 临时用户已删除、进程已清，环境无残留。
+> **本表结论的构建口径（2026-11-03）**：`workflow_dispatch` 触发 release.yml 于本票分支
+> `t169-conn-fail-semantics`（run [41614025539](https://github.com/Xxx91n/photo/actions/runs/41614025539)），
+> `version=0.1.0-169smoke`、`create_release=false`——产物仅留 artifact，未发布 GitHub Release；
+> 取 `win-x64` 产物实机测试。产物对应 head `9aa1c27`（即「授权拒绝指引按平台分键」返修后），
+> 含全部 UI 行为改动（实现 `b718e63` + review 修复 `97be999` + fmt 对齐 `0c7b7f2` + 平台分键
+> `9aa1c27`）；其后 `0e51291`（`Design(#32)` 注释治理 + merge main）与 `3016a37`（本表回填）
+> 均无行为 diff，故目检结论对当前 HEAD 依然成立。本地零编译口径（同 #168 虚拟环境验证先例），
+> agent 桌面截图自查（同 #125/#88 先例，用户已批准该取证方式）；产物解包于本机私有临时目录，
+> 测试后服务已卸载、临时标准用户已删除、进程与注册表授权键已清，环境无残留。
 
 | # | 操作 | 结果 | 证据 |
 |---|---|---|---|
