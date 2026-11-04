@@ -231,10 +231,13 @@
      c. **首拍几何**：几何在第二次唤起**之前**取，取不到即失败；唤醒之后才出现会单独报
         「静默吞掉请求页、靠第二次唤起兜底」。
      `osascript … get {position, size} of window 1` 在 runner 上可用（见第 1 条的四次几何输出）；
+     对照组与正式实例都先查进程是否存活（早退 = 崩溃，不是「静默生效」），「无窗」只认
+     System Events 的 `Invalid index (-1719)`，权限类报错（-1743）一律判取证无效；
      服务已安装的 tag（`running`/`stopped`）自动跳过对照组与 #174 判据，只留截图前置检查。
      本机 WSL bash 验证了配置翻转、几何正则四态（`470, 150, 980, 748` / 无空格写法 PASS、
-     `0, 0, 0, 0` 与 `Invalid index (-1719)` FAIL）与 plist 存在性分支；**mac 侧尚未实跑**——
-     首次推送触发的 launchd 作业 21 分钟没分到 runner 被 cancelled，AC3 在 CI 跑出 PASS 前仍按未取证计。
+     `0, 0, 0, 0` 与 `Invalid index (-1719)` FAIL）、`Invalid index` 与 `-1743` 的区分、以及
+     plist 存在性分支；**mac 侧尚未实跑**——首次推送触发的 launchd 作业 21 分钟没分到 runner
+     被 cancelled，AC3 在 CI 跑出 PASS 前仍按未取证计。
      要让 AC3 机器可判，得在 #32 的 harness 里显式构造 `hide_main_window_on_startup=true` 的用例，
      并产出可断言的页标识（`--service-probe-report` 只给服务态、不给页），属 #32 链加固，不在本票范围。
 

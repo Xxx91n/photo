@@ -115,11 +115,24 @@ if [[ "$SILENT_APPLICABLE" -eq 1 ]]; then
   "$UI_BIN" --config "$UI_CONFIG" --worker "${OUT_DIR}/no-worker-for-shot" > "$CONTROL_LOG" 2>&1 &
   CONTROL_PID=$!
   sleep "$STARTUP_WAIT"
+  # 进程必须还活着：早退的对照组拿不到窗口，那是「崩溃」不是「静默生效」（CodeRabbit 审查意见）。
+  if ! kill -0 "$CONTROL_PID" 2>/dev/null; then
+    echo "对照组进程已退出（未驻守），静默条件无法判定（#174），日志: ${CONTROL_LOG}" >&2
+    cat "$CONTROL_LOG" >&2 || true
+    exit 1
+  fi
   osascript -e 'tell application "System Events" to tell process "PhotoPrivacy" to get {position, size} of window 1' > "$CONTROL_WINDOW" 2>&1 || true
   kill "$CONTROL_PID" 2>/dev/null || true
   wait "$CONTROL_PID" 2>/dev/null || true
   if ui_window_geometry "$CONTROL_WINDOW"; then
     echo "静默配置下无 --open-page 仍建窗：静默启动未生效，正式组结果不可采信（#174）: ${CONTROL_WINDOW}" >&2
+    cat "$CONTROL_WINDOW" >&2
+    exit 1
+  fi
+  # 「无窗」只认 System Events 的 Invalid index（进程在、窗口不存在）。权限或其它错误
+  # （-1743 等）说明这次取证根本没跑通，不能当成静默生效的证据。
+  if ! grep -q "Invalid index" "$CONTROL_WINDOW"; then
+    echo "对照组没给出『无窗』的确定结论（osascript 报错不是 Invalid index，像权限/会话问题）: ${CONTROL_WINDOW}" >&2
     cat "$CONTROL_WINDOW" >&2
     exit 1
   fi
@@ -133,6 +146,11 @@ UI_LOG="${OUT_DIR}/ui-${TAG}-ui.log"
 "$UI_BIN" --open-page service --config "$UI_CONFIG" --worker "${OUT_DIR}/no-worker-for-shot" > "$UI_LOG" 2>&1 &
 UI_PID=$!
 sleep "$STARTUP_WAIT"
+if ! kill -0 "$UI_PID" 2>/dev/null; then
+  echo "正式实例在取景前就退出了（未驻守），本次取证无效: ${UI_LOG}" >&2
+  cat "$UI_LOG" >&2 || true
+  exit 1
+fi
 
 # 首拍几何必须在「第二次唤起」之前取（CodeRabbit 审查意见）：唤醒会在无窗时重建窗口，
 # 之后再查会把「首启动没建窗」的回归放过去——那正是 #174 的形态。
@@ -183,6 +201,13 @@ wait "$UI_PID" 2>/dev/null || true
 # 说明窗口没建（无窗报 Invalid index / 权限问题），此时整屏截图照样是「非空桌面帧」——只看 PNG
 # 会假绿。取的是唤醒之前那一拍，避免第二次实例把窗口补出来掩盖回归。
 if ! ui_window_geometry "$WINDOW_INFO"; then
+  # 只有 System Events 的 Invalid index 才等于「进程在、窗口没建」；别的报错是取证通道
+  # 本身没跑通（权限/会话），不能算 #174 的结论（CodeRabbit 审查意见）。
+  if ! grep -q "Invalid index" "$WINDOW_INFO"; then
+    echo "窗口几何取不到且不是 Invalid index（osascript/权限/会话问题），本次取证无效: ${WINDOW_INFO}" >&2
+    cat "$WINDOW_INFO" >&2
+    exit 1
+  fi
   echo "静默配置下首启动未建窗（#174）：唤醒前取不到窗口几何，见 ${WINDOW_INFO}" >&2
   if ui_window_geometry "$WINDOW_AFTER_WAKE"; then
     echo "（唤醒之后才有窗：正是本判据要抓的『静默吞掉请求页、靠第二次唤起兜底』形态）" >&2
