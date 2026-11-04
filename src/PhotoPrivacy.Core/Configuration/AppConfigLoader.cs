@@ -100,8 +100,9 @@ public static class AppConfigLoader
         // 空串回落口径与 quarantine.directory / audit.log_directory 一致：
         // 发布包内置 ExifTool 后模板不再写死绝对路径，留空 = 优先 <BaseDirectory>/ExifTool/，
         // 其次系统安装位置；用户手填的绝对路径（含 ETOverrideDir 式目录）仍然优先，不被覆盖。
+        // 手填值若为目录则解析出其中的 exiftool/exiftool.exe（#33 目录式覆盖，对齐 ExifToolGUI ETOverrideDir）；
+        // 该决策的标记挂在其实现处 DefaultPaths.ResolveExifToolExecutable，这里只接线。
         // Design(#82): exiftool.path 留空按运行时探测回落（DefaultPaths.ExifToolPath），不覆盖用户手填的绝对路径。
-        // Design(#33): 手填值若为目录则解析出其中的 exiftool/exiftool.exe（目录式覆盖，对齐 ExifToolGUI ETOverrideDir）。
         return string.IsNullOrWhiteSpace(resolved)
             ? DefaultPaths.ExifToolPath
             : DefaultPaths.ResolveExifToolExecutable(resolved);

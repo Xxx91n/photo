@@ -3038,7 +3038,11 @@ mod tests {
     fn directory_exiftool_path_is_not_rewritten_on_load() {
         let dir = std::env::temp_dir().join(format!("pp-dir-override-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&dir);
-        let exe = dir.join(if cfg!(windows) { "exiftool.exe" } else { "exiftool" });
+        let exe = dir.join(if cfg!(windows) {
+            "exiftool.exe"
+        } else {
+            "exiftool"
+        });
         std::fs::write(&exe, b"stub").unwrap();
         let expected_hint = exe.to_string_lossy().into_owned();
 
@@ -3048,7 +3052,10 @@ mod tests {
 
         let _ = state.set_config(config, true);
 
-        assert_eq!(state.config.exiftool.path, dir.to_string_lossy().into_owned());
+        assert_eq!(
+            state.config.exiftool.path,
+            dir.to_string_lossy().into_owned()
+        );
         assert_eq!(state.exiftool_hint.as_deref(), Some(expected_hint.as_str()));
 
         let _ = std::fs::remove_dir_all(&dir);

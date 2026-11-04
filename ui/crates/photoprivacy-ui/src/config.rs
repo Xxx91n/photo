@@ -689,7 +689,10 @@ fn resolve_exiftool_executable_from_configured(configured: &str) -> String {
         return configured.to_string();
     }
     if path.is_dir() {
-        return path.join(exiftool_file_name()).to_string_lossy().into_owned();
+        return path
+            .join(exiftool_file_name())
+            .to_string_lossy()
+            .into_owned();
     }
     configured.to_string()
 }
@@ -995,7 +998,11 @@ mod tests {
         // （ExifToolGUI 的 ETOverrideDir 口径）。UI 不改写存储值，仅用于提示。
         let dir = std::env::temp_dir().join(format!("pp-detect-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&dir);
-        let exe = dir.join(if cfg!(windows) { "exiftool.exe" } else { "exiftool" });
+        let exe = dir.join(if cfg!(windows) {
+            "exiftool.exe"
+        } else {
+            "exiftool"
+        });
         std::fs::write(&exe, b"stub").unwrap();
 
         let result = detect_exiftool_path(dir.to_str().unwrap());
