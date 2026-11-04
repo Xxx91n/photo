@@ -1130,6 +1130,40 @@ public sealed class WorkerReloadConfigRegressionTests
     }
 
     /// <summary>
+    /// 单写者门的配置解析不得建目录（#153）：<c>Program</c> 每次非 CLI 启动都会调用
+    /// <c>InstanceConflictAudit.LoadConfigFromArgs</c> 解析门身份；旧实现无条件
+    /// <c>Directory.CreateDirectory(audit)</c>，待机首启就在安装目录长出 <c>hot/_audit</c>。
+    /// </summary>
+    [Fact]
+    public void Config_Resolution_For_Single_Writer_Gate_Should_Not_Create_Audit_Directory()
+    {
+        // 防：把「目录创建移到真正启用监控之后」只做到 worker 待机分支，配置解析这条
+        // 每次启动必经的路径仍把 hot/_audit 建出来（#153 实测根因）。
+        var root = Path.Combine(Path.GetTempPath(), "pp-153-gate-" + Guid.NewGuid().ToString("N"));
+        var installRoot = Path.Combine(root, "install");
+        var audit = Path.Combine(installRoot, "hot", "_audit");
+        var configPath = Path.Combine(installRoot, "config.json");
+        Directory.CreateDirectory(installRoot);
+        File.WriteAllText(configPath, BuildConfigJson(string.Empty, audit));
+
+        try
+        {
+            var config = InstanceConflictAudit.LoadConfigFromArgs(["--config", configPath]);
+
+            Assert.Equal(string.Empty, config.Watch.HotFolder);
+            Assert.Equal(audit, config.Audit.LogDirectory);
+            Assert.False(
+                Directory.Exists(Path.Combine(installRoot, "hot")),
+                "单写者门的配置解析在待机首启建出了 hot 子树（#153）");
+            Assert.False(Directory.Exists(audit));
+        }
+        finally
+        {
+            TryDelete(root);
+        }
+    }
+
+    /// <summary>
     /// 出厂包「三条空串」形态（#124 AC1）：<c>hot_folder</c> / <c>audit.log_directory</c> /
     /// <c>quarantine.directory</c> 全空时，loader 会把 audit/quarantine 回落到
     /// <c>&lt;BaseDirectory&gt;/hot/...</c>；待机态不得把这些回落路径建出来。

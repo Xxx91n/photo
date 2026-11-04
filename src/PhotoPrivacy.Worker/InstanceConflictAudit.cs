@@ -114,12 +114,9 @@ internal static class InstanceConflictAudit
             config = config with { Audit = config.Audit with { LogDirectory = auditFolder } };
        }
 
-        // ponytail: empty log directory (config.sample.json defaults to "") would throw
-        if (!string.IsNullOrWhiteSpace(config.Audit.LogDirectory))
-        {
-           Directory.CreateDirectory(config.Audit.LogDirectory);
-        }
-       return config;
+        // 配置解析必须纯读（#153）：Program 每次非 CLI 启动都会调用本方法解析单写者门身份，
+        // 目录缺失时不得在这里创建 hot/_audit；真正写冲突留痕时由 JsonLineAuditLogger 构造创建。
+        return config;
     }
 
     private static string? ResolveOptionValue(string[] args, string optionName)
