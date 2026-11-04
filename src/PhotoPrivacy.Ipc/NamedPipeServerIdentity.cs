@@ -42,6 +42,8 @@ public sealed class ServerProcessIdentityExpectation
 ///
 /// 上限：PID 快照核验存在固有的 PID 复用窗口；镜像是 speed bump 而非不可伪造凭据；
 /// 同用户恶意软件可注入客户端本身（同用户本就是无隔离级差的信任域）。签名核验未入首版。
+/// 与 Rust 产品客户端的差异：本类没有连接编排循环，核验期间进程消失不重试，
+/// 由调用方按连接失败上抛（Rust 侧在连接预算内重试，见 verify.rs）。
 /// 本类不依赖 Windows 专有托管 API，跨平台可编译；非 Windows 上调用一律返回 false。
 /// 与 <see cref="WindowsPipeNative"/> 不同，本文件在全部宿主编译，ubuntu CI 覆盖其编译面。
 /// </summary>

@@ -187,7 +187,17 @@ impl ServerIdentityVerifier for ProcessIdentityVerifier {
                 VerifyOutcome::Transient(format!("核验期间服务端进程 {peer_pid} 已退出"))
             }
             Err(ImageProbeError::Unsupported(reason)) => {
-                VerifyOutcome::Unverifiable(format!("服务端进程 {peer_pid} 镜像不可核验: {reason}"))
+                // 已知期望 PID 却对不上：这不是「核验不了」，而是对端不是我们拉起的 Worker
+                // （macOS 上抢建场景正是这一支）。能力缺口只在无 PID 基准时才交给平台策略。
+                if expected_pid.is_some() {
+                    VerifyOutcome::Rejected(format!(
+                        "服务端 PID {peer_pid} 与期望 PID 不符，且镜像不可核验: {reason}"
+                    ))
+                } else {
+                    VerifyOutcome::Unverifiable(format!(
+                        "服务端进程 {peer_pid} 镜像不可核验: {reason}"
+                    ))
+                }
             }
             Err(ImageProbeError::QueryFailed(reason)) => {
                 VerifyOutcome::Rejected(format!("服务端进程 {peer_pid} 镜像查询失败: {reason}"))
@@ -336,7 +346,7 @@ mod tests {
         }
     }
 
-    fn verifier(
+    fn make_verifier(
         expected_pid: Option<u32>,
         expected_image: Option<&str>,
         probe: FakeProbe,
@@ -353,7 +363,7 @@ mod tests {
     fn matching_spawned_pid_is_trusted_without_image_probe() {
         // 防（#7 AC1）：UI 拉起的 Worker PID 匹配仍去查镜像——多一次 OpenProcess，且进程
         // 恰在查询时退出的竞争会把合法连接误判为不可核验。首选判定必须是 PID 直配。
-        let verifier = verifier(
+        let verifier = make_verifier(
             Some(4242),
             Some("C:/app/PhotoPrivacyWorker.exe"),
             FakeProbe::with(&[]),
@@ -368,7 +378,7 @@ mod tests {
     fn pid_mismatch_with_foreign_image_is_rejected() {
         // 防（#7 残余①回潮）：同用户抢先建的管道被当成 Worker——PID 不符且镜像不是
         // PhotoPrivacyWorker.exe 时必须作废连接，而不是放行后把状态页交给冒充者。
-        let verifier = verifier(
+        let verifier = make_verifier(
             Some(4242),
             Some("/opt/pp/PhotoPrivacyWorker"),
             FakeProbe::with(&[(777, Ok("/tmp/evil-server"))]),
@@ -387,14 +397,14 @@ mod tests {
         // 防（#7）：UI 重启但后台 Worker 仍在（期望 PID 未知/陈旧）时把合法 Worker 拒掉——
         // 回退镜像路径核验必须能放行同一可执行文件的进程。
         let image = "/opt/pp/PhotoPrivacyWorker";
-        let verifier = verifier(None, Some(image), FakeProbe::with(&[(9001, Ok(image))]));
+        let verifier = make_verifier(None, Some(image), FakeProbe::with(&[(9001, Ok(image))]));
         assert_eq!(
             verifier.verify(&ServerPeer::Known(9001)),
             VerifyOutcome::Trusted
         );
 
         // 陈旧期望 PID + 镜像相符：Worker 崩溃重启换了 PID，仍应放行。
-        let verifier = verifier(
+        let verifier = make_verifier(
             Some(4242),
             Some(image),
             FakeProbe::with(&[(9001, Ok(image))]),
@@ -409,7 +419,7 @@ mod tests {
     fn process_gone_during_verification_is_transient() {
         // 防（#7 AC5）：核验瞬间进程退出被升级成授权失败——连接预算内的瞬时空窗应重试，
         // 否则 Worker 正常重启会被当成「不可信服务端」。
-        let verifier = verifier(
+        let verifier = make_verifier(
             Some(4242),
             Some("/opt/pp/PhotoPrivacyWorker"),
             FakeProbe::with(&[(777, Err(ImageProbeError::Gone))]),
@@ -421,15 +431,41 @@ mod tests {
     }
 
     #[test]
+    fn unverifiable_image_with_known_pid_mismatch_is_rejected() {
+        // 防（#7 AC2 macOS 自毁链）：平台无镜像回退时，已知期望 PID 却对不上的连接仍按能力
+        // 缺口 fail-open 放行——抢建者只要让 PID 不符即可绕过整条核验。
+        let verifier = make_verifier(
+            Some(4242),
+            Some("/opt/pp/PhotoPrivacyWorker"),
+            FakeProbe::with(&[(777, Err(ImageProbeError::Unsupported("mac".into())))]),
+        );
+        assert!(matches!(
+            verifier.verify(&ServerPeer::Known(777)),
+            VerifyOutcome::Rejected(_)
+        ));
+
+        // 无期望 PID（UI 重启、Worker 仍在）时才是真正的能力缺口 → 交给平台策略。
+        let verifier = make_verifier(
+            None,
+            Some("/opt/pp/PhotoPrivacyWorker"),
+            FakeProbe::with(&[(777, Err(ImageProbeError::Unsupported("mac".into())))]),
+        );
+        assert!(matches!(
+            verifier.verify(&ServerPeer::Known(777)),
+            VerifyOutcome::Unverifiable(_)
+        ));
+    }
+
+    #[test]
     fn peer_capability_gap_and_missing_expectation_are_unverifiable() {
         // 防（#7 D2）：平台取不到 PID（或既无期望 PID 也无镜像）被当成 Rejected 或 Trusted——
         // 前者让 macOS/能力缺口完全不可用，后者直接静默放行冒充者。两者都必须走策略层。
-        let verifier = verifier(Some(4242), None, FakeProbe::with(&[]));
+        let verifier = make_verifier(Some(4242), None, FakeProbe::with(&[]));
         assert!(matches!(
             verifier.verify(&ServerPeer::Unavailable("no pid".into())),
             VerifyOutcome::Unverifiable(_)
         ));
-        let bare = verifier(None, None, FakeProbe::with(&[]));
+        let bare = make_verifier(None, None, FakeProbe::with(&[]));
         assert!(matches!(
             bare.verify(&ServerPeer::Known(777)),
             VerifyOutcome::Unverifiable(_)
@@ -440,7 +476,7 @@ mod tests {
     fn peer_query_and_image_query_failures_are_rejected() {
         // 防（#7 AC2）：能力存在但查询失败（权限/系统调用错误）被 fail-open 放行——
         // 同用户进程不应查询失败，失败本身即可疑信号，按 Chromium 同姿态 fail-closed。
-        let verifier = verifier(
+        let verifier = make_verifier(
             Some(4242),
             Some("/opt/pp/PhotoPrivacyWorker"),
             FakeProbe::with(&[]),
@@ -450,7 +486,7 @@ mod tests {
             VerifyOutcome::Rejected(_)
         ));
 
-        let verifier = verifier(
+        let verifier = make_verifier(
             Some(4242),
             Some("/opt/pp/PhotoPrivacyWorker"),
             FakeProbe::with(&[(777, Err(ImageProbeError::QueryFailed("denied".into())))]),
@@ -467,7 +503,7 @@ mod tests {
         // Worker PID 必然不符，会把合法的服务模式连接整体拒掉。
         let guard = ServerGuard::new(
             Endpoint::Pipe("PhotoPrivacyCleaner.Background".into()),
-            Arc::new(verifier(None, None, FakeProbe::with(&[]))),
+            Arc::new(make_verifier(None, None, FakeProbe::with(&[]))),
             UnverifiablePolicy::FailOpen,
         );
         assert!(guard.applies_to(&Endpoint::Pipe("PhotoPrivacyCleaner.Background".into())));

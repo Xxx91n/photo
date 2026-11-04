@@ -252,7 +252,12 @@ impl IpcClient {
                 Ok(ConnectAttempt::TransientIdentity(reason)) => {
                     // 核验瞬间对端进程消失：按瞬时连接失败在预算内重试，不升级为授权失败（AC5）。
                     if Instant::now() >= deadline {
-                        return Err(IpcError::ServerIdentity(reason));
+                        // 预算耗尽仍按「连接失败」上报（而非 ServerIdentity）：调用方会归入
+                        // Worker 未就绪，不会把这个瞬时竞争读成「对端不可信」。
+                        return Err(IpcError::Connect(io::Error::new(
+                            io::ErrorKind::TimedOut,
+                            reason,
+                        )));
                     }
                 }
                 Ok(ConnectAttempt::RejectedIdentity(reason)) => {
@@ -530,5 +535,58 @@ mod tests {
         assert_eq!(0x0010_0000, SECURITY_SQOS_PRESENT);
         assert_eq!(0x0001_0000, SECURITY_IDENTIFICATION);
         assert_eq!(0x4000_0000, FILE_FLAG_OVERLAPPED);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn transient_identity_failures_retry_without_becoming_authorization_failure() {
+        // 防（#7 AC5）：核验瞬间对端进程消失被当成授权失败——必须在连接预算内重试，
+        // 预算耗尽也只报连接失败（调用方归入「未就绪」），不能报「不可信服务端」。
+        use crate::verify::ServerIdentityVerifier;
+
+        struct AlwaysTransient;
+
+        impl ServerIdentityVerifier for AlwaysTransient {
+            fn verify(&self, _peer: &ServerPeer) -> VerifyOutcome {
+                VerifyOutcome::Transient("对端进程已退出".to_string())
+            }
+        }
+
+        let dir = std::env::temp_dir().join(format!("pp-t7-transient-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("临时目录");
+        let path = dir.join("worker.sock");
+        let listener = tokio::net::UnixListener::bind(&path).expect("绑定测试 socket");
+        let accept = tokio::spawn(async move {
+            // 每次连上即断开：模拟「核验瞬间进程消失」的竞争窗口。
+            while let Ok((stream, _)) = listener.accept().await {
+                drop(stream);
+            }
+        });
+
+        let endpoint = Endpoint::UnixSocket(path.clone());
+        let guard = Arc::new(ServerGuard::new(
+            endpoint.clone(),
+            Arc::new(AlwaysTransient),
+            UnverifiablePolicy::FailClosed,
+        ));
+        let client = IpcClient::new().with_server_guard(guard);
+
+        let started = Instant::now();
+        let error = client
+            .connect(&endpoint)
+            .await
+            .expect_err("核验恒为瞬时失败时应报连接失败");
+        accept.abort();
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert!(
+            matches!(error, IpcError::Connect(_)),
+            "瞬时核验失败不得升级为授权失败: {error:?}"
+        );
+        assert!(
+            started.elapsed() >= CONNECT_RETRY_INTERVAL,
+            "应在连接预算内至少重试一次，实际耗时 {:?}",
+            started.elapsed()
+        );
     }
 }

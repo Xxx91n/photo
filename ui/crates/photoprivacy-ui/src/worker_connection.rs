@@ -263,6 +263,12 @@ async fn connect_worker(
         }
     }
 
+    // #7 残余①：后台端点连上了但对端不是期望的 Worker——比「未就绪/未安装」更准确：
+    // Worker 可能根本没参与，接管端点的是同用户抢先建的管道。归入既有三态的启动失败，
+    // 并在编排层记 warning（AC2：失败原因可观测；分类函数保持纯函数）。
+    if let Some(reason) = identity_failure.as_ref() {
+        eprintln!("[photoprivacy-ui] 后台 IPC 服务端身份核验失败: {reason}");
+    }
     let failure = classify_connect_failure(service_access_denied, identity_failure, launch);
     background.map(|endpoint| (endpoint, WorkerMode::Background, Some(failure)))
 }
@@ -284,11 +290,9 @@ fn classify_connect_failure(
     if service_access_denied {
         return ConnectFailureCause::ServiceAccessDenied;
     }
-    // #7 残余①：后台端点连上了但对端不是期望的 Worker——比「未就绪/未安装」更准确：
-    // Worker 可能根本没参与，接管端点的是同用户抢先建的管道。归入既有三态的启动失败，
-    // 并在此记 warning（AC2：失败原因可观测）。
+    // #7 残余①：后台端点连上了但对端不是期望的 Worker（同用户抢先建管道）——归入既有
+    // 三态的启动失败，细节带上核验原因（warning 由编排层在归类前记录）。
     if let Some(reason) = identity_failure {
-        eprintln!("[photoprivacy-ui] 后台 IPC 服务端身份核验失败: {reason}");
         return ConnectFailureCause::WorkerStartupFailed(format!("untrusted IPC server: {reason}"));
     }
     let Some(launch) = launch else {
@@ -357,24 +361,32 @@ fn expected_worker_image(options: &ConnectOptions) -> Option<PathBuf> {
     Some(background_worker_image(&worker))
 }
 
-/// 构造后台服务端身份核验作用域（#7 残余①，D2 fail-open）：端点解析不到时（mac 无 HOME，
-/// 仅理论可达）返回 None——与连接编排同样拿不到端点，不额外产生行为。
+/// 核验不了时的平台策略（#7 D2 / AC2）：macOS 首版无镜像回退（`LOCAL_PEERPID` 只给 PID），
+/// 且该平台攻击者本可直接抢建 socket 阻断可用性，fail-closed 无净增益 → fail-open + warning；
+/// Windows/Linux 按 AC2 fail-closed（核验不了即拒该连接）。
+fn unverifiable_policy(platform: HostPlatform) -> UnverifiablePolicy {
+    match platform {
+        HostPlatform::MacOs => UnverifiablePolicy::FailOpen,
+        HostPlatform::Windows | HostPlatform::Linux => UnverifiablePolicy::FailClosed,
+    }
+}
+
+/// 构造后台服务端身份核验作用域（#7 残余①）：端点解析不到时（mac 无 HOME，仅理论可达）
+/// 返回 None——与连接编排同样拿不到端点，不额外产生行为。
 fn background_server_guard(
     options: &ConnectOptions,
 ) -> (Option<Arc<ServerGuard>>, Arc<ProcessIdentityVerifier>) {
+    let platform = current_platform();
     let verifier = Arc::new(ProcessIdentityVerifier::new(expected_worker_image(options)));
-    let guard = resolve_endpoint(
-        current_platform(),
-        WorkerMode::Background,
-        current_home().as_deref(),
-    )
-    .map(|endpoint| {
-        Arc::new(ServerGuard::new(
-            endpoint,
-            verifier.clone(),
-            UnverifiablePolicy::FailOpen,
-        ))
-    });
+    let guard = resolve_endpoint(platform, WorkerMode::Background, current_home().as_deref()).map(
+        |endpoint| {
+            Arc::new(ServerGuard::new(
+                endpoint,
+                verifier.clone(),
+                unverifiable_policy(platform),
+            ))
+        },
+    );
     (guard, verifier)
 }
 
@@ -527,9 +539,9 @@ mod tests {
     }
 
     #[test]
-    fn background_guard_is_scoped_to_background_endpoint_and_fails_open() {
-        // 防（#7 D2/D3）：核验作用域扩到服务端点（把 SYSTEM 服务拒掉），或策略被改成
-        // fail-closed（macOS 后台模式恒不可用）。
+    fn background_guard_is_scoped_to_background_endpoint_with_platform_policy() {
+        // 防（#7 D2/D3）：核验作用域扩到服务端点（把 SYSTEM 服务拒掉），或平台策略错位
+        // （Windows/Linux 该 fail-closed 却放行；macOS 该 fail-open 却让后台模式恒不可用）。
         let (guard, verifier) = background_server_guard(&ConnectOptions::default());
         assert_eq!(verifier.expected_pid(), None, "拉起前不应有期望 PID");
         let Some(guard) = guard else {
@@ -543,7 +555,17 @@ mod tests {
             .expect("服务端点应可解析");
         assert!(guard.applies_to(&background));
         assert!(!guard.applies_to(&service));
-        assert_eq!(guard.unverifiable_policy(), UnverifiablePolicy::FailOpen);
+        assert_eq!(
+            guard.unverifiable_policy(),
+            unverifiable_policy(platform),
+            "作用域策略必须与平台矩阵一致"
+        );
+        let expected = if platform == HostPlatform::MacOs {
+            UnverifiablePolicy::FailOpen
+        } else {
+            UnverifiablePolicy::FailClosed
+        };
+        assert_eq!(guard.unverifiable_policy(), expected);
     }
 
     #[test]
