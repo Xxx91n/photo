@@ -53,7 +53,7 @@
 |---|---|---|---|
 | B1 | 语言平铺选项组逐一切换 10 locale，导航/标题/行标签/按钮即时翻译 | 通过 | 2026-10-29 实机目检：语言平铺选项组逐一切换 10 locale，导航/标题/行标签/按钮即时翻译 |
 | B2 | （并入 B1）页面文案跟随当前 locale | 通过（并入 B1） | 随 B1 验证通过 |
-| B3 | 选 العربية 布局翻转为 RTL（`ui/crates/photoprivacy-ui` 方向随 `ui.locale` 驱动） | 通过 | 2026-10-29 实机目检：选 العربية 布局翻转为 RTL 镜像排布 |
+| B3 | 选 العربية 布局翻转为 RTL（`ui/crates/photoprivacy-ui` 方向随 `ui.locale` 驱动） | 通过 | 2026-10-29 实机目检：选 العربية 布局翻转为 RTL 镜像排布。**已知限制（#154，2026-11-04 定位）**：本项只判布局镜像；镜像后阿拉伯文的**字形**（连写与词序）因上游 gpui 的 Windows RTL 落位缺陷全部不可读，触发条件与影响面见下文 K 组「#154 已知限制」段——那是上游缺陷，不据此把 B3 记失败 |
 | B4 | 切 English → 重启后保持（`ui.locale` 持久化） | 通过 | 2026-10-29 实机目检：切 English 后退出重启，界面保持英文 |
 | B5 | 平铺选项文案（主题/日志级别）随当前语言刷新 | 通过 | 2026-10-29 实机目检：平铺选项文案随当前语言即时刷新翻译 |
 
@@ -198,7 +198,7 @@
 | # | 操作 | 结果 | 证据 |
 |---|---|---|---|
 | K1 | 双击 `PhotoPrivacy.exe`（出厂空 `hot_folder`）→ 状态栏连接态显示「已连接」，不是「连接中/已断开」 | 通过 | 2026-11-03 桌面截图目检（产物见下文 2026-11-03 产物记录）。**启动方式按判据字面走双击路径**：`cmd /c start "" …\PhotoPrivacy.exe` 经 ShellExecute 拉起包内 exe（与资源管理器双击同一条 API，非 `CreateProcess`），主窗 996×759、无控制台黑窗，UI（pid 5664）与 Worker（pid 7324）两进程均起——帧 `K1-window.png`（启动后约 8 s 的整屏帧 `K1-launch-standby.png` 是同一窗口更早一拍）：状态栏绿点 +「已连接 · PhotoPrivacyCleaner.Background · 后台模式」，右侧「上次往返 1 ms」；Worker 卡片 Worker 模式=后台模式、上报模式=background、服务 IPC=不可达、协议=v1、ExifTool=unknown（待机不拉 ExifTool 进程，属预期，非失败）；「往返次数」两帧读数不同（整屏帧 13 → 窗口帧 28），是 1 s 一次 GetStatus 心跳的递增，不是两个值矛盾 |
-| K2 | 状态栏出现 warning 色提示「请前往配置页设置监控目录」（`status.configure_watch_folder`，切 locale 后各自可见） | 通过 | 2026-11-03 桌面截图目检：10 个 locale 逐一取概览页帧（`K2-locale-<code>.png` ×10，另附逐行拼合的 `K2-hint-strip.png`）。切语言走「外部改写 `config.ui.locale` → 500 ms 内容指纹轮询回灌」（`config_service.rs` 的 `ExternalReload`，代码内的正式路径），不点坐标，因此避开指引第 7 步记的「导航项宽度随 locale 漂移」。10 行全部是 warning 色（琥珀）落在连接态下一行：zh-CN「请前往配置页设置监控目录」、en「Go to Settings to set the watch folder」（与 `locales/en.json` 该键逐字一致）、ja「設定ページで監視フォルダーを設定してください」、ko/de/fr/es/pt/ru 各随其 locale；ar 在 RTL 镜像布局（导航靠右、正文右对齐）下同一提示。只判「该 locale 的文案存在、渲染在判据位置且颜色正确」——「通过」按票面判据「切 locale 后各自可见」计（10/10 可见）。**字形本身不判**：ar 帧上的阿拉伯文呈孤立字形、整行读起来词序是反的（`K2-hint-strip.png` 末行可见），而 B 组 B3 只覆盖「选 العربية 布局翻转为 RTL」、不含字形连写，所以这条观感当前**没有票覆盖**，本轮只如实记录、不据此判 K2 失败，也不自行开票。取证后 `config.json` 已逐字节还原（sha256 回到出厂 `aa2d36ee…`） |
+| K2 | 状态栏出现 warning 色提示「请前往配置页设置监控目录」（`status.configure_watch_folder`，切 locale 后各自可见） | 通过 | 2026-11-03 桌面截图目检：10 个 locale 逐一取概览页帧（`K2-locale-<code>.png` ×10，另附逐行拼合的 `K2-hint-strip.png`）。切语言走「外部改写 `config.ui.locale` → 500 ms 内容指纹轮询回灌」（`config_service.rs` 的 `ExternalReload`，代码内的正式路径），不点坐标，因此避开指引第 7 步记的「导航项宽度随 locale 漂移」。10 行全部是 warning 色（琥珀）落在连接态下一行：zh-CN「请前往配置页设置监控目录」、en「Go to Settings to set the watch folder」（与 `locales/en.json` 该键逐字一致）、ja「設定ページで監視フォルダーを設定してください」、ko/de/fr/es/pt/ru 各随其 locale；ar 在 RTL 镜像布局（导航靠右、正文右对齐）下同一提示。只判「该 locale 的文案存在、渲染在判据位置且颜色正确」——「通过」按票面判据「切 locale 后各自可见」计（10/10 可见）。**字形本身不判**：ar 帧上的阿拉伯文呈孤立字形、整行读起来词序是反的（`K2-hint-strip.png` 末行可见），而 B 组 B3 只覆盖「选 العربية 布局翻转为 RTL」、不含字形连写，本轮记录时这条观感还没有票覆盖，只如实记录、不据此判 K2 失败，也不自行开票。**后续（2026-11-04）：已由 #154 定位为上游 gpui 的 Windows RTL 落位缺陷并登记为已知限制（见上文「#154 已知限制」段），K2 的「可见」判据边界不变。**取证后 `config.json` 已逐字节还原（sha256 回到出厂 `aa2d36ee…`） |
 | K3 | 点该提示 → 直接进配置页（`app.rs` 的 `configure-watch-folder` on_click 置 `Page::Config`） | 通过 | 2026-11-03 桌面截图目检（zh-CN 帧）：点提示文本前「总览」高亮（`K3-before-click.png`），点后导航高亮跳到「配置」、页面标题变「配置」（`K3-after-click-hint.png`），不是只高亮也不是无响应。点击用 `SetCursorPos` + `mouse_event`，坐标由 `GetWindowRect` 换算成窗口内偏移，非缩略图目测 |
 | K4 | 选有效目录保存 → 提示消失、监控启动；放入照片被处理（日志页出条目、审计目录 `processed.ndjson` 增长） | 通过 | 2026-11-03 桌面截图 + 文件系统取证（产物见下文 2026-11-03 产物记录）。配置页「监控目录」填 `C:\Users\Administrator\photo-smoke-113r2\hot`（`K4-1-typed.png`）→ 500 ms 防抖写盘 + `ReloadConfig` 成功；回总览：琥珀提示消失、`ExifTool` 行由 `unknown` 变 `13.60`、连接仍「已连接」（`K4-3-overview-after-save.png`）；预置 3666 B 含 Artist/Copyright 的 jpg 被就地清为 626 B、标签查空，`hot/bak/k4-sample-src.jpg.bak` 留 3666 B 原件（标签仍在）；随后放入 790 B 新照片验证实时处理 → 634 B、标签清空，`processed.ndjson` 2→4 条，日志页 4→7 条并实时刷新（`K4-4-logs.png`、`K4-5-logs-live.png`，02:13:28~02:14:37，含 `ExifTool started` / `Cleaned` / `backup_sidecar_version…`）。**环境前提**：本机 ExifTool 装在模板默认路径（13.60），出厂包一字未改即可启用监控，故这是本体证据而非 dry-run 旁证；真裸机（未装 ExifTool）仍归 #108。**时刻**：本地 02:14＝UTC 前一日 18:14（两日期分叉），日志页照样出 7 条，即 #129 的修复在本产物上成立。**顺带观察**：每张照片产生 2 条 `Cleaned` + 1 条 sidecar（`#133` 形态，不按本票 AC3 另开票，见产物记录） |
 
@@ -256,6 +256,75 @@
 > `HostOptions.ShutdownTimeout`（10 s）内退出，无残留 Worker / UI 进程；观察方式同 T2。
 > **未回填前不得把 T6 记作通过**（无证据不虚构）。待 #117 PR 合并后在独立取证窗口补证回填。
 
+### #154 已知限制：阿语文案呈孤立字形、整行词序反（上游 gpui Windows RTL 落位缺陷）
+
+> 定位窗口：#154（2026-11-04）。**UI 层观感证据：本票在当前 main 自取三帧**（Release run
+> [41854940207](https://github.com/Xxx91n/photo/actions/runs/41854940207) / ref main /
+> head `b72d4896` / version `0.1.0-verify154` / `create_release=false` 的 `release-win-x64`
+> artifact；win-x64 job success（其余 test/linux-x64/linux-arm64/osx-x64 五腿也 success，
+> 仅 osx-arm64 一腿 cancelled，故 run 总结论为 failure——与 Windows 产物无关）；
+> 本地零编译）——总览（琥珀待机提示）/ 规则页长文案 / 配置页长文案各一帧：ar locale 下
+> `--open-page` 启动即出页、整屏 `CopyFromScreen` 取帧，出厂 `config.json` 取证前后逐字节
+> 原样核对与还原（`C1371F77…`）。#113 第二轮的 `K2-locale-ar.png`（取证基线 `fb388507`）
+> 作历史参照保留（锚：`git show 4db2583:docs/agents/ui-smoke-evidence.sha256`）；
+> 机理证据来自与 gpui 同调用序列的 DirectWrite 探针（Add-Type 内存编译，本地零编译，走 OS API 不涉仓库构建），
+> 证据清单见本节末尾。
+
+- **根因（票面三选一的判决：不是整形缺失，不是字体链，也不是 DWrite 层 bidi）**：
+  `gpui-pre-windows`（Zed gpui 的 Windows 文本系统，本仓锁 `=0.3.10`）把 `IDWriteTextLayout::Draw`
+  回调交付的 glyph run 转成 `ShapedRun` 时，**忽略 `baselineOriginX/Y`，也不读 glyph run 的 `bidiLevel`**，
+  只用自维护的 `context.width` 从 0 向右累加（`direct_write.rs` 的 `DrawGlyphRun`）。
+  DirectWrite 对 RTL run（`bidiLevel=1`）按「笔位自右向左推进」的语义交付——探针实测各 run 的
+  基线原点递减（237.74 → 211.69 → 208.14 → …）——该累加把这些 run 当 LTR 从左往右铺：
+  **整行词序镜像、词内字母序镜像**；字母的上下文连写笔画朝向与镜像后的邻居相反，视觉上字母彼此断开，
+  在小字号下呈「孤立字形」观感。#113 第二轮记录的三个症状（孤立、断开、词序反）由此一并解释。
+- **探针判决**（复刻 gpui 调用序列：`CreateTextFormat("Microsoft YaHei UI", locale=zh-CN)` →
+  `CreateTextLayout(INFINITY, INFINITY)` → `Draw`；取证机 = Windows Server 2022（10.0.20348，zh-CN 区域，
+  与 DWrite 同一代码基线），该机系统 UI 字体（`SPI_GETICONTITLELOGFONT`）即 `Microsoft YaHei UI`、
+  用户默认 locale 即 `zh-CN`——与 gpui 在它上面的实际解析一致）：
+  - **整形正常**：7 个阿语词 run 的实发字形 ID ≠ cmap 默认字形（如 U+064A 的 cmap 2347 → 实发 2292），
+    即字母按上下文选形、不是孤立形式的码位；全部 run 的 `clusterMap` 严格 1:1（该文案无连字/合并簇）；
+  - **DWrite bidi 正常**：`status.configure_watch_folder` 的阿语文案切分 13 个 run（7 词 + 6 空格），全部
+    `bidiLevel=1`、基线原点递减；hitTest（证据 D 组）实测逻辑位 0 → x=237.74（行右端）、
+    逻辑位 42 → x=30.06（行左端），视觉序正确；
+  - **字体链正常**：系统字体回退生效——阿语字形由一个 5344 字形的回退 font face 供给，
+    空格等由 YaHei（30209 字形）供给；每 run 的 `clusterMap` 从 0 升序，
+    gpui 的 `ClusterAnalyzer` 按 usize 升序差值计算、不触发下溢；
+  - **缺陷只在转换层**：gpui 的 `ShapedRun` 把逻辑位 0 的字形放到 x≈0（行左端），
+    与 DWrite 的正确落位逐字镜像——词序反与「断开」的根源在这里。
+- **触发条件**：Windows 构建（`gpui-pre-windows`；0.3.10 实测，上游最新 0.3.11（2026-11-02 发布）
+  的同一 `DrawGlyphRun` 回调逐行未改，见证据清单的 diff）× 当前 UI 的任一 RTL 文案。
+  其中「`is_rtl` 驱动的布局镜像」只有 `ar` locale 触发（`i18n.rs` 的 `is_rtl` 只判 ar）；
+  但「字形缺陷」命中的是**文本内容**而非界面语言——LTR locale 的界面文案不受影响
+  （探针英文对照：`bidiLevel=0`、起点 x=0，与既有 K2 九个 LTR locale 帧一致），而语言选择器的
+  阿语自称标签 `العربية`（`config.rs` 的 `LOCALES` endonym，不随界面语言翻译，任何 locale 的
+  配置页都渲染）同样命中本限制——探针 B 组即该字面串（`bidiLevel=1`，同一管线，无 locale 分支）。
+- **影响面**：机制上命中应用内**全部**阿语文案——不止 `status.configure_watch_folder` 这条首次配置引导
+  （`K154-04` 总览帧：琥珀提示行仍在判据位置渲染、导航右侧镜像，但字形不可读），
+  规则页/配置页的长说明文同样形态（`K154-05`/`K154-06` 帧：页面结构完整、文案全部镜像错排——
+  页面级长文案的现状即本限制的直接证据）；混入数字或拉丁 token 的行同样错排（探针 E 组实测：
+  `'العربية ExifTool 13.60'` 的正确视觉序是右端阿语（`bidiLevel=1`）+ 左端拉丁段（`bidiLevel=0`），
+  gpui 转换层对两种 level 一视同仁地按交付顺序向右累加，整行对调错排）
+  （#100 的引导对 `ar` locale 因此失效）。B3 判的「布局镜像」（导航/对齐的 flex 方向翻转）是
+  app 层实现，不经过该转换层，不受影响、仍然通过（三帧的导航右侧镜像即其通过证据）。
+- **修复路径与「不修」决定（2026-11-04，#154 票面登记）**：缺陷在上游依赖内部（app 代码不可及），
+  app 层也没有可行 workaround——对文案预反转会被 DWrite 的 bidi 重新处理、并按反转后的邻接选形，
+  仍不可读；改用呈现形式码位是弃用做法且 bidi 类不变。故按票面登记为**已知限制（不修，等上游）**：
+  后续升级 `gpui-pre` 版本时，必须先在 release 构建上对 ar 帧复验「连写 + 词序」再考虑撤销本条；
+  撤销前 K2 各 locale 的「可见」判据照旧（2026-11-03 裁决的边界不变），不因字形质量记失败。
+- **证据**（探针与日志不入库，存取证机 `C:\Users\Administrator\photo-smoke-154\evidence\`，
+  哈希锚见 `docs/agents/ui-smoke-evidence.sha256`，实测 7/7 `OK`）：
+  `K154-00-probe-result.txt`（五组探针完整日志：A 阿语提示 13 run / B `العربية` 字面 1 run /
+  C 英文对照 1 run / D 同文案有限宽度布局的 hitTest 视觉序 / E 阿语+拉丁+数字混排）、
+  `K154-01-ar-probe.cs` + `K154-02-run-probe.ps1`（探针工具）、
+  `K154-03-upstream-0310-0311.diff`（上游 0.3.10→0.3.11 全量 diff，`DrawGlyphRun` 回调区域无改动）；
+  UI 观感帧 `K154-04-overview-ar-hint.png`（总览：琥珀阿语提示行在连接态下一行，导航右侧镜像）、
+  `K154-05-rules-ar-longtext.png`（规则页：五族表格 + 副标题长文案，标题 `القواعد` 帧上呈镜像序）
+  `K154-06-config-ar-longtext.png`（配置页：分组 + 输入框 + 说明行长文案）——三帧均为
+  当前 main 二进制、ar locale 下所取，帧内文字本身即镜像错排现状的直接证据；
+  历史 UI 帧 `K2-locale-ar.png` 等仍在 `photo-smoke-113r2\evidence\`
+  （锚：`git show 4db2583:docs/agents/ui-smoke-evidence.sha256`）。
+
 ### K 组取证指引（原名「K 组人工验收指引」，#113 定形，#125 换用桌面截图通道）
 
 > **勘误（2026-10-31，#125）**：本节原先写「gpui 窗口的界面呈现只能由人眼判」，前提取自
@@ -279,8 +348,9 @@
    看到黑窗说明拿的是 debug 产物或旧包，先别往下验。）
 4. **K2**：同一屏找 warning 色提示「请前往配置页设置监控目录」；把 **10 个 locale 逐一**过一遍，
    确认该文案在每个 locale 下都出现、且内容与该 locale 对应——口径与 B1 的「逐一切换 10 locale」一致，只切一个不算覆盖。
-   **判据边界（2026-11-03 裁决）**：本项判的是「各自可见」，**不含字形连写质量**。ar 帧上阿拉伯文呈孤立字形、
-   整行词序读起来是反的，属另一层缺陷（当前无票承接，见产物记录第 3 项观察），不据此把 K2 记失败；
+   **判据边界（2026-11-03 裁决，2026-11-04 #154 定位）**：本项判的是「各自可见」，**不含字形连写质量**。ar 帧上阿拉伯文呈孤立字形、
+   整行词序读起来是反的，属另一层缺陷——已由 **#154** 定位为上游 gpui 的 Windows RTL 落位缺陷并登记为已知限制
+   （触发条件、影响面与证据见上文「#154 已知限制」段），不据此把 K2 记失败；
    若要把「可读」并入本项判据，那是改需求，须先改票面再重判。
 5. **K3**：点该提示文本，是否直接落到配置页（不是只高亮、也不是无响应）。
 6. **K4**：在配置页选一个有效目录并保存 → 提示应消失、监控应启动；往该目录放一张带元数据的照片 →
@@ -409,7 +479,9 @@
      若成立，它与 #124「配置加载改为纯读」的收口范围不重叠（另一个进程、另一个模块），属新发现的旁路副作用；
      是否成票待用户在 #113 窗口裁决，本轮**不自行开票、不并入本 PR 的修复范围**。
   3. **ar 文案字形**：`K2-locale-ar.png` 与 `K2-hint-strip.png` 末行的阿拉伯文呈孤立字形、整行词序读起来是反的。
-     该观感不在 B 组 B3 的覆盖范围内（B3 只判「选 العربية 布局翻转为 RTL」），当前无票承接；本轮只记录，不据此判 K2 失败。
+      该观感不在 B 组 B3 的覆盖范围内（B3 只判「选 العربية 布局翻转为 RTL」），当时无票承接；**2026-11-04 已由 #154 定位**：
+      上游 gpui 的 Windows RTL 落位缺陷（整形/DWrite bidi/字体链三者经探针排除），登记为已知限制——
+      根因、触发条件与证据见上文「#154 已知限制」段。本轮的记录仍只约束 K2 判据（可见，不含字形质量）。
 - **收尾状态**：K2 段为切语言改过 `ui.locale`，段末已逐字节还原（回到出厂 `aa2d36ee…`）；
   K4 段由 UI 正常保存写入 `watch.hot_folder`（正是判据要求的操作，不是取证污染），故取证结束时
   `config.json` 停在「已配置一个有效监控目录」这一状态，`locale` 仍是 `zh-CN`。
@@ -654,7 +726,8 @@
 - **取证通道**：整屏 PIL `ImageGrab` + 合成点击（`SetCursorPos` + `mouse_event`，#88 同款；
   工具 `photo-smoke-31\tools\winshot.py`，`SetWindowPos` 按 #88 教训显式声明 argtypes）；
   截图与文本取证存 `C:\Users\Administrator\photo-smoke-31\evidence\`（26 个文件，不入库），
-  哈希锚 `docs/agents/ui-smoke-evidence.sha256`。WSLg 窗口以「(Ubuntu)」后缀出现在 Windows 桌面，
+  哈希锚 `git show 389f6bf:docs/agents/ui-smoke-evidence.sha256`（#154 轮起清单只装当前一轮，
+  #31 的 26 条锚已随轮换转入该 git 历史版）。WSLg 窗口以「(Ubuntu)」后缀出现在 Windows 桌面，
   同一通道可截可点；导航/按钮坐标按 #88 的暗像素聚类标定（导航：总览 661/配置 709/服务管理 769/
   日志 829/规则 877，y≈235；服务页按钮行 y≈380/447/507）。
 - **环境适配（如实登记，不虚构）**：
