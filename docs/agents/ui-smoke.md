@@ -533,6 +533,8 @@
   二进制未变；`hot-s5\` 内留 626 B 已清洗样本与其备份，全部落在取证目录内，仓库工作区不受影响。
 - **边界**：仅 Windows 命名管道。Linux/macOS 服务端点（Unix socket 0660 + 组边界）未实机，仍归 #31/#32；
   CI `test` job 为 ubuntu，服务形态那一行走的是 Unix 策略——两侧证据互补，互不替代。
+  **勘误（2026-11-04 #31 窗口）**：Linux 侧已由 #31 的 L 组实机补齐（见下文「Linux systemd 实机」节，
+  含 UDS 0660 组边界的成员/非成员双向证据）；macOS 侧仍归 #32。
 
 ### S5 复测产物记录（2026-11-03 二轮，#85 窗口：当前 head）
 
@@ -576,7 +578,8 @@
   临时标准用户 `ppverify` 与其配置目录已删除，取证借用的 `SeBatchLogonRight` 已按导出备份回滚，
   计划任务与 `C:\ProgramData\pp85`（探针脚本）已删除；`pkg` 内只剩 hot-s5 的 626 B 已清洗样本与备份，
   全部落在取证目录内。
-- **边界**：只覆盖 Windows 命名管道；Linux/macOS 服务端点仍归 #31/#32。UI 帧本身跑在管理员会话——
+- **边界**：只覆盖 Windows 命名管道；Linux/macOS 服务端点仍归 #31/#32（**勘误 2026-11-04 #31 窗口**：
+  Linux 侧已补齐，见下文「Linux systemd 实机」节；macOS 仍归 #32）。UI 帧本身跑在管理员会话——
   本机 `EnableLUA=0`，管理员账户不存在过滤令牌，非提权面由「独立标准账户 + 传输级往返」覆盖，
   它不是「非提权 UI 点到点」的等价物。**该缺口已由三轮补齐**（见下节）。
 - **旧一轮的去向**：`fb388507` 那 12 个文件的哈希不再逐条收录，可从
@@ -611,6 +614,101 @@
 - **方法备注（供后续窗口复用）**：本机 `EnableLUA=0`，`Start-Process -Credential` 会因进程环境里同时
   存在 `Path`/`PATH`/`path` 三个大小写变体而抛「字典中已添加项」的重复键错误；把这三项循环清空后
   重设单一 `PATH` 即可启动。清空只影响当前进程环境，不落盘、不改系统。
+
+### Linux systemd 实机（#31 定形，2026-11-04：WSL2 Ubuntu 安装/卸载/日志全链路）
+
+> **口径变更的授权**：本票标签为 `ready-for-human`（锐化口径是 Ubuntu/Debian 桌面实机）；用户在 #31
+> 实现窗口明确改派「使用 WSL 的 Linux 环境测试、只走远端 CI/CD、本地不编译」（2026-11-03 深夜至
+> 2026-11-04 凌晨，同 #88/#125 的 agent 自查取证先例）。实机 = WSL2（Ubuntu 24.04.3、systemd 255、
+> WSLg 1.0.79），非物理桌面——凡与桌面环境相关的差异按「环境适配」显式登记，不冒充实机桌面。
+> 本节是 Windows S 组同判据在 Linux 服务面的对应实机（S5 配置热重载不在本票 AC，仍归 #85 系）；
+> 「无证据不虚构」不变。**结论只对本节记录的取证基线成立**（K 组同款口径）。
+
+| # | 操作 | 结果 | 证据 |
+|---|---|---|---|
+| L1 | 未安装态：服务页显示未安装，启动/停止/卸载置灰、安装可点 | 通过 | 2026-11-04 桌面截图目检：服务页「服务状态：未安装」+「每 3 秒刷新」；启动/停止/卸载置灰、安装钮蓝可点，与 `button_state` 未安装态一致（`ui/crates/photoprivacy-service/src/state.rs`）——帧 `L1-service-not-installed.png`；同时刻 `systemctl is-active` inactive、`is-enabled` not-found、unit 文件不存在（`L1-systemctl.txt`）。同帧总览的后台回落形态见「新观察」第 2 条——`L1-overview-background-fail.png` |
+| L2 | 安装服务（脚本通道） | 通过 | `bash scripts/install-systemd-service.sh --gui-user ppverify`：「Added GUI user 'ppverify' to group 'photoprivacy' (IPC socket 0660 group boundary)」+「Installed and started photoprivacy.service」（`L2-install-script.txt`）；同刻 `systemctl status` active (running)、enabled，unit `ExecStart=…PhotoPrivacyWorker --mode service --config … --hot-folder /var/lib/photoprivacy/hot --audit-folder /var/log/photoprivacy`，`/run/photoprivacy/worker.sock` = `srw-rw----` photoprivacy:photoprivacy（目录 0750）（`L2-status.txt`） |
+| L2b | 安装服务（UI 安装按钮通道，加测） | 通过 | 服务页点「安装」（pkexec→bash 包内脚本，脚本路径解析 `<exe>/scripts/`）：绿字「成功：systemd service installed」+ 状态「运行中」——帧 `L2b-install-via-ui.png`；同刻 `is-active` active、`is-enabled` enabled（`L2b-systemctl-after-ui-install.txt`）。S2 的提权交互流（pkexec 认证对话框）仍未回填——取证机用 polkit 规则免交互（见产物记录「环境适配」） |
+| L3 | 运行态呈现 + UI 启动 | 通过 | 安装后服务页「运行中」、启动/卸载置灰、停止可点（`button_state` Running 分支 `uninstall=false`——运行态不放卸载，L6 实测点「卸载」无动作即此判据）——帧 `L3-service-running.png`；L2b 轮卸载前先经 UI「停止」再装回后，点 UI「启动」→「运行中」，`is-active` active、新 PID 671、`/run/photoprivacy/worker.sock` 重建为 0660——帧 `L3b-service-started-via-ui.png` + `L3b-systemctl-after-start.txt` |
+| L4 | 服务运行中 UI 经服务端点连接（服务页/日志页数据来自服务 Worker） | 通过 | 重启 UI 后总览连接态「已连接 · /run/photoprivacy/worker.sock · 服务模式」、上次往返 4 ms；Worker 卡：Worker 模式=服务模式、上报模式=service、服务 IPC=可达、协议=v1、ExifTool=13.60、往返次数=40（单帧读数）——帧 `L4-overview-service-mode.png`；进程面仅服务 Worker（photoprivacy 用户）+ UI（ppverify），UI 未拉起后台 Worker |
+| L4b | UDS 0660 组边界（服务端点认证面） | 通过 | `stat`：目录 `drwxr-x---` photoprivacy、socket `srw-rw----` photoprivacy:photoprivacy；组成员 `ppverify`（安装脚本 `--gui-user` 入组）connect+`Ping` 全程通：`{"ok":true,"data":{…,"mode":"service"},"id":"l31","v":1}`（exifToolVersion 13.60、watchDirectory=/var/lib/photoprivacy/hot）；非成员 `outsider` connect 被拒 **EACCES (errno 13)**——`L4b-group-boundary.txt`。这是 S5 记录里「Linux 服务端点（Unix socket 0660 + 组边界）未实机」欠账的实机补位 |
+| L5 | UI 停止 → 状态回落 | 通过 | 点 UI「停止」→ 绿字「成功：systemd service stopped」、状态「已停止」、启动/卸载转可点——帧 `L5-service-stopped.png`；同刻 `is-active` inactive、unit inactive (dead)、exit status=0/SUCCESS、`/run/photoprivacy` 随 RuntimeDirectory 回收（`L5-systemctl-after-stop.txt`） |
+| L6 | UI 卸载 → 回到未安装态 | 通过（两轮） | 运行态点「卸载」按设计无动作（`button_state` Running 分支 uninstall=false——判据行为，非缺陷）；先停止再点「卸载」→ 绿字「成功：systemd service uninstalled」、状态「未安装」——帧 `L6-after-uninstall.png`（第一轮）与 `L6b-final-uninstalled.png`（L2b 装回后第二轮收尾）；两轮 `is-enabled` not-found、unit 文件与 `/run/photoprivacy` 均删除（`L6-systemctl-after-uninstall.txt`、`L6b-final-state.txt`） |
+| L7 | 服务模式日志通道在日志页可见（与后台模式区分） | 通过 | 服务模式会话日志页「来自每日 JSONL 的审计尾巴——本地尾随 + IPC 回填」，15 条含 `Service started mode=live`、`inotify_limits`、`ExifTool started`、投放样本的 `Cleaned attempt=1;wipe_result=Cleaned_Modified`×2 + `backup_sidecar_version… content_diverged_sidecar_written`——帧 `L7-logs-page-service.png`；条目与 `/var/log/photoprivacy/audit-*.jsonl` 原样输出同刻（`L7-audit-records.txt`）：样本 302→142 B、exiftool 复查 Artist/Copyright 已空、`bak/l31-sample.jpg.20261103-162309.bak` 旁路版本写出。与后台模式的区分锚在连接态（L4：服务模式 · 服务 IPC=可达） |
+
+#### L 组产物记录（2026-11-04，#31 窗口：WSL2 Ubuntu 实机，安装/卸载/日志全链路）
+
+- **产物**：Release run [41579559557](https://github.com/Xxx91n/photo/actions/runs/41579559557)
+  （ref `main`，head `1880b670`，version `0.1.0-verify162`，`create_release=false`）的 `release-linux-x64`。
+  **本票起始基线即 `1880b6705e91…`（开工时的 origin/main），产物与基线同 head**——本地未编译，
+  包体全部来自远端 CI。二进制 sha256 实测：`PhotoPrivacy 041ed9f2…`、`PhotoPrivacyWorker f7852f35…`、
+  `ExifTool/exiftool 65e17a63…`（`L00-binary-sha256.txt`）。取证期间 origin/main 前进 8 个提交到
+  `41c8bdf`（含 #32 窗口的 `--service-probe-report`/`--open-page` 取证链与 #169 连接失败三态分类）；
+  经 `git diff 1880b67 41c8bdf` 复核，本节「新观察」第 1/2 条在 `41c8bdf` 上仍成立（locales 仅增
+  连接拒绝文案、`endpoints.rs` 改动全在 Windows 通告名面、Linux socket 路径未动）。
+- **环境**：Windows Server 2022（OpenStack VM）上的 WSL2；Ubuntu 24.04.3 rootfs（`ubuntu-base`
+  6bc2cde3…，`wsl --import`）+ systemd 255、kernel `6.18.54.1-microsoft-standard-WSL2`；
+  WSLg 1.0.79。取证用户 `ppverify`（标准用户，只属自己组+服务组）；非成员对照用户 `outsider`。
+  `systemctl is-system-running` = degraded，唯一失败单元 `kmod-static-nodes.service`（WSL 无
+  kmod 静态节点，噪声）；除此 systemd 面无异常。
+- **取证通道**：整屏 PIL `ImageGrab` + 合成点击（`SetCursorPos` + `mouse_event`，#88 同款；
+  工具 `photo-smoke-31\tools\winshot.py`，`SetWindowPos` 按 #88 教训显式声明 argtypes）；
+  截图与文本取证存 `C:\Users\Administrator\photo-smoke-31\evidence\`（26 个文件，不入库），
+  哈希锚 `docs/agents/ui-smoke-evidence.sha256`。WSLg 窗口以「(Ubuntu)」后缀出现在 Windows 桌面，
+  同一通道可截可点；导航/按钮坐标按 #88 的暗像素聚类标定（导航：总览 661/配置 709/服务管理 769/
+  日志 829/规则 877，y≈235；服务页按钮行 y≈380/447/507）。
+- **环境适配（如实登记，不虚构）**：
+  1. **pkexec 免交互**：polkit 规则 `/etc/polkit-1/rules.d/10-photoprivacy-verify.rules` 允许
+     `ppverify` 经 `org.freedesktop.policykit.exec` 免认证（仅限本取证机）。S2 提权交互流因此
+     仍按 Windows 先例记未回填；UI 的安装/启动/停止/卸载命令通道本身是实打实走 pkexec 的。
+  2. **gpui 需 X11 后端**：WSLg 下 gpui 的 Wayland 后端不出窗（进程活着、无 surface），以
+     `WAYLAND_DISPLAY=`（清空）强制 X11 后端后窗口正常映射。见「新观察」第 5 条。
+  3. **config 对齐**：取证前把发布模板 `config.json` 的 `watch.hot_folder`/`audit.log_directory`
+     置为 `/var/lib/photoprivacy/hot`/`/var/log/photoprivacy`（与 install 脚本默认 CLI 覆盖一致），
+     使 UI 日志页读到服务审计目录——`L2-config-used.json` 记录实际取值。
+  4. **WSL 空闲回收 VM**：无前台进程约 8 s 后 WSL VM 终止（journal 出现 `-- Boot` 重置）；服务
+     `enabled` 因此在每次 WSL 启动自启（`L9-journal-complete.txt` 的 Boot 段）——顺带构成
+     「重启后服务自启」的旁证。取证期间以常驻 `sleep infinity` 保活，避免会话中途丢状态。
+- **结果**：**L1/L2/L2b/L3/L4/L4b/L5/L6/L7 全部通过**（逐项证据见上文 L1-L7 行）。
+  全生命周期 journal（6 次 Started/6 次 Stopped，含脚本安装、UI 启停、UI 安装卸载各轮）原样留存
+  `L9-journal-complete.txt`（80 行）。
+- **本轮新观察（不自行开票，是否成票/是否修待用户裁决）**：
+  1. **服务页「安装服务」描述文案在 Linux 仍写「注册为 Windows 系统服务」**：
+     `service.desc.install` 在 10 个 locale 全部硬编码 Windows 字样（如 zh-CN「将 PhotoPrivacyWorker
+     注册为 Windows 系统服务」、en「Register PhotoPrivacyWorker as a Windows system service」），
+     Linux/macOS 实机均失实。可选修法：文案平台中性化（「注册为系统服务」，10 locale 一词改动），
+     或占位符按平台替换（systemd/launchd/Windows 服务，需动 i18n 取用点）。两轮截图均在帧内
+     （`L1-service-not-installed.png` 等）。
+  2. **Linux 后台模式 Worker 的 socket 目录对普通用户不可建**：契约双端锁定背景端点
+     `/run/photoprivacy/worker-background.sock`（`WorkerIpcEndpointNames.cs`/`endpoints.rs`），
+     但 `/run/photoprivacy` 只由 systemd `RuntimeDirectory` 在服务模式创建（0750 服务用户）；
+     普通用户拉起的后台 Worker `Directory.CreateDirectory("/run/photoprivacy")` 吃 EACCES，
+     UI 连接编排只见 ENOENT——未安装态的总览回落不到「后台模式」（帧
+     `L1-overview-background-fail.png`：「重连中 · …worker-background.sock · 后台模式」+
+     「连接 Worker 失败: No such file or directory (os error 2)」）。对照 macOS 背景端点在用户家目录
+     （`endpoints.rs` 测试 `macos_socket_paths_live_under_user_home` 已钉）。候选方向：Linux 背景
+     端点改 `$XDG_RUNTIME_DIR`（或 tmpfiles.d 预建目录）——属 IPC 契约变更，需动
+     `docs/agents/ipc-contract.md` 与双端测试，不在本票 AC 内。
+  3. **root-owned 安装目录下后台 Worker 的 #162 门首拍噪声**：`InstanceConflictAudit.LoadConfigFromArgs`
+     对空 `audit.log_directory` 解析到 `<exe_dir>/hot/_audit` 再 `CreateDirectory`，/opt 安装时
+     ppverify 无写权限 → 抛异常被 Program.cs:121 捕获记 ERR「config could not be resolved for the
+     single-writer gate」。进程不退出（门按 fallback 身份获锁），但每次拉起都留一条误导性 ERR。
+  4. **服务停机时 ExifTool 桥的「Pipe is broken」噪声**：`ExifToolBridge.StopAsync`→
+     `ProcessExifToolProcess.StopAsync` 在 stdin `StreamWriter.Dispose` 抛 `IOException: Pipe is broken`
+     并落 journal（`L9-journal-complete.txt` 00:35:32 段），unit 仍 `Deactivated successfully`
+     （exit 0）——停机路径的 best-effort 清理没吞掉这个 IO 异常。
+  5. **WSLg 下 gpui Wayland 后端不出窗**：`WAYLAND_DISPLAY` 存在时 gpui（`gpui_linux::current_platform`）
+     进程常驻但窗口不映射；清空 `WAYLAND_DISPLAY` 强制 X11 后端后正常。真机 Wayland 桌面是否复现
+     未测（本节环境是 WSLg），Linux 桌面实机面仍归 #2/#32 族。
+  6. **单实例守卫跨用户全局**：ppverify 持有 UI 实例守卫时，root 启动第二个实例即「已有实例在运行」
+     退出（`--service-probe-report` 在本基线二进制中尚不存在——该入口是 #32 窗口随后补进 main 的，
+     本节探测态改用 systemctl+截图满足验收）。
+- **收尾状态**：服务已卸载（两轮 UI 卸载，`is-enabled` not-found、unit 与 `/run/photoprivacy` 删除）、
+  UI 已退出、无 Worker 残留进程；`/opt/photoprivacy` 包与 `ppverify`/`outsider` 测试用户保留在取证机
+  （WSL 实例本身为一次性取证环境）；样本 `l31-sample.jpg` 与其 `bak/` 留在
+  `/var/lib/photoprivacy/hot/`，全部在取证环境内，仓库工作区不受影响。
+- **边界**：Linux systemd 服务面（安装/卸载/启停/日志/UDS 组边界）已实机；macOS launchd 对应面
+  归 #32（同族取证链）。S5 配置热重载、跨用户授权集合（#1）、CLI/daemon 模式不在本票 AC。
 
 ### 切换日实机执行记录（2026-10-28，#61 实现窗口）
 
