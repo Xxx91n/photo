@@ -689,7 +689,7 @@ fn resolve_exiftool_from_path() -> Option<PathBuf> {
 /// 把配置里的 exiftool.path 归一到可执行文件：已存在文件原样返回；已存在目录解析出
 /// 其中的 exiftool/exiftool.exe（对齐 ExifToolGUI 的 ETOverrideDir 与 C# DefaultPaths.ResolveExifToolExecutable）。
 /// 仅用于提示/探测；UI 不据此改写存储值（存储值保持用户手填形态，解析交给 Worker 的 loader）。
-// Design(#33): 目录式覆盖，目录内解析出 exiftool/exiftool.exe。
+// Design(#82): 目录式覆盖，目录内解析出 exiftool/exiftool.exe。（原出处 #33 已随实现关闭，改指存续宿主）
 fn resolve_exiftool_executable_from_configured(configured: &str) -> String {
     let path = Path::new(configured);
     if path.is_file() {

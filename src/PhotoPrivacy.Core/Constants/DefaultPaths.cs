@@ -45,7 +45,7 @@ public static class DefaultPaths
     /// - 其余：原样返回，交由 <see cref="AppConfigValidator"/> 报「not found」。
     /// 集中在此处理，避免 Worker 与 UI 各自拼目录后分叉（#33）。
     /// </summary>
-    // Design(#33): exiftool.path 支持目录式覆盖，目录内解析出 exiftool/exiftool.exe。
+    // Design(#82): exiftool.path 支持目录式覆盖，目录内解析出 exiftool/exiftool.exe。（原出处 #33 已随实现关闭，改指存续宿主；config/rules JSON 契约归 #82 D7）
     internal static string ResolveExifToolExecutable(string configuredPath)
     {
         if (string.IsNullOrWhiteSpace(configuredPath))
