@@ -49,3 +49,42 @@ dc7ab50651aceaace71e897fa39917a7baac3e4fd9b3ec16b461775c48c82f1a  L6b-final-stat
 461ecb30c526583e40e29a5906f6b52b0c0d0b7e19d37df5b0535f11ef0720d3  L7-audit-records.txt
 2fae8ebf45b9851a5eed81eadac60f639a160d78a211b42fb77c0be1d2d4a0c1  L7-logs-page-service.png
 fd3d1be04b4587e09f51d3f320d1fe4d2a7735ba3c5e8bf18ec52d04e7b1c79e  L9-journal-complete.txt
+
+# ─── M 组实机证据 SHA256 清单 — #57 AC2 + #102 E4（2026-11-05，Windows 实机：600+ 条滚动/浏览/过滤 + E4 全链路）───
+#
+# 产物：Release run 41854940207 / ref main / head b72d489 / version 0.1.0-verify154 /
+# create_release=false 的 release-win-x64（当前 main，本地零编译）。
+# 二进制实测（见 M00-binary-sha256.txt 全量）：PhotoPrivacy 07e8b25b… / PhotoPrivacyWorker b4f0da15… /
+# ExifTool 44b336d7…（包内 13.60）；config.json 74370475…（无 BOM，sample 生成）。
+# 实机 = Windows 桌面（用户 Administrator）；取证通道 = agent 桌面截图 + SetCursorPos/mouse_event
+# （同 #125/#88/#113 先例，用户已批准）。
+# 灌入：audit-2026-11-05.jsonl 三批共 622 条（250 INFO + 250 INFO + 40 DEBUG/40 WARN/40 ERROR），
+# UI 运行中由本地 tail 实时拾取；结果判读见 SUMMARY.txt 与 ui-smoke.md「AC2/E4 组产物记录」。
+# 图片与文本取证不入库，只存于取证机目录 C:\pp-ac2-verify\evidence\（21 个文件）。
+#
+# 校验（在取证机上，从仓库根跑；M 组与 L 组证据目录不同，分别校验）：
+#   cd <仓库根> && grep -E '^[0-9a-f]{64}  [^L]' docs/agents/ui-smoke-evidence.sha256 \
+#     | (cd 'C:\pp-ac2-verify\evidence' && sha256sum -c -)
+# 期望：21 行全部 ': OK'、退出码 0。
+
+b495644caadc99a6a7ea306409433a24d38d96a33d7db87233679ae813babff6  a00-launch-full.png
+ea0632341ce3f6858cfd2a5a1fd904c9e0b3e4578ae1b83af46283166f110e7b  a00-launch-logs-page.png
+43fbf566f430c6dbe15ee338db19a6caa61685c27b870c7cbb30a7f2b2c15739  a01-batch1-250.png
+83306f51ede5d55724a47af5c28381faf7d7b8cc48dfb094cc478895c35bab79  a01b-batch1-recheck.png
+35aeb328d792e89acd76941cbe14a4bc6bf4701665f65ecacfc5dafd23b61a0d  b00-fresh-launch.png
+6e247816755d0d78c5aebb081c14189ceba93f7e55975ec823033b0234d5e662  b01-batch1-250.png
+b3aa0505fef6d08a778f35c5b225a98ed4409f2bcdd540cb4f0099a3584494b4  c01-batch1-250.png
+81e33a87c0963ed5e50ecb957b0d59ad1d501da50af54f092940fe6d0892379a  c02-batch2-502-cap500.png
+34db2680cba61fb62e99f78d575c369b8b74a095081a2340f74f22a99a1b276a  c03-batch3-mixed-620.png
+6d6eac6e513884c75b2a58080418863c9c172adc73eda9db523eb6ef85892d6b  d01-scroll-down-10.png
+53500b289d8d21c09154d06ac7f1ca4a540140b75f64d33da91e5ad4aaa74beb  d02-scroll-down-35.png
+d9df48c0f7f85546ea883fff74636a6090e0243b83ed838453ad8e856c71bd5b  d03-scroll-up-back.png
+875c40ffa2d504a4eec07e591ee9ad1154cc05008b59ed1f9301bf5c421fd155  e01-filter-warn.png
+a7ba24401a6fe3ede1bfc3b9e29e172b0a2a689b154dbe44bbdacc53394c0875  e02-filter-error.png
+e712874cc9010bfb7d1415bca0e715b68fb83f76fe69146e990df9989a43f84c  e03-filter-debug.png
+e7426219900b10fdac3b33a5378286fcc7a58fdca14a366209a023177600a69e  e04-filter-all.png
+6ef36b6ceaa0461738a0a738dd331b8620b3e6520360e52dbcf29a47b45af554  f01-after-clear.png
+fa75b27049981fac32f27a4204493d0a8c2e3fb353b4a38bcdc30a7b1fc03403  f02-restart-no-refill.png
+8fad7749a514415c97129b9d235ec547e9258e5605f7864a0d81dadbb1f4caa0  f03-new-line-appears.png
+ba53071e71aa4ae7baf532eba2a2f840df03e015f2cdfa060cce9fda887deac3  M00-binary-sha256.txt
+bf478285d3507ea546f8d805a27409ca201d0ed777e008e7c12a852db48bf06d  SUMMARY.txt
