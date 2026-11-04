@@ -69,7 +69,7 @@ rm -f "$PNG"
 # 在 CI 上永远测不到。所以用配置副本打开它——安装目录里的 config.json 一字不动。
 # 安装后 config.json 对 GUI 用户不可读（0750/0640，服务账户:数据组，#167 配置写入边界）；
 # 此时不复制受保护配置、也不放宽安装目录权限，改用最小默认配置（各节 serde default）只打开
-# 静默开关。UI 探测腿同样读不到该文件、按默认值工作，两腿的配置基线因此一致。
+# 静默开关。UI 探测腿在加载配置前即返回，同样不依赖安装目录配置。
 UI_CONFIG="${OUT_DIR}/ui-config-${TAG}.json"
 if [[ -r "${INSTALL_DIR}/config/config.json" ]]; then
   cp "${INSTALL_DIR}/config/config.json" "$UI_CONFIG"
