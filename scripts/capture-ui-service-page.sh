@@ -5,6 +5,10 @@
 # 连同时刻的 launchctl 状态一并留证，然后退出 UI。供 verify-launchd-service.sh
 # 在各生命周期状态下调用（虚拟环境 = CI macOS runner；也可在实机手动执行）。
 #
+# #174：`--open-page` 显式覆盖静默启动（ui/crates/photoprivacy-ui/src/main.rs 的
+# should_open_main_window），所以 ui.hide_main_window_on_startup=true 的机器上本脚本
+# 照样建窗——首实例不再静默驻守等第二次唤起兜底。
+#
 # 用法: ./capture-ui-service-page.sh --install-dir <dir> --tag <name> --out-dir <dir>
 #   --install-dir  已解压发布包的安装目录（含 PhotoPrivacy 与 config/config.json）
 #   --tag          证据标签（如 running / stopped）
