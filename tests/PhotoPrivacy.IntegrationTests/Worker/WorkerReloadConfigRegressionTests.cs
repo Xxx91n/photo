@@ -333,6 +333,11 @@ public sealed class WorkerReloadConfigRegressionTests
         var audit = Path.Combine(hot, "_audit");
         var configPath = Path.Combine(root, "config.json");
         Directory.CreateDirectory(hot);
+        // 既有已清洗文件：先让它在启动首扫里留下路径记录，再在拆卸窗口内拨新 mtime，
+        // 复刻 same_as_source 清洗后的指纹变化；放开深度触发的整目录补扫不应再处理它（#133 AC1）。
+        var alreadyDone = Path.Combine(hot, "already-done.jpg");
+        await File.WriteAllTextAsync(alreadyDone, "first-pass");
+        var windowEntered = false;
         // 仍关掉轮询兜底：让「子目录未被处理」只由首扫深度通路负责，不靠兜底行为背书
         // （#109 之后兜底深度已与 FSW 同源，但本用例锁的是首扫，没必要让两条通路纠缠）。
         await File.WriteAllTextAsync(
@@ -354,6 +359,18 @@ public sealed class WorkerReloadConfigRegressionTests
             Assert.True(
                 await WaitForFileAsync(processedPath, TimeSpan.FromSeconds(30)),
                 "启动期未创建处理记录表：用例前提不成立");
+            Assert.True(
+                await WaitForProcessedRecordForAsync(processedPath, "already-done.jpg", TimeSpan.FromSeconds(30)),
+                "启动首扫未处理既有文件：用例前提不成立");
+
+            worker.TeardownWindowHookAsync = () =>
+            {
+                // 旧 watcher 已停、新 watcher 未起：这次 mtime 变化没有 FSW 事件，
+                // 只有放开深度后的整目录补扫会再次遇到该文件。
+                File.SetLastWriteTimeUtc(alreadyDone, DateTime.UtcNow.AddSeconds(10));
+                windowEntered = true;
+                return Task.CompletedTask;
+            };
 
             Directory.CreateDirectory(nested);
             var nestedFile = Path.Combine(nested, "pre-existing.jpg");
@@ -370,9 +387,15 @@ public sealed class WorkerReloadConfigRegressionTests
                 configPath, BuildConfigJson(hot, audit, includeSubdirectories: true, pollingSeconds: 0));
             await worker.ReloadConfigAsync();
 
+            Assert.True(windowEntered, "重载没有进入拆卸窗口：钩子未执行，用例前提不成立");
             Assert.True(
                 await WaitForProcessedRecordForAsync(processedPath, "pre-existing.jpg", TimeSpan.FromSeconds(30)),
                 "放开 include_subdirectories 后未补扫新放开的子目录，既有文件永远不会被处理（#100）");
+
+            // 补扫会再次枚举 already-done.jpg；路径粗粒度记录命中后不得追加第二条。
+            // 旧指纹口径下 mtime 变化会让它重新入队，总数会变成 3（#133 AC1）。
+            await Task.Delay(TimeSpan.FromSeconds(2));
+            Assert.Equal(2, CountProcessedRecords(processedPath));
         }
         finally
         {
