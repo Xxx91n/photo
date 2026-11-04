@@ -33,6 +33,18 @@ socket 访问组与数据组（`hot`/`quarantine` 的 `2770` 组）严格分离�
 服务端以 `UnixPeerCredentialPolicy` 的组白名单做第二层校验，
 组名由 plist/systemd 注入 `PHOTOPRIVACY_SERVICE_GROUP`，缺省回落 `photoprivacy`。
 
+### 服务配置写入边界（#167 决定：维持数据隔离）
+
+socket 访问组只授予「调用服务」权限，**不授予「定义服务行为」权限**：服务模式配置仍只由服务账户 / root
+写入（`config/` `0750` + 文件 `0640`，属主服务用户:数据组），GUI 用户（socket 组成员）既不可读也不可写。
+原因是配置含 `exiftool.path` 这类可执行路径，Worker 会以服务身份拉起该程序：一旦 socket 组可写配置，
+组员即可把路径指向恶意二进制，以服务身份获得 `hot`/`audit`/`quarantine` 的访问并按其权限删改——
+即 CWE-732 的「文本编辑器式提权」（CWE-732 缓解条款要求配置文件仅管理员可写；Apple Secure Coding Guide
+要求 helper 不信任调用者、避免被 puppeteering）。
+
+因此服务模式下 UI **不通过共享文件写配置**；GUI 保存设置需要走受控配置/规则通道（含可执行路径白名单与
+签名 / 前缀校验），该通道涉及协议扩展与契约调整，另行立项，不在 #167 内直接放开文件权限。
+
 ## 帧与客户端约束
 
 | 约束 | 值 | 出处 |
