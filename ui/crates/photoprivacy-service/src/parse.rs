@@ -108,9 +108,11 @@ pub fn parse_systemctl_active(exit_code: i32, stdout: &str) -> ServiceRuntimeSta
     }
 }
 
-/// `launchctl list <label>`：非 0 退出 = 未安装；有非零 PID = 运行中；否则已安装未运行。
+/// `launchctl print system/<label>`：非 0 退出 = 未安装（系统域无此 job）；有非零 PID = 运行中；
+/// 否则已安装未运行。兼容旧式 `launchctl list` 的字典（`"PID" = 4321;`）与表格（PID Status Label）
+/// 形态——语义与历史 `parse_launchctl_list` 对齐，MacProbe 显式系统域查询后这里是唯一判据（#172）。
 #[cfg(any(target_os = "macos", test))]
-pub fn parse_launchctl_list(exit_code: i32, stdout: &str) -> ServiceRuntimeState {
+pub fn parse_launchctl_print(exit_code: i32, stdout: &str) -> ServiceRuntimeState {
     if exit_code != 0 {
         return ServiceRuntimeState::NotInstalled;
     }
@@ -254,7 +256,7 @@ mod tests {
     "PID" = 4321;
 }"#;
         assert_eq!(
-            parse_launchctl_list(0, running),
+            parse_launchctl_print(0, running),
             ServiceRuntimeState::Running
         );
 
@@ -263,7 +265,7 @@ mod tests {
     "LastExitStatus" = 0;
 }"#;
         assert_eq!(
-            parse_launchctl_list(0, stopped),
+            parse_launchctl_print(0, stopped),
             ServiceRuntimeState::Stopped
         );
     }
@@ -272,7 +274,7 @@ mod tests {
     fn launchctl_missing_label_is_not_installed() {
         // 防：launchctl 非 0 退出（label 不存在）仍显示“已安装未运行”（#58）。
         assert_eq!(
-            parse_launchctl_list(113, "Could not find service"),
+            parse_launchctl_print(113, "Could not find service"),
             ServiceRuntimeState::NotInstalled
         );
     }
@@ -281,12 +283,72 @@ mod tests {
     fn launchctl_tabular_output_is_supported() {
         // 防：`launchctl list` 表格形态（PID Status Label）解析失败（#58）。
         assert_eq!(
-            parse_launchctl_list(0, "PID\tStatus\tLabel\n4321\t0\tcom.photoprivacy.cleaner\n"),
+            parse_launchctl_print(0, "PID\tStatus\tLabel\n4321\t0\tcom.photoprivacy.cleaner\n"),
             ServiceRuntimeState::Running
         );
         assert_eq!(
-            parse_launchctl_list(0, "PID\tStatus\tLabel\n-\t0\tcom.photoprivacy.cleaner\n"),
+            parse_launchctl_print(0, "PID\tStatus\tLabel\n-\t0\tcom.photoprivacy.cleaner\n"),
             ServiceRuntimeState::Stopped
+        );
+    }
+
+    #[test]
+    fn launchctl_print_pid_drives_running_state() {
+        // 防：`launchctl print system/<label>` 新式输出的小写 `pid =` 键解析失败，
+        // 系统域明明查到运行中的 LaunchDaemon 仍报 Stopped，Service 页重蹈 #172 误报。
+        let running = r#"system/com.photoprivacy.cleaner = {
+	active count = 1
+	path = /Library/LaunchDaemons/com.photoprivacy.cleaner.plist
+	state = running
+
+	program = /opt/photoprivacy/PhotoPrivacyWorker
+	last exit code = 0
+	pid = 4242
+}"#;
+        assert_eq!(
+            parse_launchctl_print(0, running),
+            ServiceRuntimeState::Running
+        );
+    }
+
+    #[test]
+    fn launchctl_print_without_pid_is_stopped_not_running() {
+        // 防：loaded 未运行（`state = not running` / `pid = -` / 无 pid 行）被误报成 Running
+        // 或未安装——与 parse_launchctl_list 同语义：只有非零 PID 才算运行中（#172）。
+        let not_running = r#"system/com.photoprivacy.cleaner = {
+	active count = 0
+	path = /Library/LaunchDaemons/com.photoprivacy.cleaner.plist
+	state = not running
+
+	program = /opt/photoprivacy/PhotoPrivacyWorker
+	last exit code = 0
+}"#;
+        assert_eq!(
+            parse_launchctl_print(0, not_running),
+            ServiceRuntimeState::Stopped
+        );
+        assert_eq!(
+            parse_launchctl_print(0, "state = running\npid = -\n"),
+            ServiceRuntimeState::Stopped
+        );
+        assert_eq!(
+            parse_launchctl_print(0, "state = running\npid = 123abc\n"),
+            ServiceRuntimeState::Stopped
+        );
+    }
+
+    #[test]
+    fn launchctl_print_missing_service_is_not_installed() {
+        // 防：`launchctl print system/<label>` 对系统域未加载 job 报错（Bad request./Could not
+        // find service）后被当成已安装——卸载态误报 Stopped，安装按钮被吞掉（#172）。
+        let missing = "Could not find service \"com.photoprivacy.cleaner\" in domain for system";
+        assert_eq!(
+            parse_launchctl_print(113, missing),
+            ServiceRuntimeState::NotInstalled
+        );
+        assert_eq!(
+            parse_launchctl_print(1, "Bad request."),
+            ServiceRuntimeState::NotInstalled
         );
     }
 }

@@ -79,8 +79,16 @@ echo "---- window info ----"
 osascript -e 'tell application "System Events" to tell process "PhotoPrivacy" to get {position, size} of window 1' 2>&1 || true
 pgrep -fl "PhotoPrivacy" 2>&1 || true
 
-launchctl list com.photoprivacy.cleaner > "$LAUNCHCTL_TXT" 2>&1 || true
-echo "---- launchctl list (配对状态) ----"
+# 配对状态对照（#172 根因对照，GUI 用户语境）：legacy `launchctl list <label>` 按调用者域
+# 查找（查不到系统 LaunchDaemon），`launchctl print system/<label>` 显式查系统域（MacProbe
+# 事实源）——两路并排留证，截图状态与哪一路一致一目了然。
+{
+  echo "---- launchctl list com.photoprivacy.cleaner（legacy，调用者域） ----"
+  launchctl list com.photoprivacy.cleaner 2>&1 || true
+  echo "---- launchctl print system/com.photoprivacy.cleaner（显式系统域，MacProbe 事实源） ----"
+  launchctl print system/com.photoprivacy.cleaner 2>&1 || true
+} > "$LAUNCHCTL_TXT"
+echo "---- launchctl 配对状态对照 ----"
 cat "$LAUNCHCTL_TXT" || true
 
 echo "---- screencapture ----"

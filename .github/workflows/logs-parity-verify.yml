@@ -1,0 +1,64 @@
+name: Logs parity verify
+
+# #57 日志页对齐与审计尾巴双通道——虚拟环境验证流水线。
+# 遵循与 launchd-verify 同款口径：利用 GitHub Actions VM 作为虚拟环境，
+# 在远端执行构建与全链验证，本地零编译。
+# 验证面：
+# 1. 批量审计日志生成与写入；
+# 2. 500 条 LogBuffer 上限截断与容量管理；
+# 3. 双通道协调与水位过滤验证。
+on:
+  workflow_dispatch:
+    inputs:
+      log_count:
+        description: "Number of audit log records to simulate"
+        required: false
+        default: "600"
+  pull_request:
+    paths:
+      - "scripts/verify-logs-parity.sh"
+      - "ui/crates/photoprivacy-logs/**"
+      - ".github/workflows/logs-parity-verify.yml"
+
+jobs:
+  logs-verify:
+    name: logs parity verify (ubuntu-latest)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Ensure Rust toolchain
+        run: rustup default stable
+
+      - name: Run logs parity verification script (generates data & tests LogBuffer)
+        shell: bash
+        run: |
+          chmod +x scripts/verify-logs-parity.sh
+          ./scripts/verify-logs-parity.sh \
+            --evidence-dir "$RUNNER_TEMP/logs-parity-verify" \
+            --count "${{ github.event.inputs.log_count || '600' }}"
+
+      - name: Publish summary
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f "$RUNNER_TEMP/logs-parity-verify/summary.txt" ]]; then
+            {
+              echo "### logs parity verify"
+              echo '```'
+              cat "$RUNNER_TEMP/logs-parity-verify/summary.txt"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-parity-verify
+          path: ${{ runner.temp }}/logs-parity-verify
+          if-no-files-found: warn
