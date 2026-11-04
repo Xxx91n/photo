@@ -51,15 +51,21 @@ echo "Evidence dir: $EVIDENCE_DIR" | tee -a "$SUMMARY_FILE"
 
 # 1. 模拟大批量审计日志文件写入（本地日期基准）
 TODAY=$(date '+%Y-%m-%d')
-AUDIT_FILE="$(cd "$AUDIT_DIR" && pwd)/audit-${TODAY}.jsonl"
+AUDIT_FILE="$(CDPATH= cd -- "$AUDIT_DIR" && pwd)/audit-${TODAY}.jsonl"
 
 echo "[Step 1] 生成大批量日志数据: ${LOG_COUNT} 条 -> ${AUDIT_FILE}" | tee -a "$SUMMARY_FILE"
 START_TS=$(date +%s)
+BASE_EPOCH=1793664000  # 2026-11-03T00:00:00Z
+if date -u -d "@0" '+%s' >/dev/null 2>&1; then
+  format_utc() { date -u -d "@$1" '+%Y-%m-%dT%H:%M:%SZ'; }
+else
+  format_utc() { date -u -r "$1" '+%Y-%m-%dT%H:%M:%SZ'; }
+fi
+
 for i in $(seq 1 "$LOG_COUNT"); do
-  SEC_PAD=$(printf "%02d" $((i % 60)))
-  MIN_PAD=$(printf "%02d" $(((i / 60) % 60)))
+  TIMESTAMP_UTC=$(format_utc $((BASE_EPOCH + i)))
   cat <<EOF >> "$AUDIT_FILE"
-{"timestamp_utc":"2026-11-03T00:${MIN_PAD}:${SEC_PAD}Z","level":"Information","event_type":"file_cleaned","message":"Cleaned photo batch item ${i}","source_path":"/fake/photo_${i}.jpg","wipe_result":"Cleaned_Modified"}
+{"timestamp_utc":"${TIMESTAMP_UTC}","level":"Information","event_type":"file_cleaned","message":"Cleaned photo batch item ${i}","source_path":"/fake/photo_${i}.jpg","wipe_result":"Cleaned_Modified"}
 EOF
 done
 GEN_DUR=$(($(date +%s) - START_TS))
