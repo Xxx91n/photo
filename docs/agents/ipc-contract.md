@@ -152,7 +152,7 @@ store/audit）建回来，再按上述契约回 `ok:false`（重建失败带 `re
   - **Linux**：tokio `UnixStream::peer_cred()` 的 `SO_PEERCRED` pid，走同一判定链；回退读
     `/proc/<pid>/exe`。
   - **macOS**：spec 原假设「`LOCAL_PEERCRED` 的 xucred 不含 pid = 平台能力缺口」已按事实修正
-    ——std/tokio 在 macOS 经 `LOCAL_PEERPID` 取 pid（rust-lang/rust#79387），`UCred::pid`
+    ——std/tokio 在 macOS 经 `LOCAL_PEEREPID` 取 pid（rust-lang/rust#79387），`UCred::pid`
     可取值，PID 直配可用。**已知期望 PID 却对不上时按 Rejected 作废连接**（抢建场景正是这一支
     ——否则「让 PID 不符」即可绕过核验）；能力缺口只在无期望 PID（UI 重启、Worker 仍在）时
     生效。首版未实现 `proc_pidpath` 镜像回退，该回退场景按平台策略处置。
@@ -167,15 +167,21 @@ store/audit）建回来，再按上述契约回 `ok:false`（重建失败带 `re
   - **C# 传输层同构**：`NamedPipeServerIdentity`（P/Invoke `SafePipeHandle`）+
     构造期可选 `ServerProcessIdentityExpectation`，走同一判定链（PID 直配 → 镜像回退 →
     查询失败即拒）；未注入时零行为变化。差异如实登记：C# 无连接编排循环，核验期间进程消失
-    不重试，按连接失败上抛。C# 客户端随旧 UI 退役（#61），产品客户端只有 Rust UI；该传输层
-    保留以维持契约同构与行为测试。.NET 10 没有任何托管 API 能取管道服务端 PID（P/Invoke 为
-    唯一路径）；Rust 侧 tokio 无 `ClientOptions::desired_access` 的旧结论不受影响。
+    不重试，按连接失败上抛；非 Windows 宿主该 API 恒返回 false（等价 fail-closed，Rust 侧的
+    macOS fail-open 策略不适用于 C# 传输层）。C# 客户端随旧 UI 退役（#61），产品客户端只有
+    Rust UI；该传输层保留以维持契约同构与行为测试。.NET 10 没有任何托管 API 能取管道服务端
+    PID（P/Invoke 为唯一路径）；Rust 侧 tokio 无 `ClientOptions::desired_access` 的旧结论
+    不受影响。
+  - **镜像回退基准**：取 UI 同目录的 `PhotoPrivacyWorker`（发布目录同体，见 AGENTS.md 布局）；
+    非同目录部署时镜像回退失效，Windows/Linux 按 fail-closed 拒绝。
   - **新上限（不虚标）**：同用户恶意软件仍可注入 UI、读 UI 内存——同用户本就是无隔离级差的
-    信任域；PID 快照核验存在固有的 PID 复用窗口（取 PID 到 `OpenProcess` 之间）；镜像路径是
-    speed bump 而非不可伪造凭据；WinVerifyTrust 签名核验未入首版（D4）；macOS 镜像回退
-    fail-open；macOS 上「UI 重启 + Worker 被手工重启」的罕见组合会因已知 PID 不符且镜像不可
-    核验而被拒（重启 UI 即恢复）。出处：`ui/crates/photoprivacy-ipc/src/verify.rs`、
-    `client.rs`（Rust 产品客户端）、`src/PhotoPrivacy.Ipc/NamedPipeServerIdentity.cs`（C# 同构）。
+    信任域；PID 快照核验存在固有的 PID 复用窗口，且期望 PID 登记后不清除——**窗口覆盖整段连接
+    生命周期**（Worker 退出后同 PID 被任一同用户进程复用且抢建同名管道即可被误信；根治需
+    签名/共享密钥，未入首版 D4）；镜像路径是 speed bump 而非不可伪造凭据；WinVerifyTrust
+    签名核验未入首版；macOS 镜像回退 fail-open；macOS 上「UI 重启 + Worker 被手工重启」的
+    罕见组合会因已知 PID 不符且镜像不可核验而被拒（重启 UI 即恢复）。出处：
+    `ui/crates/photoprivacy-ipc/src/verify.rs`、`client.rs`（Rust 产品客户端）、
+    `src/PhotoPrivacy.Ipc/NamedPipeServerIdentity.cs`（C# 同构）。
 - Unix 服务模式不变（0660 + 组白名单）；Linux/macOS 的服务管道访问按各自机制另行核对（#70 AC）。
 - 客户端**不做**旧 UI 的 `PipeOptions.CurrentUserOnly` 属主校验（服务模式下自相矛盾）；理由见 `ui/crates/photoprivacy-ipc/src/client.rs` 注释。后台端点自 #7 残余① 闭环起另做服务端进程身份核验（见上）；服务端点不叠加。
 

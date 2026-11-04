@@ -4,7 +4,7 @@
 //! 均可伪造，熵化无法闭环。本模块在连接建立后、任何业务请求之前核验对端进程身份：
 //!
 //! 1. 取服务端 PID（Windows `GetNamedPipeServerProcessId`；Unix 经 tokio
-//!    `UnixStream::peer_cred`，Linux 走 `SO_PEERCRED`，macOS 走 `LOCAL_PEERPID`）；
+//!    `UnixStream::peer_cred`，Linux 走 `SO_PEERCRED`，macOS 走 `LOCAL_PEEREPID`）；
 //! 2. 首选匹配 UI 本次拉起的 Worker 子进程 PID（最强绑定，Worker 崩溃重启后由 UI 重新
 //!    拉起即自然更新）；
 //! 3. 回退核验进程镜像路径（UI 重启但后台 Worker 仍在、UI 不知道 PID 的场景）；

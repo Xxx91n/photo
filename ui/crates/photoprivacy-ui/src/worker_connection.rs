@@ -361,7 +361,7 @@ fn expected_worker_image(options: &ConnectOptions) -> Option<PathBuf> {
     Some(background_worker_image(&worker))
 }
 
-/// 核验不了时的平台策略（#7 D2 / AC2）：macOS 首版无镜像回退（`LOCAL_PEERPID` 只给 PID），
+/// 核验不了时的平台策略（#7 D2 / AC2）：macOS 首版无镜像回退（`LOCAL_PEEREPID` 只给 PID），
 /// 且该平台攻击者本可直接抢建 socket 阻断可用性，fail-closed 无净增益 → fail-open + warning；
 /// Windows/Linux 按 AC2 fail-closed（核验不了即拒该连接）。
 fn unverifiable_policy(platform: HostPlatform) -> UnverifiablePolicy {
@@ -439,12 +439,7 @@ fn default_config_path() -> Option<PathBuf> {
 }
 
 fn default_worker_path() -> Option<PathBuf> {
-    let name = if cfg!(windows) {
-        "PhotoPrivacyWorker.exe"
-    } else {
-        "PhotoPrivacyWorker"
-    };
-    let path = exe_dir()?.join(name);
+    let path = exe_dir()?.join(worker_binary_name());
     path.exists().then_some(path)
 }
 

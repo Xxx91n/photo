@@ -252,8 +252,12 @@ impl IpcClient {
                 Ok(ConnectAttempt::TransientIdentity(reason)) => {
                     // 核验瞬间对端进程消失：按瞬时连接失败在预算内重试，不升级为授权失败（AC5）。
                     if Instant::now() >= deadline {
-                        // 预算耗尽仍按「连接失败」上报（而非 ServerIdentity）：调用方会归入
-                        // Worker 未就绪，不会把这个瞬时竞争读成「对端不可信」。
+                        // AC2：核验失败的原因（进程已退出）必须可观测——预算耗尽时补一条 warning，
+                        // 再按「连接失败」上报（调用方归入 Worker 未就绪，而不是「对端不可信」）。
+                        eprintln!(
+                            "[photoprivacy-ui] IPC 服务端身份核验未完成（{}）：{reason}",
+                            endpoint.display()
+                        );
                         return Err(IpcError::Connect(io::Error::new(
                             io::ErrorKind::TimedOut,
                             reason,
@@ -317,7 +321,7 @@ async fn attempt_connect(endpoint: &Endpoint, guard: Option<&ServerGuard>) -> Co
 }
 
 /// 取服务端进程 PID（#7 残余①）：Windows 经管道客户端句柄查服务端 PID；
-/// Unix 走内核在 connect 时绑定的对端凭据（Linux `SO_PEERCRED`、macOS `LOCAL_PEERPID`）。
+/// Unix 走内核在 connect 时绑定的对端凭据（Linux `SO_PEERCRED`、macOS `LOCAL_PEEREPID`）。
 #[cfg(windows)]
 fn probe_server_peer(stream: &Stream) -> ServerPeer {
     use std::os::windows::io::AsRawHandle;
@@ -580,7 +584,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
 
         assert!(
-            matches!(error, IpcError::Connect(_)),
+            !matches!(error, IpcError::ServerIdentity(_)),
             "瞬时核验失败不得升级为授权失败: {error:?}"
         );
         assert!(
