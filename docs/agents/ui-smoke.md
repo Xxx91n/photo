@@ -72,7 +72,7 @@
 | E1 | 空日志时日志页显示空态占位 | 通过 | 2026-10-29 实机目检：空日志时日志页显示空态占位提示 |
 | E2 | 向监控目录放入照片，Worker 处理后日志页即时出新条目（无需手动刷新） | 通过 | 后端链路通过（放入照片由 stay_open ExifTool 清理并产生审计日志）；实机配置有效 hot_folder 后日志即时刷新 |
 | E3 | 不同事件类型的呈现可区分（级别/事件类型） | 通过 | 2026-10-29 实机目检：不同事件类型的呈现可区分（级别与事件类型正常渲染） |
-| E4 | 清空后列表立即空；重启后旧日志不回灌 | 通过（探针级） | 2026-10-29 实机目检：点击清空后列表立即变空，但重启之后旧日志又重新出现（核查为旧时间的日志，属于新旧 UI 重构前就存在的既有 BUG；复现步骤：放入图片产生日志 → 点击清空 → 关闭并重启 UI → 旧日志回灌）。复测（2026-11-01 #139）：随 #102 B′ 方案（清空写水位、重启按行内 UTC 时刻过滤）修复后做探针复现——**取证通道是 Rust 行为测试，非实机 UI 目检**：真实 `AuditFeed` 双通道 + `ClearWatermark` 落盘，同进程清空 → 重启读回水位 → Worker 末 50 行窗口的已清历史不回灌、清空后新行照常交付；含跨日、归档改名、#129 分叉时窗几何与 IPC 零协议守卫（`e4_probe_…`/`fork_window_…`/`method_surface_…` 在 CI 各自 ok）。CI run [41293932607](https://github.com/Xxx91n/photo/actions/runs/41293932607)（head `50d4fcdd`，PR #143）rust/test/ui-check/markers 四 job 全绿、全 crate 0 failed；实机 UI 全链路（点清空→重启 UI）未另目检，如需归 #29 复测 |
+| E4 | 清空后列表立即空；重启后旧日志不回灌 | 通过（探针级 + 2026-11-05 实机全链路复测） | 2026-10-29 实机目检：点击清空后列表立即变空，但重启之后旧日志又重新出现（核查为旧时间的日志，属于新旧 UI 重构前就存在的既有 BUG；复现步骤：放入图片产生日志 → 点击清空 → 关闭并重启 UI → 旧日志回灌）。复测（2026-11-01 #139）：随 #102 B′ 方案（清空写水位、重启按行内 UTC 时刻过滤）修复后做探针复现——**取证通道是 Rust 行为测试，非实机 UI 目检**：真实 `AuditFeed` 双通道 + `ClearWatermark` 落盘，同进程清空 → 重启读回水位 → Worker 末 50 行窗口的已清历史不回灌、清空后新行照常交付；含跨日、归档改名、#129 分叉时窗几何与 IPC 零协议守卫（`e4_probe_…`/`fork_window_…`/`method_surface_…` 在 CI 各自 ok）。CI run [41293932607](https://github.com/Xxx91n/photo/actions/runs/41293932607)（head `50d4fcdd`，PR #143）rust/test/ui-check/markers 四 job 全绿、全 crate 0 failed。**严格口径实机复测（2026-11-05，与 #57 AC2 同轮同构建，head `b72d489` / Release run 41854940207，帧见下文「AC2/E4 组产物记录」）**：622 条灌入后点「清空」→ 计数 0 条 + 空态占位「暂无审计条目」（帧 `f01-after-clear.png`），`config` 同目录落盘 `logs-clear-watermark.json`（00:10:57，51 B）；`Stop-Process`（TerminateProcess，与 `taskkill /F` 同语义）完全退出 UI+Worker（进程数归 0）→ 重启 UI → 仅新会话自身 2 条（ExifTool started / Service started），622 条已清历史不回灌（帧 `f02-restart-no-refill.png`）；重启后追加 1 条新日志 4 s 内出现在列表顶部「Fresh line after restart (E4)」（帧 `f03-new-line-appears.png`）。「点清空 → 完全退出并重启 UI → 旧日志不回灌 → 新日志正常追加」完整 UI 路径通过 |
 | E5 | 日志级别平铺选项组切换生效（高档位下低级别事件不再出现） | 通过 | 2026-10-29 实机目检：平铺日志级别切换生效，高档位下低级别事件被过滤隐藏 |
 
 ### F 按钮与窗口（新栈锚点口径）
@@ -783,6 +783,50 @@
 - **边界**：Linux systemd 服务面（安装/卸载/启停/日志/UDS 组边界）已实机；macOS launchd 对应面
   归 #32（同族取证链）。S5 配置热重载、跨用户授权集合（#1）、CLI/daemon 模式不在本票 AC。
 
+### AC2/E4 组产物记录（2026-11-05，#57 + #102 窗口：600+ 条实机滚动/浏览/过滤 + E4 全链路复测）
+
+- **构建**：Release run [41854940207](https://github.com/Xxx91n/photo/actions/runs/41854940207) /
+  ref main / head `b72d489` / version 0.1.0-verify154 / create_release=false 的 release-win-x64
+  （当前 main，本地零编译）。二进制指纹：`PhotoPrivacy.exe` 07e8b25b…（33107115 B）、
+  `PhotoPrivacyWorker.exe` b4f0da15…（90489284 B）、包内 ExifTool 44b336d7…（13.60）
+  ——全量见证据目录 `M00-binary-sha256.txt`。
+- **实机与环境**：Windows 桌面（本机，用户 Administrator）；取证通道 = agent 桌面截图 +
+  `SetCursorPos`/`mouse_event`（同 #125/#88/#113 先例，用户已批准）。产物解包于本机私有临时目录
+  `C:\pp-ac2-verify\app\`；`config.json` 由 `config.sample.json` 生成（无 BOM，
+  `audit.log_directory=C:\pp-ac2-verify\run\audit`、`hot_folder=C:\pp-ac2-verify\run\hot`、
+  `ui.locale=zh-CN`，指纹 74370475…）。
+- **灌入**：`audit-2026-11-05.jsonl` 三批共 **622 条**（250 INFO + 250 INFO +
+  40 DEBUG/40 WARN/40 ERROR），UI 运行中由本地 tail（1 s 轮询）实时拾取，非启动前预置——
+  tail 启动不回放历史（#57 双通道设计），预置历史只会经 Worker 末 50 行 backfill 部分呈现。
+- **#57 AC2 帧**（帧文件与哈希见 `docs/agents/ui-smoke-evidence.sha256` M 组）：
+  - `c01-batch1-250.png`：灌 250 条后计数 **252 条**（含 Worker 自身 2 条），列表实时刷新、最新项在顶；
+  - `c02-batch2-502-cap500.png`：累计 502 条后计数 **500 条**——`LogBuffer` 500 条硬上限 GUI 实测生效；
+  - `c03-batch3-mixed-620.png`：累计 622 条后计数 **460 条**（信息档下 40 条 DEBUG 被隐藏，460=500−40，
+    与缓冲内容精确吻合）；错误行红色「Cleaning failed」徽章、警告行琥珀「Duplicate launch rejected」可区分；
+  - `d01/d02/d03-scroll-*.png`：滚轮下滚 10 格、35 格、上滚 30 格，视口逐帧正确移动
+    （error 20-30 段 → warn 2-12 段 → 回 error 21-30 段），行内容随滚动位置变化、无花屏/空白；
+  - `e01-e04-filter-*.png`：切换 警告（**80 条** = WARN+ERROR）/错误（**40 条**）/调试（**500 条** = 全部）/
+    全部（**500 条**），计数即时刷新、高亮随档位迁移，阈值语义与 `LevelFilter::allows` 一致；
+  - 每步后 `PhotoPrivacy` 进程 `Responding=True`；判定「不卡顿」不新设帧率阈值。
+- **#102 E4 帧**（严格口径：完整 UI 路径）：
+  - `f01-after-clear.png`：点「清空」→ 0 条 + 空态占位「暂无审计条目」，`config` 同目录落盘
+    `logs-clear-watermark.json`（00:10:57，51 B）；
+  - `f02-restart-no-refill.png`：`Stop-Process`（TerminateProcess）完全退出 UI+Worker（进程数归 0）→ 重启 →
+    仅新会话自身 2 条（ExifTool started / Service started），622 条已清历史不回灌；
+  - `f03-new-line-appears.png`：重启后追加 1 条新日志 4 s 内出现在列表顶部
+    （「Fresh line after restart (E4)」），计数 3 条。
+- **顺带观察（记录供分诊，未立票、不属本票 AC）**：
+  1. **带 BOM 的 config.json 跨栈容错不一致**：PowerShell 5.1 `Set-Content -Encoding utf8` 产出带 BOM
+     的 `config.json` 时，Worker（.NET）容错读取，UI 侧 serde_json 解析失败 → 日志页静默回落
+     `<base>/hot/_audit` 并创建该目录，用户配置的 `audit.log_directory` 被忽略（本轮首启实测复现，
+     改无 BOM 写入后通过）。是否立票修复归用户裁定。
+  2. **跨午夜轮转**：23:57 启动、00:00 后灌数，tail 自动轮转到 `audit-2026-11-05.jsonl`
+     （#129 跨日轮转实机符合预期）；首轮灌进昨日文件的 250 条因此未进视图，与设计一致。
+  3. **同秒批量行展示顺序**：同一秒内批量行的展示顺序与文件写入顺序存在小幅交错
+     （同时间戳排序稳定性的观感问题，不影响判据）。
+- **边界**：本轮回填只覆盖 #57 AC2 与 #102 E4 严格口径；AC3 的口径裁定（探针级证据是否满足）
+  与整票关闭仍归 #57/#90 核销流程，不在本窗口代勾。
+
 ### 切换日实机执行记录（2026-10-28，#61 实现窗口）
 
 - 产物：本票 `cargo build --release --locked --target x86_64-pc-windows-gnu -p photoprivacy-ui`
@@ -826,7 +870,7 @@
   - **#57 日志页联动状态核销**：
     - E1/E2/E3/E5 视觉呈现与交互功能核销通过；
     - E4 历史日志回灌确认存在缺陷（换栈前既有），由独立缺陷票跟进修复；（复测，2026-11-01 #139：该缺陷即 #102，修复已探针级复现通过，见 E 组表 E4 行。）
-    - `#57` AC2（大批量日志滚动/浏览不卡顿）：**部分通过（容量与截断探针级已验证，GUI 滚动待实机测量）**（2026-11-04，随 PR #178 / PR #183 落地远端 CI 虚拟环境流水线 `.github/workflows/logs-parity-verify.yml` 与 `large_volume_test.rs`：灌入 600+ 条审计记录，验证 `LogBuffer` 500 条上限硬截断及过滤索引计数；渲染层依托 gpui `uniform_list` 虚拟列表机制避免全量渲染，但在无头虚拟环境中未测量图形滚动帧率与交互响应，该视口平滑度指标仍待带显示环境或滚动探针进一步探活）。
+    - `#57` AC2（大批量日志滚动/浏览不卡顿）：**通过（容量截断探针级 + 2026-11-05 实机 GUI 滚动/浏览/过滤探活）**（2026-11-04，随 PR #178 / PR #183 落地远端 CI 虚拟环境流水线 `.github/workflows/logs-parity-verify.yml` 与 `large_volume_test.rs`：灌入 600+ 条审计记录，验证 `LogBuffer` 500 条上限硬截断及过滤索引计数；该通道只证容量与数据结构行为。**实机探活（2026-11-05，构建 head `b72d489` / Release run 41854940207 / 0.1.0-verify154，帧与读数见下文「AC2/E4 组产物记录」）**：UI 运行中经本地 tail 实时灌入 622 条审计记录（250+250 INFO、40 DEBUG/40 WARN/40 ERROR），计数 252 → 500（触发 500 条硬上限）→ 460（信息档下 40 条 DEBUG 被隐藏，与缓冲内容精确吻合）；滚轮下滚 10/35 格、上滚 30 格视口逐帧正确移动（error 段 → warn 段 → 回退），`uniform_list` 仅渲染可见行；切换 警告（80 条 = WARN+ERROR）/错误（40 条）/调试（500 条 = 全部）/全部（500 条）计数即时刷新、高亮随档位迁移，阈值语义与 `LevelFilter::allows` 一致。判据 = 交互各步视口正确移动、计数即时、`PhotoPrivacy` 进程每步 `Responding=True`，不新设帧率阈值）。
 - 伴随发现与勘误记录：
   1. **清单文案勘误**：原清单中关于主题、语言、日志级别的“下拉菜单”表述为推测失真；实机均为平铺选项组（Segmented/Radio-like buttons），无原生下拉框，本轮已在清单中更正。
   2. **终端黑框弹出**：`photoprivacy-ui` 的入口 `main.rs` 未声明 `#![windows_subsystem = "windows"]`，双击启动时系统默认分配控制台黑窗口，随后弹出 GUI。（勘误，2026-10-30：该形态已随 #99/PR #106 修复，release 构建现在带 `windows_subsystem = "windows"`；本条只作历史记录。）
