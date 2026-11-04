@@ -623,6 +623,19 @@ if wait_until 30 test -S "$SERVICE_SOCKET"; then
       rec PASS "GUI 用户 ${GUI_USER} 未获授数据组 ${SERVICE_GROUP}（无组写）"
     fi
   fi
+
+  # 组隔离的第二道事实：socket 访问组与数据组必须是两条不同 GID 的组记录。
+  # 同名/同 GID 的崩坏形态会让 GUI 用户虽然只进了 socket 组，却继承数据组对 hot/quarantine 的 2770
+  # 组写（#180 评审 Major：安装器早期把数据组 GID 复用给 socket 组）。这里按 dscl 记录对拍，
+  # 不依赖安装器自述。放在「服务已起来」分支内：安装失败时早已提前收口，不产出脱离上下文的 PASS。
+  SOCKET_GID="$(group_primary_gid "$SOCKET_GROUP")"
+  SERVICE_GID="$(group_primary_gid "$SERVICE_GROUP")"
+  if [[ -n "$SOCKET_GID" && -n "$SERVICE_GID" \
+    && "$SOCKET_GID" != "$SERVICE_GID" ]]; then
+    rec PASS "socket 访问组 GID 独立于数据组（${SOCKET_GROUP}=${SOCKET_GID} ≠ ${SERVICE_GROUP}=${SERVICE_GID}）"
+  else
+    rec FAIL "socket 访问组 GID 未与数据组分离（${SOCKET_GROUP}=${SOCKET_GID:-<空>}，${SERVICE_GROUP}=${SERVICE_GID:-<空>}）——同 GID 等于同组权限"
+  fi
 else
   capture 06-socket.txt find "$SERVICE_SOCKET_DIR" "${INSTALL_DIR}" \( -name "*.sock" -o -name "*.log" \)
   # 诊断 HOME 解析分歧：落点若仍停在服务用户 home 下，这里会直接列出那个幽灵 socket。
@@ -631,19 +644,6 @@ else
     capture 06-socket.txt ps eww -p "$CUR_PID"
   fi
   rec FAIL "30s 内未见服务模式 UDS 端点（${SERVICE_SOCKET}）"
-fi
-
-# 组隔离的第二道事实：socket 访问组与数据组必须是两条不同 GID 的组记录。
-# 同名/同 GID 的崩坏形态会让 GUI 用户虽然只进了 socket 组，却继承数据组对 hot/quarantine 的 2770
-# 组写（#180 评审 Major：安装器早期把数据组 GID 复用给 socket 组）。这里按 dscl 记录对拍，
-# 不依赖安装器自述。
-SOCKET_GID="$(group_primary_gid "$SOCKET_GROUP")"
-SERVICE_GID="$(group_primary_gid "$SERVICE_GROUP")"
-if [[ -n "$SOCKET_GID" && -n "$SERVICE_GID" \
-  && "$SOCKET_GID" != "$SERVICE_GID" ]]; then
-  rec PASS "socket 访问组 GID 独立于数据组（${SOCKET_GROUP}=${SOCKET_GID} ≠ ${SERVICE_GROUP}=${SERVICE_GID}）"
-else
-  rec FAIL "socket 访问组 GID 未与数据组分离（${SOCKET_GROUP}=${SOCKET_GID:-<空>}，${SERVICE_GROUP}=${SERVICE_GID:-<空>}）——同 GID 等于同组权限"
 fi
 
 # ---------- 5. 停止（MacOps::stop 同款命令串） ----------
