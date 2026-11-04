@@ -136,6 +136,25 @@ capture() {
   return 0
 }
 
+# ---------- GUI 用户（安装脚本 --gui-user 的显式语义） ----------
+# harness 要求 sudo 从 GUI 用户运行，SUDO_USER 即调用者；这里显式传给安装脚本，让 --gui-user 的显式
+# 分支（指定用户不存在/加不进组必须让安装失败）在 CI 里真的被走到，而不是全程只靠 SUDO_USER 推断兜底
+# （评审 nit：安装调用漏传 --gui-user，显式语义零覆盖）。
+GUI_USER="${SUDO_USER:-}"
+INSTALL_GUI_ARGS=()
+if [[ -n "$GUI_USER" ]]; then
+  INSTALL_GUI_ARGS=(--gui-user "$GUI_USER")
+fi
+
+# 显式空 --gui-user 必须硬失败（评审 R5 回归锚点）：早前它会静默落进「未解析到 GUI 用户」的告警分支
+# 并以 exit 0 收场，调用方会把「没给名字」误判成「IPC 权限已供给完成」。安装脚本在参数解析阶段就拒绝，
+# 早于任何账户/目录副作用，因此可以在铺发布包之前安全地跑这条负向自证。
+if bash "$INSTALL_SCRIPT" --gui-user "" >/dev/null 2>&1; then
+  rec FAIL "install-launchd-service.sh 接受了空 --gui-user（期望非零退出）"
+else
+  rec PASS "空 --gui-user 被拒绝（显式语义不再静默降级成告警+成功）"
+fi
+
 probe_raw() {
   # launchctl print system/<label> 的退出码与 stdout（显式系统域；0=系统域已加载，#172）
   set +e
@@ -427,7 +446,8 @@ bash -x "$INSTALL_SCRIPT" \
   --quarantine "$QUARANTINE_FOLDER" \
   --user "$SERVICE_USER" \
   --group "$SERVICE_GROUP" \
-  --socket-group "$SOCKET_GROUP" >> "${EVIDENCE_DIR}/02-install.txt" 2>&1
+  --socket-group "$SOCKET_GROUP" \
+  ${INSTALL_GUI_ARGS[@]+"${INSTALL_GUI_ARGS[@]}"} >> "${EVIDENCE_DIR}/02-install.txt" 2>&1
 INSTALL_RC=$?
 set -e
 echo "[exit ${INSTALL_RC}]" >> "${EVIDENCE_DIR}/02-install.txt"
@@ -547,6 +567,37 @@ if wait_until 30 test -S "$SERVICE_SOCKET"; then
     rec PASS "审计目录组边界正确（${AUDIT_FOLDER} mode=${AUDIT_MODE} raw=${AUDIT_RAW} ${AUDIT_SYM} ${AUDIT_GROUP}：组只读，无组写）"
   else
     rec FAIL "审计目录组边界不符（${AUDIT_FOLDER} mode=${AUDIT_MODE:-<空>} raw=${AUDIT_RAW:-<空>} sym=${AUDIT_SYM:-<空>} ${AUDIT_GROUP:-<空>}；期望 2750 ${SOCKET_GROUP} 的组只读视图）"
+  fi
+
+  # 评审 R1：安装目录与 Worker 日志此前没有任何 chmod，发布包按 umask 落在 0755，本地任意用户能
+  # 遍历读走 config 与 logs/worker-*.log（请求 URL、文件名、错误栈）。安装脚本承诺 0755 的安装目录
+  # （GUI 用户要执行其中的 UI 二进制：0750 下实测 sudo 报 Permission denied，收敛不能把 UI 一起收掉）
+  # + 敏感面 config/ 750/640、logs/ 2750/640，这里逐项对拍。
+  INSTALL_MODE="$(stat -f '%Lp' "$INSTALL_DIR" 2>/dev/null)"
+  WLOG_DIR_MODE="$(stat -f '%Lp' "${INSTALL_DIR}/logs" 2>/dev/null)"
+  # shellcheck disable=SC2086
+  WLOG_MODE="$(stat -f '%Lp' ${WORKER_LOG_GLOB} 2>/dev/null | head -n 1)"
+  CFG_DIR_MODE="$(stat -f '%Lp' "${INSTALL_DIR}/config" 2>/dev/null)"
+  CFG_FILE="$(find "${INSTALL_DIR}/config" -maxdepth 1 -type f 2>/dev/null | head -n 1)"
+  CFG_FILE_MODE=""
+  [[ -n "$CFG_FILE" ]] && CFG_FILE_MODE="$(stat -f '%Lp' "$CFG_FILE" 2>/dev/null)"
+  if [[ "$INSTALL_MODE" == "755" ]] \
+    && [[ "$WLOG_DIR_MODE" == "2750" || "$WLOG_DIR_MODE" == "750" ]] \
+    && [[ "$WLOG_MODE" == "640" ]] \
+    && [[ -z "$CFG_DIR_MODE" || "$CFG_DIR_MODE" == "750" ]] \
+    && [[ -z "$CFG_FILE_MODE" || "$CFG_FILE_MODE" == "640" ]]; then
+    rec PASS "安装目录权限收敛（install ${INSTALL_MODE}，config ${CFG_DIR_MODE:-<无>}/${CFG_FILE_MODE:-<无>}，logs ${WLOG_DIR_MODE}，日志文件 ${WLOG_MODE}）"
+  else
+    rec FAIL "安装目录/日志权限未收敛（install=${INSTALL_MODE:-<空>} config=${CFG_DIR_MODE:-<无>}/${CFG_FILE_MODE:-<无>} logs=${WLOG_DIR_MODE:-<空>} file=${WLOG_MODE:-<空>}；期望 755 / 750+640 / 2750 / 640）"
+  fi
+
+  # R1 的功能面：GUI 用户必须真的能执行安装目录里的 UI 二进制，否则「权限收敛」把 UI 一起收敛掉了。
+  if [[ -n "$SUDO_USER" ]]; then
+    if sudo -u "$SUDO_USER" test -x "${INSTALL_DIR}/PhotoPrivacy"; then
+      rec PASS "GUI 用户 ${SUDO_USER} 可执行安装目录内的 UI 二进制（${INSTALL_DIR}/PhotoPrivacy）"
+    else
+      rec FAIL "GUI 用户 ${SUDO_USER} 无法执行 ${INSTALL_DIR}/PhotoPrivacy——安装目录收紧过头，UI 无法启动"
+    fi
   fi
 
   # GUI 用户只应进 socket 访问组：进了数据组就等于拿到 2770 的组写权限，可绕过 IPC 删审计/隔离文件。

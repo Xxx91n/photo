@@ -20,10 +20,17 @@ macOS 服务端点自 #167 起为系统级固定落点：LaunchDaemon 以服务�
 GUI 用户按自身 home 拼同一相对路径只会指向各自的幽灵 socket，故服务端点不再参与 home 解析（与 Linux `/run/photoprivacy` 同构）。
 目录由 `scripts/install-launchd-service.sh` 以 root 建为 `0750`（属主服务用户:socket 访问组 `photoprivacy-ipc`），
 GUI 用户经 `--gui-user`（默认 `SUDO_USER`）**只加入 socket 访问组**，方可穿过目录并连上 `0660` 的 socket。
-socket 访问组与数据组（`hot`/`audit`/`quarantine` 的 `2770` 组）严格分离：GUI 用户不进数据组，即拿不到组写，
+显式 `--gui-user` 是调用方的明确意图，该账号不存在或加不进 socket 组时安装以非零退出失败；
+仅由 `SUDO_USER` 推断得来的用户只告警继续（推断噪声不升级为安装失败）。
+socket 访问组与数据组（`hot`/`quarantine` 的 `2770` 组）严格分离：GUI 用户不进数据组，即拿不到组写，
 无法绕过 IPC 直接删审计或隔离文件（PR #180 评审 CWE-732）。审计目录是唯一例外——本地 tail 工具
 （`photoprivacy-logs`）与取证脚本以 GUI 用户身份直接读日志，故该目录组改为 socket 访问组并收成 `2750`
-（组只读）、文件 `0640`，能看不能改。服务端以 `UnixPeerCredentialPolicy` 的组白名单做第二层校验，
+（组只读）、文件 `0640`，能看不能改。安装目录与 Worker 日志目录同样是权限面（R1）：`/opt/photoprivacy`
+为 `0755`（属主服务用户，其他用户只读可执行、不可写）——不能收成 `0750`，GUI 用户要从这里执行 UI 二进制，
+`0750` 下实测 `sudo: unable to execute …/PhotoPrivacy: Permission denied`，等于把 UI 一起收敛掉；
+敏感面单独收紧：`config/` 为 `0750` + 文件 `0640`，Worker Serilog 落点 `logs/` 为 `2750` + 文件 `0640`
+（属主服务用户:数据组，本地其他用户既不进目录也读不到请求 URL/文件名）。
+服务端以 `UnixPeerCredentialPolicy` 的组白名单做第二层校验，
 组名由 plist/systemd 注入 `PHOTOPRIVACY_SERVICE_GROUP`，缺省回落 `photoprivacy`。
 
 ## 帧与客户端约束

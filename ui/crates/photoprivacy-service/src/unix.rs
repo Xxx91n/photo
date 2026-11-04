@@ -240,6 +240,27 @@ mod macos {
             let output = self.runner.run("osascript", &args, COMMAND_TIMEOUT);
             macos_result(output, success_message)
         }
+
+        /// 与 `run_admin_shell` 相同，但成功时把脚本 stdout 附在消息后：安装脚本靠 stdout 传达
+        /// 「已把 GUI 用户加进 socket 组」「需要重新登录才生效」这类后续动作，丢掉就等于 UI 报成功、
+        /// 用户不知道该做什么（PR #180 评审）。
+        fn run_admin_shell_with_output(
+            &self,
+            command: &str,
+            success_message: &str,
+        ) -> ServiceCommandResult {
+            let script = admin_shell_script(command);
+            let args = vec!["-e".to_string(), script];
+            let output = self.runner.run("osascript", &args, COMMAND_TIMEOUT);
+            let notes = output.stdout.trim();
+            if output.exit_code == Some(0) && !notes.is_empty() {
+                return ServiceCommandResult::success(
+                    Some(0),
+                    format!("{success_message}\n{notes}"),
+                );
+            }
+            macos_result(output, success_message)
+        }
     }
 
     impl ServiceOps for MacOps {
@@ -254,7 +275,7 @@ mod macos {
             // #167 评审：osascript 提权路径不提供 `SUDO_USER`，安装脚本会把 GUI 用户当成未知，
             // 装完没人被加进 socket 访问组，UI 永远连不上服务端点。这里显式下传 GUI 用户。
             let command = Self::install_command(&self.script_path, current_gui_user().as_deref());
-            self.run_admin_shell(&command, "launchd service installed")
+            self.run_admin_shell_with_output(&command, "launchd service installed")
         }
 
         fn start(&self, _: Option<&Path>, _: Option<&Path>) -> ServiceCommandResult {
@@ -629,6 +650,41 @@ mod tests {
         // AppleScript 字符串会把路径里的反斜杠再转义一层；按最终命令比对，避免宿主路径分隔符差异。
         let quoted_path = macos::shell_quote(&script.display().to_string()).replace('\\', "\\\\");
         assert!(calls[0][1].contains(&quoted_path));
+        let _ = std::fs::remove_file(script);
+    }
+
+    #[test]
+    fn macos_install_keeps_installer_output() {
+        // 防：安装脚本 stdout（含「已加入 socket 组」与 `Note: re-login required ...`）被固定成功文案
+        // 吞掉——UI 报「已安装」，用户不知道要先重新登录才连得上服务端点（PR #180 评审）。
+        let note = CommandOutput {
+            exit_code: Some(0),
+            stdout: "Added GUI user 'alice' to group 'photoprivacy-ipc' (IPC socket 0660 group boundary).\n\
+                     Note: re-login required for the new group membership to reach existing sessions.\n"
+                .to_string(),
+            ..CommandOutput::default()
+        };
+        let runner = Arc::new(QueueRunner::new("osascript", vec![note, ok()]));
+        let script = temp_script("relogin");
+        let ops = macos::MacOps::new(runner.clone(), script.clone());
+
+        let with_note = ops.install(None, None);
+        assert_eq!(with_note.status, ServiceCommandStatus::Success);
+        assert!(
+            with_note.message.starts_with("launchd service installed"),
+            "成功摘要仍要在首位：{}",
+            with_note.message
+        );
+        assert!(
+            with_note.message.contains("re-login required"),
+            "安装脚本的输出必须透出到结果：{}",
+            with_note.message
+        );
+
+        // 脚本没有输出时保持原文案，避免给 UI 塞一个空行尾巴。
+        let plain = ops.install(None, None);
+        assert_eq!(plain.status, ServiceCommandStatus::Success);
+        assert_eq!(plain.message, "launchd service installed");
         let _ = std::fs::remove_file(script);
     }
 
