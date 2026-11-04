@@ -10,10 +10,13 @@
 # 注意下面的第二次实例唤起只是兜「已有实例先跑起来」的单实例守卫，它对 #174 的回归不敏感
 # （静默被吞时第二实例照样能把窗带出来）——不能拿它当本票的判定依据。
 #
-# 用法: ./capture-ui-service-page.sh --install-dir <dir> --tag <name> --out-dir <dir>
+# 用法: ./capture-ui-service-page.sh --install-dir <dir> --tag <name> --out-dir <dir> [--config <file>]
 #   --install-dir  已解压发布包的安装目录（含 PhotoPrivacy 与 config/config.json）
 #   --tag          证据标签（如 running / stopped）
 #   --out-dir      证据落盘目录
+#   --config       可选：由 root 侧预先复制并授予 GUI 可读的配置副本。安装后 config.json 是
+#                  0750/0640 服务账户:数据组，GUI 用户读不到；CI harness 以 root 复制后传入，
+#                  避免截图取证反过来要求放宽配置权限（#167 配置写入边界）。
 #
 # 截图内容（页面呈现）不作机器断言，产物供目检；机器可读的 UI 层探测证据由
 # PhotoPrivacy --service-probe-report 另行产出（verify-launchd-service.sh 负责对拍）。
@@ -23,15 +26,17 @@ set -euo pipefail
 INSTALL_DIR=""
 TAG=""
 OUT_DIR=""
+CONFIG_SRC=""
 
 usage() {
   cat <<EOF
-Usage: $0 --install-dir <dir> --tag <name> --out-dir <dir>
+Usage: $0 --install-dir <dir> --tag <name> --out-dir <dir> [--config <file>]
 
 Options:
   --install-dir <dir>  已解压发布包的安装目录（含 PhotoPrivacy）
   --tag <name>         证据标签（如 running / stopped）
   --out-dir <dir>      证据落盘目录
+  --config <file>      GUI 可读的配置副本（省略则读 ${INSTALL_DIR}/config/config.json）
   -h, --help           Show this help
 EOF
 }
@@ -41,6 +46,7 @@ while [[ $# -gt 0 ]]; do
     --install-dir) INSTALL_DIR="$2"; shift 2 ;;
     --tag) TAG="$2"; shift 2 ;;
     --out-dir) OUT_DIR="$2"; shift 2 ;;
+    --config) CONFIG_SRC="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage; exit 1 ;;
   esac
@@ -67,8 +73,14 @@ rm -f "$PNG"
 # #174：本脚本要证明的是「静默启动配置下 --open-page 仍能建窗」。发布包的 config 来自
 # config.sample.json（hide_main_window_on_startup: false），不显式打开这个开关，这条路径
 # 在 CI 上永远测不到。所以用配置副本打开它——安装目录里的 config.json 一字不动。
+# 安装后 config.json 对 GUI 用户不可读（0750/0640，服务账户:数据组）；--config 由 root 侧
+# 提供可读副本，缺省才退回直读安装目录（pre-install / 手工实机场景）。
 UI_CONFIG="${OUT_DIR}/ui-config-${TAG}.json"
-cp "${INSTALL_DIR}/config/config.json" "$UI_CONFIG"
+if [[ -n "$CONFIG_SRC" ]]; then
+  cp "$CONFIG_SRC" "$UI_CONFIG"
+else
+  cp "${INSTALL_DIR}/config/config.json" "$UI_CONFIG"
+fi
 SILENT_KEY='hide_main_window_on_startup'
 if [[ "$(grep -c "\"${SILENT_KEY}\"" "$UI_CONFIG")" -ne 1 ]]; then
   echo "配置副本里找不到唯一的 ${SILENT_KEY}，无法构造静默启动场景（#174）: ${UI_CONFIG}" >&2
