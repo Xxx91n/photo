@@ -20,7 +20,7 @@
 use crate::endpoints::Endpoint;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 /// 平台侧读到的服务端进程标识。
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -82,6 +82,9 @@ pub struct ServerGuard {
     endpoint: Endpoint,
     verifier: Arc<dyn ServerIdentityVerifier>,
     unverifiable: UnverifiablePolicy,
+    /// fail-open 告警只打一次（#7 AC2 噪声）：心跳与 1s 版本轮询共用同一 guard，
+    /// macOS 无期望 PID 时每拍都会 Unverifiable——按连接重复告警会把 stderr 刷爆。
+    warned_unverifiable: AtomicBool,
 }
 
 impl ServerGuard {
@@ -94,11 +97,17 @@ impl ServerGuard {
             endpoint,
             verifier,
             unverifiable,
+            warned_unverifiable: AtomicBool::new(false),
         }
     }
 
     pub fn applies_to(&self, endpoint: &Endpoint) -> bool {
         &self.endpoint == endpoint
+    }
+
+    /// 返回 true 当且仅当这是本 guard 第一次「无法核验」——调用方据此只告警一次。
+    pub fn claim_unverifiable_warning(&self) -> bool {
+        !self.warned_unverifiable.swap(true, Ordering::Relaxed)
     }
 
     pub fn verify(&self, peer: &ServerPeer) -> VerifyOutcome {
@@ -511,6 +520,20 @@ mod tests {
         assert!(!guard.applies_to(&Endpoint::UnixSocket(
             "/run/photoprivacy/worker.sock".into()
         )));
+    }
+
+    #[test]
+    fn unverifiable_warning_is_claimed_once_per_guard() {
+        // 防（#7 AC2 噪声回潮）：fail-open 告警按连接重打——macOS 无期望 PID 时心跳与 1s
+        // 版本轮询共用同一 guard，每拍一条 stderr 会把日志刷爆。
+        let guard = ServerGuard::new(
+            Endpoint::Pipe("PhotoPrivacyCleaner.Background".into()),
+            Arc::new(make_verifier(None, None, FakeProbe::with(&[]))),
+            UnverifiablePolicy::FailOpen,
+        );
+        assert!(guard.claim_unverifiable_warning());
+        assert!(!guard.claim_unverifiable_warning());
+        assert!(!guard.claim_unverifiable_warning());
     }
 
     #[test]

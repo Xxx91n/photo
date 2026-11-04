@@ -318,10 +318,13 @@ async fn attempt_connect(endpoint: &Endpoint, guard: Option<&ServerGuard>) -> Co
         VerifyOutcome::Unverifiable(reason) => match guard.unverifiable_policy() {
             // #7 D2：能力缺口（如 macOS 未实现镜像回退）放行但留可观测 warning。
             UnverifiablePolicy::FailOpen => {
-                eprintln!(
-                    "[photoprivacy-ipc] 服务端身份无法核验（{}），按 fail-open 放行: {reason}",
-                    endpoint.display()
-                );
+                // 只告警一次：心跳与 1s 版本轮询共用同一 guard，按连接重复告警会刷爆 stderr。
+                if guard.claim_unverifiable_warning() {
+                    eprintln!(
+                        "[photoprivacy-ipc] 服务端身份无法核验（{}），按 fail-open 放行: {reason}",
+                        endpoint.display()
+                    );
+                }
                 ConnectAttempt::Connected(stream)
             }
             UnverifiablePolicy::FailClosed => {

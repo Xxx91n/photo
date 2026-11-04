@@ -355,7 +355,8 @@ fn background_worker_image(worker: &Path) -> PathBuf {
 }
 
 /// 服务端身份核验的镜像回退基准（#7 残余①）：与拉起路径同源；找不到可拉起的 Worker 时为 None
-/// （此时核验只剩 PID 匹配，取不到基准按 fail-open + warning 处置）。
+/// （此时核验只剩 PID 匹配；无期望 PID 时按平台策略处置：Windows/Linux fail-closed，
+/// macOS fail-open + warning）。
 fn expected_worker_image(options: &ConnectOptions) -> Option<PathBuf> {
     let worker = options.worker_path.clone().or_else(default_worker_path)?;
     Some(background_worker_image(&worker))
