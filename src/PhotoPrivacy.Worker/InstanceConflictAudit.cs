@@ -39,6 +39,8 @@ internal static class InstanceConflictAudit
     {
         try
         {
+            // 冲突/让位留痕是 #127 的显式例外：这是真正写审计的路径，允许在此创建审计目录；
+            // 正常待机启动不得走到这里（#153 删掉了配置解析期的建目录）。
             var config = LoadConfigFromArgs(args);
             var logger = new JsonLineAuditLogger(
                 config.Audit.LogDirectory,

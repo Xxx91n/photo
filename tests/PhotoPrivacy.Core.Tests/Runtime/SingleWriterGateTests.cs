@@ -93,6 +93,17 @@ public sealed class SingleWriterGateTests
     }
 
     [Fact]
+    public void TryAcquire_InvalidPath_ReturnsErrorInsteadOfThrowing()
+    {
+        // 防：删除加载期建目录后，非法审计路径不再在配置加载处早失败；异常若逃出准入门，
+        // 会在 Program 注册 UnhandledException 之前崩掉 Worker（#153）。
+        var admission = SingleWriterGate.TryAcquire("audit\0dir");
+
+        Assert.Null(admission.Guard);
+        Assert.NotNull(admission.Error);
+    }
+
+    [Fact]
     public void BuildLockName_Stable_AndDistinctPerDirectory()
     {
         var a = Path.Combine(Path.GetTempPath(), "swg-a");
