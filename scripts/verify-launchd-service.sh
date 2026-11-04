@@ -168,6 +168,15 @@ extract_pid() {
   printf '%s\n' "$1" | sed -n 's/.*[Pp][Ii][Dd]"*[[:space:]]*=[[:space:]]*\([0-9][0-9]*\).*/\1/p' | head -n 1
 }
 
+group_primary_gid() {
+  # 组记录的 PrimaryGroupID；缺失或不可读时输出空串。`|| true` 是必须的：`set -euo pipefail`
+  # 下 dscl 非零会直接终止 harness，后面的 FAIL 汇总与停止/卸载都跑不到。
+  local name="$1" gid
+  gid="$(dscl . -read "/Groups/${name}" PrimaryGroupID 2>/dev/null \
+    | awk 'NR==1 && $2 ~ /^[0-9]+$/ {print $2}')" || true
+  printf '%s\n' "$gid"
+}
+
 get_pid() {
   # 服务进程 PID（print 输出无 PID 行则空）
   probe_raw
@@ -591,19 +600,18 @@ if wait_until 30 test -S "$SERVICE_SOCKET"; then
     rec FAIL "安装目录/日志权限未收敛（install=${INSTALL_MODE:-<空>} config=${CFG_DIR_MODE:-<无>}/${CFG_FILE_MODE:-<无>} logs=${WLOG_DIR_MODE:-<空>} file=${WLOG_MODE:-<空>}；期望 755 / 750+640 / 2750 / 640）"
   fi
 
-  # R1 的功能面：GUI 用户必须真的能执行安装目录里的 UI 二进制，否则「权限收敛」把 UI 一起收敛掉了。
-  # 一律用 GUI_USER（`${SUDO_USER:-}` 的受控投影）：`set -u` 下裸 `$SUDO_USER` 在 root 直登语境会直接
-  # 终止脚本，后续断言与汇总全部跳过（#180 评审）。
-  if [[ -n "$GUI_USER" ]]; then
+  # R1 的功能面 + GUI 组边界：GUI_USER 是 `SUDO_USER` 的受控投影（`set -u` 下裸 `$SUDO_USER`
+  # 会直接终止脚本）。root 直登或 `SUDO_USER=root` 无法代表真实 GUI 用户，与 ui_probe_report
+  # 同口径记 FAIL，而不是静默跳过——否则汇总会在「组边界根本没验」时仍显示全绿（fail-closed）。
+  if [[ -z "$GUI_USER" || "$GUI_USER" == "root" ]]; then
+    rec FAIL "GUI 组边界未验证：需经 sudo 从 GUI 用户运行（GUI_USER 缺失或为 root）"
+  else
     if sudo -u "$GUI_USER" test -x "${INSTALL_DIR}/PhotoPrivacy"; then
       rec PASS "GUI 用户 ${GUI_USER} 可执行安装目录内的 UI 二进制（${INSTALL_DIR}/PhotoPrivacy）"
     else
       rec FAIL "GUI 用户 ${GUI_USER} 无法执行 ${INSTALL_DIR}/PhotoPrivacy——安装目录收紧过头，UI 无法启动"
     fi
-  fi
-
-  # GUI 用户只应进 socket 访问组：进了数据组就等于拿到 2770 的组写权限，可绕过 IPC 删审计/隔离文件。
-  if [[ -n "$GUI_USER" ]]; then
+    # GUI 用户只应进 socket 访问组：进了数据组就等于拿到 2770 的组写权限，可绕过 IPC 删审计/隔离文件。
     if dseditgroup -o checkmember -m "$GUI_USER" "$SOCKET_GROUP" >/dev/null 2>&1; then
       rec PASS "GUI 用户 ${GUI_USER} 已在 socket 访问组 ${SOCKET_GROUP}"
     else
@@ -629,13 +637,13 @@ fi
 # 同名/同 GID 的崩坏形态会让 GUI 用户虽然只进了 socket 组，却继承数据组对 hot/quarantine 的 2770
 # 组写（#180 评审 Major：安装器早期把数据组 GID 复用给 socket 组）。这里按 dscl 记录对拍，
 # 不依赖安装器自述。
-SOCKET_GID_ACTUAL="$(dscl . -read "/Groups/${SOCKET_GROUP}" PrimaryGroupID 2>/dev/null | awk 'NR==1 && $2 ~ /^[0-9]+$/ {print $2}')"
-SERVICE_GID_ACTUAL="$(dscl . -read "/Groups/${SERVICE_GROUP}" PrimaryGroupID 2>/dev/null | awk 'NR==1 && $2 ~ /^[0-9]+$/ {print $2}')"
-if [[ -n "$SOCKET_GID_ACTUAL" && -n "$SERVICE_GID_ACTUAL" \
-  && "$SOCKET_GID_ACTUAL" != "$SERVICE_GID_ACTUAL" ]]; then
-  rec PASS "socket 访问组 GID 独立于数据组（${SOCKET_GROUP}=${SOCKET_GID_ACTUAL} ≠ ${SERVICE_GROUP}=${SERVICE_GID_ACTUAL}）"
+SOCKET_GID="$(group_primary_gid "$SOCKET_GROUP")"
+SERVICE_GID="$(group_primary_gid "$SERVICE_GROUP")"
+if [[ -n "$SOCKET_GID" && -n "$SERVICE_GID" \
+  && "$SOCKET_GID" != "$SERVICE_GID" ]]; then
+  rec PASS "socket 访问组 GID 独立于数据组（${SOCKET_GROUP}=${SOCKET_GID} ≠ ${SERVICE_GROUP}=${SERVICE_GID}）"
 else
-  rec FAIL "socket 访问组 GID 未与数据组分离（${SOCKET_GROUP}=${SOCKET_GID_ACTUAL:-<空>}，${SERVICE_GROUP}=${SERVICE_GID_ACTUAL:-<空>}）——同 GID 等于同组权限"
+  rec FAIL "socket 访问组 GID 未与数据组分离（${SOCKET_GROUP}=${SOCKET_GID:-<空>}，${SERVICE_GROUP}=${SERVICE_GID:-<空>}）——同 GID 等于同组权限"
 fi
 
 # ---------- 5. 停止（MacOps::stop 同款命令串） ----------
