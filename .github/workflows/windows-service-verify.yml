@@ -1,0 +1,86 @@
+name: Windows Service verify
+
+# #70 Windows 服务生命周期虚拟环境验证链（GitHub Actions windows runner 即 Windows VM）。
+# 发布构建走 scripts/publish-app.ps1（win-x64，发布属性不经 csproj），再由
+# scripts/verify-windows-service.ps1 做 Windows Service 生命周期端到端断言：
+#   安装 -> 注册 -> 常驻 -> 命名管道 IPC 通信 (DACL 往返) -> 日志 -> 停止/重启 -> 卸载 -> 清理。
+# 操作与判定口径对齐 scripts/install-service.ps1 与 docs/agents/ipc-contract.md。
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "scripts/install-service.ps1"
+      - "scripts/verify-windows-service.ps1"
+      - "scripts/publish-app.ps1"
+      - "config/config.sample.json"
+      - ".github/workflows/windows-service-verify.yml"
+
+jobs:
+  service-lifecycle:
+    name: windows-service lifecycle (win-x64)
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.201"
+      - name: Ensure Rust toolchain
+        run: |
+          rustup default stable
+          rustup target add x86_64-pc-windows-gnu
+
+      - name: Locate windres (windows-gnu release build 前置)
+        shell: pwsh
+        run: |
+          $windres = Get-Command windres -ErrorAction SilentlyContinue
+          if (-not $windres) {
+            foreach ($candidate in @("C:\msys64\mingw64\bin\windres.exe", "C:\ProgramData\mingw64\mingw64\bin\windres.exe")) {
+              if (Test-Path $candidate) {
+                $windres = $candidate
+                $mingwBin = Split-Path -Parent $candidate
+                $mingwBin | Out-File -FilePath $env:GITHUB_PATH -Append
+                break
+              }
+            }
+          }
+          if (-not $windres) {
+            throw "windres not found in PATH or known MinGW locations"
+          }
+          "WINDRES=$windres" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Publish (scripts/publish-app.ps1, win-x64)
+        shell: pwsh
+        run: |
+          .\scripts\publish-app.ps1 -Version 0.0.0-ci -Runtime win-x64 -Zip false
+
+      - name: Verify Windows Service lifecycle (install/SCM/IPC/logs/uninstall)
+        shell: pwsh
+        run: |
+          $evidenceDir = Join-Path $env:RUNNER_TEMP "windows-service-verify-win-x64"
+          .\scripts\verify-windows-service.ps1 `
+            -ReleaseDir "release\win-x64" `
+            -EvidenceDir $evidenceDir
+
+      - name: Publish summary
+        if: always()
+        shell: pwsh
+        run: |
+          $summaryPath = Join-Path $env:RUNNER_TEMP "windows-service-verify-win-x64\summary.txt"
+          if (Test-Path $summaryPath) {
+            Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "### Windows Service verify (win-x64)"
+            Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value '```'
+            Get-Content $summaryPath | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+            Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value '```'
+          }
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-service-verify-win-x64
+          path: ${{ runner.temp }}/windows-service-verify-win-x64
+          if-no-files-found: warn
