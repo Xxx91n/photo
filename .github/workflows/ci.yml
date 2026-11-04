@@ -7,12 +7,17 @@ on:
 jobs:
   # dotnet 测试多平台矩阵（#9）：ubuntu/windows/macos 三平台同口径跑 test job；
   # fail-fast 关闭——一次 run 同时暴露全部平台的失败，便于按平台分票处置。
+  # Windows 侧首跑出现「92/141 完成后全程静默直至 1h 运行超时」的挂起（run 41891933332 /
+  # 41904675966 复现，完成数 92→70 漂移，blame-hang 在该形态下未触发）——单测逐一读过均
+  # 有界，疑系统性饥饿。win-diag 用单类隔离矩阵定位挂者：每类独立进程 + 12 分钟 job 超时，
+  # 超时的 job 即挂者所在类，逐用例 console 输出点名挂点。定位修复后随返修移除本 job。
   test:
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
     permissions:
       contents: read
     steps:
@@ -33,6 +38,53 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: test-diagnostics-${{ matrix.os }}
+          path: '**/TestResults/**'
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # 挂起定位专用（#9 Windows 首跑）：单类隔离矩阵，每类一个独立 test host。
+  win-diag:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        suite:
+          - DesignMarkerSourceTests
+          - InvariantReferenceReconciliationTests
+          - IpcAuthClaimReconciliationTests
+          - Net10CompatibilityGuardTests
+          - ProcessHygieneGuardTests
+          - PublishPropertiesCsprojGuardTests
+          - ServicePipeNameEntropyTests
+          - SourceLintTests
+          - WindowsServicePipeAclTests
+          - WorkerEntryGuardTests
+          - WorkerIpcGetRecentLogsTests
+          - WorkerIpcResidentStabilityTests
+          - WorkerIpcResponseResilienceTests
+          - WorkerStartupSweepScopeTests
+          - WorkerReloadConfigRegressionTests
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.201"
+      - name: Run suite (isolated test host, blame-hang + console)
+        run: >-
+          dotnet test tests/PhotoPrivacy.IntegrationTests --configuration Release
+          --filter "FullyQualifiedName~PhotoPrivacy.IntegrationTests.${{ matrix.suite }}"
+          --blame-hang --blame-hang-timeout 00:04:00 --blame-hang-dump-type mini
+          --logger "console;verbosity=normal" --logger "trx"
+      - name: Upload suite diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: win-diag-${{ matrix.suite }}
           path: '**/TestResults/**'
           retention-days: 7
           if-no-files-found: ignore
