@@ -537,10 +537,16 @@ if wait_until 30 test -S "$SERVICE_SOCKET"; then
   # 评审 CWE-732：审计目录给 GUI 用户的只能是「组读」——能看日志页，不能写、不能删。
   AUDIT_MODE="$(stat -f '%Lp' "$AUDIT_FOLDER" 2>/dev/null)"
   AUDIT_GROUP="$(stat -f '%Sg' "$AUDIT_FOLDER" 2>/dev/null)"
-  if [[ "$AUDIT_MODE" == "2750" && "$AUDIT_GROUP" == "$SOCKET_GROUP" ]]; then
-    rec PASS "审计目录组边界正确（${AUDIT_FOLDER} ${AUDIT_MODE} ${AUDIT_GROUP}：组只读，无组写）"
+  # setgid 位以符号串为准：部分 BSD 实现的 %Lp 只回三位（750），%Sp 的 group 执行位会显示 s/S。
+  AUDIT_SYM="$(stat -f '%Sp' "$AUDIT_FOLDER" 2>/dev/null)"
+  AUDIT_RAW="$(stat -f '%p' "$AUDIT_FOLDER" 2>/dev/null)"
+  AUDIT_SGID="${AUDIT_SYM:6:1}"
+  if [[ "$AUDIT_GROUP" == "$SOCKET_GROUP" ]] \
+    && [[ "$AUDIT_SGID" == "s" || "$AUDIT_SGID" == "S" ]] \
+    && [[ "$AUDIT_MODE" == "2750" || "$AUDIT_MODE" == "750" ]]; then
+    rec PASS "审计目录组边界正确（${AUDIT_FOLDER} mode=${AUDIT_MODE} raw=${AUDIT_RAW} ${AUDIT_SYM} ${AUDIT_GROUP}：组只读，无组写）"
   else
-    rec FAIL "审计目录组边界不符（${AUDIT_FOLDER} ${AUDIT_MODE:-<空>} ${AUDIT_GROUP:-<空>}；期望 2750 ${SOCKET_GROUP} 的组只读视图）"
+    rec FAIL "审计目录组边界不符（${AUDIT_FOLDER} mode=${AUDIT_MODE:-<空>} raw=${AUDIT_RAW:-<空>} sym=${AUDIT_SYM:-<空>} ${AUDIT_GROUP:-<空>}；期望 2750 ${SOCKET_GROUP} 的组只读视图）"
   fi
 
   # GUI 用户只应进 socket 访问组：进了数据组就等于拿到 2770 的组写权限，可绕过 IPC 删审计/隔离文件。
