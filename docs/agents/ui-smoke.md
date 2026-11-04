@@ -168,6 +168,88 @@
 | T5 | 二次启动不重开：第二实例退出并唤起既有窗口（`Global\PhotoPrivacyUi_Instance`） | 通过 | 2026-10-28 实机 ×3：第二实例 6s 内退出（exit code 0），第一实例存活且主窗可见（title=PhotoPrivacy） |
 | T6 | 首次配置待机态下停机收敛（托盘 Exit / 停服务时 `StopAsync` 不挂满 `ShutdownTimeout`，`#117`） | 未回填 | 待 #117 PR 合并后按「#117 实机停机证据」段补证（自动化侧已由 #113 待机用例断言 CI 绿；#117 PR 当前 head 的 test job 通过，run [41349510663](https://github.com/Xxx91n/photo/actions/runs/41349510663)） |
 
+### 启动门控取证（#174：`--open-page` 覆盖静默启动，2026-11-04 本窗口；补 #32 取证链的判定口径）
+
+> 背景：#174 的修复（PR #177，`da6d3f3`）在 main 上只有一行内联条件，无测试、无证据；票面 AC1/AC2
+> 因此一直空着（AC3 要走 macOS 取证链，见本节末第 3、4 条）。本节补两样：Windows 实机 GUI 取证（AC1/AC2），
+> 以及 #32 取证链（`scripts/capture-ui-service-page.sh`）在静默机器上的判定口径——该脚本第 87 行
+> 正是以 `--open-page service` 启动 UI 等首屏；修复是它在静默配置下建窗的前提，而本 PR 同时把脚本判据
+> 从「PNG 非空」升级为「窗口几何必须取到」，见本节末第 3 条。
+>
+> **产物**：Release run [41835232955](https://github.com/Xxx91n/photo/actions/runs/41835232955)
+> （ref `t153-standby-audit-dir`，head `0fa995a`，version `0.1.0-verify153`，`create_release=false`）的
+> `release-win-x64`。该 head 含 #177 的 `da6d3f3`（`git merge-base --is-ancestor` 复核为真），
+> 故此产物即「修复后」二进制，**本地零编译**；`PhotoPrivacy.exe` sha256 `66ac6ef4…`（33098547 B）、
+> `PhotoPrivacyWorker.exe` `ad130283…`（90489284 B）。
+>
+> **判定通道**：Python `subprocess` 拉起 `PhotoPrivacy.exe`（`DETACHED_PROCESS`）→ 等 9 s（`probe.py`
+> 的第二个位置参数，与调用命令一起记在 `precheck-174.txt`）→ `user32.EnumWindows` 按本进程 PID 枚举
+> 「可见且面积 ≥ 10 000 px²」的顶层窗口 → 整屏 `PIL.ImageGrab` 截图 → `taskkill /T /F` 连 Worker 一起收口。
+> **判据只看主窗**：托盘辅助窗按上述阈值不计入（与 T4 行同口径），所以 A2 的「无窗」= 无可见主窗。
+> 配置：`pkg/config/config.json` 仅把 `ui.hide_main_window_on_startup` 由 `false` 改 `true`，其余一字未改；
+> 取证后逐字节还原（sha256 回到出厂 `c1371f77…`，见 `precheck-174.txt`）。前置状态：`sc query
+> PhotoPrivacyCleaner` = 1060（未安装）、`tasklist` 无 PhotoPrivacy 残留——两项与配置改动、二进制哈希
+> 一并落在 `precheck-174.txt`；静默启动因此真的成立（A2 的「无窗」本身也是这条前置的自检）。
+
+| # | 操作 | 结果 | 证据 |
+|---|---|---|---|
+| A1 | 静默配置 + `--open-page service` 启动 | 通过 | 2026-11-04 实机 GUI：9 s 后本进程有 1 个可见主窗（`hwnd 3998380`，title `PhotoPrivacy`，rect 462,114–1458,873＝996×759），进程存活；整屏帧 `ui-174-ac1-silent-open-service.png` 目检为 zh-CN 界面、导航「服务管理」高亮，主区是服务页（「服务状态 未安装」「安装服务」「启动/停止服务」「卸载服务」）。窗口清单 `win-174-ac1-silent-open-service.txt`（含 `config_silent_start: true`、`alive_after_wait: true`、`visible_windows` 1 条）。即 AC1「建窗且停在 Service 页」成立 |
+| A2 | 静默配置 + 无 `--open-page` 启动 | 通过 | 2026-11-04 实机 GUI：同配置同通道，9 s 后 `visible_windows: []`（0 条可见顶层窗）、`alive_after_wait: true`，整屏帧 `ui-174-ac2-silent-no-open-page.png` 里屏幕上没有 PhotoPrivacy 主窗（托盘辅助窗按阈值不计，见上）。即 AC2「维持静默（不建窗）」成立，同时证明 #59 的静默语义未被本票改坏；同目录 `ui-174-ac2-silent-no-open-page.log` 是 UI 拉起的后台 Worker 的 stdout（`Worker is ready but no watch folder is configured`）——它证明 Worker 起过，进程存活另由 `alive_after_wait: true` 证明 |
+| A3 | 静默配置 + `--open-page logs`（页路由对照，证据文件名沿用 `ac1b`） | 通过 | 2026-11-04 实机 GUI：同样建窗（`hwnd 4325914`），整屏帧 `ui-174-ac1b-silent-open-logs.png` 里导航「日志」高亮、主区是日志页（「日志 / 暂无审计条目」），不是 Service 页。用来排除 A1 的「停在 Service 页」只是恰巧默认页——首帧页确实跟随 `--open-page` |
+
+- **证据落盘**：`C:\Users\Administrator\photo-smoke-174\evidence\`（10 个文件：3 帧 + 3 份窗口清单 +
+  3 份 UI/Worker stdout + 1 份前置与调用记录，不入库）。逐文件 sha256 前 8 位（供对号，不供 `sha256sum -c`）：
+  `ui-174-ac1-silent-open-service.png faf22900…`、`win-174-ac1-silent-open-service.txt 677cc9fc…`、
+  `ui-174-ac1-silent-open-service.log 810ea3e4…`、`ui-174-ac1b-silent-open-logs.png d3a93e59…`、
+  `win-174-ac1b-silent-open-logs.txt 683c0fa1…`、`ui-174-ac1b-silent-open-logs.log 7f7673c4…`、
+  `ui-174-ac2-silent-no-open-page.png 814eadd3…`、`win-174-ac2-silent-no-open-page.txt 14f7508f…`、
+  `ui-174-ac2-silent-no-open-page.log 810ea3e4…`（与 A1 的 log 字节相同，同是 Worker 待机那四行）、
+  `precheck-174.txt 0d6d9282…`。
+  **不替换 `ui-smoke-evidence.sha256`**：那份锚按「一轮一锚」只装当前一轮（现为 #31 的 L 组 26 条），
+  本票证据量小且与 #31 不同机不同轮，故留在行内给前缀、完整 64 位在证据目录里对。
+- **自动化侧（与本节互补，不是替代）**：`ui/crates/photoprivacy-ui/src/main.rs` 的
+  `should_open_main_window` 真值表三条用例（静默+任一页 → 建窗、静默+无页 → 不建窗、非静默等价），
+  加 `app.rs` 的 `open_page_decides_the_first_frame_page`（首帧 `page` 跟随 `open_page`）。
+  GUI 行为由本节实机钉，布尔判定由那四条钉，二者都必要：只留单测的话，条件被绕过仍会绿。
+- **#32 取证链的边界与本轮加固（别把本节读成 AC3 已完成）**：
+  1. `capture-ui-service-page.sh` 是 macOS 专用，本机只有 WSL2（Microsoft Linux 内核，跑不了 macOS），
+     所以 AC3 只能在 GitHub 的 macOS runner 上跑。那条链本身是通的：run
+     [41829671191](https://github.com/Xxx91n/photo/actions/runs/41829671191)（head `9aa1c27`）里
+     四次截图全 PASS，`ui-shot-*.txt` 的窗口几何都是 `470, 150, 980, 748`，PNG 也不是黑帧
+     （1920×1080、灰度均值 103、43% 非黑像素，四帧内容各不相同）——所以「mac 侧执行」不是缺环境，是缺触发。
+  2. CI 的 `launchd-verify.yml` 用 `config.sample.json`（`hide_main_window_on_startup: false`），
+     **静默分支从未在那条流水线上跑过**；本 PR 让脚本自建配置副本并把该开关置 true（安装目录的
+     config.json 不动），push 后每次截图都带静默配置。**但静默真正生效的只有 `pre-install` 与
+     `uninstalled` 两个 tag**：`tray::should_show_tray_icon` 在服务已安装（`running`/`stopped`）时
+     返回 false，`should_start_hidden` 随之恒 false，窗口无论如何都会出——那两个 tag 测不到本票，
+     别把它们算进 AC3 的证据面。
+  3. 原判据是「PNG 非空即 PASS」，而脚本的第二次实例唤起会把窗口带出来——首实例被静默吞掉也能绿。
+     本 PR 把它换成三层（CodeRabbit 审查后收敛）：
+     a. **起跑前查残留实例**：已有 `PhotoPrivacy` 进程就失败（否则借到没加载配置副本的旧实例）；
+     b. **对照组**：同一静默配置、不带 `--open-page` 必须先证明「无窗」，否则说明静默根本没生效
+        （托盘建不起来时 `should_start_hidden` 恒 false），正式组出窗也不算数；
+     c. **首拍几何**：几何在第二次唤起**之前**取，取不到即失败；唤醒之后才出现会单独报
+        「静默吞掉请求页、靠第二次唤起兜底」。
+     `osascript … get {position, size} of window 1` 在 runner 上可用（见第 1 条的四次几何输出）；
+     对照组与正式实例都先查进程是否存活（早退 = 崩溃，不是「静默生效」），「无窗」只认
+     System Events 的 `Invalid index (-1719)`，权限类报错（-1743）一律判取证无效；
+     服务已安装的 tag（`running`/`stopped`）自动跳过对照组与 #174 判据，只留截图前置检查。
+     本机 WSL bash 验证了配置翻转、几何正则四态（`470, 150, 980, 748` / 无空格写法 PASS、
+     `0, 0, 0, 0` 与 `Invalid index (-1719)` FAIL）、`Invalid index` 与 `-1743` 的区分、以及
+     plist 存在性分支。
+  4. **mac 侧已跑通，AC3 成立**：run [41863492601](https://github.com/Xxx91n/photo/actions/runs/41863492601)
+     （head `7fdceda`）的 `osx-x64` 作业 `PASS=26 FAIL=0`，四个 tag 的截图全部产出，
+     `ui-shot-*.txt` 的窗口几何仍是 `470, 150, 980, 748`。成对证据才是关键——
+     `pre-install` / `uninstalled` 两个「服务未安装」tag 的配置副本里 `hide_main_window_on_startup: true`，
+     **对照组（不带 `--open-page`）拿到 `Invalid index (-1719)`**（无窗，静默确实生效），
+     同一次运行里带 `--open-page service` 的正式组在**唤醒前首拍**就有几何（窗口确实建了）；
+     两张 PNG 非黑（1920×1080、灰度均值 103.3、43% 非黑像素）。即「静默配置的机器上
+     `--open-page` 仍建窗、脚本仍取到整屏截图」在 mac 上被机器判过，不再靠第二次唤起兜底。
+     同 run 的 `osx-arm64` 作业因未分到 runner 被 `cancelled`（`steps: []`、无日志），
+     那是 macOS runner 供给问题，不构成失败证据，也不改变 x64 的结论；arm64 待后续有 runner 时自然覆盖。
+     要让 AC3 机器可判，得在 #32 的 harness 里显式构造 `hide_main_window_on_startup=true` 的用例，
+     并产出可断言的页标识（`--service-probe-report` 只给服务态、不给页），属 #32 链加固，不在本票范围。
+
 ### 首次配置待机 4 项（#100 定形，#113 补自动化，#125 桌面截图取证，#113 二轮在当前 main 重取 2026-11-03）
 
 > 场景：发版包的 `config/config.json` 是 `config.sample.json` 的拷贝（`scripts/publish-app.ps1`），

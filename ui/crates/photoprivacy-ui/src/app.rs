@@ -3130,6 +3130,23 @@ mod tests {
         (cx, window)
     }
 
+    /// #174 AC1 后半：`--open-page` 指定的页必须是建窗首帧页，而不是先落 Overview 再靠导航跳。
+    #[test]
+    fn open_page_decides_the_first_frame_page() {
+        let mut cx = TestAppContext::single();
+        cx.update(bind_focus_keys);
+        let mut deps = test_deps();
+        deps.open_page = Some(Page::Service);
+        let window = cx.add_window(move |window, cx| AppView::new(window, cx, deps));
+        cx.run_until_parked();
+        draw(&mut cx, window.into());
+        assert_eq!(
+            window.update(&mut cx, |view, _, _| view.page).unwrap(),
+            Page::Service,
+            "--open-page service 应直接停在 Service 页"
+        );
+    }
+
     /// 目标控件是否完整落在 config-scroll 视口内（按登记表探针的布局坐标判定）。
     fn control_in_view(
         cx: &mut TestAppContext,
