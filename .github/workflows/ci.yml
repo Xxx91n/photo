@@ -147,6 +147,11 @@ jobs:
 
   markers:
     runs-on: ubuntu-latest
+    # CodeRabbit 返修（#193）：显式只读最小权限——与 test/rust/ui-check 的 contents: read
+    # 同口径；check-design-markers.sh 的 gh api 只读 open issue，不给多余写面。
+    permissions:
+      contents: read
+      issues: read
     steps:
       - uses: actions/checkout@v4
       - name: Design markers must point to open issues
