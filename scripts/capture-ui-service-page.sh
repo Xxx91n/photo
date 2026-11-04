@@ -72,8 +72,9 @@ UI_PID=$!
 
 # 首屏渲染余量：服务状态在建窗前已同步探测（main.rs 首拍），截图等窗口稳定。
 sleep 4
-# 单实例唤起兜底：若首实例静默驻守无窗，第二个实例只唤起不重开（main.rs 单实例守卫语义），
-# 会把主窗带出来；再点名置前台，避免截图截到别的应用/壁纸。
+# 单实例唤起兜底：若已有一个实例在跑（本进程被单实例守卫挡下只唤起不重开，main.rs），
+# 这一拍会把主窗带出来；再点名置前台，避免截图截到别的应用/壁纸。走 --open-page 的正常路径上
+# 首实例已建窗（#174），这一拍实际是重复唤起，只作保险。
 "$UI_BIN" --open-page service --worker "${OUT_DIR}/no-worker-for-shot" >/dev/null 2>&1 || true
 sleep 3
 osascript -e 'tell application "System Events" to tell process "PhotoPrivacy" to set frontmost to true' 2>&1 || true
