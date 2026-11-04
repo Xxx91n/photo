@@ -6,8 +6,9 @@
 # 在各生命周期状态下调用（虚拟环境 = CI macOS runner；也可在实机手动执行）。
 #
 # #174：`--open-page` 显式覆盖静默启动（ui/crates/photoprivacy-ui/src/main.rs 的
-# should_open_main_window），所以 ui.hide_main_window_on_startup=true 的机器上本脚本
-# 照样建窗——首实例不再静默驻守等第二次唤起兜底。
+# should_open_main_window），ui.hide_main_window_on_startup=true 的机器上首实例也直接建窗。
+# 注意下面的第二次实例唤起只是兜「已有实例先跑起来」的单实例守卫，它对 #174 的回归不敏感
+# （静默被吞时第二实例照样能把窗带出来）——不能拿它当本票的判定依据。
 #
 # 用法: ./capture-ui-service-page.sh --install-dir <dir> --tag <name> --out-dir <dir>
 #   --install-dir  已解压发布包的安装目录（含 PhotoPrivacy 与 config/config.json）
