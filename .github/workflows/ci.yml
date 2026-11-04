@@ -23,7 +23,19 @@ jobs:
         with:
           dotnet-version: "10.0.201"
       - name: Run tests (exclude Smoke/ExifTool)
-        run: dotnet test PhotoPrivacy.sln --configuration Release --filter "Category!=Smoke&Category!=ExifTool"
+        run: >-
+          dotnet test PhotoPrivacy.sln --configuration Release
+          --filter "Category!=Smoke&Category!=ExifTool"
+          --blame-hang --blame-hang-timeout 00:10:00 --blame-hang-dump-type mini
+          --logger "console;verbosity=normal" --logger "trx"
+      - name: Upload test diagnostics (hang sequence/dump/trx)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-diagnostics-${{ matrix.os }}
+          path: '**/TestResults/**'
+          retention-days: 7
+          if-no-files-found: ignore
 
   # rust 四 crate 矩阵（#9）：ubuntu 之外补 macOS——Windows 侧由 ui-check 覆盖
   # 测试（service/ui 原有，ipc/logs/rules 随 #9 补齐），不另建 Windows job。
