@@ -5,8 +5,14 @@ on:
   pull_request:
 
 jobs:
+  # dotnet 测试多平台矩阵（#9）：ubuntu/windows/macos 三平台同口径跑 test job；
+  # fail-fast 关闭——一次 run 同时暴露全部平台的失败，便于按平台分票处置。
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     permissions:
       contents: read
     steps:
@@ -19,8 +25,13 @@ jobs:
       - name: Run tests (exclude Smoke/ExifTool)
         run: dotnet test PhotoPrivacy.sln --configuration Release --filter "Category!=Smoke&Category!=ExifTool"
 
+  # rust 四 crate 矩阵（#9）：ubuntu 之外补 macOS（Windows 侧已由 ui-check 覆盖 clippy+tests）。
   rust:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     permissions:
       contents: read
     steps:
