@@ -678,9 +678,12 @@
      （02:29:38.520，ProgramData `worker-20261105.log`）：「service pipe falls back to
      current-user-only and non-elevated desktop UI will be denied. Reinstall the service to
      register it (#70)」——即 **UI 安装的服务在非提权桌面会话连不上服务管道**（C1 形态的
-     UI 安装变体），管理员会话不受影响（本轮 S6 的 UI 连通即管理员会话）。这是 #70 与 #58
-     两条链路交界处的已知回退（WorkerIpcServerHostedService 的 WARN 是 #70 预设行为），
-     但「服务页装出来的服务」与「脚本装出来的服务」能力不同这一事实，此前未见记录。
+     UI 安装变体）。提权/管理员会话能否连上该回退形态的服务管道，本轮未验证
+     （UI 在服务安装前启动即回落后台端点并保持，S6 记录只覆盖状态行与命令反馈，
+     无服务管道连接证据——CodeRabbit 对本节初稿断言的指正成立，已按其建议撤回）。
+     这是 #70 与 #58 两条链路交界处的已知回退（WorkerIpcServerHostedService 的 WARN 是
+     #70 预设行为），但「服务页装出来的服务」与「脚本装出来的服务」能力不同这一事实，
+     此前未见记录。
   2. **首启冲突的 UI 呈现**：#88 记录的「服务与后台 Worker 同 config 并存时服务自停」在本轮
      补上了 UI 侧形态——`sc start` 1053 → 服务页红框「失败 服务启动超时…」。文案把单写者
      冲突归因为「ExifTool 路径和配置文件」，对真因有误导性；候选方向是启动路径对 1053 的
