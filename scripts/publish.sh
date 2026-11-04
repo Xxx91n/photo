@@ -7,6 +7,9 @@ SELF_CONTAINED="true"
 ZIP="true"
 EXIFTOOL_VERSION="13.60"
 EXIFTOOL_ARCHIVE=""
+# Design(#33): ExifToolPathOverride——指向已安装的 ExifTool 目录，直接打包、跳过下载，
+# 对齐 ExifToolGUI 的 ETOverrideDir（自带 ExifTool、不下载）。空 = 走默认下载通道。
+EXIFTOOL_PATH_OVERRIDE=""
 
 # 固定版本 → 官方 SHA256（取自 https://exiftool.org/checksums.txt）。
 # 新增版本必须同时登记校验值：未登记的版本直接失败，避免打包被替换或半截的归档。
@@ -30,6 +33,7 @@ Options:
   --zip <b>             Create archive (default: $ZIP)
   --exiftool-version <v>  随包内置的 ExifTool 版本（default: $EXIFTOOL_VERSION；必须已登记校验值）
   --exiftool-archive <p>  使用本地已下载的 Image-ExifTool-<v>.tar.gz（离线/内网构建；仍校验 SHA256）
+  --exiftool-path-override <d>  使用已安装的 ExifTool 目录 <d>（含 exiftool + lib/），直接打包跳过下载（#33）
   -h, --help            Show this help
 
 Valid runtimes: linux-x64, linux-arm64, osx-x64, osx-arm64 (须在本机对应平台执行；
@@ -46,6 +50,10 @@ case "$(uname -s)-$(uname -m)" in
   Darwin-arm64) RUNTIME="osx-arm64" ;;
 esac
 
+# 仅当作为可执行脚本直接运行时才进入参数解析/环境校验/发布主流程；
+# 被 source 时只暴露顶部函数与默认变量，供 #33 覆盖逻辑单测（WSL 无 cargo 也能安全载入）。
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --version) VERSION="$2"; shift 2 ;;
@@ -55,6 +63,7 @@ while [[ $# -gt 0 ]]; do
     --zip) ZIP="$2"; shift 2 ;;
     --exiftool-version) EXIFTOOL_VERSION="$2"; shift 2 ;;
     --exiftool-archive) EXIFTOOL_ARCHIVE="$2"; shift 2 ;;
+    --exiftool-path-override) EXIFTOOL_PATH_OVERRIDE="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage; exit 1 ;;
   esac
@@ -66,7 +75,7 @@ if [[ -z "$RUNTIME" ]]; then
   exit 1
 fi
 
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RELEASE_ROOT="${REPO_ROOT}/release"
 TARGET_DIR="${RELEASE_ROOT}/${RUNTIME}"
 
@@ -112,6 +121,8 @@ esac
 
 command -v cargo >/dev/null 2>&1 || { echo "cargo not found in PATH; 新 UI 入口需要 Rust 工具链（rust-version 见 ui/Cargo.toml）" >&2; exit 1; }
 
+fi # guard 第一段结束：参数解析 + 主机/工具链校验只在直接执行时跑
+
 # --- 内置 ExifTool（#108）---
 # Unix 官方发行形态是 Perl 脚本 + lib/（没有自包含二进制），随包带上 exiftool 与 lib/；
 # 运行时仍要求目标机有 perl（macOS 15 仍带 /usr/bin/perl5.34，Apple 已声明未来可能移除）。
@@ -119,6 +130,14 @@ command -v cargo >/dev/null 2>&1 || { echo "cargo not found in PATH; 新 UI 入�
 bundle_exiftool() {
   local version="$1"
   local archive="$2"
+  local override="$3"
+
+  # Design(#33): ExifToolPathOverride——目录式覆盖，直接打包跳过下载（对齐 ExifToolGUI ETOverrideDir）。
+  if [[ -n "$override" ]]; then
+    bundle_exiftool_from_override "$override"
+    return
+  fi
+
   local dest="${TARGET_DIR}/ExifTool"
   local expected
   expected="$(exiftool_sha256 "$version" || true)"
@@ -175,6 +194,49 @@ bundle_exiftool() {
   echo "Bundled ExifTool ${version} -> ${dest}"
 }
 
+# Design(#33): ExifToolPathOverride——从已安装的 ExifTool 目录直接打包，跳过下载与 SHA256 校验
+# （对齐 ExifToolGUI 的 ETOverrideDir：用户自带 ExifTool、不下载）。仅校验布局并做 -ver 版本探针。
+bundle_exiftool_from_override() {
+  local override="$1"
+  local dest="${TARGET_DIR}/ExifTool"
+
+  if [[ ! -d "$override" ]]; then
+    echo "ExifToolPathOverride 不是目录：$override" >&2
+    exit 1
+  fi
+
+  local exe="${override}/exiftool"
+  local lib="${override}/lib"
+  if [[ ! -f "$exe" || ! -d "$lib" ]]; then
+    echo "ExifToolPathOverride 布局不符：需 ${exe} 与 ${lib}（Unix Perl 发行版必备同级 lib/）" >&2
+    exit 1
+  fi
+
+  mkdir -p "$dest"
+  cp "$exe" "${dest}/exiftool"
+  cp -R "$lib" "${dest}/lib"
+  if [[ -f "${override}/README" ]]; then
+    cp "${override}/README" "${dest}/README"
+  fi
+  chmod +x "${dest}/exiftool"
+
+  # 版本探针：对齐 ExifToolGUI 的 -ver 校验，确认覆盖的是可用 ExifTool。缺 perl 时退化为警告（不致命）。
+  if command -v perl >/dev/null 2>&1; then
+    local ver
+    ver="$(${dest}/exiftool -ver 2>/dev/null || true)"
+    if [[ -z "$ver" ]]; then
+      echo "WARNING: ExifToolPathOverride 的 exiftool -ver 未返回版本（可能缺 perl 或安装损坏）" >&2
+    else
+      echo "Bundled ExifTool from override (${override}) version ${ver} -> ${dest}"
+    fi
+  else
+    echo "WARNING: perl 不在构建主机，无法运行 exiftool -ver 探针；覆盖目录仍已打包" >&2
+  fi
+}
+
+# guard 第二段：主流程只在直接执行时跑；source 时上面两个 bundle 函数仍可被单测调用（#33）。
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+
 echo "Publishing new UI (cargo) + PhotoPrivacy.Worker ..."
 echo "Runtime: ${RUNTIME} | Framework: ${FRAMEWORK}"
 
@@ -224,7 +286,7 @@ cp "${REPO_ROOT}/config/config.sample.json" "${TARGET_DIR}/config/config.json"
 cp "${REPO_ROOT}/config/README.md" "${TARGET_DIR}/config/README.md"
 cp "${REPO_ROOT}/README.md" "${TARGET_DIR}/README.md"
 
-bundle_exiftool "$EXIFTOOL_VERSION" "$EXIFTOOL_ARCHIVE"
+bundle_exiftool "$EXIFTOOL_VERSION" "$EXIFTOOL_ARCHIVE" "$EXIFTOOL_PATH_OVERRIDE"
 
 rm -rf "$WORKER_PUB_DIR"
 
@@ -236,3 +298,5 @@ if [[ "$DO_ZIP" == true ]]; then
 fi
 
 echo "Publish done: $TARGET_DIR"
+
+fi # /if [[ "${BASH_SOURCE[0]}" == "$0" ]] —— source 时仅暴露函数

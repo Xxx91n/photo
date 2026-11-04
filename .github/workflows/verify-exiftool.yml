@@ -1,0 +1,36 @@
+name: ExifTool chain verify
+
+# Design(#33): 官方版下载链验证 + ExifToolPathOverride 构建层自检。
+# 纯 shell，不编译应用；发布脚本/钉死值变更即触发，另做周常巡检防官方换版或钉死值漂移。
+on:
+  push:
+    paths:
+      - "scripts/publish.sh"
+      - "scripts/publish-app.ps1"
+      - "scripts/verify-exiftool-download.sh"
+      - "scripts/test-exiftool-override.sh"
+      - ".github/workflows/verify-exiftool.yml"
+  pull_request:
+    paths:
+      - "scripts/publish.sh"
+      - "scripts/publish-app.ps1"
+      - "scripts/verify-exiftool-download.sh"
+      - "scripts/test-exiftool-override.sh"
+      - ".github/workflows/verify-exiftool.yml"
+  schedule:
+    - cron: "17 4 * * 1" # 每周一 04:17 UTC
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Official checksums.txt vs pinned SHA256
+        run: bash scripts/verify-exiftool-download.sh
+      - name: ExifToolPathOverride packaging smoke (no app compile)
+        run: bash scripts/test-exiftool-override.sh

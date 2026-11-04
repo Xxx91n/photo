@@ -224,8 +224,15 @@ impl ConfigUiState {
             if config.exiftool.path.trim().is_empty() {
                 self.exiftool_hint = detect_exiftool_path(&config.exiftool.path);
             } else if let Some(detected) = detect_exiftool_path(&config.exiftool.path) {
-                config.exiftool.path = detected.clone();
-                self.exiftool_hint = Some(detected);
+                // Design(#33): 目录式覆盖保留用户填的目录本身，不把解析出的 exe 路径写回
+                // config.json（否则一次保存就把目录冻结成文件绝对路径，发布包换目录即失效）。
+                // hint 仍显示解析结果，让用户确认目录内确实有可用的 exiftool。
+                if std::path::Path::new(&config.exiftool.path).is_dir() {
+                    self.exiftool_hint = Some(detected);
+                } else {
+                    config.exiftool.path = detected.clone();
+                    self.exiftool_hint = Some(detected);
+                }
             } else {
                 self.exiftool_hint = None;
             }
@@ -3023,6 +3030,28 @@ mod tests {
         if let Some(hint) = &state.exiftool_hint {
             assert!(!hint.trim().is_empty());
         }
+    }
+
+    /// Design(#33): 目录式覆盖在首次加载时保留用户填的目录，不把解析出的 exe 路径写回
+    /// config.json（否则一次保存就把目录冻结成文件绝对路径）。提示仍显示解析结果。
+    #[test]
+    fn directory_exiftool_path_is_not_rewritten_on_load() {
+        let dir = std::env::temp_dir().join(format!("pp-dir-override-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let exe = dir.join(if cfg!(windows) { "exiftool.exe" } else { "exiftool" });
+        std::fs::write(&exe, b"stub").unwrap();
+        let expected_hint = exe.to_string_lossy().into_owned();
+
+        let mut state = ConfigUiState::new(None);
+        let mut config = AppConfig::default();
+        config.exiftool.path = dir.to_string_lossy().into_owned();
+
+        let _ = state.set_config(config, true);
+
+        assert_eq!(state.config.exiftool.path, dir.to_string_lossy().into_owned());
+        assert_eq!(state.exiftool_hint.as_deref(), Some(expected_hint.as_str()));
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// 最小 AppDeps：不接 Worker/服务/配置后台，只支撑渲染与焦点链。

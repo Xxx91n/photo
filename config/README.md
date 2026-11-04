@@ -11,6 +11,14 @@
 
 手填的绝对路径始终优先，不会被探测覆盖。内置的 ExifTool 被删或被安全软件隔离时，保存监控目录会以可读原因失败（提示指向重新解压发布包或安装 ExifTool），该提示常驻显示，不会几秒后消失。
 
+## `exiftool.path` 指向安装目录（#33）
+
+除填可执行文件的完整路径外，也可以填一个**目录**（对齐 ExifToolGUI 的 `ETOverrideDir` 做法）：Worker 加载配置时会解析出该目录内的 `exiftool.exe`（Windows）或 `exiftool`（Linux/macOS），再按同一套规则校验伴随的 `exiftool_files/` 或 `lib/`。因此「自带一份官方版 ExifTool」不需要把路径写到文件级，指向解压后的目录即可；目录内缺可执行文件或缺运行时目录时，启用监控会按原口径拒绝，不会延迟到 `stay_open` 桥接启动期才失败。
+
+UI 配置页保存时仍原样保留你填的目录（不改写为绝对路径），解析只在 Worker 加载时发生——发布包换目录解压后不会残留旧机器的绝对路径。
+
+构建发版侧对应 `--exiftool-path-override <目录>`（`scripts/publish.sh`）与 `-ExifToolPathOverride <目录>`（`scripts/publish-app.ps1`）：直接使用该目录打包、跳过下载，并做 `exiftool -ver` 版本探针。默认下载通道的 SHA256 钉死值由 `scripts/verify-exiftool-download.sh` 与官方 `https://exiftool.org/checksums.txt` 对账（CI 在发布脚本变更时触发，另做周常巡检）。
+
 ## 校验分层
 
 - 与监控无关的项（连接池大小、被禁的 `extra_exiftool_args`）在任何形态下都校验；

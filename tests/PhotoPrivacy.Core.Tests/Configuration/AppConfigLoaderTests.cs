@@ -75,6 +75,50 @@ public sealed class AppConfigLoaderTests
         }
     }
 
+    // Design(#33): exiftool.path 给一个已安装的 ExifTool 目录（ExifToolGUI 的 ETOverrideDir 口径），
+    // 加载后应归一到该目录内的 exiftool/exiftool.exe 绝对路径，供校验器与 Worker 直接使用。
+    [Fact]
+    public void Load_Should_Resolve_Directory_ExifToolPath_To_Contained_Executable()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        var overrideDir = Path.Combine(dir, "custom-exiftool");
+        Directory.CreateDirectory(overrideDir);
+        var exeName = OperatingSystem.IsWindows() ? "exiftool.exe" : "exiftool";
+        File.WriteAllText(Path.Combine(overrideDir, exeName), "stub");
+        // Windows 临时路径含反斜杠，直接插入 JSON 会破坏字符串；交给序列化器生成带引号的合法字面量。
+        var overridePathJson = System.Text.Json.JsonSerializer.Serialize(overrideDir);
+
+        try
+        {
+            var configPath = Path.Combine(dir, "config.json");
+            File.WriteAllText(configPath, $$"""
+            {
+              "schema_version": 1,
+              "exiftool": { "path": {{overridePathJson}} },
+              "watch": { "hot_folder": "D:\\hot" },
+              "rules": {
+                "allowed_extensions": [".jpg"],
+                "excluded_patterns": [],
+                "output_mode": "same_as_source",
+                "output_directory": ""
+              },
+              "retry": { "max_attempts": 1, "backoff_seconds": [0] },
+              "backup": { "enabled": false, "suffix": ".bak" },
+              "quarantine": { "enabled": true, "directory": "D:\\hot\\_quarantine" },
+              "audit": { "log_directory": "D:\\hot\\_audit" }
+            }
+            """);
+
+            var cfg = AppConfigLoader.Load(configPath);
+
+            Assert.Equal(Path.Combine(overrideDir, exeName), cfg.ExifTool.Path);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
     [Fact]
     public void Load_Should_Migrate_Legacy_Root_ExiftoolPath_Field()
     {

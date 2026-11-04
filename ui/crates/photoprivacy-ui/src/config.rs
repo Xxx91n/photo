@@ -472,9 +472,28 @@ pub fn normalize_theme_variant(value: &str) -> &'static str {
 /// 旧 UI `ResolveExifToolPath`：当前路径真实存在就不动；否则探测常见安装位置与 PATH，
 /// 返回可用的新路径。返回 `None` 表示保持原值（也是刷新提示的边界）。
 pub fn detect_exiftool_path(current: &str) -> Option<String> {
-    if !current.trim().is_empty() && Path::new(current).is_file() {
+    let current = current.trim();
+    if current.is_empty() {
+        let detected = resolve_default_exiftool_path();
+        return if Path::new(&detected).is_file() {
+            Some(detected)
+        } else {
+            None
+        };
+    }
+
+    // Design(#33): exiftool.path 支持目录式覆盖（ExifToolGUI 的 ETOverrideDir 口径）：
+    // 用户给一个 ExifTool 安装目录时，解析目录内的 exiftool/exiftool.exe 作为可用路径。
+    let resolved = resolve_exiftool_executable_from_configured(current);
+    if resolved != current && Path::new(&resolved).is_file() {
+        return Some(resolved);
+    }
+
+    if Path::new(current).is_file() {
+        // 当前已是可用可执行文件，保持原值（不写回，避免把持久化形态冻结成绝对路径）。
         return None;
     }
+
     let detected = resolve_default_exiftool_path();
     if detected != current && Path::new(&detected).is_file() {
         Some(detected)
@@ -658,6 +677,21 @@ fn resolve_exiftool_from_path() -> Option<PathBuf> {
             .map(|dir| dir.join(name))
             .find(|candidate| candidate.is_file())
     })
+}
+
+/// 把配置里的 exiftool.path 归一到可执行文件：已存在文件原样返回；已存在目录解析出
+/// 其中的 exiftool/exiftool.exe（对齐 ExifToolGUI 的 ETOverrideDir 与 C# DefaultPaths.ResolveExifToolExecutable）。
+/// 仅用于提示/探测；UI 不据此改写存储值（存储值保持用户手填形态，解析交给 Worker 的 loader）。
+// Design(#33): 目录式覆盖，目录内解析出 exiftool/exiftool.exe。
+fn resolve_exiftool_executable_from_configured(configured: &str) -> String {
+    let path = Path::new(configured);
+    if path.is_file() {
+        return configured.to_string();
+    }
+    if path.is_dir() {
+        return path.join(exiftool_file_name()).to_string_lossy().into_owned();
+    }
+    configured.to_string()
 }
 
 fn exiftool_file_name() -> &'static str {
@@ -953,5 +987,24 @@ mod tests {
             !excluded.iter().any(|path| path == &config.watch.hot_folder),
             "热目录本身不能进排除列表：{excluded:?}"
         );
+    }
+
+    #[test]
+    fn detect_exiftool_path_resolves_directory_override() {
+        // Design(#33): exiftool.path 给一个 ExifTool 安装目录时，提示解析目录内的 exiftool/exiftool.exe
+        // （ExifToolGUI 的 ETOverrideDir 口径）。UI 不改写存储值，仅用于提示。
+        let dir = std::env::temp_dir().join(format!("pp-detect-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let exe = dir.join(if cfg!(windows) { "exiftool.exe" } else { "exiftool" });
+        std::fs::write(&exe, b"stub").unwrap();
+
+        let result = detect_exiftool_path(dir.to_str().unwrap());
+        assert_eq!(
+            result.as_deref(),
+            Some(exe.to_str().unwrap()),
+            "目录式覆盖应解析出其中的 exiftool 可执行文件"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

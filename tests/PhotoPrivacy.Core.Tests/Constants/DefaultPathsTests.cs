@@ -69,6 +69,57 @@ public sealed class DefaultPathsTests
         }
     }
 
+    // Design(#33): exiftool.path 目录式覆盖——给定已安装的 ExifTool 目录，解析出其中的
+    // exiftool/exiftool.exe（对齐 ExifToolGUI 的 ETOverrideDir）。
+    [Fact]
+    public void ResolveExifToolExecutable_Should_Resolve_Directory_To_Contained_Exe()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "pp-etoverride-" + Guid.NewGuid().ToString("N"));
+        var exeName = OperatingSystem.IsWindows() ? "exiftool.exe" : "exiftool";
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, exeName), "stub");
+
+        try
+        {
+            Assert.Equal(
+                Path.Combine(directory, exeName),
+                DefaultPaths.ResolveExifToolExecutable(directory));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    // Design(#33): 用户给的是 exiftool 可执行文件本身的绝对路径时，原样返回，不画蛇添足。
+    [Fact]
+    public void ResolveExifToolExecutable_Should_Return_Existing_File_AsIs()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "pp-etoverride-" + Guid.NewGuid().ToString("N"));
+        var exeName = OperatingSystem.IsWindows() ? "exiftool.exe" : "exiftool";
+        Directory.CreateDirectory(directory);
+        var exePath = Path.Combine(directory, exeName);
+        File.WriteAllText(exePath, "stub");
+
+        try
+        {
+            Assert.Equal(exePath, DefaultPaths.ResolveExifToolExecutable(exePath));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    // Design(#33): 既非文件也非目录的无效值原样返回，交由 AppConfigValidator 报 not found。
+    [Fact]
+    public void ResolveExifToolExecutable_Should_Return_Nonexistent_Path_AsIs()
+    {
+        var bogus = Path.Combine(Path.GetTempPath(), "pp-etoverride-" + Guid.NewGuid().ToString("N") + "-gone");
+        Assert.Equal(bogus, DefaultPaths.ResolveExifToolExecutable(bogus));
+        Assert.Equal(string.Empty, DefaultPaths.ResolveExifToolExecutable(string.Empty));
+    }
+
     // DefaultHotFolder must be app-local (BaseDirectory/hot), not user's system pictures
     [Fact]
     public void DefaultHotFolder_Should_Be_App_Local_Hot_Directory()

@@ -24,6 +24,7 @@ PhotoPrivacy 自动清除热文件夹中图片/视频/PDF 的隐私元数据（E
 - Probe + Wipe 两阶段：先 `-json` 探测元数据，有隐私字段才执行 `-all=` 清除
 - 支持连接池（`stay_open_pool_size`）并发处理
 - **随包内置**：发布包在 `<包根>/ExifTool/` 带一份固定版本（Windows 为自带 Perl 运行时的 `exiftool.exe` + `exiftool_files/`；Linux/macOS 为 `exiftool` 脚本 + `lib/`，需目标机有 `perl`）。配置模板的 `exiftool.path` 留空即按运行时探测：内置目录优先，其次系统安装位置
+- **自带 ExifTool（#33）**：`exiftool.path` 也可直接填一个**安装目录**（对齐 ExifToolGUI 的 `ETOverrideDir` 做法），运行时解析出目录内的 `exiftool.exe` / `exiftool`；构建发版时用 `--exiftool-path-override <目录>`（`publish.sh`）或 `-ExifToolPathOverride <目录>`（`publish-app.ps1`）直接打包该目录、跳过下载。发布脚本钉死的 SHA256 由 `scripts/verify-exiftool-download.sh` 与官方 `exiftool.org/checksums.txt` 周常对账
 
 ### 格式支持
 - **34 种扩展名**（与擦除策略映射表一一对应）：JPEG（jpg/jpeg/jpe/jps/jph）、TIFF/DNG、RAW（cr2/cr3/arw/nef/orf/raf/rw2/pef/srw/sr2）、PNG/APNG、HEIF/AVIF、MOV/MP4（mov/mp4/m4v/qt/3gp/3g2）、PDF、EPS/PS/AI
@@ -43,7 +44,8 @@ PhotoPrivacy 自动清除热文件夹中图片/视频/PDF 的隐私元数据（E
 
 1. 复制 `config/config.sample.json` 为 `config/config.json` 并按环境修改。
 2. 确认 ExifTool 可用：发布包自带 `<包根>/ExifTool/`，不必另装；自行安装时把 `exiftool.path` 指到可执行文件
-   （Windows 需同级 `exiftool_files`，Linux/macOS 需同级 `lib/` 或放在 `/usr/bin`、`/usr/local/bin` 等系统目录）。
+   或指向其安装目录（#33，目录内需有 `exiftool.exe` + `exiftool_files`，或 `exiftool` + `lib/`），
+   也可放在 `/usr/bin`、`/usr/local/bin` 等系统目录由运行时探测。
 3. 本地一次性验证（命令行单次执行）：
 
 ```bash
