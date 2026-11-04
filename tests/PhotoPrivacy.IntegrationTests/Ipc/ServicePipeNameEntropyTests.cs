@@ -18,9 +18,11 @@ namespace PhotoPrivacy.IntegrationTests.Ipc;
 /// ④ 注入边界：通告器注入即接管，测试永不触碰真实注册表（含 elevated 运行）；生产注册表
 ///    通告（HKLM 写入）与 UI 侧动态解析的行为验收归人工 S4 复测。
 ///
-/// CI 平台限制（如实登记，先例 WindowsServicePipeAclTests）：.github/workflows/ci.yml 的
-/// test job 为 ubuntu-latest，Windows 专属断言在 CI 不执行；类型与调用的编译覆盖由 ubuntu
-/// 全量编译承担。随机后缀分布（不可预测性）不做统计断言——随机源为
+/// CI 平台（如实登记，#9 起多平台矩阵）：test job 在 ubuntu/windows/macos 三平台跑。
+/// Windows 专属断言（本类的 ServiceShared 随机名/静态回退往返）由 windows-pipe-isolation
+/// 专属 job 单类隔离真跑——本类与任何其他 collection 并发会冻结整个 test host
+/// （同 WindowsServicePipeAclTests 的 #9 实证，run 41920404363 组合二分），故不入主矩阵
+/// windows 腿。随机后缀分布（不可预测性）不做统计断言——随机源为
 /// RandomNumberGenerator（CSPRNG），格式与绑定行为是这里的主证据。
 /// </summary>
 public sealed class ServicePipeNameEntropyTests

@@ -7,15 +7,21 @@ on:
 jobs:
   # dotnet 测试多平台矩阵（#9）：ubuntu/windows/macos 三平台同口径跑 test job；
   # fail-fast 关闭——一次 run 同时暴露全部平台的失败，便于按平台分票处置。
-  # Windows 侧首跑出现「92/141 完成后全程静默直至 1h 运行超时」的挂起（run 41891933332 /
-  # 41904675966 复现，完成数 92→70 漂移，blame-hang 在该形态下未触发）——单测逐一读过均
-  # 有界，疑系统性饥饿。win-diag 用单类隔离矩阵定位挂者：每类独立进程 + 12 分钟 job 超时，
-  # 超时的 job 即挂者所在类，逐用例 console 输出点名挂点。定位修复后随返修移除本 job。
+  # Windows 腿排除 WindowsServicePipeAclTests / ServicePipeNameEntropyTests（如实登记，#9）：
+  # 这两类与任何其他 collection 并发时会冻结整个 test host（xunit.runner.visualstudio 3.1.4 +
+  # windows runner 实证：单类隔离 15/15 全绿、含 ACL/Entropy 的并发组合全部 0 完成直至超时，
+  # run 41920404363 组合二分）；二类改由 windows-pipe-isolation 专属 job 隔离真跑，覆盖不缺。
+  # timeout-minutes: 25 封顶——.NET 10 dotnet test 的默认 1h 运行超时层会先于 VSTest blame-hang
+  # 生效并烧满 1 小时（run 41891933332/41904675966 实证），不再给挂起留 1h 预算。
   test:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+          - os: windows-latest
+            pipe_identity_isolation: true
+          - os: macos-latest
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
     permissions:
@@ -28,22 +34,11 @@ jobs:
         with:
           dotnet-version: "10.0.201"
       - name: Run tests (exclude Smoke/ExifTool)
-        run: >-
-          dotnet test PhotoPrivacy.sln --configuration Release
-          --filter "Category!=Smoke&Category!=ExifTool"
-          --blame-hang --blame-hang-timeout 00:10:00 --blame-hang-dump-type mini
-          --logger "console;verbosity=normal" --logger "trx"
-      - name: Upload test diagnostics (hang sequence/dump/trx)
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-diagnostics-${{ matrix.os }}
-          path: '**/TestResults/**'
-          retention-days: 7
-          if-no-files-found: ignore
+        run: dotnet test PhotoPrivacy.sln --configuration Release --filter "Category!=Smoke&Category!=ExifTool${{ matrix.pipe_identity_isolation && '&FullyQualifiedName!~WindowsServicePipeAclTests&FullyQualifiedName!~ServicePipeNameEntropyTests' || '' }}"
 
-  # 挂起定位专用（#9 Windows 首跑）：单类隔离矩阵，每类一个独立 test host。
-  win-diag:
+  # 服务管道 DACL 命名熵两类（#7/#70 行为测试）的 Windows CI 专属隔离跑（#9）：
+  # 与任何其他 collection 并发会冻结 test host（见 test job 注释与 #9 证据链），单类隔离实证全绿。
+  windows-pipe-isolation:
     runs-on: windows-latest
     timeout-minutes: 12
     permissions:
@@ -52,15 +47,8 @@ jobs:
       fail-fast: false
       matrix:
         suite:
-          # ALL = 全类单 host 复现（隔离已证 15/15 全绿 → 跨类并发互扰）；
-          # 组合对用于在并发形态下二分互扰方。
-          - ALL
-          - Pair_AclEntropy
-          - Pair_AclStartupSweep
-          - Pair_EntropyStartupSweep
-          - Pair_ReloadStartupSweep
-          - Pair_ReloadAcl
-          - Group_InMemWorkerIpc
+          - WindowsServicePipeAclTests
+          - ServicePipeNameEntropyTests
     steps:
       - uses: actions/checkout@v4
         with:
@@ -68,28 +56,8 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0.201"
-      - name: Run suite (isolated test host, blame-hang + console)
-        env:
-          DIAG_SUITE: ${{ matrix.suite }}
-        run: |
-          $filter = switch ($env:DIAG_SUITE) {
-            'ALL' { 'Category!=Smoke&Category!=ExifTool' }
-            'Pair_AclEntropy' { 'FullyQualifiedName~WindowsServicePipeAclTests|FullyQualifiedName~ServicePipeNameEntropyTests' }
-            'Pair_AclStartupSweep' { 'FullyQualifiedName~WindowsServicePipeAclTests|FullyQualifiedName~WorkerStartupSweepScopeTests' }
-            'Pair_EntropyStartupSweep' { 'FullyQualifiedName~ServicePipeNameEntropyTests|FullyQualifiedName~WorkerStartupSweepScopeTests' }
-            'Pair_ReloadStartupSweep' { 'FullyQualifiedName~WorkerReloadConfigRegressionTests|FullyQualifiedName~WorkerStartupSweepScopeTests' }
-            'Pair_ReloadAcl' { 'FullyQualifiedName~WorkerReloadConfigRegressionTests|FullyQualifiedName~WindowsServicePipeAclTests' }
-            'Group_InMemWorkerIpc' { 'FullyQualifiedName~WorkerIpcResidentStabilityTests|FullyQualifiedName~WorkerIpcResponseResilienceTests|FullyQualifiedName~WorkerIpcGetRecentLogsTests|FullyQualifiedName~IpcAuthClaimReconciliationTests|FullyQualifiedName~WorkerStartupSweepScopeTests' }
-          }
-          dotnet test tests/PhotoPrivacy.IntegrationTests --configuration Release --filter $filter --blame-hang --blame-hang-timeout 00:04:00 --blame-hang-dump-type mini --logger "console;verbosity=normal" --logger "trx"
-      - name: Upload suite diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: win-diag-${{ matrix.suite }}
-          path: '**/TestResults/**'
-          retention-days: 7
-          if-no-files-found: ignore
+      - name: Run suite (isolated test host)
+        run: dotnet test tests/PhotoPrivacy.IntegrationTests --configuration Release --filter "FullyQualifiedName~PhotoPrivacy.IntegrationTests.${{ matrix.suite }}"
 
   # rust 四 crate 矩阵（#9）：ubuntu 之外补 macOS——Windows 侧由 ui-check 覆盖
   # 测试（service/ui 原有，ipc/logs/rules 随 #9 补齐），不另建 Windows job。
