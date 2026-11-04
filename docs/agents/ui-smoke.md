@@ -293,9 +293,12 @@
   - **缺陷只在转换层**：gpui 的 `ShapedRun` 把逻辑位 0 的字形放到 x≈0（行左端），
     与 DWrite 的正确落位逐字镜像——词序反与「断开」的根源在这里。
 - **触发条件**：Windows 构建（`gpui-pre-windows`；0.3.10 实测，上游最新 0.3.11（2026-11-02 发布）
-  的同一 `DrawGlyphRun` 回调逐行未改，见证据清单的 diff）× 当前 UI 的任一 RTL 文案
-  （本仓 10 locale 中只有 `ar` 命中，`i18n.rs` 的 `is_rtl` 只判 ar）。LTR locale 不受影响
-  （探针英文对照：`bidiLevel=0`、起点 x=0，与既有 K2 九个 LTR locale 帧一致）。
+  的同一 `DrawGlyphRun` 回调逐行未改，见证据清单的 diff）× 当前 UI 的任一 RTL 文案。
+  其中「`is_rtl` 驱动的布局镜像」只有 `ar` locale 触发（`i18n.rs` 的 `is_rtl` 只判 ar）；
+  但「字形缺陷」命中的是**文本内容**而非界面语言——LTR locale 的界面文案不受影响
+  （探针英文对照：`bidiLevel=0`、起点 x=0，与既有 K2 九个 LTR locale 帧一致），而语言选择器的
+  阿语自称标签 `العربية`（`config.rs` 的 `LOCALES` endonym，不随界面语言翻译，任何 locale 的
+  配置页都渲染）同样命中本限制——探针 B 组即该字面串（`bidiLevel=1`，同一管线，无 locale 分支）。
 - **影响面**：机制上命中应用内**全部**阿语文案——不止 `status.configure_watch_folder` 这条首次配置引导
   （`K154-04` 总览帧：琥珀提示行仍在判据位置渲染、导航右侧镜像，但字形不可读），
   规则页/配置页的长说明文同样形态（`K154-05`/`K154-06` 帧：页面结构完整、文案全部镜像错排——
@@ -723,7 +726,8 @@
 - **取证通道**：整屏 PIL `ImageGrab` + 合成点击（`SetCursorPos` + `mouse_event`，#88 同款；
   工具 `photo-smoke-31\tools\winshot.py`，`SetWindowPos` 按 #88 教训显式声明 argtypes）；
   截图与文本取证存 `C:\Users\Administrator\photo-smoke-31\evidence\`（26 个文件，不入库），
-  哈希锚 `docs/agents/ui-smoke-evidence.sha256`。WSLg 窗口以「(Ubuntu)」后缀出现在 Windows 桌面，
+  哈希锚 `git show 389f6bf:docs/agents/ui-smoke-evidence.sha256`（#154 轮起清单只装当前一轮，
+  #31 的 26 条锚已随轮换转入该 git 历史版）。WSLg 窗口以「(Ubuntu)」后缀出现在 Windows 桌面，
   同一通道可截可点；导航/按钮坐标按 #88 的暗像素聚类标定（导航：总览 661/配置 709/服务管理 769/
   日志 829/规则 877，y≈235；服务页按钮行 y≈380/447/507）。
 - **环境适配（如实登记，不虚构）**：
