@@ -369,9 +369,7 @@ ui_shot() {
     rec FAIL "UI 截图 ${tag}：截图脚本缺失（${SHOT_SCRIPT}）"
     return 0
   fi
-  local uid out shot_dir ui_config ui_config_dir
-  local config_args
-  config_args=()
+  local uid out shot_dir
   uid="$(id -u "$GUI_USER")"
   out="$EVIDENCE_DIR/ui-shot-$tag.txt"
   # 截图只给 GUI 用户开一个专用子目录可写：root 侧证据文件不交出去，消除符号链接
@@ -379,25 +377,12 @@ ui_shot() {
   shot_dir="$EVIDENCE_DIR/ui-shots"
   mkdir -p "$shot_dir"
   chown "$GUI_USER" "$shot_dir" 2>/dev/null || true
-  # 安装后 config.json 是 0750/0640 服务账户:数据组，GUI 用户读不到（#167 配置写入边界）。
-  # 截图脚本需要一份配置副本打开 #174 的静默开关：root 侧复制到 root 属主目录（GUI 不可写，
-  # 避免在 GUI 可写目录里被预置符号链接做 CWE-59 截断），文件本身归 GUI 只读，不为了取证
-  # 反过来放宽安装目录 / 配置权限。
-  if [[ -f "$CONFIG_PATH" ]]; then
-    ui_config_dir="$EVIDENCE_DIR/ui-config"
-    mkdir -p "$ui_config_dir"
-    chmod 0755 "$ui_config_dir"
-    ui_config="$ui_config_dir/ui-config-$tag.json"
-    rm -f "$ui_config"
-    cp "$CONFIG_PATH" "$ui_config"
-    chown "$GUI_USER" "$ui_config" 2>/dev/null || true
-    chmod 0600 "$ui_config"
-    config_args=(--config "$ui_config")
-  fi
+  # 安装后 config.json 对 GUI 不可读（0750/0640 服务账户:数据组，#167 配置写入边界）；
+  # 截图脚本自行退回最小默认配置（只开 #174 静默开关），这里不再以 root 复制受保护配置，
+  # 避免把配置字节交给 GUI 或为取证放宽安装目录权限。
   local rc=0
   run_with_timeout 60 "$out" launchctl asuser "$uid" sudo -u "$GUI_USER" \
-    bash "$SHOT_SCRIPT" --install-dir "$INSTALL_DIR" --tag "$tag" --out-dir "$shot_dir" \
-    ${config_args[@]+"${config_args[@]}"} || rc=$?
+    bash "$SHOT_SCRIPT" --install-dir "$INSTALL_DIR" --tag "$tag" --out-dir "$shot_dir" || rc=$?
   if [[ $rc -eq 0 ]] && [[ -s "$shot_dir/ui-$tag.png" ]]; then
     rec PASS "UI Service 页截图文件已产出（${tag}，内容待目检；无图形加速 VM 里 gpui 可能黑屏）：ui-shots/ui-$tag.png"
   else

@@ -10,13 +10,10 @@
 # 注意下面的第二次实例唤起只是兜「已有实例先跑起来」的单实例守卫，它对 #174 的回归不敏感
 # （静默被吞时第二实例照样能把窗带出来）——不能拿它当本票的判定依据。
 #
-# 用法: ./capture-ui-service-page.sh --install-dir <dir> --tag <name> --out-dir <dir> [--config <file>]
+# 用法: ./capture-ui-service-page.sh --install-dir <dir> --tag <name> --out-dir <dir>
 #   --install-dir  已解压发布包的安装目录（含 PhotoPrivacy 与 config/config.json）
 #   --tag          证据标签（如 running / stopped）
 #   --out-dir      证据落盘目录
-#   --config       可选：由 root 侧预先复制并授予 GUI 可读的配置副本。安装后 config.json 是
-#                  0750/0640 服务账户:数据组，GUI 用户读不到；CI harness 以 root 复制后传入，
-#                  避免截图取证反过来要求放宽配置权限（#167 配置写入边界）。
 #
 # 截图内容（页面呈现）不作机器断言，产物供目检；机器可读的 UI 层探测证据由
 # PhotoPrivacy --service-probe-report 另行产出（verify-launchd-service.sh 负责对拍）。
@@ -26,17 +23,15 @@ set -euo pipefail
 INSTALL_DIR=""
 TAG=""
 OUT_DIR=""
-CONFIG_SRC=""
 
 usage() {
   cat <<EOF
-Usage: $0 --install-dir <dir> --tag <name> --out-dir <dir> [--config <file>]
+Usage: $0 --install-dir <dir> --tag <name> --out-dir <dir>
 
 Options:
   --install-dir <dir>  已解压发布包的安装目录（含 PhotoPrivacy）
   --tag <name>         证据标签（如 running / stopped）
   --out-dir <dir>      证据落盘目录
-  --config <file>      GUI 可读的配置副本（省略则读 ${INSTALL_DIR}/config/config.json）
   -h, --help           Show this help
 EOF
 }
@@ -46,7 +41,6 @@ while [[ $# -gt 0 ]]; do
     --install-dir) INSTALL_DIR="$2"; shift 2 ;;
     --tag) TAG="$2"; shift 2 ;;
     --out-dir) OUT_DIR="$2"; shift 2 ;;
-    --config) CONFIG_SRC="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage; exit 1 ;;
   esac
@@ -73,13 +67,15 @@ rm -f "$PNG"
 # #174：本脚本要证明的是「静默启动配置下 --open-page 仍能建窗」。发布包的 config 来自
 # config.sample.json（hide_main_window_on_startup: false），不显式打开这个开关，这条路径
 # 在 CI 上永远测不到。所以用配置副本打开它——安装目录里的 config.json 一字不动。
-# 安装后 config.json 对 GUI 用户不可读（0750/0640，服务账户:数据组）；--config 由 root 侧
-# 提供可读副本，缺省才退回直读安装目录（pre-install / 手工实机场景）。
+# 安装后 config.json 对 GUI 用户不可读（0750/0640，服务账户:数据组，#167 配置写入边界）；
+# 此时不复制受保护配置、也不放宽安装目录权限，改用最小默认配置（各节 serde default）只打开
+# 静默开关。UI 探测腿同样读不到该文件、按默认值工作，两腿的配置基线因此一致。
 UI_CONFIG="${OUT_DIR}/ui-config-${TAG}.json"
-if [[ -n "$CONFIG_SRC" ]]; then
-  cp "$CONFIG_SRC" "$UI_CONFIG"
-else
+if [[ -r "${INSTALL_DIR}/config/config.json" ]]; then
   cp "${INSTALL_DIR}/config/config.json" "$UI_CONFIG"
+else
+  echo "安装目录 config.json 对 GUI 不可读（预期：服务安装后 0750/0640）；截图改用最小默认配置" >&2
+  printf '{\n  "ui": {\n    "hide_main_window_on_startup": true\n  }\n}\n' > "$UI_CONFIG"
 fi
 SILENT_KEY='hide_main_window_on_startup'
 if [[ "$(grep -c "\"${SILENT_KEY}\"" "$UI_CONFIG")" -ne 1 ]]; then
