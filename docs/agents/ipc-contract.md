@@ -133,16 +133,46 @@ store/audit）建回来，再按上述契约回 `ok:false`（重建失败带 `re
     失败重解析、1s 版本轮询）；通告缺失/非法（字符集/长度校验防注入）回退静态名——旧版服务
     兼容。服务重启换名后心跳/版本/探测自愈；backfill 每轮 5s 重试时重读 endpoint watch
     （心跳重解析以同值抑制推送）。
-  - **已知残余**（如实登记）：① 后台管道同用户抢先建面无法以熵闭环——同用户进程可伪造任何
-    发现通道（HKCU 可写/管道枚举），完整修复需协议级服务端认证（即下方既有「客户端不做服务端
-    认证」边界）；② 混合版本窗口：新服务 + 旧 UI 表现为「服务不可达→回退后台」（发布目录
-    同体、升级关 UI，实际窗口≈0）；③ UI 启动恰逢服务重启的毫秒级通告空窗内可能读到陈旧
-    通告名——探测失败一拍后自愈；④ 同机授权用户以客户端身份连服务管道发任意请求仍是信任
-    边界内的既有行为（#1 语义）；⑤ 通告持续失败（权限性）且回退时的残留清除也失败——
-    UI 会钉死在陈旧通告值上（探测恒失败），需修复注册表写入权限后服务重启才恢复
-    （清除是 best-effort，审查返修 m1 已登记）。
+  - **已知残余**（如实登记）：① 已闭环——后台管道同用户抢先建面由客户端核验服务端进程身份
+    覆盖（见下方「后台管道服务端身份核验」）；新上限随之登记在该节。② 混合版本窗口：新服务
+    + 旧 UI 表现为「服务不可达→回退后台」（发布目录同体、升级关 UI，实际窗口≈0）；③ UI 启动
+    恰逢服务重启的毫秒级通告空窗内可能读到陈旧通告名——探测失败一拍后自愈；④ 同机授权用户
+    以客户端身份连服务管道发任意请求仍是信任边界内的既有行为（#1 语义）；⑤ 通告持续失败
+    （权限性）且回退时的残留清除也失败——UI 会钉死在陈旧通告值上（探测恒失败），需修复注册表
+    写入权限后服务重启才恢复（清除是 best-effort，审查返修 m1 已登记）。
+- 后台管道服务端身份核验（#7 残余① 闭环，客户端认证服务端）：
+  后台 Worker 由 UI 拉起，发现通道（拉起参数、同用户可写位置、管道枚举）同用户均可伪造，
+  命名熵无法闭环——改由**客户端核验服务端进程身份**，在连接建立后、首笔业务请求写入前完成
+  （占用同一份连接预算，一连接一请求与帧格式不变；AC3/AC4）。
+  - **Windows**：`GetNamedPipeServerProcessId` 取服务端 PID（Vista+，客户端句柄可用、无需
+    特权；Chromium mojo 的 `VerifyServerPrivilege` 同路径）→ 首选比对 UI 本次拉起的 Worker
+    子进程 PID（拉起后登记；Worker 崩溃重启由新一轮拉起覆盖）→ 回退
+    `OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)` + `QueryFullProcessImageNameW` 比对
+    已安装的 `PhotoPrivacyWorker.exe`（UI 重启但后台 Worker 仍在）。
+  - **Linux**：tokio `UnixStream::peer_cred()` 的 `SO_PEERCRED` pid，走同一判定链；回退读
+    `/proc/<pid>/exe`。
+  - **macOS**：spec 原假设「`LOCAL_PEERCRED` 的 xucred 不含 pid = 平台能力缺口」已按事实修正
+    ——std/tokio 在 macOS 经 `LOCAL_PEERPID` 取 pid（rust-lang/rust#79387），`UCred::pid`
+    可取值，PID 直配可用；但首版未实现 `proc_pidpath` 镜像回退 → 该回退场景按 D2
+    **fail-open + warning**，残余登记在下方。
+  - **失败语义**：PID/镜像不符或查询失败 → 该连接作废、不重试，计入既有 #169 三态的 Worker
+    启动失败（细节前缀 `untrusted IPC server:`），warning 可观测（含 PID 不符 / 进程已退出 /
+    查询失败的区分）；核验瞬间进程消失（`OpenProcess` 返回 `ERROR_INVALID_PARAMETER`、
+    `/proc` ENOENT）→ 按瞬时连接失败在连接预算内重试，不升级为授权失败；平台能力缺口或无
+    期望基准 → fail-open + warning（D2）。
+  - **范围**：只作用于后台端点。服务管道不叠加同核验（D3：命名熵 + 拆位 DACL + HKLM 通告
+    完整性已闭环，叠加只会扩大面与回归风险）。
+  - **C# 传输层同构**：`NamedPipeServerIdentity`（P/Invoke `SafePipeHandle`）+
+    构造期可选 `ServerProcessIdentityExpectation`；未注入时零行为变化。.NET 10 没有任何
+    托管 API 能取管道服务端 PID（P/Invoke 为唯一路径）；Rust 侧 tokio 无
+    `ClientOptions::desired_access` 的旧结论不受影响。
+  - **新上限（不虚标）**：同用户恶意软件仍可注入 UI、读 UI 内存——同用户本就是无隔离级差的
+    信任域；PID 快照核验存在固有的 PID 复用窗口（取 PID 到 `OpenProcess` 之间）；镜像路径是
+    speed bump 而非不可伪造凭据；WinVerifyTrust 签名核验未入首版（D4）；macOS 镜像回退
+    fail-open。出处：`ui/crates/photoprivacy-ipc/src/verify.rs`、`client.rs`（Rust 产品客户端）、
+    `src/PhotoPrivacy.Ipc/NamedPipeServerIdentity.cs`（C# 同构）。
 - Unix 服务模式不变（0660 + 组白名单）；Linux/macOS 的服务管道访问按各自机制另行核对（#70 AC）。
-- 客户端**不做**旧 UI 的 `PipeOptions.CurrentUserOnly` 属主校验（服务模式下自相矛盾）；理由见 `ui/crates/photoprivacy-ipc/src/client.rs` 注释。
+- 客户端**不做**旧 UI 的 `PipeOptions.CurrentUserOnly` 属主校验（服务模式下自相矛盾）；理由见 `ui/crates/photoprivacy-ipc/src/client.rs` 注释。后台端点自 #7 残余① 闭环起另做服务端进程身份核验（见上）；服务端点不叠加。
 
 ## UI 单实例唤起通道（非 Worker 协议）
 

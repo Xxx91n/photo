@@ -35,6 +35,8 @@ features = [
     # SQOS/打开 flags 常量为本地定义（client.rs），无需 SystemServices 特性（审查返修 n-R1 移除）。
     "Win32_Storage_FileSystem",
     "Win32_System_Registry",
+    # #7 残余①：后台管道客户端核验服务端进程身份（GetNamedPipeServerProcessId）。
+    "Win32_System_Pipes",
 ]
 
 [workspace.dependencies.libc]

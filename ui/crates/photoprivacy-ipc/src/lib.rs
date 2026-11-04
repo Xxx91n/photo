@@ -10,6 +10,7 @@ pub mod endpoints;
 pub mod monitor;
 pub mod protocol;
 pub mod single_instance;
+pub mod verify;
 
 pub use client::{IpcClient, IpcError, is_service_access_denied};
 pub use endpoints::{
@@ -26,4 +27,8 @@ pub use single_instance::{
     SHOW_WINDOW_MESSAGE, SHOW_WINDOW_PIPE, SingleInstanceGuard, UI_INSTANCE_NAME,
     notify_existing_instance, notify_existing_instance_named, spawn_show_window_server,
     spawn_show_window_server_named,
+};
+pub use verify::{
+    ImageProbeError, ProcessIdentityVerifier, ProcessImageProbe, ServerGuard,
+    ServerIdentityVerifier, ServerPeer, UnverifiablePolicy, VerifyOutcome,
 };

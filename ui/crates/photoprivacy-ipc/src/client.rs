@@ -1,7 +1,9 @@
 use crate::endpoints::Endpoint;
 use crate::protocol::{self, MAX_RESPONSE_BYTES, Request, Response, Status, methods};
+use crate::verify::{ServerGuard, ServerPeer, UnverifiablePolicy, VerifyOutcome};
 use std::fmt;
 use std::io;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use tokio::io::AsyncWriteExt;
@@ -69,6 +71,9 @@ pub enum IpcError {
     Oversize,
     Protocol(serde_json::Error),
     Rejected(String),
+    /// 服务端进程身份核验失败（#7 残余①）：连接已建立但对端不是期望的 Worker。
+    /// 与 `Connect` 分开携带原因，供编排层归入既有的 Worker 启动失败分类。
+    ServerIdentity(String),
 }
 
 impl fmt::Display for IpcError {
@@ -80,6 +85,9 @@ impl fmt::Display for IpcError {
             IpcError::Oversize => write!(f, "响应超过 {MAX_RESPONSE_BYTES} 字节上限"),
             IpcError::Protocol(err) => write!(f, "响应 JSON 解析失败: {err}"),
             IpcError::Rejected(message) => write!(f, "Worker 拒绝请求: {message}"),
+            IpcError::ServerIdentity(reason) => {
+                write!(f, "IPC 服务端身份核验失败: {reason}")
+            }
         }
     }
 }
@@ -94,6 +102,8 @@ pub struct IpcClient {
     request_timeout: Duration,
     gate: tokio::sync::Mutex<()>,
     next_id: AtomicU64,
+    /// 服务端身份核验作用域（#7 残余①）：仅后台端点的连接被核验，服务端点不叠加（D3）。
+    server_guard: Option<Arc<ServerGuard>>,
 }
 
 impl Default for IpcClient {
@@ -109,6 +119,7 @@ impl IpcClient {
             request_timeout: REQUEST_TIMEOUT,
             gate: tokio::sync::Mutex::new(()),
             next_id: AtomicU64::new(1),
+            server_guard: None,
         }
     }
 
@@ -119,6 +130,13 @@ impl IpcClient {
             connect_timeout,
             ..Self::new()
         }
+    }
+
+    /// 挂上服务端身份核验器（#7 残余①）：guard 只对其作用域端点生效，核验发生在连接建立后、
+    /// 首笔业务请求之前，占用同一份连接预算。
+    pub fn with_server_guard(mut self, guard: Arc<ServerGuard>) -> Self {
+        self.server_guard = Some(guard);
+        self
     }
 
     pub async fn status(&self, endpoint: &Endpoint) -> Result<(Status, Option<i32>), IpcError> {
@@ -221,10 +239,26 @@ impl IpcClient {
         loop {
             // 每次尝试都套上剩余预算：Unix 非阻塞 connect 可能等到可写（EINPROGRESS），
             // 不设上限会让一次探测挂到 OS 级连接超时，远超 700ms 的连接预算。
+            // #7：服务端身份核验并入同一次尝试——核验失败不属于「连接没建立」，
+            // 但同受连接预算约束（AC4 超时语义不变）。
             let remaining = deadline.saturating_duration_since(Instant::now());
-            match timeout(remaining, connect_once(endpoint)).await {
-                Ok(Ok(stream)) => return Ok(stream),
-                Ok(Err(err)) => {
+            match timeout(
+                remaining,
+                attempt_connect(endpoint, self.server_guard.as_deref()),
+            )
+            .await
+            {
+                Ok(ConnectAttempt::Connected(stream)) => return Ok(stream),
+                Ok(ConnectAttempt::TransientIdentity(reason)) => {
+                    // 核验瞬间对端进程消失：按瞬时连接失败在预算内重试，不升级为授权失败（AC5）。
+                    if Instant::now() >= deadline {
+                        return Err(IpcError::ServerIdentity(reason));
+                    }
+                }
+                Ok(ConnectAttempt::RejectedIdentity(reason)) => {
+                    return Err(IpcError::ServerIdentity(reason));
+                }
+                Ok(ConnectAttempt::Failed(err)) => {
                     let retryable = is_retryable(&err);
                     if !retryable || Instant::now() >= deadline {
                         return Err(IpcError::Connect(err));
@@ -237,10 +271,83 @@ impl IpcClient {
     }
 }
 
+/// 连接尝试的结果：把「连不上」与「连上了但不是期望的 Worker」分开，
+/// 后者不得被 busy/not-found 的重试语义吞掉。
+enum ConnectAttempt {
+    Connected(Stream),
+    TransientIdentity(String),
+    RejectedIdentity(String),
+    Failed(io::Error),
+}
+
+/// 建立连接并在需要时核验服务端身份（#7 残余①）：核验先于任何业务数据写入。
+async fn attempt_connect(endpoint: &Endpoint, guard: Option<&ServerGuard>) -> ConnectAttempt {
+    let stream = match connect_once(endpoint).await {
+        Ok(stream) => stream,
+        Err(err) => return ConnectAttempt::Failed(err),
+    };
+
+    let Some(guard) = guard.filter(|guard| guard.applies_to(endpoint)) else {
+        return ConnectAttempt::Connected(stream);
+    };
+
+    match guard.verify(&probe_server_peer(&stream)) {
+        VerifyOutcome::Trusted => ConnectAttempt::Connected(stream),
+        VerifyOutcome::Rejected(reason) => ConnectAttempt::RejectedIdentity(reason),
+        VerifyOutcome::Transient(reason) => ConnectAttempt::TransientIdentity(reason),
+        VerifyOutcome::Unverifiable(reason) => match guard.unverifiable_policy() {
+            // #7 D2：能力缺口（如 macOS 未实现镜像回退）放行但留可观测 warning。
+            UnverifiablePolicy::FailOpen => {
+                eprintln!(
+                    "[photoprivacy-ui] IPC 服务端身份无法核验（{}），按 fail-open 放行: {reason}",
+                    endpoint.display()
+                );
+                ConnectAttempt::Connected(stream)
+            }
+            UnverifiablePolicy::FailClosed => {
+                ConnectAttempt::RejectedIdentity(format!("无法核验服务端身份: {reason}"))
+            }
+        },
+    }
+}
+
+/// 取服务端进程 PID（#7 残余①）：Windows 经管道客户端句柄查服务端 PID；
+/// Unix 走内核在 connect 时绑定的对端凭据（Linux `SO_PEERCRED`、macOS `LOCAL_PEERPID`）。
+#[cfg(windows)]
+fn probe_server_peer(stream: &Stream) -> ServerPeer {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::System::Pipes::GetNamedPipeServerProcessId;
+
+    let mut pid: u32 = 0;
+    // SAFETY: stream 在本调用期间存活，管道句柄有效；pid 是本栈上的有效可写出参。
+    let ok = unsafe { GetNamedPipeServerProcessId(stream.as_raw_handle(), &mut pid) };
+    if ok != 0 {
+        ServerPeer::Known(pid)
+    } else {
+        ServerPeer::QueryFailed(std::io::Error::last_os_error().to_string())
+    }
+}
+
+#[cfg(unix)]
+fn probe_server_peer(stream: &Stream) -> ServerPeer {
+    match stream.peer_cred() {
+        Ok(cred) => match cred.pid() {
+            Some(pid) if pid > 0 => ServerPeer::Known(pid as u32),
+            Some(_) => ServerPeer::Unavailable("对端 PID 非正".to_string()),
+            None => ServerPeer::Unavailable("对端凭据不含 PID".to_string()),
+        },
+        Err(err) => ServerPeer::QueryFailed(err.to_string()),
+    }
+}
+
 // 旧 UI 的客户端带 `PipeOptions.CurrentUserOnly`，连接后校验管道属主 == 当前用户。该选项在服务模式下
 // 自相矛盾（服务 Worker 以 LocalSystem 运行，属主是 SYSTEM，用户 UI 必然被拒）——换栈调研 §2.6 已把
 // 「Windows 服务模式管道认证」登记为既有缺陷，属主边界改由服务端 DACL 承担，客户端不复制该校验。
 // Design(#49): IPC 认证以 OS 身份为边界（服务端 DACL），客户端不做属主校验。
+//
+// #7 残余①（后台管道同用户抢先建面）由本文件 + verify.rs 闭环：连接建立后、首笔业务请求之前
+// 核验服务端进程身份（UI 拉起的 Worker PID 优先、进程镜像路径回退），失败即作废该连接；
+// 服务管道不叠加（命名熵 + 拆位 DACL + HKLM 通告已闭环，D3）。
 //
 // #7 起客户端改以细粒度掩码打开（IPC_CLIENT_DESIRED_ACCESS）：tokio 1.54 的 ClientOptions 无
 // desired_access 重载（#7 票内评论所述 API 不存在，docs.rs 核实），故自写原生 CreateFileW 再经

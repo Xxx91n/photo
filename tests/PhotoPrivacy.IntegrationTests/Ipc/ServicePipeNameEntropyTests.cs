@@ -127,7 +127,8 @@ public sealed class ServicePipeNameEntropyTests
         }
 
         // 后台管道保持静态名 + CurrentUserOnly：同用户发现通道（HKCU/管道枚举）同用户可伪造，
-        // 熵无法闭环——刻意不施加（#7 残余登记，完整修复需协议级服务端认证）。
+        // 熵无法闭环——刻意不施加；同用户抢先建面由客户端核验服务端进程身份闭环
+        // （#7 残余①，NamedPipeServerIdentity）。
         var baseName = NewPipeName();
         await using var transport = new NamedPipeIpcTransport(baseName);
         await transport.ListenAsync(CancellationToken.None);
