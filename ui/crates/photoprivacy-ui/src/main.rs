@@ -122,7 +122,7 @@ fn audit_fallback_directory() -> PathBuf {
 
 /// 启动建窗判定：静默启动（#59）与显式 `--open-page`（#168）同时命中时的优先序。
 ///
-/// 显式 CLI 请求覆盖隐默默认（#174）：静默配置下给出 `--open-page` 仍建窗并停到指定页，
+/// 显式 CLI 请求覆盖静默默认（#174）：静默配置下给出 `--open-page` 仍建窗并停到指定页，
 /// 否则 #168 的取证脚本 `scripts/capture-ui-service-page.sh` 在配了静默启动的机器上取不到窗口。
 /// 未给 `--open-page` 时维持 #59 语义——静默即不建窗，等托盘唤起。
 fn should_open_main_window(start_hidden: bool, open_page: Option<app::Page>) -> bool {
