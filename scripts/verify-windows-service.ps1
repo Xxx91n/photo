@@ -144,7 +144,7 @@ try {
   $currentUserSid = ([System.Security.Principal.WindowsIdentity]::GetCurrent()).User.Value
   $serviceCreatedByHarness = $true
   Capture "01-install.txt" {
-    & (Join-Path $PSHOME (if ($PSVersionTable.PSEdition -eq "Core") { "pwsh.exe" } else { "powershell.exe" })) -ExecutionPolicy Bypass -File $installScript `
+    & $installScript `
       -Action "install" `
       -ServiceName $ServiceName `
       -ExePath $stagedWorker `
@@ -343,7 +343,7 @@ try {
 
   # ---------- 8. 卸载与清理验证 ----------
   Capture "06-uninstall.txt" {
-    & (Join-Path $PSHOME (if ($PSVersionTable.PSEdition -eq "Core") { "pwsh.exe" } else { "powershell.exe" })) -ExecutionPolicy Bypass -File $installScript `
+    & $installScript `
       -Action "uninstall" `
       -ServiceName $ServiceName
   }
