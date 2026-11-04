@@ -72,7 +72,7 @@
 | E1 | 空日志时日志页显示空态占位 | 通过 | 2026-10-29 实机目检：空日志时日志页显示空态占位提示 |
 | E2 | 向监控目录放入照片，Worker 处理后日志页即时出新条目（无需手动刷新） | 通过 | 后端链路通过（放入照片由 stay_open ExifTool 清理并产生审计日志）；实机配置有效 hot_folder 后日志即时刷新 |
 | E3 | 不同事件类型的呈现可区分（级别/事件类型） | 通过 | 2026-10-29 实机目检：不同事件类型的呈现可区分（级别与事件类型正常渲染） |
-| E4 | 清空后列表立即空；重启后旧日志不回灌 | 通过（探针级 + 2026-11-05 实机全链路复测） | 2026-10-29 实机目检：点击清空后列表立即变空，但重启之后旧日志又重新出现（核查为旧时间的日志，属于新旧 UI 重构前就存在的既有 BUG；复现步骤：放入图片产生日志 → 点击清空 → 关闭并重启 UI → 旧日志回灌）。复测（2026-11-01 #139）：随 #102 B′ 方案（清空写水位、重启按行内 UTC 时刻过滤）修复后做探针复现——**取证通道是 Rust 行为测试，非实机 UI 目检**：真实 `AuditFeed` 双通道 + `ClearWatermark` 落盘，同进程清空 → 重启读回水位 → Worker 末 50 行窗口的已清历史不回灌、清空后新行照常交付；含跨日、归档改名、#129 分叉时窗几何与 IPC 零协议守卫（`e4_probe_…`/`fork_window_…`/`method_surface_…` 在 CI 各自 ok）。CI run [41293932607](https://github.com/Xxx91n/photo/actions/runs/41293932607)（head `50d4fcdd`，PR #143）rust/test/ui-check/markers 四 job 全绿、全 crate 0 failed。**严格口径实机复测（2026-11-05，与 #57 AC2 同轮同构建，head `b72d489` / Release run 41854940207，帧见下文「AC2/E4 组产物记录」）**：622 条灌入后点「清空」→ 计数 0 条 + 空态占位「暂无审计条目」（帧 `f01-after-clear.png`），`config` 同目录落盘 `logs-clear-watermark.json`（00:10:57，51 B）；`taskkill` 完全退出 UI+Worker（进程数归 0）→ 重启 UI → 仅新会话自身 2 条（ExifTool started / Service started），622 条已清历史不回灌（帧 `f02-restart-no-refill.png`）；重启后追加 1 条新日志 4 s 内出现在列表顶部「Fresh line after restart (E4)」（帧 `f03-new-line-appears.png`）。「点清空 → 完全退出并重启 UI → 旧日志不回灌 → 新日志正常追加」完整 UI 路径通过 |
+| E4 | 清空后列表立即空；重启后旧日志不回灌 | 通过（探针级 + 2026-11-05 实机全链路复测） | 2026-10-29 实机目检：点击清空后列表立即变空，但重启之后旧日志又重新出现（核查为旧时间的日志，属于新旧 UI 重构前就存在的既有 BUG；复现步骤：放入图片产生日志 → 点击清空 → 关闭并重启 UI → 旧日志回灌）。复测（2026-11-01 #139）：随 #102 B′ 方案（清空写水位、重启按行内 UTC 时刻过滤）修复后做探针复现——**取证通道是 Rust 行为测试，非实机 UI 目检**：真实 `AuditFeed` 双通道 + `ClearWatermark` 落盘，同进程清空 → 重启读回水位 → Worker 末 50 行窗口的已清历史不回灌、清空后新行照常交付；含跨日、归档改名、#129 分叉时窗几何与 IPC 零协议守卫（`e4_probe_…`/`fork_window_…`/`method_surface_…` 在 CI 各自 ok）。CI run [41293932607](https://github.com/Xxx91n/photo/actions/runs/41293932607)（head `50d4fcdd`，PR #143）rust/test/ui-check/markers 四 job 全绿、全 crate 0 failed。**严格口径实机复测（2026-11-05，与 #57 AC2 同轮同构建，head `b72d489` / Release run 41854940207，帧见下文「AC2/E4 组产物记录」）**：622 条灌入后点「清空」→ 计数 0 条 + 空态占位「暂无审计条目」（帧 `f01-after-clear.png`），`config` 同目录落盘 `logs-clear-watermark.json`（00:10:57，51 B）；`Stop-Process`（TerminateProcess，与 `taskkill /F` 同语义）完全退出 UI+Worker（进程数归 0）→ 重启 UI → 仅新会话自身 2 条（ExifTool started / Service started），622 条已清历史不回灌（帧 `f02-restart-no-refill.png`）；重启后追加 1 条新日志 4 s 内出现在列表顶部「Fresh line after restart (E4)」（帧 `f03-new-line-appears.png`）。「点清空 → 完全退出并重启 UI → 旧日志不回灌 → 新日志正常追加」完整 UI 路径通过 |
 | E5 | 日志级别平铺选项组切换生效（高档位下低级别事件不再出现） | 通过 | 2026-10-29 实机目检：平铺日志级别切换生效，高档位下低级别事件被过滤隐藏 |
 
 ### F 按钮与窗口（新栈锚点口径）
@@ -738,7 +738,7 @@
 - **#102 E4 帧**（严格口径：完整 UI 路径）：
   - `f01-after-clear.png`：点「清空」→ 0 条 + 空态占位「暂无审计条目」，`config` 同目录落盘
     `logs-clear-watermark.json`（00:10:57，51 B）；
-  - `f02-restart-no-refill.png`：`taskkill` 完全退出 UI+Worker（进程数归 0）→ 重启 →
+  - `f02-restart-no-refill.png`：`Stop-Process`（TerminateProcess）完全退出 UI+Worker（进程数归 0）→ 重启 →
     仅新会话自身 2 条（ExifTool started / Service started），622 条已清历史不回灌；
   - `f03-new-line-appears.png`：重启后追加 1 条新日志 4 s 内出现在列表顶部
     （「Fresh line after restart (E4)」），计数 3 条。
