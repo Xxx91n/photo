@@ -52,21 +52,15 @@ jobs:
       fail-fast: false
       matrix:
         suite:
-          - DesignMarkerSourceTests
-          - InvariantReferenceReconciliationTests
-          - IpcAuthClaimReconciliationTests
-          - Net10CompatibilityGuardTests
-          - ProcessHygieneGuardTests
-          - PublishPropertiesCsprojGuardTests
-          - ServicePipeNameEntropyTests
-          - SourceLintTests
-          - WindowsServicePipeAclTests
-          - WorkerEntryGuardTests
-          - WorkerIpcGetRecentLogsTests
-          - WorkerIpcResidentStabilityTests
-          - WorkerIpcResponseResilienceTests
-          - WorkerStartupSweepScopeTests
-          - WorkerReloadConfigRegressionTests
+          # ALL = 全类单 host 复现（隔离已证 15/15 全绿 → 跨类并发互扰）；
+          # 组合对用于在并发形态下二分互扰方。
+          - ALL
+          - Pair_AclEntropy
+          - Pair_AclStartupSweep
+          - Pair_EntropyStartupSweep
+          - Pair_ReloadStartupSweep
+          - Pair_ReloadAcl
+          - Group_InMemWorkerIpc
     steps:
       - uses: actions/checkout@v4
         with:
@@ -75,9 +69,19 @@ jobs:
         with:
           dotnet-version: "10.0.201"
       - name: Run suite (isolated test host, blame-hang + console)
-        run: >-
-          dotnet test tests/PhotoPrivacy.IntegrationTests --configuration Release
-          --filter "FullyQualifiedName~PhotoPrivacy.IntegrationTests.${{ matrix.suite }}"
+        env:
+          DIAG_SUITE: ${{ matrix.suite }}
+        run: |
+          $filter = switch ($env:DIAG_SUITE) {
+            'ALL' { 'Category!=Smoke&Category!=ExifTool' }
+            'Pair_AclEntropy' { 'FullyQualifiedName~WindowsServicePipeAclTests|FullyQualifiedName~ServicePipeNameEntropyTests' }
+            'Pair_AclStartupSweep' { 'FullyQualifiedName~WindowsServicePipeAclTests|FullyQualifiedName~WorkerStartupSweepScopeTests' }
+            'Pair_EntropyStartupSweep' { 'FullyQualifiedName~ServicePipeNameEntropyTests|FullyQualifiedName~WorkerStartupSweepScopeTests' }
+            'Pair_ReloadStartupSweep' { 'FullyQualifiedName~WorkerReloadConfigRegressionTests|FullyQualifiedName~WorkerStartupSweepScopeTests' }
+            'Pair_ReloadAcl' { 'FullyQualifiedName~WorkerReloadConfigRegressionTests|FullyQualifiedName~WindowsServicePipeAclTests' }
+            'Group_InMemWorkerIpc' { 'FullyQualifiedName~WorkerIpcResidentStabilityTests|FullyQualifiedName~WorkerIpcResponseResilienceTests|FullyQualifiedName~WorkerIpcGetRecentLogsTests|FullyQualifiedName~IpcAuthClaimReconciliationTests|FullyQualifiedName~WorkerStartupSweepScopeTests' }
+          }
+          dotnet test tests/PhotoPrivacy.IntegrationTests --configuration Release --filter $filter --blame-hang --blame-hang-timeout 00:04:00 --blame-hang-dump-type mini --logger "console;verbosity=normal" --logger "trx"
           --blame-hang --blame-hang-timeout 00:04:00 --blame-hang-dump-type mini
           --logger "console;verbosity=normal" --logger "trx"
       - name: Upload suite diagnostics
