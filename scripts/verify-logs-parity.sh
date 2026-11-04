@@ -51,7 +51,7 @@ echo "Evidence dir: $EVIDENCE_DIR" | tee -a "$SUMMARY_FILE"
 
 # 1. 模拟大批量审计日志文件写入（本地日期基准）
 TODAY=$(date '+%Y-%m-%d')
-AUDIT_FILE="${AUDIT_DIR}/audit-${TODAY}.jsonl"
+AUDIT_FILE="$(cd "$AUDIT_DIR" && pwd)/audit-${TODAY}.jsonl"
 
 echo "[Step 1] 生成大批量日志数据: ${LOG_COUNT} 条 -> ${AUDIT_FILE}" | tee -a "$SUMMARY_FILE"
 START_TS=$(date +%s)
@@ -72,9 +72,14 @@ if command -v cargo >/dev/null 2>&1; then
   (cd ui && cargo test -p photoprivacy-logs --test large_volume_test -- --nocapture) | tee -a "$SUMMARY_FILE"
   echo "PASS: cargo test -p photoprivacy-logs --test large_volume_test 验证通过" | tee -a "$SUMMARY_FILE"
 else
+  CARGO_SKIPPED=1
   echo "WARN: 本地未预装 cargo，交由 CI 执行该测试" | tee -a "$SUMMARY_FILE"
 fi
 
 echo "=== 验证结果汇总 ===" | tee -a "$SUMMARY_FILE"
-echo "PASS: 大批量日志注入与容量验证完成" | tee -a "$SUMMARY_FILE"
+if [[ "${CARGO_SKIPPED:-0}" -eq 1 ]]; then
+  echo "SKIP: 日志生成完成；LogBuffer 容量测试未执行（cargo 不可用）" | tee -a "$SUMMARY_FILE"
+else
+  echo "PASS: 大批量日志注入与容量验证完成" | tee -a "$SUMMARY_FILE"
+fi
 exit 0

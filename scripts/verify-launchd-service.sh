@@ -7,10 +7,12 @@
 #   - 安装走 scripts/install-launchd-service.sh（MacOps::install 同款，仅跳过 osascript 提权包装——
 #     本 harness 本身要求 root 运行）；
 #   - 停止/启动/卸载用 MacOps 同款 launchctl 命令串；
-#   - 状态判定同 MacProbe::state + parse_launchctl_list：launchctl list <label> 退出码 + PID 行
-#     + plist 存在性（plist 在而未加载 = 已安装未运行，不是未安装）。
+#   - 状态判定同 MacProbe::state + parse_launchctl_print：launchctl print system/<label> 退出码 + PID 行
+#     + plist 存在性（plist 在而未加载 = 已安装未运行，不是未安装）。显式系统域查询——legacy
+#     `launchctl list <label>` 按调用者域查找，GUI 用户查不到系统 LaunchDaemon（#172）。
 # 因此脚本结论可直接代表新 UI Service 页探测/操作语义；UI 层证据两路产出：
-#   - 机器可读：PhotoPrivacy --service-probe-report 与 CLI probe_state 对拍（硬断言，UI/CLI 一致）；
+#   - 机器可读：PhotoPrivacy --service-probe-report 与 CLI probe_state 对拍（硬断言，UI/CLI 一致）。
+#     探测报告以 GUI 用户语境运行（与截图同语境）——对拍结果才代表真实 Service 页行为（#172）；
 #   - 截图：--ui-shots 时经 capture-ui-service-page.sh 以 GUI 用户截 Service 页（内容供目检）。
 # 用法：sudo ./scripts/verify-launchd-service.sh --release-dir <dir> [--evidence-dir <dir>] [--ui-shots]
 #   --release-dir   publish.sh 产出目录（须含 PhotoPrivacyWorker 与 config/config.json）
@@ -130,24 +132,29 @@ capture() {
 }
 
 probe_raw() {
-  # launchctl list 的退出码与 stdout（0=已加载）
+  # launchctl print system/<label> 的退出码与 stdout（显式系统域；0=系统域已加载，#172）
   set +e
-  PROBE_OUT="$(launchctl list "$SERVICE_LABEL" 2>/dev/null)"
+  PROBE_OUT="$(launchctl print "system/${SERVICE_LABEL}" 2>/dev/null)"
   PROBE_RC=$?
   set -e
 }
 
+extract_pid() {
+  # 从 print 输出提取 PID 行（新式 `pid = N`，兼容旧式 `"PID" = N;` 的引号；无 PID 行则空）
+  printf '%s\n' "$1" | sed -n 's/.*[Pp][Ii][Dd]"*[[:space:]]*=[[:space:]]*\([0-9][0-9]*\).*/\1/p' | head -n 1
+}
+
 get_pid() {
-  # 从 launchctl list <label> 的 plist 形态输出提取 PID（无 PID 行则空）
+  # 服务进程 PID（print 输出无 PID 行则空）
   probe_raw
   if [[ $PROBE_RC -ne 0 ]]; then
     return 0
   fi
-  printf '%s\n' "$PROBE_OUT" | sed -n 's/.*"PID"[[:space:]]*=[[:space:]]*\([0-9][0-9]*\).*/\1/p' | head -n 1
+  extract_pid "$PROBE_OUT"
 }
 
 probe_state() {
-  # 与 MacProbe::state 同判定：launchctl 退出码 + PID + plist 存在性
+  # 与 MacProbe::state 同判定：print 退出码 + PID + plist 存在性
   probe_raw
   if [[ $PROBE_RC -ne 0 ]]; then
     if [[ -f "$PLIST_PATH" ]]; then
@@ -158,7 +165,7 @@ probe_state() {
     return 0
   fi
   local pid
-  pid="$(printf '%s\n' "$PROBE_OUT" | sed -n 's/.*"PID"[[:space:]]*=[[:space:]]*\([0-9][0-9]*\).*/\1/p' | head -n 1)"
+  pid="$(extract_pid "$PROBE_OUT")"
   if [[ -n "$pid" ]] && [[ "$pid" -gt 0 ]]; then
     echo "Running"
   else
@@ -240,14 +247,42 @@ run_with_timeout() {
 ui_probe_report() {
   # UI 层 Service 页同源探测（--service-probe-report）与 CLI probe_state 对拍：
   # 一致 = 「新 UI Service 页探测到服务状态」的机器可读证据（建窗前退出，无需图形会话）。
+  # 探测以 GUI 用户语境运行（launchctl asuser + sudo -u，与截图同语境）——对拍结果才代表
+  # 真实 Service 页行为；root 语境探测会掩盖 launchctl 域语义缺陷（#172）。
   local tag="$1"
-  local report="$EVIDENCE_DIR/ui-probe-$tag.json"
-  local out="$EVIDENCE_DIR/ui-probe-$tag.txt"
+  if [[ -z "${SUDO_USER:-}" ]] || [[ "$SUDO_USER" == "root" ]]; then
+    rec FAIL "UI 探测 ${tag}：需经 sudo 从 GUI 用户运行（SUDO_USER 缺失）——root 语境对拍不代表真实 Service 页行为"
+    return 0
+  fi
+  if [[ ! -x "${INSTALL_DIR}/PhotoPrivacy" ]]; then
+    rec FAIL "UI 探测 ${tag}：UI 可执行文件缺失（${INSTALL_DIR}/PhotoPrivacy）"
+    return 0
+  fi
+  local uid user_dir report out rc
+  uid="$(id -u "$SUDO_USER")"
+  # GUI 用户只拿专用子目录可写，root 侧证据文件不交出去（CWE-59，与 ui_shot 同口径）；
+  # 报告由 root 收回证据根（rename 不跟随符号链接，无截断面）。
+  user_dir="$EVIDENCE_DIR/ui-user"
+  mkdir -p "$user_dir"
+  chown "$SUDO_USER" "$user_dir" 2>/dev/null || true
+  report="$user_dir/ui-probe-$tag.json"
+  out="$EVIDENCE_DIR/ui-probe-$tag.txt"
   rm -f "$report"
-  local rc=0
-  run_with_timeout 30 "$out" "${INSTALL_DIR}/PhotoPrivacy" \
+  rc=0
+  run_with_timeout 30 "$out" launchctl asuser "$uid" sudo -u "$SUDO_USER" \
+    "${INSTALL_DIR}/PhotoPrivacy" \
     --service-probe-report "$report" \
-    --worker "$EVIDENCE_DIR/no-worker-for-probe" || rc=$?
+    --worker "$user_dir/no-worker-for-probe" || rc=$?
+  if [[ -f "$report" ]]; then
+    mv -f "$report" "$EVIDENCE_DIR/ui-probe-$tag.json"
+    report="$EVIDENCE_DIR/ui-probe-$tag.json"
+  fi
+  # 命令失败/超时（rc!=0）时报告不作数：异常退出/超时杀（rc=124）后的残留报告
+  # 即使文件在、状态对拍一致也不得洗成 PASS（CodeRabbit #175 审查意见，fail-closed）。
+  if [[ $rc -ne 0 ]]; then
+    rec FAIL "UI Service 页探测命令失败/超时（${tag}: rc=${rc}）——报告不采信，见 ui-probe-$tag.txt"
+    return 0
+  fi
   if [[ ! -f "$report" ]]; then
     rec FAIL "UI Service 页探测报告未产出（${tag}，rc=${rc}，见 ui-probe-$tag.txt）"
     return 0
@@ -256,7 +291,7 @@ ui_probe_report() {
   ui_state="$(sed -n 's/.*"state":"\([A-Za-z]*\)".*/\1/p' "$report")"
   cli_state="$(probe_state)"
   if [[ -n "$ui_state" ]] && [[ "$ui_state" == "$cli_state" ]]; then
-    rec PASS "UI Service 页探测与 launchctl 判定一致（${tag}: ${ui_state}）"
+    rec PASS "UI Service 页探测与 launchctl 判定一致（${tag}: ${ui_state}，GUI 用户语境）"
   else
     rec FAIL "UI/CLI 探测分歧（${tag}: ui=${ui_state:-<空>} cli=${cli_state}）"
   fi

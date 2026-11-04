@@ -46,14 +46,15 @@ fn test_load_audit_file_and_buffer_truncation() {
     let mut buffer = LogBuffer::new();
     let mut total_lines = 0;
 
-    let records: Vec<AuditRecord> = reader
-        .lines()
-        .map_while(Result::ok)
-        .filter_map(|l| {
-            total_lines += 1;
-            parse_line(&l)
-        })
-        .collect();
+    let mut records = Vec::new();
+    for line_result in reader.lines() {
+        let line = line_result.expect("read line from audit file");
+        total_lines += 1;
+        let record = parse_line(&line).unwrap_or_else(|| {
+            panic!("failed to parse audit record at line {total_lines}: {line}")
+        });
+        records.push(record);
+    }
 
     buffer.push_batch(records);
 
