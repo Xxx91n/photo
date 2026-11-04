@@ -454,6 +454,11 @@ public sealed class WorkerReloadConfigRegressionTests
         var audit = Path.Combine(hot, "_audit");
         var configPath = Path.Combine(root, "config.json");
         Directory.CreateDirectory(hot);
+        // 既有已清洗文件：先让它在启动首扫里留下路径记录，再在拆卸窗口内拨新 mtime，
+        // 复刻 same_as_source 清洗后的指纹变化；放开深度触发的整目录补扫不应再处理它（#133 AC1）。
+        var alreadyDone = Path.Combine(hot, "already-done.jpg");
+        await File.WriteAllTextAsync(alreadyDone, "first-pass");
+        var windowEntered = false;
         // 仍关掉轮询兜底：让「子目录未被处理」只由首扫深度通路负责，不靠兜底行为背书
         // （#109 之后兜底深度已与 FSW 同源，但本用例锁的是首扫，没必要让两条通路纠缠）。
         await File.WriteAllTextAsync(
@@ -475,6 +480,18 @@ public sealed class WorkerReloadConfigRegressionTests
             Assert.True(
                 await WaitForFileAsync(processedPath, TimeSpan.FromSeconds(30)),
                 "启动期未创建处理记录表：用例前提不成立");
+            Assert.True(
+                await WaitForProcessedRecordForAsync(processedPath, "already-done.jpg", TimeSpan.FromSeconds(30)),
+                "启动首扫未处理既有文件：用例前提不成立");
+
+            worker.TeardownWindowHookAsync = () =>
+            {
+                // 旧 watcher 已停、新 watcher 未起：这次 mtime 变化没有 FSW 事件，
+                // 只有放开深度后的整目录补扫会再次遇到该文件。
+                File.SetLastWriteTimeUtc(alreadyDone, DateTime.UtcNow.AddSeconds(10));
+                windowEntered = true;
+                return Task.CompletedTask;
+            };
 
             Directory.CreateDirectory(nested);
             var nestedFile = Path.Combine(nested, "pre-existing.jpg");
@@ -491,9 +508,15 @@ public sealed class WorkerReloadConfigRegressionTests
                 configPath, BuildConfigJson(hot, audit, includeSubdirectories: true, pollingSeconds: 0));
             await worker.ReloadConfigAsync();
 
+            Assert.True(windowEntered, "重载没有进入拆卸窗口：钩子未执行，用例前提不成立");
             Assert.True(
                 await WaitForProcessedRecordForAsync(processedPath, "pre-existing.jpg", TimeSpan.FromSeconds(30)),
                 "放开 include_subdirectories 后未补扫新放开的子目录，既有文件永远不会被处理（#100）");
+
+            // 补扫会再次枚举 already-done.jpg；路径粗粒度记录命中后不得追加第二条。
+            // 旧指纹口径下 mtime 变化会让它重新入队，总数会变成 3（#133 AC1）。
+            await Task.Delay(TimeSpan.FromSeconds(2));
+            Assert.Equal(2, CountProcessedRecords(processedPath));
         }
         finally
         {
@@ -599,12 +622,14 @@ public sealed class WorkerReloadConfigRegressionTests
                 await WaitForProcessedRecordForAsync(beforePath, "already-done.jpg", TimeSpan.FromSeconds(30)),
                 "启动态未处理既有文件：用例前提不成立");
 
-            // 把 mtime 拨新，复刻清洗落盘后的可观测形态（长度没变、mtime 变新），并等旧运行时按这个新指纹
-            // 再处理一次——到这儿「窗口之前刚被处理过」这条前提就落定了。
+            // 把 mtime 拨新，复刻清洗落盘后的可观测形态（长度没变、mtime 变新）。
+            // #133 路线 2：去重键收敛为路径粗粒度，mtime 变化不再触发重复处理——
+            // 记录数保持 1 条（旧指纹口径下这里会再处理一次、写到第 2 条，正是 #133 的缺陷形态）。
             File.SetLastWriteTimeUtc(sourcePath, DateTime.UtcNow.AddSeconds(10));
+            await Task.Delay(TimeSpan.FromSeconds(3));
             Assert.True(
-                await WaitForProcessedRecordsAsync(beforePath, expectedAtLeast: 2, TimeSpan.FromSeconds(30)),
-                "改写后的文件未被旧运行时处理：用例前提不成立");
+                CountProcessedRecords(beforePath) == 1,
+                "mtime 拨新后仍被重复处理：路线 2 路径粗粒度去重未生效（#133）");
 
             // 窗口撑到 5 s，mtime 拨到 +10 s：旧实现的判据是「起点前 2 s 余量」，而起点取在最长 8 s 的
             // drain 闸之后，所以余量要盖住闸口停顿；抑制期从「刚处理完」起算，5 s 窗口盖住它的 2 s TTL。
@@ -1125,6 +1150,40 @@ public sealed class WorkerReloadConfigRegressionTests
         {
             using var stopCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             await worker.StopAsync(stopCts.Token);
+            TryDelete(root);
+        }
+    }
+
+    /// <summary>
+    /// 单写者门的配置解析不得建目录（#153）：<c>Program</c> 每次非 CLI 启动都会调用
+    /// <c>InstanceConflictAudit.LoadConfigFromArgs</c> 解析门身份；旧实现无条件
+    /// <c>Directory.CreateDirectory(audit)</c>，待机首启就在安装目录长出 <c>hot/_audit</c>。
+    /// </summary>
+    [Fact]
+    public void Config_Resolution_For_Single_Writer_Gate_Should_Not_Create_Audit_Directory()
+    {
+        // 防：把「目录创建移到真正启用监控之后」只做到 worker 待机分支，配置解析这条
+        // 每次启动必经的路径仍把 hot/_audit 建出来（#153 实测根因）。
+        var root = Path.Combine(Path.GetTempPath(), "pp-153-gate-" + Guid.NewGuid().ToString("N"));
+        var installRoot = Path.Combine(root, "install");
+        var audit = Path.Combine(installRoot, "hot", "_audit");
+        var configPath = Path.Combine(installRoot, "config.json");
+        Directory.CreateDirectory(installRoot);
+        File.WriteAllText(configPath, BuildConfigJson(string.Empty, audit));
+
+        try
+        {
+            var config = InstanceConflictAudit.LoadConfigFromArgs(["--config", configPath]);
+
+            Assert.Equal(string.Empty, config.Watch.HotFolder);
+            Assert.Equal(audit, config.Audit.LogDirectory);
+            Assert.False(
+                Directory.Exists(Path.Combine(installRoot, "hot")),
+                "单写者门的配置解析在待机首启建出了 hot 子树（#153）");
+            Assert.False(Directory.Exists(audit));
+        }
+        finally
+        {
             TryDelete(root);
         }
     }
@@ -1709,8 +1768,8 @@ public sealed class WorkerReloadConfigRegressionTests
     }
 
     /// <summary>
-    /// 等「指定文件名的处理记录」出现。记录键是 <c>绝对路径|长度|LastWriteTimeUtc.Ticks</c> 明文，
-    /// 按文件名子串匹配即可绕开 Windows 路径在 JSON 行里的反斜杠转义。
+    /// 等「指定文件名的处理记录」出现。记录键是规范化绝对路径（#133 路线 2 起收敛为路径粗粒度，
+    /// 不再携带长度/LastWriteTimeUtc 指纹），按文件名子串匹配即可绕开 Windows 路径在 JSON 行里的反斜杠转义。
     /// </summary>
     private static async Task<bool> WaitForProcessedRecordForAsync(string processedPath, string fileName, TimeSpan budget)
     {

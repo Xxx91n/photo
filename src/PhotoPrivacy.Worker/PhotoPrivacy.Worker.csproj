@@ -17,6 +17,10 @@
     <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="PhotoPrivacy.IntegrationTests" />
+  </ItemGroup>
+
   <PropertyGroup>
     <AssemblyName>PhotoPrivacyWorker</AssemblyName>
     <OutputType>Exe</OutputType>

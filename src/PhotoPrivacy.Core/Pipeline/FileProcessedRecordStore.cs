@@ -1,11 +1,15 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace PhotoPrivacy.Core.Pipeline;
 
 public sealed class FileProcessedRecordStore : IProcessedRecordStore, IDisposable
 {
-    private readonly ConcurrentDictionary<string, DateTimeOffset> _cache = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>记录格式版本：2 起 key 为纯路径；无此标记的记录按历史指纹格式恢复。</summary>
+    private const int CurrentKeyFormatVersion = 2;
+
+    private readonly ConcurrentDictionary<string, DateTimeOffset> _cache = new(ProcessedKeyBuilder.KeyComparer);
     private readonly string _filePath;
     private readonly TimeSpan _ttl;
     private StreamWriter _writer;
@@ -96,7 +100,7 @@ public sealed class FileProcessedRecordStore : IProcessedRecordStore, IDisposabl
             return;
         }
 
-        var entry = new { key, ts = DateTimeOffset.UtcNow.ToString("O") };
+        var entry = new { key, ts = DateTimeOffset.UtcNow.ToString("O"), v = CurrentKeyFormatVersion };
         var json = JsonSerializer.Serialize(entry);
         lock (_writer)
         {
@@ -139,7 +143,7 @@ public sealed class FileProcessedRecordStore : IProcessedRecordStore, IDisposabl
                 {
                     foreach (var kv in _cache)
                     {
-                        var entry = new { key = kv.Key, ts = kv.Value.ToString("O") };
+                        var entry = new { key = kv.Key, ts = kv.Value.ToString("O"), v = CurrentKeyFormatVersion };
                         var json = JsonSerializer.Serialize(entry);
                         compactWriter.WriteLine(json);
                     }
@@ -225,7 +229,11 @@ public sealed class FileProcessedRecordStore : IProcessedRecordStore, IDisposabl
 
                     if (DateTimeOffset.TryParse(tsStr, out var ts) && ts >= cutoff)
                     {
-                        _cache.TryAdd(key, ts);
+                        // #133 路线 2：key 口径收敛为路径粗粒度。旧记录是「路径|长度|mtimeTicks」指纹格式，
+                        // 归一化为纯路径再入缓存，避免升级首轮整目录补扫把已清洗文件重复处理一遍。
+                        // 同一路径可能有多条记录（重复处理后追加），保留最新时间戳，防止较早记录把仍在
+                        // TTL 内的路径键提前过期（#151 审查）。
+                        CacheRecovered(NormalizeLegacyKey(key, root), ts);
                     }
                 }
                 catch
@@ -238,5 +246,30 @@ public sealed class FileProcessedRecordStore : IProcessedRecordStore, IDisposabl
         {
             // 最佳努力恢复，不阻塞初始化
         }
+    }
+
+    /// <summary>
+    /// 把无版本标记的历史指纹 key（路径|长度|mtimeTicks）归一化为纯路径。
+    /// 带 v 标记的新记录 key 本身就是路径，原样返回，不再从尾部推断格式。
+    /// </summary>
+    private static string NormalizeLegacyKey(string key, JsonElement root)
+    {
+        // 无标记记录来自 #133 之前：正常形态一定带「|数字|数字」指纹，剥离后即路径。
+        // 无标记且无指纹后缀的路径键按原样保留（升级前的中间态/异常记录）；
+        // 无标记路径恰好以 |数字|数字 结尾时无法与历史指纹区分，按历史格式处理。
+        // 新记录一律带 v 标记，不再进入这条歧义路径（POSIX 文件名允许 |）。
+        if (root.TryGetProperty("v", out _))
+        {
+            return key;
+        }
+
+        var match = Regex.Match(key, @"\|[0-9]+\|[0-9]+$");
+        return match.Success ? key[..match.Index] : key;
+    }
+
+    /// <summary>同一路径的多条恢复记录只保留最新时间戳，避免旧记录让路径键提前过期。</summary>
+    private void CacheRecovered(string key, DateTimeOffset ts)
+    {
+        _cache.AddOrUpdate(key, ts, (_, existing) => ts > existing ? ts : existing);
     }
 }

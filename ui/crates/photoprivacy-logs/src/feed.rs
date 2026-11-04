@@ -83,9 +83,13 @@ impl AuditFeed {
         }
     }
 
-    /// 建立启动水位并确保日志目录存在；必须在任何读取/backfill 之前调用。
+    /// 建立启动水位；必须在任何读取/backfill 之前调用。
+    ///
+    /// 目录创建归 Worker 的启用路径（`EnsureConfiguredDirectories`），审计文件由
+    /// 启用后的日志写入路径创建：待机态出厂空配置下 UI 也会走到这里，不得在
+    /// 安装目录凭空长出 `hot/_audit`（#153）。
+    /// 目录缺失时位置从 0 起算，`poll_tail` 读不到即按空日志处理。
     pub fn start(&mut self) {
-        let _ = fs::create_dir_all(&self.directory);
         self.current_path = audit_path(&self.directory, Local::now().date_naive());
         self.position = file_length(&self.current_path);
         self.reset_stall();
@@ -103,6 +107,7 @@ impl AuditFeed {
         let path = self.current_path.clone();
         let mut file = match File::open(&path) {
             Ok(file) => file,
+            // 目录/文件不存在或暂不可读：按空日志返回，下一轮轮询重试，绝不在这里补建目录（#153）。
             Err(_) => return Vec::new(),
         };
         let length = file.metadata().map(|meta| meta.len()).unwrap_or(0);
@@ -303,6 +308,65 @@ mod tests {
         DateTime::parse_from_rfc3339(text)
             .expect("rfc3339 timestamp")
             .with_timezone(&Utc)
+    }
+
+    #[test]
+    fn start_does_not_create_a_missing_audit_directory() {
+        // 防：UI 待机启动（出厂空配置、监控未启用）经 `AuditFeed::start` 在安装目录
+        // 建出 hot/_audit；只读安装目录下首次运行也因此在只读位置尝试写入（#153）。
+        let temp = tempfile::tempdir().expect("temp dir");
+        let directory = temp.path().join("hot").join("_audit");
+        let day = Local::now().date_naive();
+
+        let mut feed = AuditFeed::new(&directory);
+        feed.start();
+
+        assert!(
+            !directory.exists(),
+            "start() 不得创建缺失的审计目录：目录创建归 Worker 启用监控之后（#153）"
+        );
+        // 目录缺失即空日志：tail 既不报错也不回放。
+        assert!(feed.poll_tail_on(day).is_empty());
+    }
+
+    #[test]
+    fn tail_reads_new_lines_after_worker_creates_the_directory() {
+        // 防：为了不在待机态建目录而把 tail 改成「目录必须预先存在」，启用监控后
+        // Worker 新建的审计目录与文件读不到，日志页恒空（#153 反向回归）。
+        let temp = tempfile::tempdir().expect("temp dir");
+        let directory = temp.path().join("hot").join("_audit");
+        let day = Local::now().date_naive();
+
+        let mut feed = AuditFeed::new(&directory);
+        feed.start();
+        assert!(feed.poll_tail_on(day).is_empty());
+
+        // 启用监控后 Worker 侧 `EnsureConfiguredDirectories` + 审计写入的等价动作。
+        fs::create_dir_all(&directory).expect("create audit dir");
+        let raw = line("after_enable", "2026-11-03T02:13:00Z");
+        append(&audit_path(&directory, day), &format!("{raw}\n"));
+
+        assert_eq!(feed.poll_tail_on(day), vec![raw]);
+    }
+
+    #[test]
+    fn tail_recovers_after_directory_appears_on_a_later_day() {
+        // 防：目录缺失期间跨日，`rotate_if_needed` 归零位置后仍读不到随后创建的当日文件（#153）。
+        let temp = tempfile::tempdir().expect("temp dir");
+        let directory = temp.path().join("hot").join("_audit");
+        let first_day = Local::now().date_naive();
+        let next_day = first_day.succ_opt().expect("next day");
+
+        let mut feed = AuditFeed::new(&directory);
+        feed.start();
+        assert!(feed.poll_tail_on(first_day).is_empty());
+        assert!(feed.poll_tail_on(next_day).is_empty());
+
+        fs::create_dir_all(&directory).expect("create audit dir");
+        let raw = line("next_day", "2026-11-04T00:01:00Z");
+        append(&audit_path(&directory, next_day), &format!("{raw}\n"));
+
+        assert_eq!(feed.poll_tail_on(next_day), vec![raw]);
     }
 
     #[test]

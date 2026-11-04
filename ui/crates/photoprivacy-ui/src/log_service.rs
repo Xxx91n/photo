@@ -205,6 +205,36 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn coordinator_start_does_not_create_the_audit_directory() {
+        // 防：UI 启动即 spawn 本协调者（main → log_service::start → run_coordinator），
+        // 待机态配置未保存也经 `AuditFeed::start` 把安装目录下的 hot/_audit 建出来（#153）。
+        // 射程只到协调者：backfill 只读 IPC、不写目录，不参与本断言。
+        let temp = TempDir::new("standby");
+        let audit_dir = temp.0.join("hot").join("_audit");
+        let (commands, command_rx) = mpsc::unbounded_channel();
+        let (batches_tx, _batches_rx) = mpsc::unbounded_channel();
+
+        let coordinator = tokio::spawn(run_coordinator(
+            audit_dir.clone(),
+            ClearWatermark::from_directory(&temp.0),
+            command_rx,
+            batches_tx,
+        ));
+
+        // 发一条命令再关闭通道：协调者必然已执行 `AuditFeed::start`，且清空只写配置目录、
+        // 不碰审计目录，可在任务结束后确定性地断言启动路径无目录副作用。
+        commands.send(LogCommand::Clear { generation: 1 }).unwrap();
+        drop(commands);
+        coordinator.await.unwrap();
+
+        assert!(
+            !audit_dir.exists(),
+            "待机态启动经日志协调者建出了审计目录：{}（#153）",
+            audit_dir.display()
+        );
+    }
+
+    #[tokio::test]
     async fn clear_persists_watermark_and_blocks_preclear_backfill() {
         // 防：清空只清了内存视图、水位没落盘或没接进 backfill 过滤，重启/补拉后历史回灌（#137）。
         let temp = TempDir::new("clear");

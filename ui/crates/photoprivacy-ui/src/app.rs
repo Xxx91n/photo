@@ -223,11 +223,23 @@ impl ConfigUiState {
             // UI 是 config.json 的写入方，写回会把「探测」冻结成绝对路径，包换个目录就指向旧位置。
             if config.exiftool.path.trim().is_empty() {
                 self.exiftool_hint = detect_exiftool_path(&config.exiftool.path);
-            } else if let Some(detected) = detect_exiftool_path(&config.exiftool.path) {
-                config.exiftool.path = detected.clone();
-                self.exiftool_hint = Some(detected);
             } else {
-                self.exiftool_hint = None;
+                // #33: 非空用户输入先规整首尾空白再判定/保存——检测与 Worker 都不接受带空白的路径
+                // （IsPathFullyQualified / File.Exists 判否），否则 UI 提示成功、保存后 Worker 拒绝。
+                config.exiftool.path = config.exiftool.path.trim().to_string();
+                if let Some(detected) = detect_exiftool_path(&config.exiftool.path) {
+                    // #33: 目录式覆盖保留用户填的目录本身，不把解析出的 exe 路径写回
+                    // config.json（否则一次保存就把目录冻结成文件绝对路径，发布包换目录即失效）。
+                    // hint 仍显示解析结果，让用户确认目录内确实有可用的 exiftool。
+                    if std::path::Path::new(&config.exiftool.path).is_dir() {
+                        self.exiftool_hint = Some(detected);
+                    } else {
+                        config.exiftool.path = detected.clone();
+                        self.exiftool_hint = Some(detected);
+                    }
+                } else {
+                    self.exiftool_hint = None;
+                }
             }
         }
         self.config = config;
@@ -3025,6 +3037,54 @@ mod tests {
         }
     }
 
+    /// #33: 目录式覆盖在首次加载时保留用户填的目录，不把解析出的 exe 路径写回
+    /// config.json（否则一次保存就把目录冻结成文件绝对路径）。提示仍显示解析结果。
+    #[test]
+    fn directory_exiftool_path_is_not_rewritten_on_load() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("pp-dir-override-{}", unique));
+        let _ = std::fs::create_dir_all(&dir);
+        let exe = dir.join(if cfg!(windows) {
+            "exiftool.exe"
+        } else {
+            "exiftool"
+        });
+        std::fs::write(&exe, b"stub").unwrap();
+        let expected_hint = exe.to_string_lossy().into_owned();
+
+        let mut state = ConfigUiState::new(None);
+        let mut config = AppConfig::default();
+        config.exiftool.path = dir.to_string_lossy().into_owned();
+
+        let _ = state.set_config(config, true);
+
+        assert_eq!(
+            state.config.exiftool.path,
+            dir.to_string_lossy().into_owned()
+        );
+        assert_eq!(state.exiftool_hint.as_deref(), Some(expected_hint.as_str()));
+
+        // 前后带空白的目录同样不能触发写回：detect_exiftool_path 先 trim 再解析，
+        // set_config 必须用同一口径判断 is_dir，否则目录值会被替换成 exe 绝对路径。
+        let padded = format!("  {}  ", dir.display());
+        let mut padded_config = AppConfig::default();
+        padded_config.exiftool.path = padded.clone();
+        let _ = state.set_config(padded_config, true);
+        // 保存值规整为 trim 后的目录（Worker 侧 File.Exists/Directory.Exists 不接受带空白路径），
+        // 目录形态仍保留、不冻结成 exe 绝对路径——即结果能被 Worker 的目录式覆盖解析接受。
+        assert_eq!(
+            state.config.exiftool.path,
+            dir.to_string_lossy().into_owned()
+        );
+        assert!(std::path::Path::new(&state.config.exiftool.path).is_dir());
+        assert_eq!(state.exiftool_hint.as_deref(), Some(expected_hint.as_str()));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// 最小 AppDeps：不接 Worker/服务/配置后台，只支撑渲染与焦点链。
     fn test_deps() -> AppDeps {
         let (_, snapshots) = watch::channel(ConnectionSnapshot::connecting());
@@ -3068,6 +3128,23 @@ mod tests {
         cx.run_until_parked();
         draw(&mut cx, window.into());
         (cx, window)
+    }
+
+    /// #174 AC1 后半：`--open-page` 指定的页必须是建窗首帧页，而不是先落 Overview 再靠导航跳。
+    #[test]
+    fn open_page_decides_the_first_frame_page() {
+        let mut cx = TestAppContext::single();
+        cx.update(bind_focus_keys);
+        let mut deps = test_deps();
+        deps.open_page = Some(Page::Service);
+        let window = cx.add_window(move |window, cx| AppView::new(window, cx, deps));
+        cx.run_until_parked();
+        draw(&mut cx, window.into());
+        assert_eq!(
+            window.update(&mut cx, |view, _, _| view.page).unwrap(),
+            Page::Service,
+            "--open-page service 应直接停在 Service 页"
+        );
     }
 
     /// 目标控件是否完整落在 config-scroll 视口内（按登记表探针的布局坐标判定）。

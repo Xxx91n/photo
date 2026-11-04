@@ -144,6 +144,15 @@ fn audit_fallback_directory() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("hot").join("_audit"))
 }
 
+/// 启动建窗判定：静默启动（#59）与显式 `--open-page`（#168）同时命中时的优先序。
+///
+/// 显式 CLI 请求覆盖静默默认（#174）：静默配置下给出 `--open-page` 仍建窗并停到指定页，
+/// 否则 #168 的取证脚本 `scripts/capture-ui-service-page.sh` 在配了静默启动的机器上取不到窗口。
+/// 未给 `--open-page` 时维持 #59 语义——静默即不建窗，等托盘唤起。
+fn should_open_main_window(start_hidden: bool, open_page: Option<app::Page>) -> bool {
+    !start_hidden || open_page.is_some()
+}
+
 /// 入口：解析 CLI 参数，初始化运行时与平台层，依据静默启动/--open-page 决定是否建窗出页，随后由事件泵守护直至退出。
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
@@ -324,9 +333,9 @@ fn main() -> anyhow::Result<()> {
         })
         .detach();
 
-        // --open-page 显式给出时覆盖静默启动（#174）：显式 CLI 请求优先于隐式静默默认，
-        // 取证脚本在配置了静默启动的机器上仍能建窗出页；未给出时维持静默语义不变。
-        if !start_hidden || deps.open_page.is_some() {
+        // 建窗判定收敛到 `should_open_main_window`：显式 --open-page 覆盖静默启动（#174），
+        // 真值表由同文件 `tests` 模块钉住，避免这行条件被后续改动悄悄退回「静默吞掉请求页」。
+        if should_open_main_window(start_hidden, deps.open_page) {
             open_main_window(cx, deps);
         }
     });
@@ -473,5 +482,36 @@ fn window_options(bounds: Bounds<Pixels>, title: SharedString) -> WindowOptions 
         show: true,
         focus: true,
         ..Default::default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::Page;
+
+    #[test]
+    fn open_page_overrides_silent_start() {
+        // #174 AC1：静默配置 + 显式 --open-page → 必须建窗，且请求的页可解析（首帧即停在该页）。
+        for id in ["overview", "config", "service", "logs", "rules"] {
+            let page = Page::from_id(id).expect("--open-page 取值应可解析");
+            assert!(
+                should_open_main_window(true, Some(page)),
+                "静默启动下 --open-page {id} 必须建窗"
+            );
+        }
+    }
+
+    #[test]
+    fn silent_start_without_open_page_stays_hidden() {
+        // #174 AC2：静默配置 + 未给 --open-page → 维持静默（不建窗，等托盘唤起）。
+        assert!(!should_open_main_window(true, None));
+    }
+
+    #[test]
+    fn non_silent_start_opens_window_with_or_without_open_page() {
+        // #174 只改静默分支：非静默启动无论有无 --open-page 都建窗，行为与改动前一致。
+        assert!(should_open_main_window(false, None));
+        assert!(should_open_main_window(false, Some(Page::Service)));
     }
 }

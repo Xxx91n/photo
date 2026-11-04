@@ -36,6 +36,41 @@ public static class DefaultPaths
         return System.IO.Path.Combine(AppContext.BaseDirectory, "hot");
     }
 
+    /// <summary>
+    /// 把配置里的 <c>exiftool.path</c> 归一到「可执行文件绝对路径」，对齐 ExifToolGUI 的
+    /// <c>ETOverrideDir</c> 口径（用户给一个 ExifTool 安装目录，启动时拼成 <c>目录/exiftool</c>）：
+    /// - 空串：原样返回，交给调用方回落到运行时探测（<see cref="ExifToolPath"/>）；
+    /// - 已存在的文件：原样返回（用户给的是 exiftool 可执行文件本身的绝对路径）；
+    /// - 已存在的目录：拼出该目录内的 <c>exiftool</c> (Unix) / <c>exiftool.exe</c> (Windows)；
+    /// - 其余：原样返回，交由 <see cref="AppConfigValidator"/> 报「not found」。
+    /// 集中在此处理，避免 Worker 与 UI 各自拼目录后分叉（#33）。
+    /// </summary>
+    /// <remarks>
+    /// 决策本体随 #33 关闭已实现（ExifTool 下载链验证走通）；#33 关闭后标记改指仍存续的治理票 #82（死指针清理），
+    /// 决策的原始来历保留在上述 <c>#33</c> 引用里，不做删改。
+    /// </remarks>
+    // Design(#82): exiftool.path 支持目录式覆盖，目录内解析出 exiftool/exiftool.exe。
+    internal static string ResolveExifToolExecutable(string configuredPath)
+    {
+        if (string.IsNullOrWhiteSpace(configuredPath))
+        {
+            return configuredPath;
+        }
+
+        if (System.IO.File.Exists(configuredPath))
+        {
+            return configuredPath;
+        }
+
+        if (System.IO.Directory.Exists(configuredPath))
+        {
+            var exeName = OperatingSystem.IsWindows() ? "exiftool.exe" : "exiftool";
+            return System.IO.Path.Combine(configuredPath, exeName);
+        }
+
+        return configuredPath;
+    }
+
     private static string ResolveExifToolPath()
     {
         var candidates = OperatingSystem.IsWindows() ? WindowsCandidates() : UnixCandidates();
