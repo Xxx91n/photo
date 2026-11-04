@@ -4,7 +4,7 @@ namespace PhotoPrivacy.Core.Pipeline;
 
 public sealed class InMemoryProcessedRecordStore : IProcessedRecordStore
 {
-    private readonly ConcurrentDictionary<string, DateTimeOffset> _processed = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, DateTimeOffset> _processed = new(ProcessedKeyBuilder.KeyComparer);
     private readonly TimeSpan _ttl;
 
     public InMemoryProcessedRecordStore(TimeSpan? ttl = null)

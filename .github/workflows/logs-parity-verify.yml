@@ -36,11 +36,13 @@ jobs:
 
       - name: Run logs parity verification script (generates data & tests LogBuffer)
         shell: bash
+        env:
+          LOG_COUNT: ${{ github.event.inputs.log_count || '600' }}
         run: |
           chmod +x scripts/verify-logs-parity.sh
           ./scripts/verify-logs-parity.sh \
             --evidence-dir "$RUNNER_TEMP/logs-parity-verify" \
-            --count "${{ github.event.inputs.log_count || '600' }}"
+            --count "$LOG_COUNT"
 
       - name: Publish summary
         if: always()

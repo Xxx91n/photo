@@ -5,7 +5,10 @@
   [string]$SelfContained = "true",
   [string]$Zip = "true",
   [string]$ExifToolVersion = "13.60",
-  [string]$ExifToolZip = ""
+  [string]$ExifToolZip = "",
+  # #33: ExifToolPathOverride——已安装的 ExifTool 目录（含 exiftool.exe + exiftool_files/），
+  # 直接打包跳过下载，对齐 ExifToolGUI 的 ETOverrideDir（自带 ExifTool、不下载）。
+  [string]$ExifToolPathOverride = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -129,9 +132,14 @@ $exifToolSha256 = @{
   "13.60" = "548b1f4e0b713cd2a26824b34080c35db4e2d2edd166468eb38b1d55ada90c2e"
 }
 
-$expectedSha = $exifToolSha256[$ExifToolVersion]
-if (-not $expectedSha) {
-  throw "No pinned SHA256 for ExifTool $ExifToolVersion. 更新 scripts/publish-app.ps1 的 `$exifToolSha256 表（校验值取自 https://exiftool.org/checksums.txt）后再发版。"
+# #33: 覆盖模式下用户自带 ExifTool，版本未必是钉死的那个，不要求登记校验值；
+# 默认下载通道仍强制钉扎，避免把被替换或半截的归档打进发布包。
+$expectedSha = $null
+if ([string]::IsNullOrWhiteSpace($ExifToolPathOverride)) {
+  $expectedSha = $exifToolSha256[$ExifToolVersion]
+  if (-not $expectedSha) {
+    throw "No pinned SHA256 for ExifTool $ExifToolVersion. 更新 scripts/publish-app.ps1 的 `$exifToolSha256 表（校验值取自 https://exiftool.org/checksums.txt）后再发版。"
+  }
 }
 
 $exifToolDir = Join-Path $targetDir "ExifTool"
@@ -177,6 +185,8 @@ function Get-ExifToolArchive {
       $Attempts, $ExpectedSha, ($diagnostics -join "`n  "))
 }
 
+if ([string]::IsNullOrWhiteSpace($ExifToolPathOverride)) {
+
 $archivePath = if ([string]::IsNullOrWhiteSpace($ExifToolZip)) {
   $downloaded = Join-Path $exifToolStage ("exiftool-{0}_64.zip" -f $ExifToolVersion)
   # gpui 只支持 win-x64，故固定取 64 位包。
@@ -209,7 +219,49 @@ Move-Item -LiteralPath (Join-Path $innerDir "exiftool(-k).exe") -Destination (Jo
 if (Test-Path -LiteralPath (Join-Path $innerDir "README.txt")) {
   Move-Item -LiteralPath (Join-Path $innerDir "README.txt") -Destination (Join-Path $exifToolDir "README.txt") -Force
 }
-Remove-Item -LiteralPath $exifToolStage -Recurse -Force
+} else {
+  # #33: ExifToolPathOverride——从已安装目录直接打包，跳过下载与 SHA256 校验
+  # （对齐 ExifToolGUI 的 ETOverrideDir：用户自带 ExifTool、不下载）。仅校验布局并做 -ver 版本探针。
+  # 两个来源互斥：同时给会让 -ExifToolZip 被静默忽略。
+  if (-not [string]::IsNullOrWhiteSpace($ExifToolZip)) {
+    throw "ExifToolPathOverride 与 ExifToolZip 互斥：覆盖模式下不会读取 ExifToolZip，请只传一个。"
+  }
+  $overrideDir = (Resolve-Path -LiteralPath $ExifToolPathOverride).Path
+  if (-not (Test-Path -LiteralPath $overrideDir -PathType Container)) {
+    throw "ExifToolPathOverride 不是目录：$ExifToolPathOverride"
+  }
+  $overrideExe = Join-Path $overrideDir "exiftool.exe"
+  $overrideFiles = Join-Path $overrideDir "exiftool_files"
+  if (-not (Test-Path -LiteralPath $overrideExe -PathType Leaf) -or
+      -not (Test-Path -LiteralPath $overrideFiles -PathType Container)) {
+    throw "ExifToolPathOverride 布局不符：需 $overrideExe 与 $overrideFiles（Windows 版 exiftool.exe 必须与 exiftool_files 同级）"
+  }
+
+  New-Item -ItemType Directory -Force -Path $exifToolDir | Out-Null
+  Copy-Item -LiteralPath $overrideExe -Destination (Join-Path $exifToolDir "exiftool.exe") -Force
+  Copy-Item -LiteralPath $overrideFiles -Destination $exifToolDir -Recurse -Force
+  $overrideReadme = Join-Path $overrideDir "README.txt"
+  if (Test-Path -LiteralPath $overrideReadme) {
+    Copy-Item -LiteralPath $overrideReadme -Destination $exifToolDir -Force
+  }
+
+  # 版本探针：对齐 ExifToolGUI 的 -ver 校验，确认覆盖的是可用 ExifTool（失败仅警告，不致命）。
+  try {
+    $overrideVer = & (Join-Path $exifToolDir "exiftool.exe") -ver 2>$null
+    if ($overrideVer) {
+      Write-Host "Bundled ExifTool from override ($overrideDir) version $overrideVer -> $exifToolDir"
+    } else {
+      Write-Host "WARNING: ExifToolPathOverride 的 -ver 未返回版本（可能安装损坏）"
+    }
+  } catch {
+    Write-Host "WARNING: ExifToolPathOverride 的 -ver 探针失败：$($_.Exception.Message)"
+  }
+}
+
+# 两条通道共用：临时目录统一清理，避免覆盖模式在 $env:TEMP 留下空 GUID 目录。
+if (Test-Path -LiteralPath $exifToolStage) {
+  Remove-Item -LiteralPath $exifToolStage -Recurse -Force
+}
 
 # 缺任何一半都会让裸机首次启用监控失败，故在打包期就断言（exiftool_files 内含 LICENSE）。
 foreach ($required in @("exiftool.exe", "exiftool_files\exiftool.pl", "exiftool_files\LICENSE")) {
@@ -217,7 +269,9 @@ foreach ($required in @("exiftool.exe", "exiftool_files\exiftool.pl", "exiftool_
     throw "Bundled ExifTool incomplete: missing $required under $exifToolDir"
   }
 }
-Write-Host "Bundled ExifTool $ExifToolVersion -> $exifToolDir"
+# 覆盖模式允许自带任意版本，末行不能仍打印钉死的 $ExifToolVersion；真实版本由上面 -ver 探针输出。
+$bundledLabel = if ([string]::IsNullOrWhiteSpace($ExifToolPathOverride)) { $ExifToolVersion } else { "from override" }
+Write-Host "Bundled ExifTool $bundledLabel -> $exifToolDir"
 
 if (Test-Path $workerPublishDir) {
   Remove-Item $workerPublishDir -Recurse -Force

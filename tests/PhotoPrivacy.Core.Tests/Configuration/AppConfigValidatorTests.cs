@@ -1,4 +1,5 @@
 using PhotoPrivacy.Core.Configuration;
+using PhotoPrivacy.Core.Constants;
 
 namespace PhotoPrivacy.Core.Tests.Configuration;
 
@@ -46,6 +47,61 @@ public sealed class AppConfigValidatorTests
         finally
         {
             Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    // #33: 目录式覆盖解析出的 exe 绝对路径，仍按既有口径校验伴随目录（Windows exiftool_files / Unix lib）。
+    [Fact]
+    public void Validate_Should_Accept_Directory_Override_With_Companion_Directory()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        var exeName = OperatingSystem.IsWindows() ? "exiftool.exe" : "exiftool";
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, exeName), "stub");
+        Directory.CreateDirectory(Path.Combine(dir, OperatingSystem.IsWindows() ? "exiftool_files" : "lib"));
+
+        try
+        {
+            var cfg = AppConfig.Default with
+            {
+                ExifTool = AppConfig.Default.ExifTool with
+                {
+                    Path = DefaultPaths.ResolveExifToolExecutable(dir)
+                }
+            };
+
+            AppConfigValidator.Validate(cfg);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    // #33: 目录内缺伴随运行时目录时，启用监控必须 fail-closed，而不是延迟到 stay_open 桥接启动期。
+    [Fact]
+    public void Validate_Should_Reject_Directory_Override_Without_Companion_Directory()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        var exeName = OperatingSystem.IsWindows() ? "exiftool.exe" : "exiftool";
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, exeName), "stub");
+
+        try
+        {
+            var cfg = AppConfig.Default with
+            {
+                ExifTool = AppConfig.Default.ExifTool with
+                {
+                    Path = DefaultPaths.ResolveExifToolExecutable(dir)
+                }
+            };
+
+            Assert.Throws<AppConfigValidationException>(() => AppConfigValidator.Validate(cfg));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
         }
     }
 

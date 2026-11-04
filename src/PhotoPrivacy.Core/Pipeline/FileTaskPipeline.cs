@@ -413,7 +413,8 @@ public sealed class FileTaskPipeline
                 return null;
             }
 
-            return ProcessedKeyBuilder.Build(sourcePath, info.Length, info.LastWriteTimeUtc);
+            // #133 路线 2：去重键收敛为路径粗粒度，同一路径已有记录即视为已处理（不再比对长度/mtime 指纹）。
+            return ProcessedKeyBuilder.Build(sourcePath);
         }
         catch
         {

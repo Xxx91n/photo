@@ -12,7 +12,7 @@ fn test_large_volume_log_buffer_truncation() {
     let records: Vec<AuditRecord> = (0..count)
         .map(|i| {
             let line = format!(
-                r#"{{"timestamp_utc":"2026-11-03T00:00:00Z","level":"Information","event_type":"file_cleaned","message":"Item {i}","source_path":"/fake/{i}.jpg","wipe_result":"Cleaned_Modified"}}"#
+                r#"{{"timestamp_utc":"2026-11-03T00:00:00Z","level":"Information","event_type":"file_cleaned","message":"Item {i}","source_path_masked":"/fake/{i}.jpg","wipe_result":"Cleaned_Modified"}}"#
             );
             parse_line(&line).expect("valid audit jsonl")
         })
@@ -35,9 +35,13 @@ fn test_large_volume_log_buffer_truncation() {
 #[test]
 fn test_load_audit_file_and_buffer_truncation() {
     // 若在虚拟环境生成了测试文件，可验证从文件流式读取并压入 LogBuffer
-    let path = std::env::var("AUDIT_TEST_FILE").unwrap_or_default();
-    if path.is_empty() || !Path::new(&path).exists() {
-        return;
+    let path = match std::env::var("AUDIT_TEST_FILE") {
+        Ok(val) if !val.is_empty() => val,
+        _ => return, // 未配置 AUDIT_TEST_FILE 时跳过
+    };
+
+    if !Path::new(&path).exists() {
+        panic!("configured AUDIT_TEST_FILE does not exist: {path}");
     }
 
     let file = File::open(&path).expect("open audit file");
