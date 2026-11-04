@@ -811,7 +811,8 @@
      `S6-01b-start-conflict-failed1053.png`。这是 #88 轮「新观察 1」并存冲突在本轮的复现，
      也是四态中「失败」的一次真实 UI 呈现；
   4. **前置启动（按 #88 先例）**：结束后台 Worker 仅留 UI，再点「启动」→ 运行态帧
-     `S6-04-running-ui.png`（状态行「运行中」绿点、停止可点/启动与卸载置灰）、`sc query`
+     `S6-04-running-ui.png`（状态行「运行中」绿点、停止可点/启动与卸载置灰，
+     **同帧含启动操作的绿框「成功 Operation succeeded」横幅**）、`sc query`
      STATE 4 RUNNING、服务 Worker pid 12616 在 Services 会话 0（`S6-pre-running3.txt`）；
   5. **S6 本体**：点「停止」→ 绿框「成功 Operation succeeded」、状态行 运行中→已停止、
      启动/卸载转可点——帧 `S6-06-stopped-ui.png`；同刻 STATE 1 STOPPED、服务 Worker 进程消失、
@@ -819,8 +820,9 @@
   6. **S7 本体**：点「卸载」→ 绿框「成功 Operation succeeded」、状态行 已停止→未安装、
      按钮组回到 S1 形态——帧 `S7-02-uninstalled-ui.png`；同刻 `sc query` 1060——
      `S7-after-uninstall.txt`。
-- **四态反馈实况（成功/失败/取消/未知）**：绿框「成功」×4（安装/启动/停止/卸载，`S2-04`、
-  `S6-04`、`S6-06`、`S7-02`）；红框「失败」×2（Worker 缺席安装、启动超时 1053，`S2-03`、
+- **四态反馈覆盖情况（成功/失败实捕；取消/未知未探活）**：绿框「成功」×4（安装/停止/卸载 +
+  启动——安装 `S2-04`、启动 `S6-04`（运行态帧同帧含启动操作的绿框横幅）、停止 `S6-06`、
+  卸载 `S7-02`）；红框「失败」×2（Worker 缺席安装、启动超时 1053，`S2-03`、
   `S6-01b`）；「提权取消」与「未知」未探活——前者被取证机 `EnableLUA=0` + 管理员令牌阻断
   （UAC 弹窗不出现，`token_is_elevated` 直通；CI 侧 `elevation_cancelled_is_not_reported_as_failure`/
   `install_does_not_reprompt_after_cancelled_precheck` 守护四态不塌缩），后者需探测进程异常

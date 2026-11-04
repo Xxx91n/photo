@@ -74,9 +74,11 @@ e24888abe032523320c4873e737e3531d36944111ff4654fb623ba62610f9cb2  K154-04-overvi
 # （PowerShell/.NET 实现；「位置重设+点击+等待+截屏」单进程原子轮，见 ui-smoke.md 产物记录）。
 # 图片与文本取证不入库，只存于取证机目录 C:\Users\Administrator\photo-smoke-58\evidence\（22 个文件）。
 #
-# 校验（在取证机上，从仓库根跑；S267 组与 K154 组证据目录不同，分别校验）：
-#   cd <仓库根> && grep -E '^[0-9a-f]{64}  S[^U]' docs/agents/ui-smoke-evidence.sha256 \
-#     | (cd 'C:\Users\Administrator\photo-smoke-58\evidence' && sha256sum -c -)
+# 校验（在取证机的 **WSL bash** 里跑，同 K154 组口径——cmd/PowerShell 没有 grep/sha256sum，
+# bash 下 cd Windows 形态路径会当相对目录失败，必须用 /mnt/c 形态；
+# S267 组与 K154 组证据目录不同，分别校验）：
+#   cd /mnt/c/<仓库根> && grep -E '^[0-9a-f]{64}  S[^U]' docs/agents/ui-smoke-evidence.sha256 \
+#     | (cd /mnt/c/Users/Administrator/photo-smoke-58/evidence && sha256sum -c -)
 # 期望：22 行全部 ': OK'、退出码 0。
 # （过滤用 `S[^U]`：M 组的 SUMMARY.txt 也以 S 开头，` S` 会把它误吸进本目录校验；
 #  M 组条目已按上方指针归档，保留 `[^U]` 以防后续同前缀文件名再入清单。）
