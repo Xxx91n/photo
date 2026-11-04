@@ -81,12 +81,29 @@ dscl_ensure() {
   fi
 }
 
+# dscl -create 组记录与写 PrimaryGroupID 是两步语义：id 写失败记录仍在，于是 chown 用户:组
+# 报 illegal group name，重装又会撞上「已存在但无 GID」直接中止（#180 CI 实测）。新建组落盘后
+# 必须回读确认，失败就删掉半成品记录再中止，保持安装可重入。
+assert_group_gid() {
+  local name="$1" expect="$2" actual
+  actual="$(dscl . -read "/Groups/${name}" PrimaryGroupID 2>/dev/null | awk 'NR==1 && $2 ~ /^[0-9]+$/ {print $2}')"
+  if [[ "$actual" == "$expect" ]]; then
+    return 0
+  fi
+  echo "Failed to assign GID ${expect} to group ${name} (actual: ${actual:-<none>}); removing incomplete record" >&2
+  dscl . -delete "/Groups/${name}" >/dev/null 2>&1 || true
+  exit 1
+}
+
 # GID 不再钉死 400：标准 macOS 上 400 已被系统组 com.apple.access_remote_ae 占用，
 # PrimaryGroupID 撞唯一性直接 eDSRecordAlreadyExists（#32 CI 实测）。组已存在取其现值，
 # 否则在 400-499 取第一个空位；用户 PrimaryGroupID 跟组一致，否则 chown 用户:组 解析不了。
+# 目标组名必须显式传入：早期版本读全局 GROUP_NAME，建 socket 访问组时会复用数据组 GID，
+# 撞唯一性后 socket 组拿不到 GID，审计目录 chown 直接 illegal group name（#180 CI 实测）。
 resolve_group_gid() {
+  local name="$1"
   local gid
-  gid="$(dscl . -read "/Groups/${GROUP_NAME}" PrimaryGroupID 2>/dev/null | awk 'NR==1 && $2 ~ /^[0-9]+$/ {print $2}')"
+  gid="$(dscl . -read "/Groups/${name}" PrimaryGroupID 2>/dev/null | awk 'NR==1 && $2 ~ /^[0-9]+$/ {print $2}')"
   if [[ -n "$gid" ]]; then
     echo "$gid"
     return 0
@@ -121,9 +138,10 @@ if [[ "$GROUP_EXISTED" -eq 1 ]]; then
     exit 1
   fi
 else
-  GROUP_GID="$(resolve_group_gid)" || { echo "No free GID in 400-499" >&2; exit 1; }
+  GROUP_GID="$(resolve_group_gid "$GROUP_NAME")" || { echo "No free GID in 400-499" >&2; exit 1; }
   dscl_ensure /Groups/${GROUP_NAME}
   dscl_ensure /Groups/${GROUP_NAME} PrimaryGroupID "$GROUP_GID"
+  assert_group_gid "$GROUP_NAME" "$GROUP_GID"
 fi
 
 # 用户侧同理：无 UniqueID 的记录对 getpwnam 不可见，chown 会报 illegal user name（#32 实测）。
@@ -179,9 +197,10 @@ if dscl . -read "/Groups/${SOCKET_GROUP}" >/dev/null 2>&1; then
     exit 1
   fi
 else
-  SOCKET_GID="$(resolve_group_gid)" || { echo "No free GID in 400-499 for ${SOCKET_GROUP}" >&2; exit 1; }
+  SOCKET_GID="$(resolve_group_gid "$SOCKET_GROUP")" || { echo "No free GID in 400-499 for ${SOCKET_GROUP}" >&2; exit 1; }
   dscl_ensure /Groups/${SOCKET_GROUP}
   dscl_ensure /Groups/${SOCKET_GROUP} PrimaryGroupID "$SOCKET_GID"
+  assert_group_gid "$SOCKET_GROUP" "$SOCKET_GID"
 fi
 
 # 服务用户必须是 socket 组成员：plist 以 GroupName=SOCKET_GROUP 起 Worker，非成员会被 launchd 拒绝；
