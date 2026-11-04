@@ -27,16 +27,21 @@ EOF
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --release-dir) shift 2 ;; # 兼容旧参数
-    --evidence-dir) EVIDENCE_DIR="$2"; shift 2 ;;
-    --count) LOG_COUNT="$2"; shift 2 ;;
+    --evidence-dir) EVIDENCE_DIR="${2:-}"; shift 2 ;;
+    --count) LOG_COUNT="${2:-}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage; exit 1 ;;
   esac
 done
 
 if [[ -z "$EVIDENCE_DIR" ]]; then
-  echo "Missing required arguments" >&2
+  echo "Missing required arguments: --evidence-dir is required" >&2
   usage
+  exit 1
+fi
+
+if ! [[ "$LOG_COUNT" =~ ^[0-9]+$ ]] || [ "$LOG_COUNT" -le 500 ]; then
+  echo "Error: --count must be a positive integer greater than 500 (MAX_LOG_ENTRIES) to verify truncation" >&2
   exit 1
 fi
 
@@ -53,6 +58,9 @@ echo "Evidence dir: $EVIDENCE_DIR" | tee -a "$SUMMARY_FILE"
 TODAY=$(date '+%Y-%m-%d')
 AUDIT_FILE="$(CDPATH= cd -- "$AUDIT_DIR" && pwd)/audit-${TODAY}.jsonl"
 
+# 运行前截断旧文件，确保多次运行不会导致条目累加
+: > "$AUDIT_FILE"
+
 echo "[Step 1] 生成大批量日志数据: ${LOG_COUNT} 条 -> ${AUDIT_FILE}" | tee -a "$SUMMARY_FILE"
 START_TS=$(date +%s)
 BASE_EPOCH=1793664000  # 2026-11-03T00:00:00Z
@@ -65,18 +73,18 @@ fi
 for i in $(seq 1 "$LOG_COUNT"); do
   TIMESTAMP_UTC=$(format_utc $((BASE_EPOCH + i)))
   cat <<EOF >> "$AUDIT_FILE"
-{"timestamp_utc":"${TIMESTAMP_UTC}","level":"Information","event_type":"file_cleaned","message":"Cleaned photo batch item ${i}","source_path":"/fake/photo_${i}.jpg","wipe_result":"Cleaned_Modified"}
+{"timestamp_utc":"${TIMESTAMP_UTC}","level":"Information","event_type":"file_cleaned","message":"Cleaned photo batch item ${i}","source_path_masked":"/fake/photo_${i}.jpg","wipe_result":"Cleaned_Modified"}
 EOF
 done
 GEN_DUR=$(($(date +%s) - START_TS))
 echo "生成完成，用时 ${GEN_DUR}s，文件大小: $(wc -c < "$AUDIT_FILE") 字节" | tee -a "$SUMMARY_FILE"
 
 # 2. 真实执行 Rust 测试验证 LogBuffer 对大批量注入的截断与容量管理
-echo "[Step 2] 执行集成测试验证 LogBuffer 500 条截断上限" | tee -a "$SUMMARY_FILE"
+echo "[Step 2] 执行测试验证 LogBuffer 500 条截断上限与双通道协调" | tee -a "$SUMMARY_FILE"
 if command -v cargo >/dev/null 2>&1; then
   export AUDIT_TEST_FILE="$AUDIT_FILE"
-  (cd ui && cargo test -p photoprivacy-logs --test large_volume_test -- --nocapture) | tee -a "$SUMMARY_FILE"
-  echo "PASS: cargo test -p photoprivacy-logs --test large_volume_test 验证通过" | tee -a "$SUMMARY_FILE"
+  (cd ui && cargo test -p photoprivacy-logs -- --nocapture) | tee -a "$SUMMARY_FILE"
+  echo "PASS: cargo test -p photoprivacy-logs 验证通过" | tee -a "$SUMMARY_FILE"
 else
   CARGO_SKIPPED=1
   echo "WARN: 本地未预装 cargo，交由 CI 执行该测试" | tee -a "$SUMMARY_FILE"
