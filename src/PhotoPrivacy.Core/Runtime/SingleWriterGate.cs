@@ -25,9 +25,9 @@ public static class SingleWriterGate
     /// </summary>
     public static SingleWriterAdmission TryAcquire(string? configuredAuditDirectory)
     {
-        var auditDirectory = ResolveEffectiveAuditDirectory(configuredAuditDirectory);
         try
         {
+            var auditDirectory = ResolveEffectiveAuditDirectory(configuredAuditDirectory);
             var guard = SingleInstanceGuardFactory.Create(BuildLockName(auditDirectory));
             if (guard.IsOwner)
             {
@@ -39,7 +39,14 @@ public static class SingleWriterGate
         }
         catch (Exception ex)
         {
-            return new SingleWriterAdmission(Guard: null, AuditDirectory: auditDirectory, Error: ex);
+            // 非法/不可解析的路径也走让位（#153）：异常不得逃出本方法——Program 的
+            // 调用点不在 try 内，逃逸会在 UnhandledException 注册前崩掉 Worker。
+            return new SingleWriterAdmission(
+                Guard: null,
+                AuditDirectory: string.IsNullOrWhiteSpace(configuredAuditDirectory)
+                    ? Path.Combine(AppContext.BaseDirectory, "_audit")
+                    : configuredAuditDirectory,
+                Error: ex);
         }
     }
 
@@ -61,7 +68,8 @@ public static class SingleWriterGate
         }
         catch
         {
-            return Path.GetFullPath(directory);
+            // 不再二次 Path.GetFullPath：非法字符会在 catch 里再抛，异常逃出 TryAcquire（#153）。
+            return directory;
         }
     }
 
