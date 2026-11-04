@@ -592,25 +592,27 @@ if wait_until 30 test -S "$SERVICE_SOCKET"; then
   fi
 
   # R1 的功能面：GUI 用户必须真的能执行安装目录里的 UI 二进制，否则「权限收敛」把 UI 一起收敛掉了。
-  if [[ -n "$SUDO_USER" ]]; then
-    if sudo -u "$SUDO_USER" test -x "${INSTALL_DIR}/PhotoPrivacy"; then
-      rec PASS "GUI 用户 ${SUDO_USER} 可执行安装目录内的 UI 二进制（${INSTALL_DIR}/PhotoPrivacy）"
+  # 一律用 GUI_USER（`${SUDO_USER:-}` 的受控投影）：`set -u` 下裸 `$SUDO_USER` 在 root 直登语境会直接
+  # 终止脚本，后续断言与汇总全部跳过（#180 评审）。
+  if [[ -n "$GUI_USER" ]]; then
+    if sudo -u "$GUI_USER" test -x "${INSTALL_DIR}/PhotoPrivacy"; then
+      rec PASS "GUI 用户 ${GUI_USER} 可执行安装目录内的 UI 二进制（${INSTALL_DIR}/PhotoPrivacy）"
     else
-      rec FAIL "GUI 用户 ${SUDO_USER} 无法执行 ${INSTALL_DIR}/PhotoPrivacy——安装目录收紧过头，UI 无法启动"
+      rec FAIL "GUI 用户 ${GUI_USER} 无法执行 ${INSTALL_DIR}/PhotoPrivacy——安装目录收紧过头，UI 无法启动"
     fi
   fi
 
   # GUI 用户只应进 socket 访问组：进了数据组就等于拿到 2770 的组写权限，可绕过 IPC 删审计/隔离文件。
-  if [[ -n "$SUDO_USER" ]]; then
-    if dseditgroup -o checkmember -m "$SUDO_USER" "$SOCKET_GROUP" >/dev/null 2>&1; then
-      rec PASS "GUI 用户 ${SUDO_USER} 已在 socket 访问组 ${SOCKET_GROUP}"
+  if [[ -n "$GUI_USER" ]]; then
+    if dseditgroup -o checkmember -m "$GUI_USER" "$SOCKET_GROUP" >/dev/null 2>&1; then
+      rec PASS "GUI 用户 ${GUI_USER} 已在 socket 访问组 ${SOCKET_GROUP}"
     else
-      rec FAIL "GUI 用户 ${SUDO_USER} 不在 socket 访问组 ${SOCKET_GROUP}——服务模式 UI 连不上端点"
+      rec FAIL "GUI 用户 ${GUI_USER} 不在 socket 访问组 ${SOCKET_GROUP}——服务模式 UI 连不上端点"
     fi
-    if dseditgroup -o checkmember -m "$SUDO_USER" "$SERVICE_GROUP" >/dev/null 2>&1; then
-      rec FAIL "GUI 用户 ${SUDO_USER} 仍在数据组 ${SERVICE_GROUP}——可绕过 IPC 直接删审计/隔离文件"
+    if dseditgroup -o checkmember -m "$GUI_USER" "$SERVICE_GROUP" >/dev/null 2>&1; then
+      rec FAIL "GUI 用户 ${GUI_USER} 仍在数据组 ${SERVICE_GROUP}——可绕过 IPC 直接删审计/隔离文件"
     else
-      rec PASS "GUI 用户未获授数据组 ${SERVICE_GROUP}（无组写）"
+      rec PASS "GUI 用户 ${GUI_USER} 未获授数据组 ${SERVICE_GROUP}（无组写）"
     fi
   fi
 else
@@ -621,6 +623,19 @@ else
     capture 06-socket.txt ps eww -p "$CUR_PID"
   fi
   rec FAIL "30s 内未见服务模式 UDS 端点（${SERVICE_SOCKET}）"
+fi
+
+# 组隔离的第二道事实：socket 访问组与数据组必须是两条不同 GID 的组记录。
+# 同名/同 GID 的崩坏形态会让 GUI 用户虽然只进了 socket 组，却继承数据组对 hot/quarantine 的 2770
+# 组写（#180 评审 Major：安装器早期把数据组 GID 复用给 socket 组）。这里按 dscl 记录对拍，
+# 不依赖安装器自述。
+SOCKET_GID_ACTUAL="$(dscl . -read "/Groups/${SOCKET_GROUP}" PrimaryGroupID 2>/dev/null | awk 'NR==1 && $2 ~ /^[0-9]+$/ {print $2}')"
+SERVICE_GID_ACTUAL="$(dscl . -read "/Groups/${SERVICE_GROUP}" PrimaryGroupID 2>/dev/null | awk 'NR==1 && $2 ~ /^[0-9]+$/ {print $2}')"
+if [[ -n "$SOCKET_GID_ACTUAL" && -n "$SERVICE_GID_ACTUAL" \
+  && "$SOCKET_GID_ACTUAL" != "$SERVICE_GID_ACTUAL" ]]; then
+  rec PASS "socket 访问组 GID 独立于数据组（${SOCKET_GROUP}=${SOCKET_GID_ACTUAL} ≠ ${SERVICE_GROUP}=${SERVICE_GID_ACTUAL}）"
+else
+  rec FAIL "socket 访问组 GID 未与数据组分离（${SOCKET_GROUP}=${SOCKET_GID_ACTUAL:-<空>}，${SERVICE_GROUP}=${SERVICE_GID_ACTUAL:-<空>}）——同 GID 等于同组权限"
 fi
 
 # ---------- 5. 停止（MacOps::stop 同款命令串） ----------
