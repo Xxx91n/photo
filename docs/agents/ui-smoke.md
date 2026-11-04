@@ -94,12 +94,12 @@
 | # | 操作 | 结果 | 证据 |
 |---|---|---|---|
 | S1 | 未安装态：服务页显示未安装，启动/停止禁用 | 通过 | 2026-11-03 桌面截图目检（产物见下文 S 组产物记录）：服务页「服务状态：未安装」+「每 3 秒刷新」；「启动 / 停止服务」行的启动、停止两钮文字置灰 (154,154,148)，对照「安装」钮蓝 (47,188,251)、「刷新」钮深色 (26,26,25) 可点——与 `button_state` 未安装态 start/stop=false 一致（`ui/crates/photoprivacy-service/src/state.rs`）。帧 `S1-service-page.png`；同帧服务未安装时总览连接态为「已连接 · PhotoPrivacyCleaner.Background · 后台模式」（连接编排按 #70 现状回落后台端点，`S1-launch.png`），服务页仍如实显示未安装 |
-| S2 | 安装服务（提权 UAC/pkexec/osascript 流） | 未回填 | 不在 #88 AC 内；本轮仅作为 S3/S4/S8 的前置步骤用 `scripts/install-service.ps1`（agent 以 High IL 管理员运行，无 UAC 交互）执行，安装即登记 #70 的 `ServicePipeInstallerSid` |
+| S2 | 安装服务（提权 UAC/pkexec/osascript 流） | 通过（Windows UI 链路实机，2026-11-05） | 2026-11-05 桌面截图目检 + `sc query`/`sc qc`（产物见下文「S 组产物记录（2026-11-05，#58 窗口）」）：未安装态服务页点「安装」→ 绿字「成功 Operation succeeded」横幅、状态行 未安装→已停止、按钮组翻转为安装置灰/启动可点/停止置灰/卸载红钮亮起（与 `button_state` Stopped 分支一致；帧 `S2-04-install-clicked.png`）；同刻 `sc query` STATE 1 STOPPED、`sc qc` binPath 引号层级正确（`"…PhotoPrivacyWorker.exe" --mode service --config "…config.json"`）、AUTO_START、LocalSystem（`S2-after-install.txt`）。失败分支同轮实捕：移走包内 `PhotoPrivacyWorker.exe` 再点「安装」→ 红字「失败 PhotoPrivacyWorker must exist next to the UI to install the service」（无退出码失败保留具体原因）、状态行保持未安装（帧 `S2-03-install-failed-no-worker.png`）。**环境边界（如实登记）**：取证机 `EnableLUA=0` 且 UI 持管理员令牌，`token_is_elevated` 直通——UAC 同意/取消弹窗在本机不出现，「提权取消」态未探活（CI 侧由 `elevation_cancelled_is_not_reported_as_failure`、`install_does_not_reprompt_after_cancelled_precheck` 守护四态不塌缩）；UI 的 sc.exe 安装链路本体（System32 绝对路径解析、binPath 构造、SCM 注册）实打实走通。另：UI 安装通道走裸 `sc.exe`、不写 #70 的 `ServicePipeInstallerSid`（本轮注册表实测无值，服务管道按 #70 预设回退 current-user-only，Worker 日志 WARN 实捕——见产物记录「新观察」1）。2026-11-03 #88 轮的脚本安装通道（`install-service.ps1`）保留为历史前置步骤记录，不再作为本项证据 |
 | S3 | 启动服务 → 状态变运行中 | 通过 | 2026-11-03 桌面截图目检 + `sc query`：前态帧 `S3-before-stopped.png` 服务状态「已停止」，启动钮深色可点、停止/安装置灰、卸载红钮可点（与 `button_state` 一致）；点 UI「启动」后帧 `S3-after-running.png` 状态变「运行中」并出绿字反馈「Operation succeeded」，同时刻 `sc query PhotoPrivacyCleaner` STATE 4 RUNNING，服务 Worker 进程在 Services 会话（SYSTEM 上下文）存活；ProgramData 服务日志 04:09:55 Application started 后无 FTL/再停 |
 | S4 | 服务运行中 UI 经服务端点连接（服务页/日志页数据来自服务 Worker） | 通过 | 2026-11-03 桌面截图目检：服务运行中重启 UI，总览连接态「已连接 · PhotoPrivacyCleaner.Service · 服务模式」（帧 `S4-overview-service-mode.png`），Worker 卡片 Worker 模式=服务模式、上报模式=service、服务 IPC=可达、协议=v1、ExifTool=13.60、往返次数=14（单帧读数）；进程侧仅一个 Worker（pid 8996）且在 Services 会话，UI 未拉起后台 Worker——UI 连的是服务端点（#70 修复后服务管道 DACL 生效） |
 | S5 | 服务模式下改配置保存 → ReloadConfig 热生效 | 通过（当前 head，非提权 UI 已复测） | 2026-11-03 三轮实机，产物与逐帧证据见下文「S5 复测产物记录」三节：一轮基线 `fb388507`；二轮当前 head（`main@13a831c` + 发布脚本修复 #164，run 41563514193）复测——服务模式 UI 把监控目录从空改为 `…\photo-smoke-85head\hot-s5` 后绿字「已保存 · Worker 已重载」，**0.52 s 配置落盘 / 0.62 s 热生效**（读侧预算 10 s，`S5r2-02-e2e-timing.txt`）；投放样本由服务 Worker 清洗 3,648→626 B（`S5r2-03-logs-after-reload.png`、`S5r2-07-audit-records.txt`）；**标准用户**（`ppverify`，Medium IL、非管理员）经服务管道 `GetStatus` + 两次 `ReloadConfig` 全 `ok:true`/`mode=service`，往返 0.90 / 0.50 s（`S5r2-05-nonadmin-probe.txt`）；三轮以**标准用户身份启动 UI 本体**（`ppverify`，会话 2）重跑同一动作：0.80 s 内落盘并切换、样本 3,648→626 B、`ExifTool=13.60`——`S5r3-02`、`S5r3-03`、`S5r3-05` |
-| S6 | 停止服务 → 状态回落 | 未回填 | 未探活（#88 范围外） |
-| S7 | 卸载服务 → 回到未安装态 | 未回填 | 未探活（#88 范围外）；本轮收尾用 `install-service.ps1 -Action uninstall` 卸载并复核 SC 1060，但那是脚本通道，不是 S7 要验的 UI 提权链路 |
+| S6 | 停止服务 → 状态回落 | 通过（Windows UI 链路实机，2026-11-05） | 2026-11-05 桌面截图目检 + `sc query`（同上产物记录）：UI「启动」后 `sc query` STATE 4 RUNNING、服务 Worker pid 12616 落 Services 会话 0（`S6-pre-running3.txt`），运行态帧 `S6-04-running-ui.png`：状态行「运行中」绿点、停止可点、启动/卸载置灰（`button_state` Running 分支）；点 UI「停止」→ 绿字「成功 Operation succeeded」、状态行 运行中→已停止、按钮组翻转回启动/卸载可点、停止置灰（帧 `S6-06-stopped-ui.png`）；同刻 `sc query` STATE 1 STOPPED、服务 Worker 进程消失、UI 未拉起后台 Worker（`S6-after-stop.txt`）。busy 形态顺带实捕：点击后「正在执行服务命令…」+ 四钮全禁用（帧 `S6-00-start-clicked.png`）。附带观察：首启时（后台 Worker 仍存活）服务 Worker 撞 #162 单写者门让位退出，`sc start` 回 1053、UI 红字「失败 服务启动超时，请检查 ExifTool 路径和配置文件是否正确」（帧 `S6-01b-start-conflict-failed1053.png`、服务日志 02:26:59 ERR）——复现 #88 轮已登记的并存冲突；按 #88 先例结束后台 Worker 仅留 UI 后，UI 启动即运行 |
+| S7 | 卸载服务 → 回到未安装态 | 通过（Windows UI 链路实机，2026-11-05） | 2026-11-05 桌面截图目检 + `sc query`（同上产物记录）：已停止态点 UI「卸载」→ 绿字「成功 Operation succeeded」、状态行 已停止→未安装、按钮组回到 S1 形态（安装蓝钮可点、启动/停止/卸载全灰——帧 `S7-02-uninstalled-ui.png`）；同刻 `sc query` 1060 未安装、进程面仅剩 UI（`S7-after-uninstall.txt`）。运行态点「卸载」无动作未在本轮另测（`button_state` Running 分支 `uninstall=false`，同判据已由 L6 在 Linux 实测）；2026-11-03 #88 轮的脚本卸载记录保留为历史，不再作为本项证据 |
 | S8 | 服务模式日志通道在日志页可见（与后台模式区分） | 通过 | 2026-11-03 桌面截图 + 文件系统取证（帧 `S8-logs-page-service.png`）：同一服务模式会话切日志页，04:09:55「Service started mode=live」、04:09:56「ExifTool started」在列；04:13:08–09 投入 `hot/` 的带 Artist/Copyright 样本被服务 Worker 就地清洗 3648→626 B，日志页实时出「Cleaned attempt=1/wipe_result=Cleaned, Modified」×2 +「backup_sidecar_version… content_diverged_sidecar_written」，exiftool 复查标签已空；条目与 `pkg/hot/_audit/audit-2026-11-03.jsonl`、`processed.ndjson`（两文件 mtime 均落在投放后的 04:13）及 ProgramData 服务日志同刻。与后台模式的区分锚在连接态：本会话状态卡是「PhotoPrivacyCleaner.Service · 服务模式」+ Worker 卡片「服务 IPC=可达」（K1 记录的后台形态是 Background · 不可达） |
 
 > **macOS 探测项验收口径（#172）**：S1/S3/S6/S7 等服务页探测项在 macOS 侧不以人工读屏为准，以 `scripts/verify-launchd-service.sh` 的修后对拍为准——`ui_probe_report` 以 **GUI 用户**语境跑 `PhotoPrivacy --service-probe-report`（与截图同语境），与 CLI `probe_state`（`launchctl print system/<label>`，显式系统域）判定一致即探测项通过；截图与 legacy `launchctl list` 与 `launchctl print system/<label>` 对照留证仅供目检。对拍链由 `.github/workflows/launchd-verify.yml`（GitHub macOS runner 虚拟环境）执行。
@@ -614,6 +614,96 @@
 - **方法备注（供后续窗口复用）**：本机 `EnableLUA=0`，`Start-Process -Credential` 会因进程环境里同时
   存在 `Path`/`PATH`/`path` 三个大小写变体而抛「字典中已添加项」的重复键错误；把这三项循环清空后
   重设单一 `PATH` 即可启动。清空只影响当前进程环境，不落盘、不改系统。
+
+### S 组产物记录（2026-11-05，#58 窗口：S2/S6/S7 UI 操作链路补探活）
+
+> **任务出处**：#58 复核评论（2026-11-04）指定的下一步——「用当前 main 的远端 Windows 构建，
+> 经服务页 UI 执行 S2/S6/S7，观察状态行、按钮可用性及成功/失败/取消/未知反馈，并回填原 S 组清单」。
+> **取证口径的授权**：agent 桌面截图自查延续 #125/#88/#113 已批准的通道；「只走远端 CI/CD、本地不编译」
+> 沿用同一改派口径。不改变「无证据不虚构」：本节每条结论对应下文具体帧或探针输出。
+
+- **产物**：Release run [41882966311](https://github.com/Xxx91n/photo/actions/runs/41882966311)
+  （ref `main`，head `9acb72f`，version `0.1.0-verify58s`，`create_release=false`）的 `release-win-x64`，
+  head 与本窗口记录的 #58 起始基准 SHA 相同。本地未编译，包体全部来自远端 CI。
+  解压到本机私有目录 `C:\Users\Administrator\photo-smoke-58\pkg\`，入口同目录 `PhotoPrivacy.exe`。
+  二进制 sha256 实测：`PhotoPrivacy.exe f10ef2bb…` 33,107,139 B、`PhotoPrivacyWorker.exe 742b4e04…`
+  90,489,284 B；包内 `config/config.json` 与 `config.sample.json` 逐字节相同（#108 形态，
+  `watch.hot_folder`/`exiftool.path` 出厂空串），全程未改动。
+- **取证通道**：整屏 `Graphics.CopyFromScreen` + 合成点击（`SetCursorPos` + `mouse_event`），
+  与 #88/#125 同判据；本机没有 Windows Python/Pillow，工具改用 PowerShell/.NET 实现同一操作面
+  （`photo-smoke-58\tools\winshot.ps1`）。本轮新增的操作细节：
+  1. **单进程原子轮**：取证机上另有宿主自动化在跑，跨进程调用之间前台会被抢、主窗位置会被挪
+     （首轮导航点击落空即是此因，该帧废片已弃）。可靠做法是把
+     「重设主窗位置 (60,80)+TOPMOST → 点击 → 等待 1.2 s → 整屏截图」收进同一个 PowerShell 进程
+     原子完成（`winshot.ps1 act`），每轮行动前主窗位置确定，点击坐标全程可复用：
+     导航「服务管理」(362,156)、安装 (1006,312)、启动 (894,375)、停止 (950,375)、刷新 (1006,375)、
+     卸载 (1006,439)。
+- **前置状态**：服务未安装（SC 1060）、无 UI/Worker 残留进程、注册表无 `ServicePipeInstallerSid`
+  （`S0-pre-env.txt`）；取证身份 `administrator`、`EnableLUA=0`。
+- **步骤与结果（S2 → 前置启动 → S6 → S7，全程一个 UI 会话）**：
+  1. **S2 失败分支**：移走包内 `PhotoPrivacyWorker.exe`（改名 `.off`，UI/后台 Worker 进程不受影响）
+     点「安装」→ 红框「失败 PhotoPrivacyWorker must exist next to the UI to install the service」、
+     状态行保持未安装——帧 `S2-03-install-failed-no-worker.png`；还原文件后 sha256 实测回到
+     `742b4e04…`；
+  2. **S2 本体**：点「安装」→ 绿框「成功 Operation succeeded」、状态行 未安装→已停止、
+     安装置灰/启动可点/停止置灰/卸载红钮亮起——帧 `S2-04-install-clicked.png`；同刻 `sc query`
+     STATE 1 STOPPED、`sc qc` binPath=`"…PhotoPrivacyWorker.exe" --mode service --config "…config.json"`
+     （引号层级正确）、AUTO_START、LocalSystem——`S2-after-install.txt`；
+  3. **前置启动（撞冲突）**：点「启动」→ busy 帧「正在执行服务命令…」+ 四钮全禁用
+     （`S6-00-start-clicked.png`）→ 但服务仍回落 STOPPED：后台 Worker（UI 启动时拉起的
+     pid 8860）还活着，服务 Worker 撞 #162 单写者门让位退出（服务日志 02:26:59 ERR
+     「yielding cleanly instead of crashing」），`sc start` 侧回 1053 → UI 红框
+     「失败 服务启动超时，请检查 ExifTool 路径和配置文件是否正确」——帧
+     `S6-01b-start-conflict-failed1053.png`。这是 #88 轮「新观察 1」并存冲突在本轮的复现，
+     也是四态中「失败」的一次真实 UI 呈现；
+  4. **前置启动（按 #88 先例）**：结束后台 Worker 仅留 UI，再点「启动」→ 运行态帧
+     `S6-04-running-ui.png`（状态行「运行中」绿点、停止可点/启动与卸载置灰）、`sc query`
+     STATE 4 RUNNING、服务 Worker pid 12616 在 Services 会话 0（`S6-pre-running3.txt`）；
+  5. **S6 本体**：点「停止」→ 绿框「成功 Operation succeeded」、状态行 运行中→已停止、
+     启动/卸载转可点——帧 `S6-06-stopped-ui.png`；同刻 STATE 1 STOPPED、服务 Worker 进程消失、
+     UI 未拉起后台 Worker——`S6-after-stop.txt`；
+  6. **S7 本体**：点「卸载」→ 绿框「成功 Operation succeeded」、状态行 已停止→未安装、
+     按钮组回到 S1 形态——帧 `S7-02-uninstalled-ui.png`；同刻 `sc query` 1060——
+     `S7-after-uninstall.txt`。
+- **四态反馈实况（成功/失败/取消/未知）**：绿框「成功」×4（安装/启动/停止/卸载，`S2-04`、
+  `S6-04`、`S6-06`、`S7-02`）；红框「失败」×2（Worker 缺席安装、启动超时 1053，`S2-03`、
+  `S6-01b`）；「提权取消」与「未知」未探活——前者被取证机 `EnableLUA=0` + 管理员令牌阻断
+  （UAC 弹窗不出现，`token_is_elevated` 直通；CI 侧 `elevation_cancelled_is_not_reported_as_failure`/
+  `install_does_not_reprompt_after_cancelled_precheck` 守护四态不塌缩），后者需探测进程异常
+  （3s 探测超时/spawn 失败），均如实记未探活，不虚构。
+- **本轮新观察（不自行开票，是否成票/是否修待用户裁决）**：
+  1. **UI 安装通道不写 `ServicePipeInstallerSid`**：服务页「安装」走裸 `sc.exe create`
+     （`ui/crates/photoprivacy-service/src/windows.rs`），#70 的安装者 SID 只由
+     `install-service.ps1` 登记。本轮 UI 安装后注册表实测无该值，服务 Worker 启动即打 WARN
+     （02:29:38.520，ProgramData `worker-20261105.log`）：「service pipe falls back to
+     current-user-only and non-elevated desktop UI will be denied. Reinstall the service to
+     register it (#70)」——即 **UI 安装的服务在非提权桌面会话连不上服务管道**（C1 形态的
+     UI 安装变体），管理员会话不受影响（本轮 S6 的 UI 连通即管理员会话）。这是 #70 与 #58
+     两条链路交界处的已知回退（WorkerIpcServerHostedService 的 WARN 是 #70 预设行为），
+     但「服务页装出来的服务」与「脚本装出来的服务」能力不同这一事实，此前未见记录。
+  2. **首启冲突的 UI 呈现**：#88 记录的「服务与后台 Worker 同 config 并存时服务自停」在本轮
+     补上了 UI 侧形态——`sc start` 1053 → 服务页红框「失败 服务启动超时…」。文案把单写者
+     冲突归因为「ExifTool 路径和配置文件」，对真因有误导性；候选方向是启动路径对 1053 的
+     友好文案按退出上下文细分，属 #58/#70/#162 交界的后续裁决。
+- **Linux/macOS 提权降级的口径（本票回填的引用）**：
+  - **macOS**：直接引用 #32 收口记录（2026-11-03，用户裁决原文）——「Service 页支持操作
+    ⚠️ CLI 等价：停止/启动/卸载以 MacOps 同款命令串验证；提权按钮 osascript 链路按用户裁决
+    接受为残留（OK）」，处置归档第 4 条「提权按钮 UI 链路残留 → OK」。本票不再重开 macOS
+    取证，S2/S6/S7 的 macOS 面按该裁定核销。
+  - **Linux**：L2b/L3b/L5/L6 已实捕 UI 安装/启动/停止/卸载命令通道（实打实走 pkexec），
+    交互式 polkit 认证弹窗未覆盖（取证机 polkit 规则免交互，L 组「环境适配 1」）——#58
+    复核评论把它列为剩余缺口。**无用户裁定记录在案**：是否需要补真实弹窗取证（需带
+    polkit 认证 agent 的 Linux 桌面，WSLg 环境适配是否算数也要用户认可）属用户决策，
+    本窗口不自行裁决。
+- **收尾状态**：服务已卸载（`sc query` 1060 复核）、UI 已退出、无残留 UI/Worker 进程
+  （`Get-Process PhotoPrivacy*` 为空，`S-final-cleanup.txt`）、`ServicePipeInstallerSid` 全程无值；
+  `config.json` 未动（出厂样）；
+  服务 Worker 诊断日志留 `C:\ProgramData\PhotoPrivacy\logs\worker-20261105.log`（5 行：
+  1 ERR + 2 WARN + 2 行正常启停），未入仓库。证据 22 个文件存
+  `C:\Users\Administrator\photo-smoke-58\evidence\`（不入库），哈希锚
+  `docs/agents/ui-smoke-evidence.sha256` 的 S267 组。
+- **边界**：仅 Windows 命名管道与 sc.exe 通道；Linux（L 组已覆盖 UI 命令通道）/macOS（#32
+  裁定残留）见上。服务模式下的日志页/配置热重载不在本轮 AC（S8/S5 各有既有证据）。
 
 ### Linux systemd 实机（#31 定形，2026-11-04：WSL2 Ubuntu 安装/卸载/日志全链路）
 
