@@ -69,7 +69,7 @@ public sealed class DefaultPathsTests
         }
     }
 
-    // Design(#33): exiftool.path 目录式覆盖——给定已安装的 ExifTool 目录，解析出其中的
+    // #33: exiftool.path 目录式覆盖——给定已安装的 ExifTool 目录，解析出其中的
     // exiftool/exiftool.exe（对齐 ExifToolGUI 的 ETOverrideDir）。
     [Fact]
     public void ResolveExifToolExecutable_Should_Resolve_Directory_To_Contained_Exe()
@@ -91,7 +91,7 @@ public sealed class DefaultPathsTests
         }
     }
 
-    // Design(#33): 用户给的是 exiftool 可执行文件本身的绝对路径时，原样返回，不画蛇添足。
+    // #33: 用户给的是 exiftool 可执行文件本身的绝对路径时，原样返回，不画蛇添足。
     [Fact]
     public void ResolveExifToolExecutable_Should_Return_Existing_File_AsIs()
     {
@@ -111,7 +111,7 @@ public sealed class DefaultPathsTests
         }
     }
 
-    // Design(#33): 既非文件也非目录的无效值原样返回，交由 AppConfigValidator 报 not found。
+    // #33: 既非文件也非目录的无效值原样返回，交由 AppConfigValidator 报 not found。
     [Fact]
     public void ResolveExifToolExecutable_Should_Return_Nonexistent_Path_AsIs()
     {

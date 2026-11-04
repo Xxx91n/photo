@@ -1,6 +1,6 @@
 name: ExifTool chain verify
 
-# Design(#33): 官方版下载链验证 + ExifToolPathOverride 构建层自检。
+# #33: 官方版下载链验证 + ExifToolPathOverride 构建层自检。
 # 纯 shell，不编译应用；发布脚本/钉死值变更即触发，另做周常巡检防官方换版或钉死值漂移。
 on:
   push:

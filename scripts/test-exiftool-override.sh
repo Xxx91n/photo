@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Design(#33): ExifToolPathOverride 构建层自检——纯 shell，不编译应用、不联网。
+# #33: ExifToolPathOverride 构建层自检——纯 shell，不编译应用、不联网。
 # 覆盖 publish.sh 的目录式打包路径：布局校验、产物落盘、-ver 探针、错误路径 fail-closed。
 # CI 与本地 WSL 同口径；publish.sh 被 source 时不进入 cargo/dotnet 主流程。
 set -euo pipefail
@@ -28,12 +28,15 @@ if [[ "${1:-}" == "-ver" ]]; then echo "13.60-override-stub"; fi
 STUB
 chmod +x "${OVERRIDE}/exiftool"
 
-# source 只暴露函数；TARGET_DIR 由测试自行注入。屏蔽网络工具，确保覆盖路径不触碰下载。
+# source 只暴露函数；TARGET_DIR 由测试自行注入。屏蔽网络工具并记下任何调用，
+# 用「零调用」直接证明覆盖路径跳过下载，而不是仅靠下载失败反证。
 export TARGET_DIR="$DEST"
 set -- # 清空位置参数，避免 source 时误解析
 source "$PUBLISH_SH"
-curl() { return 1; }
-wget() { return 1; }
+NET_CALLS="${WORK}/network-calls.log"
+export NET_CALLS
+curl() { printf 'curl %s\n' "$*" >> "$NET_CALLS"; return 1; }
+wget() { printf 'wget %s\n' "$*" >> "$NET_CALLS"; return 1; }
 export -f curl wget 2>/dev/null || true
 
 echo "=== 1. bundle_exiftool_from_override：目录式覆盖打包 ==="
@@ -49,7 +52,8 @@ rm -rf "${DEST}/ExifTool"
 # 若误走默认下载通道，curl/wget 已被屏蔽且会 exit 1，此调用即失败。
 bundle_exiftool "13.60" "" "$OVERRIDE" >/dev/null
 [[ -f "${DEST}/ExifTool/exiftool" ]] || fail "override 未生效（可能误走下载通道）"
-pass "override 优先级高于下载，无网络访问"
+[[ ! -s "$NET_CALLS" ]] || fail "覆盖路径发起了网络下载：$(cat "$NET_CALLS")"
+pass "override 生效且下载函数零调用（不联网）"
 
 echo "=== 3. 错误路径 fail-closed ==="
 if ( bundle_exiftool_from_override "${WORK}/does-not-exist" >/dev/null 2>&1 ); then

@@ -224,10 +224,12 @@ impl ConfigUiState {
             if config.exiftool.path.trim().is_empty() {
                 self.exiftool_hint = detect_exiftool_path(&config.exiftool.path);
             } else if let Some(detected) = detect_exiftool_path(&config.exiftool.path) {
-                // Design(#33): 目录式覆盖保留用户填的目录本身，不把解析出的 exe 路径写回
+                // #33: 目录式覆盖保留用户填的目录本身，不把解析出的 exe 路径写回
                 // config.json（否则一次保存就把目录冻结成文件绝对路径，发布包换目录即失效）。
                 // hint 仍显示解析结果，让用户确认目录内确实有可用的 exiftool。
-                if std::path::Path::new(&config.exiftool.path).is_dir() {
+                let configured_path = config.exiftool.path.trim().to_string();
+                let is_directory = std::path::Path::new(&configured_path).is_dir();
+                if is_directory {
                     self.exiftool_hint = Some(detected);
                 } else {
                     config.exiftool.path = detected.clone();
@@ -3032,11 +3034,15 @@ mod tests {
         }
     }
 
-    /// Design(#33): 目录式覆盖在首次加载时保留用户填的目录，不把解析出的 exe 路径写回
+    /// #33: 目录式覆盖在首次加载时保留用户填的目录，不把解析出的 exe 路径写回
     /// config.json（否则一次保存就把目录冻结成文件绝对路径）。提示仍显示解析结果。
     #[test]
     fn directory_exiftool_path_is_not_rewritten_on_load() {
-        let dir = std::env::temp_dir().join(format!("pp-dir-override-{}", std::process::id()));
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("pp-dir-override-{}", unique));
         let _ = std::fs::create_dir_all(&dir);
         let exe = dir.join(if cfg!(windows) {
             "exiftool.exe"
@@ -3057,6 +3063,14 @@ mod tests {
             dir.to_string_lossy().into_owned()
         );
         assert_eq!(state.exiftool_hint.as_deref(), Some(expected_hint.as_str()));
+
+        // 前后带空白的目录同样不能触发写回：detect_exiftool_path 先 trim 再解析，
+        // set_config 必须用同一口径判断 is_dir，否则目录值会被替换成 exe 绝对路径。
+        let padded = format!("  {}  ", dir.display());
+        let mut padded_config = AppConfig::default();
+        padded_config.exiftool.path = padded.clone();
+        let _ = state.set_config(padded_config, true);
+        assert_eq!(state.config.exiftool.path, padded);
 
         let _ = std::fs::remove_dir_all(&dir);
     }

@@ -7,7 +7,7 @@ SELF_CONTAINED="true"
 ZIP="true"
 EXIFTOOL_VERSION="13.60"
 EXIFTOOL_ARCHIVE=""
-# Design(#33): ExifToolPathOverride——指向已安装的 ExifTool 目录，直接打包、跳过下载，
+# #33: ExifToolPathOverride——指向已安装的 ExifTool 目录，直接打包、跳过下载，
 # 对齐 ExifToolGUI 的 ETOverrideDir（自带 ExifTool、不下载）。空 = 走默认下载通道。
 EXIFTOOL_PATH_OVERRIDE=""
 
@@ -130,10 +130,16 @@ fi # guard 第一段结束：参数解析 + 主机/工具链校验只在直接�
 bundle_exiftool() {
   local version="$1"
   local archive="$2"
-  local override="$3"
+  # 第三参数可省略：source 后单测或旧的两参数调用不因 set -u 报错。
+  local override="${3:-}"
 
-  # Design(#33): ExifToolPathOverride——目录式覆盖，直接打包跳过下载（对齐 ExifToolGUI ETOverrideDir）。
+  # #33: ExifToolPathOverride——目录式覆盖，直接打包跳过下载（对齐 ExifToolGUI ETOverrideDir）。
   if [[ -n "$override" ]]; then
+    # 两个来源互斥：同时给会让 --exiftool-archive 被静默忽略（其语义是「仍校验 SHA256」）。
+    if [[ -n "$archive" ]]; then
+      echo "--exiftool-path-override 与 --exiftool-archive 互斥：覆盖模式下不会读取归档，请只传一个" >&2
+      exit 1
+    fi
     bundle_exiftool_from_override "$override"
     return
   fi
@@ -194,7 +200,7 @@ bundle_exiftool() {
   echo "Bundled ExifTool ${version} -> ${dest}"
 }
 
-# Design(#33): ExifToolPathOverride——从已安装的 ExifTool 目录直接打包，跳过下载与 SHA256 校验
+# #33: ExifToolPathOverride——从已安装的 ExifTool 目录直接打包，跳过下载与 SHA256 校验
 # （对齐 ExifToolGUI 的 ETOverrideDir：用户自带 ExifTool、不下载）。仅校验布局并做 -ver 版本探针。
 bundle_exiftool_from_override() {
   local override="$1"

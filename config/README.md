@@ -17,7 +17,11 @@
 
 UI 配置页保存时仍原样保留你填的目录（不改写为绝对路径），解析只在 Worker 加载时发生——发布包换目录解压后不会残留旧机器的绝对路径。
 
-构建发版侧对应 `--exiftool-path-override <目录>`（`scripts/publish.sh`）与 `-ExifToolPathOverride <目录>`（`scripts/publish-app.ps1`）：直接使用该目录打包、跳过下载，并做 `exiftool -ver` 版本探针。默认下载通道的 SHA256 钉死值由 `scripts/verify-exiftool-download.sh` 与官方 `https://exiftool.org/checksums.txt` 对账（CI 在发布脚本变更时触发，另做周常巡检）。
+构建发版侧对应 `--exiftool-path-override <目录>`（`scripts/publish.sh`）与 `-ExifToolPathOverride <目录>`（`scripts/publish-app.ps1`）：直接使用该目录打包、跳过下载，并做 `exiftool -ver` 版本探针。两个来源参数互斥（同时给会显式报错）；与 `--exiftool-archive` / `-ExifToolZip` 也互斥。
+
+**覆盖模式的信任边界**：该目录被视为完全可信——只校验「可执行文件 + 伴随目录（`exiftool_files/` 或 `lib/`）」的布局，不校验归档来源、签名或内容完整性；跳过 SHA256 钉扎是刻意的（用户自带版本未必是发布包钉死的那个）。`exiftool -ver` 探针失败或缺 `perl` 的构建主机只告警、不阻断打包。默认下载通道不受影响，仍强制按钉死 SHA256 校验。
+
+默认下载通道的 SHA256 钉死值由 `scripts/verify-exiftool-download.sh` 与官方 `https://exiftool.org/checksums.txt` 对账（CI 在发布脚本变更时触发，另做周常巡检）；该脚本的硬判定是校验值一致，下载 URL 可达性只作软检查并如实标注。
 
 ## 校验分层
 

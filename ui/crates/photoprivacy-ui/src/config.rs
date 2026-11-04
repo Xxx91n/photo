@@ -482,7 +482,7 @@ pub fn detect_exiftool_path(current: &str) -> Option<String> {
         };
     }
 
-    // Design(#33): exiftool.path 支持目录式覆盖（ExifToolGUI 的 ETOverrideDir 口径）：
+    // #33: exiftool.path 支持目录式覆盖（ExifToolGUI 的 ETOverrideDir 口径）：
     // 用户给一个 ExifTool 安装目录时，解析目录内的 exiftool/exiftool.exe 作为可用路径。
     let resolved = resolve_exiftool_executable_from_configured(current);
     if resolved != current && Path::new(&resolved).is_file() {
@@ -994,9 +994,13 @@ mod tests {
 
     #[test]
     fn detect_exiftool_path_resolves_directory_override() {
-        // Design(#33): exiftool.path 给一个 ExifTool 安装目录时，提示解析目录内的 exiftool/exiftool.exe
+        // #33: exiftool.path 给一个 ExifTool 安装目录时，提示解析目录内的 exiftool/exiftool.exe
         // （ExifToolGUI 的 ETOverrideDir 口径）。UI 不改写存储值，仅用于提示。
-        let dir = std::env::temp_dir().join(format!("pp-detect-{}", std::process::id()));
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("pp-detect-{}", unique));
         let _ = std::fs::create_dir_all(&dir);
         let exe = dir.join(if cfg!(windows) {
             "exiftool.exe"

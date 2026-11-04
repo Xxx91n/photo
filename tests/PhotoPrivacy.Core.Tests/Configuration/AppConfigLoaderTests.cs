@@ -75,7 +75,7 @@ public sealed class AppConfigLoaderTests
         }
     }
 
-    // Design(#33): exiftool.path 给一个已安装的 ExifTool 目录（ExifToolGUI 的 ETOverrideDir 口径），
+    // #33: exiftool.path 给一个已安装的 ExifTool 目录（ExifToolGUI 的 ETOverrideDir 口径），
     // 加载后应归一到该目录内的 exiftool/exiftool.exe 绝对路径，供校验器与 Worker 直接使用。
     [Fact]
     public void Load_Should_Resolve_Directory_ExifToolPath_To_Contained_Executable()
