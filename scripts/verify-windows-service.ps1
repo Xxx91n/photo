@@ -177,7 +177,7 @@ try {
   }
 
   $workerProcess = Get-Process "PhotoPrivacyWorker" -ErrorAction SilentlyContinue |
-    Where-Object { $_.Path -eq $stagedWorker -or $_.SessionId -eq 0 } |
+    Where-Object { $_.Path -eq $stagedWorker -and $_.SessionId -eq 0 } |
     Select-Object -First 1
 
   if ($null -ne $workerProcess) {
@@ -214,13 +214,32 @@ try {
   $pipeConnected = $false
   $pipeResponse = ""
   try {
-    $pipeClient = [System.IO.Pipes.NamedPipeClientStream]::new(
-      ".",
-      $pipeName,
-      [System.IO.Pipes.PipeDirection]::InOut,
-      [System.IO.Pipes.PipeOptions]::Asynchronous,
-      [System.Security.Principal.TokenImpersonationLevel]::Identification
-    )
+    # 客户端连接命名管道（动态解析 PipeAccessRights 细粒度掩码 0x12019B，兼顾 pwsh 与 Windows PowerShell）
+    $pipeClient = $null
+    $rightsType = "System.IO.Pipes.PipeAccessRights" -as [type]
+    if ($null -ne $rightsType) {
+      try {
+        $clientAccessMask = [System.Enum]::ToObject($rightsType, 1180059)
+        $pipeClient = [System.IO.Pipes.NamedPipeClientStream]::new(
+          ".",
+          $pipeName,
+          $clientAccessMask,
+          [System.IO.Pipes.PipeOptions]::Asynchronous,
+          [System.Security.Principal.TokenImpersonationLevel]::Identification,
+          [System.IO.HandleInheritability]::None
+        )
+      } catch { }
+    }
+    if ($null -eq $pipeClient) {
+      $pipeClient = [System.IO.Pipes.NamedPipeClientStream]::new(
+        ".",
+        $pipeName,
+        [System.IO.Pipes.PipeDirection]::InOut,
+        [System.IO.Pipes.PipeOptions]::Asynchronous,
+        [System.Security.Principal.TokenImpersonationLevel]::Identification,
+        [System.IO.HandleInheritability]::None
+      )
+    }
 
     $pipeClient.Connect(10000)
     $writer = [System.IO.StreamWriter]::new($pipeClient, [System.Text.Encoding]::UTF8)
@@ -295,18 +314,23 @@ try {
       Start-Sleep -Seconds 1
       $stoppedSvc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
       if ($null -ne $stoppedSvc -and $stoppedSvc.Status -eq [System.ServiceProcess.ServiceControllerStatus]::Stopped) {
-        $stopSuccess = $true
+        $script:stopSuccess = $true
         "Stopped status confirmed: " + $stoppedSvc.Status
         break
       }
     }
-    if (-not $stopSuccess) {
+    if (-not $script:stopSuccess) {
       "Failed to reach Stopped status after Stop-Service"
     } else {
       Start-Service -Name $ServiceName
-      Start-Sleep -Seconds 2
-      $restartedSvc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
-      "Restarted status: " + $restartedSvc.Status
+      for ($i = 0; $i -lt 15; $i++) {
+        Start-Sleep -Seconds 1
+        $restartedSvc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+        if ($null -ne $restartedSvc -and $restartedSvc.Status -eq [System.ServiceProcess.ServiceControllerStatus]::Running) {
+          "Restarted status: " + $restartedSvc.Status
+          break
+        }
+      }
     }
   }
 
@@ -324,9 +348,18 @@ try {
       -ServiceName $ServiceName
   }
 
-  Start-Sleep -Seconds 2
-  $uninstalledSvc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
-  if ($null -eq $uninstalledSvc) {
+  # 等待 SCM 标记删除完成（Windows 删除服务通常需要等全部句柄释放，带轮询）
+  $uninstalled = $false
+  for ($i = 0; $i -lt 15; $i++) {
+    Start-Sleep -Seconds 1
+    $uninstalledSvc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+    if ($null -eq $uninstalledSvc) {
+      $uninstalled = $true
+      break
+    }
+  }
+
+  if ($uninstalled) {
     Rec "PASS" "Service '$ServiceName' successfully uninstalled."
   } else {
     Rec "FAIL" "Service '$ServiceName' still exists in SCM after uninstall."
@@ -340,10 +373,19 @@ try {
     Rec "FAIL" "Registry ServicePipeInstallerSid not cleaned upon uninstall."
   }
 
-  # 残留进程检查
-  $remainingProcesses = Get-Process "PhotoPrivacyWorker" -ErrorAction SilentlyContinue |
-    Where-Object { $_.Path -eq $stagedWorker }
-  if ($null -eq $remainingProcesses -or $remainingProcesses.Count -eq 0) {
+  # 残留进程检查（带轮询等待进程彻底退出）
+  $processesCleaned = $false
+  for ($i = 0; $i -lt 10; $i++) {
+    $remainingProcesses = Get-Process "PhotoPrivacyWorker" -ErrorAction SilentlyContinue |
+      Where-Object { $_.Path -eq $stagedWorker }
+    if ($null -eq $remainingProcesses -or $remainingProcesses.Count -eq 0) {
+      $processesCleaned = $true
+      break
+    }
+    Start-Sleep -Seconds 1
+  }
+
+  if ($processesCleaned) {
     Rec "PASS" "No orphaned PhotoPrivacyWorker process remains after uninstall."
   } else {
     Rec "FAIL" "Found orphaned PhotoPrivacyWorker process after uninstall."

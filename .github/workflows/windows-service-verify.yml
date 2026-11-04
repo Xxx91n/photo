@@ -39,7 +39,12 @@ jobs:
           $windres = Get-Command windres -ErrorAction SilentlyContinue
           if (-not $windres) {
             foreach ($candidate in @("C:\msys64\mingw64\bin\windres.exe", "C:\ProgramData\mingw64\mingw64\bin\windres.exe")) {
-              if (Test-Path $candidate) { $windres = $candidate; break }
+              if (Test-Path $candidate) {
+                $windres = $candidate
+                $mingwBin = Split-Path -Parent $candidate
+                $mingwBin | Out-File -FilePath $env:GITHUB_PATH -Append
+                break
+              }
             }
           }
           if (-not $windres) {
