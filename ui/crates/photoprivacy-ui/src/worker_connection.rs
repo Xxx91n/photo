@@ -1,7 +1,8 @@
 use photoprivacy_ipc::{
     ConnectFailureCause, ConnectionSnapshot, ConnectionState, Endpoint, HostPlatform, IpcClient,
-    WorkerMode, current_home, current_platform, current_service_endpoint, is_service_access_denied,
-    protocol::methods, resolve_endpoint, service_pipe_endpoint_with_advertised, spawn_monitor,
+    IpcError, ProcessIdentityVerifier, ServerGuard, UnverifiablePolicy, WorkerMode, current_home,
+    current_platform, current_service_endpoint, is_service_access_denied, protocol::methods,
+    resolve_endpoint, service_pipe_endpoint_with_advertised, spawn_monitor,
     spawn_show_window_server, watch_service_reachability, watch_version,
 };
 use std::path::{Path, PathBuf};
@@ -83,7 +84,10 @@ pub fn start(
         ));
     }
 
-    let client = Arc::new(IpcClient::new());
+    // #7 残余①：后台管道核验服务端进程身份。期望 PID 在拉起 Worker 后登记；镜像路径作
+    // 「UI 重启但后台 Worker 仍在」的回退基准。作用域只覆盖后台端点（服务管道不叠加，D3）。
+    let (guard, identity) = background_server_guard(&options);
+    let client = Arc::new(with_optional_guard(IpcClient::new(), guard.as_ref()));
     let (endpoint_tx, endpoint_rx) = watch::channel(None);
     let link = WorkerLink {
         client: client.clone(),
@@ -91,7 +95,7 @@ pub fn start(
     };
 
     runtime.spawn(async move {
-        match connect_worker(&client, &options).await {
+        match connect_worker(&client, &options, &identity).await {
             Some((endpoint, mode, failure)) => {
                 let _ = endpoint_tx.send(Some(endpoint.clone()));
                 snapshots.send_modify(|snapshot| {
@@ -114,7 +118,9 @@ pub fn start(
                 );
                 spawn_monitor(client, resolve.clone(), snapshots.clone());
                 // 独立 1s 版本轮询：单独客户端避免与心跳的单飞锁互相拖慢；心跳退避不影响版本节拍。
-                let version_client = Arc::new(IpcClient::new());
+                // #7：版本轮询同样核验后台服务端身份（服务端点由 guard 作用域过滤，零行为变化）。
+                let version_client =
+                    Arc::new(with_optional_guard(IpcClient::new(), guard.as_ref()));
                 let version_resolve = resolve;
                 tokio::spawn(watch_version(
                     move || {
@@ -184,6 +190,7 @@ fn endpoint_resolver(
 async fn connect_worker(
     client: &IpcClient,
     options: &ConnectOptions,
+    identity: &ProcessIdentityVerifier,
 ) -> Option<(Endpoint, WorkerMode, Option<ConnectFailureCause>)> {
     let platform = current_platform();
     let home = current_home();
@@ -194,6 +201,8 @@ async fn connect_worker(
     // #169：探测不再把 IpcError 吞成 bool——服务端点被 DACL 拒（raw 5）本身即「端点存在且当前
     // 账户不在授权集合」的证明，是回落链第一环的真实失败原因；端点缺失/超时不携带该信号，照旧回落。
     let mut service_access_denied = false;
+    // #7 残余①：后台端点连上但对端不是期望 Worker 的原因（核验失败），供失败分类带出。
+    let mut identity_failure: Option<String> = None;
     for (mode, endpoint) in [
         (WorkerMode::Service, service),
         (WorkerMode::Background, background.clone()),
@@ -207,6 +216,11 @@ async fn connect_worker(
                 if mode == WorkerMode::Service && is_service_access_denied(&err) {
                     service_access_denied = true;
                 }
+                if mode == WorkerMode::Background {
+                    if let IpcError::ServerIdentity(reason) = &err {
+                        identity_failure = Some(reason.clone());
+                    }
+                }
             }
         }
     }
@@ -219,10 +233,14 @@ async fn connect_worker(
     ) {
         launch = Some(
             match launch_background_worker(worker, options.config_path.as_deref()) {
-                Ok(exit_slot) => LaunchObservation {
-                    spawn_error: None,
-                    exit_slot: Some(exit_slot),
-                },
+                Ok((exit_slot, pid)) => {
+                    // #7 残余①：记下本次拉起的 Worker PID——后续每次连接的核验首选比对它。
+                    identity.expect_pid(pid);
+                    LaunchObservation {
+                        spawn_error: None,
+                        exit_slot: Some(exit_slot),
+                    }
+                }
                 Err(err) => {
                     eprintln!("[photoprivacy-ui] 启动后台 Worker 失败: {err}");
                     LaunchObservation {
@@ -235,14 +253,23 @@ async fn connect_worker(
 
         let deadline = Instant::now() + Duration::from_secs(5);
         while Instant::now() < deadline {
-            if client.is_alive(endpoint).await {
-                return Some((endpoint.clone(), WorkerMode::Background, None));
+            // 不走 is_alive：它把错误吞成 bool，核验失败的原因会丢（AC2 要求原因可观测）。
+            match client.request(endpoint, methods::PING).await {
+                Ok(_) => return Some((endpoint.clone(), WorkerMode::Background, None)),
+                Err(IpcError::ServerIdentity(reason)) => identity_failure = Some(reason),
+                Err(_) => {}
             }
             tokio::time::sleep(Duration::from_millis(200)).await;
         }
     }
 
-    let failure = classify_connect_failure(service_access_denied, launch);
+    // #7 残余①：后台端点连上了但对端不是期望的 Worker——比「未就绪/未安装」更准确：
+    // Worker 可能根本没参与，接管端点的是同用户抢先建的管道。归入既有三态的启动失败，
+    // 并在编排层记 warning（AC2：失败原因可观测；分类函数保持纯函数）。
+    if let Some(reason) = identity_failure.as_ref() {
+        eprintln!("[photoprivacy-ui] 后台 IPC 服务端身份核验失败: {reason}");
+    }
+    let failure = classify_connect_failure(service_access_denied, identity_failure, launch);
     background.map(|endpoint| (endpoint, WorkerMode::Background, Some(failure)))
 }
 
@@ -257,10 +284,16 @@ struct LaunchObservation {
 /// （含 #163 单写者准入门让位退出）与「未找到可拉起的 Worker 程序」。
 fn classify_connect_failure(
     service_access_denied: bool,
+    identity_failure: Option<String>,
     launch: Option<LaunchObservation>,
 ) -> ConnectFailureCause {
     if service_access_denied {
         return ConnectFailureCause::ServiceAccessDenied;
+    }
+    // #7 残余①：后台端点连上了但对端不是期望的 Worker（同用户抢先建管道）——归入既有
+    // 三态的启动失败，细节带上核验原因（warning 由编排层在归类前记录）。
+    if let Some(reason) = identity_failure {
+        return ConnectFailureCause::WorkerStartupFailed(format!("untrusted IPC server: {reason}"));
     }
     let Some(launch) = launch else {
         return ConnectFailureCause::WorkerNotInstalled;
@@ -283,12 +316,14 @@ fn classify_connect_failure(
     ConnectFailureCause::WorkerStartupFailed(detail)
 }
 
-/// 拉起后台 Worker；返回退出状态共享槽，回收线程在 Worker 退出时回填（#169 观察用）。
+/// 拉起后台 Worker；返回退出状态共享槽与本次拉起的 PID（#7 残余①：核验首选比对它），
+/// 回收线程在 Worker 退出时回填退出状态（#169 观察用）。
 fn launch_background_worker(
     worker: &Path,
     config: Option<&Path>,
-) -> std::io::Result<Arc<Mutex<Option<std::process::ExitStatus>>>> {
+) -> std::io::Result<(Arc<Mutex<Option<std::process::ExitStatus>>>, u32)> {
     let mut child = background_worker_command(worker, config).spawn()?;
+    let pid = child.id();
     // 旧 UI 不持有 Worker 句柄；这里补一个回收线程，避免 Unix 上 Worker 先退出时留下僵尸。
     // #169：wait 结果回传共享槽，连接编排在 5s 轮询结束后读取退出状态
     // （如 #163 单写者准入门让位的秒退），供失败分类附上真实退出码。
@@ -299,7 +334,69 @@ fn launch_background_worker(
             *slot_for_reaper.lock().unwrap() = Some(status);
         }
     });
-    Ok(exit_slot)
+    Ok((exit_slot, pid))
+}
+
+/// 后台 Worker 可执行文件名（与 `background_worker_command` 的钉死口径同源）。
+fn worker_binary_name() -> &'static str {
+    if cfg!(windows) {
+        "PhotoPrivacyWorker.exe"
+    } else {
+        "PhotoPrivacyWorker"
+    }
+}
+
+/// 实际会被拉起的 Worker 镜像路径：override 只取目录、文件名钉死。
+fn background_worker_image(worker: &Path) -> PathBuf {
+    worker
+        .parent()
+        .map(|dir| dir.join(worker_binary_name()))
+        .unwrap_or_else(|| PathBuf::from(worker_binary_name()))
+}
+
+/// 服务端身份核验的镜像回退基准（#7 残余①）：与拉起路径同源；找不到可拉起的 Worker 时为 None
+/// （此时核验只剩 PID 匹配；无期望 PID 时按平台策略处置：Windows/Linux fail-closed，
+/// macOS fail-open + warning）。
+fn expected_worker_image(options: &ConnectOptions) -> Option<PathBuf> {
+    let worker = options.worker_path.clone().or_else(default_worker_path)?;
+    Some(background_worker_image(&worker))
+}
+
+/// 核验不了时的平台策略（#7 D2 / AC2）：macOS 首版无镜像回退（`LOCAL_PEEREPID` 只给 PID），
+/// 且该平台攻击者本可直接抢建 socket 阻断可用性，fail-closed 无净增益 → fail-open + warning；
+/// Windows/Linux 按 AC2 fail-closed（核验不了即拒该连接）。
+// Design(#7): 核验不了时的平台矩阵——Windows/Linux 按 AC2 fail-closed（核验不了即拒连），macOS 按 D2 fail-open + warning；服务管道不叠加（D3）。
+fn unverifiable_policy(platform: HostPlatform) -> UnverifiablePolicy {
+    match platform {
+        HostPlatform::MacOs => UnverifiablePolicy::FailOpen,
+        HostPlatform::Windows | HostPlatform::Linux => UnverifiablePolicy::FailClosed,
+    }
+}
+
+/// 构造后台服务端身份核验作用域（#7 残余①）：端点解析不到时（mac 无 HOME，仅理论可达）
+/// 返回 None——与连接编排同样拿不到端点，不额外产生行为。
+fn background_server_guard(
+    options: &ConnectOptions,
+) -> (Option<Arc<ServerGuard>>, Arc<ProcessIdentityVerifier>) {
+    let platform = current_platform();
+    let verifier = Arc::new(ProcessIdentityVerifier::new(expected_worker_image(options)));
+    let guard = resolve_endpoint(platform, WorkerMode::Background, current_home().as_deref()).map(
+        |endpoint| {
+            Arc::new(ServerGuard::new(
+                endpoint,
+                verifier.clone(),
+                unverifiable_policy(platform),
+            ))
+        },
+    );
+    (guard, verifier)
+}
+
+fn with_optional_guard(client: IpcClient, guard: Option<&Arc<ServerGuard>>) -> IpcClient {
+    match guard {
+        Some(guard) => client.with_server_guard(guard.clone()),
+        None => client,
+    }
 }
 
 /// Builds the command that launches the background worker process.
@@ -317,15 +414,7 @@ fn launch_background_worker(
 /// Note: this pins the filename only; it does not verify that the resolved
 /// directory is trusted.
 fn background_worker_command(worker: &Path, config: Option<&Path>) -> std::process::Command {
-    let allowed_name = if cfg!(windows) {
-        "PhotoPrivacyWorker.exe"
-    } else {
-        "PhotoPrivacyWorker"
-    };
-    let safe_worker = worker
-        .parent()
-        .map(|dir| dir.join(allowed_name))
-        .unwrap_or_else(|| PathBuf::from(allowed_name));
+    let safe_worker = background_worker_image(worker);
     #[allow(unused_mut)]
     let mut command = std::process::Command::new(&safe_worker);
     command.arg("--mode").arg("background");
@@ -352,12 +441,7 @@ fn default_config_path() -> Option<PathBuf> {
 }
 
 fn default_worker_path() -> Option<PathBuf> {
-    let name = if cfg!(windows) {
-        "PhotoPrivacyWorker.exe"
-    } else {
-        "PhotoPrivacyWorker"
-    };
-    let path = exe_dir()?.join(name);
+    let path = exe_dir()?.join(worker_binary_name());
     path.exists().then_some(path)
 }
 
@@ -385,11 +469,11 @@ mod tests {
         // 防：三态归错——未授权用户被报成「未安装」、裸机缺 Worker 被报成「未授权」（#169 AC）。
         // 授权拒绝优先：未授权场景下后台 Worker 同时让位退出（#163），行动指引仍应指向加授权。
         assert_eq!(
-            classify_connect_failure(true, None),
+            classify_connect_failure(true, None, None),
             ConnectFailureCause::ServiceAccessDenied
         );
         assert_eq!(
-            classify_connect_failure(false, None),
+            classify_connect_failure(false, None, None),
             ConnectFailureCause::WorkerNotInstalled
         );
 
@@ -398,7 +482,7 @@ mod tests {
             spawn_error: Some(std::io::Error::from_raw_os_error(5)),
             exit_slot: None,
         };
-        match classify_connect_failure(false, Some(launch)) {
+        match classify_connect_failure(false, None, Some(launch)) {
             ConnectFailureCause::WorkerStartupFailed(detail) => {
                 assert!(detail.starts_with("spawn: "), "detail: {detail}");
             }
@@ -414,12 +498,71 @@ mod tests {
             spawn_error: None,
             exit_slot: Some(exit_slot),
         };
-        match classify_connect_failure(false, Some(launch)) {
+        match classify_connect_failure(false, None, Some(launch)) {
             ConnectFailureCause::WorkerStartupFailed(detail) => {
                 assert!(detail.contains("exited with code 1"), "detail: {detail}");
             }
             other => panic!("已退出应为 WorkerStartupFailed，得到 {other:?}"),
         }
+    }
+
+    #[test]
+    fn untrusted_ipc_server_is_classified_as_startup_failure() {
+        // 防（#7 AC1）：后台端点连上但对端不是期望 Worker 时被吞成「未就绪/未安装」——
+        // 用户看不到端点被同用户进程抢占这一真实原因。原因必须带进既有三态的分类细节。
+        let reason = "服务端 PID 777 的镜像 /tmp/evil-server 不是期望的 /opt/pp/PhotoPrivacyWorker";
+        match classify_connect_failure(false, Some(reason.to_string()), None) {
+            ConnectFailureCause::WorkerStartupFailed(detail) => {
+                assert!(
+                    detail.starts_with("untrusted IPC server: "),
+                    "detail: {detail}"
+                );
+                assert!(detail.contains("777"), "detail: {detail}");
+            }
+            other => panic!("核验失败应为 WorkerStartupFailed，得到 {other:?}"),
+        }
+    }
+
+    #[test]
+    fn expected_image_pins_worker_filename_to_the_spawn_path() {
+        // 防（#7）：核验基准与实际拉起路径分叉——override 传任意文件名时，拉起仍是钉死的
+        // PhotoPrivacyWorker，基准若跟着 override 走会让合法 Worker 恒被误拒。
+        let options = ConnectOptions {
+            config_path: None,
+            worker_path: Some(PathBuf::from("/opt/pp/SomeOtherName")),
+        };
+        let expected = Path::new("/opt/pp").join(worker_binary_name());
+        assert_eq!(expected_worker_image(&options), Some(expected));
+    }
+
+    #[test]
+    fn background_guard_is_scoped_to_background_endpoint_with_platform_policy() {
+        // 防（#7 D2/D3）：核验作用域扩到服务端点（把 SYSTEM 服务拒掉），或平台策略错位
+        // （Windows/Linux 该 fail-closed 却放行；macOS 该 fail-open 却让后台模式恒不可用）。
+        let (guard, verifier) = background_server_guard(&ConnectOptions::default());
+        assert_eq!(verifier.expected_pid(), None, "拉起前不应有期望 PID");
+        let Some(guard) = guard else {
+            return;
+        };
+        let platform = current_platform();
+        let home = current_home();
+        let background = resolve_endpoint(platform, WorkerMode::Background, home.as_deref())
+            .expect("后台端点应可解析");
+        let service = resolve_endpoint(platform, WorkerMode::Service, home.as_deref())
+            .expect("服务端点应可解析");
+        assert!(guard.applies_to(&background));
+        assert!(!guard.applies_to(&service));
+        assert_eq!(
+            guard.unverifiable_policy(),
+            unverifiable_policy(platform),
+            "作用域策略必须与平台矩阵一致"
+        );
+        let expected = if platform == HostPlatform::MacOs {
+            UnverifiablePolicy::FailOpen
+        } else {
+            UnverifiablePolicy::FailClosed
+        };
+        assert_eq!(guard.unverifiable_policy(), expected);
     }
 
     #[test]
@@ -430,7 +573,7 @@ mod tests {
             exit_slot: Some(Arc::new(Mutex::new(None))),
         };
         assert_eq!(
-            classify_connect_failure(false, Some(launch)),
+            classify_connect_failure(false, None, Some(launch)),
             ConnectFailureCause::WorkerStartupFailed("worker not ready within 5s".to_string())
         );
     }
