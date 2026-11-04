@@ -82,8 +82,6 @@ jobs:
             'Group_InMemWorkerIpc' { 'FullyQualifiedName~WorkerIpcResidentStabilityTests|FullyQualifiedName~WorkerIpcResponseResilienceTests|FullyQualifiedName~WorkerIpcGetRecentLogsTests|FullyQualifiedName~IpcAuthClaimReconciliationTests|FullyQualifiedName~WorkerStartupSweepScopeTests' }
           }
           dotnet test tests/PhotoPrivacy.IntegrationTests --configuration Release --filter $filter --blame-hang --blame-hang-timeout 00:04:00 --blame-hang-dump-type mini --logger "console;verbosity=normal" --logger "trx"
-          --blame-hang --blame-hang-timeout 00:04:00 --blame-hang-dump-type mini
-          --logger "console;verbosity=normal" --logger "trx"
       - name: Upload suite diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
