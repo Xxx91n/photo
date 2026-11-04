@@ -77,7 +77,8 @@ url_unconfirmed=0
 for url in "$TAR_URL" "$ZIP_URL"; do
   url_total=$((url_total + 1))
   if command -v curl >/dev/null 2>&1; then
-    if curl -sSIL --max-time 20 -o /dev/null "$url"; then
+    # -f：HTTP 4xx/5xx 视为失败（不加时 curl 对 404 仍返回 0，会把失效 URL 报成"可达"）。
+    if curl -fsSIL --max-time 20 -o /dev/null "$url"; then
       pass "可达：${url}"
     else
       url_unconfirmed=$((url_unconfirmed + 1))

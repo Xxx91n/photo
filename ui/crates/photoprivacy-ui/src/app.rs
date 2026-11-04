@@ -223,20 +223,23 @@ impl ConfigUiState {
             // UI 是 config.json 的写入方，写回会把「探测」冻结成绝对路径，包换个目录就指向旧位置。
             if config.exiftool.path.trim().is_empty() {
                 self.exiftool_hint = detect_exiftool_path(&config.exiftool.path);
-            } else if let Some(detected) = detect_exiftool_path(&config.exiftool.path) {
-                // #33: 目录式覆盖保留用户填的目录本身，不把解析出的 exe 路径写回
-                // config.json（否则一次保存就把目录冻结成文件绝对路径，发布包换目录即失效）。
-                // hint 仍显示解析结果，让用户确认目录内确实有可用的 exiftool。
-                let configured_path = config.exiftool.path.trim().to_string();
-                let is_directory = std::path::Path::new(&configured_path).is_dir();
-                if is_directory {
-                    self.exiftool_hint = Some(detected);
-                } else {
-                    config.exiftool.path = detected.clone();
-                    self.exiftool_hint = Some(detected);
-                }
             } else {
-                self.exiftool_hint = None;
+                // #33: 非空用户输入先规整首尾空白再判定/保存——检测与 Worker 都不接受带空白的路径
+                // （IsPathFullyQualified / File.Exists 判否），否则 UI 提示成功、保存后 Worker 拒绝。
+                config.exiftool.path = config.exiftool.path.trim().to_string();
+                if let Some(detected) = detect_exiftool_path(&config.exiftool.path) {
+                    // #33: 目录式覆盖保留用户填的目录本身，不把解析出的 exe 路径写回
+                    // config.json（否则一次保存就把目录冻结成文件绝对路径，发布包换目录即失效）。
+                    // hint 仍显示解析结果，让用户确认目录内确实有可用的 exiftool。
+                    if std::path::Path::new(&config.exiftool.path).is_dir() {
+                        self.exiftool_hint = Some(detected);
+                    } else {
+                        config.exiftool.path = detected.clone();
+                        self.exiftool_hint = Some(detected);
+                    }
+                } else {
+                    self.exiftool_hint = None;
+                }
             }
         }
         self.config = config;
@@ -3070,7 +3073,14 @@ mod tests {
         let mut padded_config = AppConfig::default();
         padded_config.exiftool.path = padded.clone();
         let _ = state.set_config(padded_config, true);
-        assert_eq!(state.config.exiftool.path, padded);
+        // 保存值规整为 trim 后的目录（Worker 侧 File.Exists/Directory.Exists 不接受带空白路径），
+        // 目录形态仍保留、不冻结成 exe 绝对路径——即结果能被 Worker 的目录式覆盖解析接受。
+        assert_eq!(
+            state.config.exiftool.path,
+            dir.to_string_lossy().into_owned()
+        );
+        assert!(std::path::Path::new(&state.config.exiftool.path).is_dir());
+        assert_eq!(state.exiftool_hint.as_deref(), Some(expected_hint.as_str()));
 
         let _ = std::fs::remove_dir_all(&dir);
     }

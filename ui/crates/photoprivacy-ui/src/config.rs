@@ -494,6 +494,13 @@ pub fn detect_exiftool_path(current: &str) -> Option<String> {
         return None;
     }
 
+    // #33: 已存在的覆盖目录但缺 exe：到此为止，不回落默认探测——回落会把默认 exe
+    // 冒充成该目录的提示，而 Worker 仍会按 not found 拒绝该目录。只有不存在的路径
+    // （尚未填完/输错）才继续走默认探测。
+    if Path::new(current).is_dir() {
+        return None;
+    }
+
     let detected = resolve_default_exiftool_path();
     if detected != current && Path::new(&detected).is_file() {
         Some(detected)
@@ -1017,5 +1024,37 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn detect_exiftool_path_does_not_fall_back_for_override_dir_without_exe() {
+        // #33: 已存在的覆盖目录但缺 exiftool 时必须返回 None——若回落默认探测，
+        // set_config 会把默认 exe 冒充成该目录的提示，而 Worker 仍按 not found 拒绝。
+        // 只有不存在的路径才继续走默认探测（输入未填完/输错的场景）。
+        //
+        // 在默认探测的首个候选位（app 目录 ExifTool/）放一个 stub 以保证「默认 exe 存在」：
+        // 否则无 exiftool 的机器上旧实现也返回 None，测不出回落。
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("pp-detect-empty-{}", unique));
+        let _ = std::fs::create_dir_all(&dir);
+
+        let app_dir = std::env::current_exe()
+            .expect("current_exe")
+            .parent()
+            .expect("current_exe dir")
+            .to_path_buf();
+        let stub_dir = app_dir.join("ExifTool");
+        let stub_exe = stub_dir.join(exiftool_file_name());
+        std::fs::create_dir_all(&stub_dir).expect("stub dir");
+        std::fs::write(&stub_exe, b"stub").expect("stub exe");
+
+        let detected = detect_exiftool_path(dir.to_str().unwrap());
+        assert_eq!(detected, None, "缺 exe 的覆盖目录不得回落到默认探测结果");
+
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&stub_dir);
     }
 }
