@@ -223,11 +223,18 @@
      `uninstalled` 两个 tag**：`tray::should_show_tray_icon` 在服务已安装（`running`/`stopped`）时
      返回 false，`should_start_hidden` 随之恒 false，窗口无论如何都会出——那两个 tag 测不到本票，
      别把它们算进 AC3 的证据面。
-  3. 脚本的第二次实例唤起会把窗口带出来，上层判据又是「PNG 非空即 PASS」，即使首实例被静默吞掉也能绿。
-     本 PR 补了硬断言：`osascript … get {position, size} of window 1` 取不到几何（无窗口时是
-     `Invalid index (-1719)`）就非零退出。该通道在 runner 上可用（见第 1 条的四次几何输出）。
-     本机 WSL bash 只验证了配置翻转与几何正则三态（真实几何 PASS、`Invalid index` FAIL、
-     无 Apple Events 权限 FAIL），**mac 侧尚未实跑**——AC3 在 CI 跑出 PASS 之前仍按未取证计。
+  3. 原判据是「PNG 非空即 PASS」，而脚本的第二次实例唤起会把窗口带出来——首实例被静默吞掉也能绿。
+     本 PR 把它换成三层（CodeRabbit 审查后收敛）：
+     a. **起跑前查残留实例**：已有 `PhotoPrivacy` 进程就失败（否则借到没加载配置副本的旧实例）；
+     b. **对照组**：同一静默配置、不带 `--open-page` 必须先证明「无窗」，否则说明静默根本没生效
+        （托盘建不起来时 `should_start_hidden` 恒 false），正式组出窗也不算数；
+     c. **首拍几何**：几何在第二次唤起**之前**取，取不到即失败；唤醒之后才出现会单独报
+        「静默吞掉请求页、靠第二次唤起兜底」。
+     `osascript … get {position, size} of window 1` 在 runner 上可用（见第 1 条的四次几何输出）；
+     服务已安装的 tag（`running`/`stopped`）自动跳过对照组与 #174 判据，只留截图前置检查。
+     本机 WSL bash 验证了配置翻转、几何正则四态（`470, 150, 980, 748` / 无空格写法 PASS、
+     `0, 0, 0, 0` 与 `Invalid index (-1719)` FAIL）与 plist 存在性分支；**mac 侧尚未实跑**——
+     首次推送触发的 launchd 作业 21 分钟没分到 runner 被 cancelled，AC3 在 CI 跑出 PASS 前仍按未取证计。
      要让 AC3 机器可判，得在 #32 的 harness 里显式构造 `hide_main_window_on_startup=true` 的用例，
      并产出可断言的页标识（`--service-probe-report` 只给服务态、不给页），属 #32 链加固，不在本票范围。
 
