@@ -171,7 +171,7 @@
 ### 启动门控取证（#174：`--open-page` 覆盖静默启动，2026-11-04 本窗口；补 #32 取证链的判定口径）
 
 > 背景：#174 的修复（PR #177，`da6d3f3`）在 main 上只有一行内联条件，无测试、无证据；票面 AC1/AC2
-> 因此一直空着（AC3 另受 macOS 取证链限制，见本节末）。本节补两样：Windows 实机 GUI 取证（AC1/AC2），
+> 因此一直空着（AC3 要走 macOS 取证链，见本节末第 3、4 条）。本节补两样：Windows 实机 GUI 取证（AC1/AC2），
 > 以及 #32 取证链（`scripts/capture-ui-service-page.sh`）在静默机器上的判定口径——该脚本第 87 行
 > 正是以 `--open-page service` 启动 UI 等首屏；修复是它在静默配置下建窗的前提，而本 PR 同时把脚本判据
 > 从「PNG 非空」升级为「窗口几何必须取到」，见本节末第 3 条。
@@ -236,8 +236,17 @@
      服务已安装的 tag（`running`/`stopped`）自动跳过对照组与 #174 判据，只留截图前置检查。
      本机 WSL bash 验证了配置翻转、几何正则四态（`470, 150, 980, 748` / 无空格写法 PASS、
      `0, 0, 0, 0` 与 `Invalid index (-1719)` FAIL）、`Invalid index` 与 `-1743` 的区分、以及
-     plist 存在性分支；**mac 侧尚未实跑**——首次推送触发的 launchd 作业 21 分钟没分到 runner
-     被 cancelled，AC3 在 CI 跑出 PASS 前仍按未取证计。
+     plist 存在性分支。
+  4. **mac 侧已跑通，AC3 成立**：run [41863492601](https://github.com/Xxx91n/photo/actions/runs/41863492601)
+     （head `7fdceda`）的 `osx-x64` 作业 `PASS=26 FAIL=0`，四个 tag 的截图全部产出，
+     `ui-shot-*.txt` 的窗口几何仍是 `470, 150, 980, 748`。成对证据才是关键——
+     `pre-install` / `uninstalled` 两个「服务未安装」tag 的配置副本里 `hide_main_window_on_startup: true`，
+     **对照组（不带 `--open-page`）拿到 `Invalid index (-1719)`**（无窗，静默确实生效），
+     同一次运行里带 `--open-page service` 的正式组在**唤醒前首拍**就有几何（窗口确实建了）；
+     两张 PNG 非黑（1920×1080、灰度均值 103.3、43% 非黑像素）。即「静默配置的机器上
+     `--open-page` 仍建窗、脚本仍取到整屏截图」在 mac 上被机器判过，不再靠第二次唤起兜底。
+     同 run 的 `osx-arm64` 作业因未分到 runner 被 `cancelled`（`steps: []`、无日志），
+     那是 macOS runner 供给问题，不构成失败证据，也不改变 x64 的结论；arm64 待后续有 runner 时自然覆盖。
      要让 AC3 机器可判，得在 #32 的 harness 里显式构造 `hide_main_window_on_startup=true` 的用例，
      并产出可断言的页标识（`--service-probe-report` 只给服务态、不给页），属 #32 链加固，不在本票范围。
 
