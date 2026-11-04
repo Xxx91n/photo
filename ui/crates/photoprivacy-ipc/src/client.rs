@@ -261,6 +261,9 @@ impl IpcClient {
                     return Err(IpcError::ServerIdentity(reason));
                 }
                 Ok(ConnectAttempt::Failed(err)) => {
+                    // 最近一次失败发生在连接层：此前记录的瞬时核验原因不再代表当前状态，
+                    // 预算耗尽时不得把它误报成「身份核验未完成」。
+                    transient = None;
                     let retryable = is_retryable(&err);
                     if !retryable || Instant::now() >= deadline {
                         return Err(IpcError::Connect(err));
