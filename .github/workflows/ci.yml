@@ -124,7 +124,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             ui/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('ui/Cargo.lock') }}
+          # 独立 key：与 rust job（debug 构建）区分，release 产物才能被 save 复用
+          # （actions/cache 精确命中即跳过 save）
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('ui/Cargo.lock') }}
       - name: Publish end-to-end (linux-x64)
         shell: bash
         run: |
