@@ -828,8 +828,9 @@
   `install_does_not_reprompt_after_cancelled_precheck` 守护四态不塌缩），后者需探测进程异常
   （3s 探测超时/spawn 失败），均如实记未探活，不虚构。
 - **本轮新观察（不自行开票，是否成票/是否修待用户裁决）**：
-  1. **UI 安装通道不写 `ServicePipeInstallerSid`**：服务页「安装」走裸 `sc.exe create`
-     （`ui/crates/photoprivacy-service/src/windows.rs`），#70 的安装者 SID 只由
+  1. **UI 安装通道不写 `ServicePipeInstallerSid`**：服务页「安装」调用 System32 绝对路径的
+     `sc.exe create`（`ui/crates/photoprivacy-service/src/windows.rs` 的 `sc_exe_path()`，
+     免裸名劫持），#70 的安装者 SID 只由
      `install-service.ps1` 登记。本轮 UI 安装后注册表实测无该值，服务 Worker 启动即打 WARN
      （02:29:38.520，ProgramData `worker-20261105.log`）：「service pipe falls back to
      current-user-only and non-elevated desktop UI will be denied. Reinstall the service to
