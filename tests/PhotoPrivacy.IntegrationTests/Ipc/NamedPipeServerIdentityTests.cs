@@ -24,7 +24,7 @@ public sealed class NamedPipeServerIdentityTests
     public void Server_Process_Probe_Is_Inert_Off_Windows()
     {
         // 防：平台能力缺口被当成核验成功——非 Windows 上取不到管道服务端 PID，
-        // 必须返回 false（调用方按 fail-open + warning 处置），不能假装已核验（#7 AC2）。
+        // 必须返回 false（C# 传输层按 fail-closed 处置：核验不可用即拒连），不能假装已核验（#7 AC2）。
         if (OperatingSystem.IsWindows())
         {
             return;

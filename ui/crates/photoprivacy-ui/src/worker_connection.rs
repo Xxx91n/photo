@@ -361,6 +361,7 @@ fn expected_worker_image(options: &ConnectOptions) -> Option<PathBuf> {
     Some(background_worker_image(&worker))
 }
 
+// Design(#7): 核验不了时的平台矩阵——Windows/Linux 按 AC2 fail-closed（核验不了即拒连），macOS 按 D2 fail-open + warning；服务管道不叠加（D3）。
 /// 核验不了时的平台策略（#7 D2 / AC2）：macOS 首版无镜像回退（`LOCAL_PEEREPID` 只给 PID），
 /// 且该平台攻击者本可直接抢建 socket 阻断可用性，fail-closed 无净增益 → fail-open + warning；
 /// Windows/Linux 按 AC2 fail-closed（核验不了即拒该连接）。

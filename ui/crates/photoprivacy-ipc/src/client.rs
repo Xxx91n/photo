@@ -236,12 +236,16 @@ impl IpcClient {
 
     async fn connect(&self, endpoint: &Endpoint) -> Result<Stream, IpcError> {
         let deadline = Instant::now() + self.connect_timeout;
+        let mut transient: Option<String> = None;
         loop {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return Err(identity_exhausted(endpoint, transient));
+            }
             // 每次尝试都套上剩余预算：Unix 非阻塞 connect 可能等到可写（EINPROGRESS），
             // 不设上限会让一次探测挂到 OS 级连接超时，远超 700ms 的连接预算。
             // #7：服务端身份核验并入同一次尝试——核验失败不属于「连接没建立」，
             // 但同受连接预算约束（AC4 超时语义不变）。
-            let remaining = deadline.saturating_duration_since(Instant::now());
             match timeout(
                 remaining,
                 attempt_connect(endpoint, self.server_guard.as_deref()),
@@ -251,18 +255,7 @@ impl IpcClient {
                 Ok(ConnectAttempt::Connected(stream)) => return Ok(stream),
                 Ok(ConnectAttempt::TransientIdentity(reason)) => {
                     // 核验瞬间对端进程消失：按瞬时连接失败在预算内重试，不升级为授权失败（AC5）。
-                    if Instant::now() >= deadline {
-                        // AC2：核验失败的原因（进程已退出）必须可观测——预算耗尽时补一条 warning，
-                        // 再按「连接失败」上报（调用方归入 Worker 未就绪，而不是「对端不可信」）。
-                        eprintln!(
-                            "[photoprivacy-ui] IPC 服务端身份核验未完成（{}）：{reason}",
-                            endpoint.display()
-                        );
-                        return Err(IpcError::Connect(io::Error::new(
-                            io::ErrorKind::TimedOut,
-                            reason,
-                        )));
-                    }
+                    transient = Some(reason);
                 }
                 Ok(ConnectAttempt::RejectedIdentity(reason)) => {
                     return Err(IpcError::ServerIdentity(reason));
@@ -273,10 +266,25 @@ impl IpcClient {
                         return Err(IpcError::Connect(err));
                     }
                 }
-                Err(_elapsed) => return Err(IpcError::Timeout),
+                Err(_elapsed) => return Err(identity_exhausted(endpoint, transient)),
             }
             tokio::time::sleep(CONNECT_RETRY_INTERVAL).await;
         }
+    }
+}
+
+/// 连接预算耗尽：本轮出现过瞬时核验失败（进程已退出）时，按连接失败上报并记 warning
+/// （AC2 的原因可观测 + AC5 不升级为授权失败）；否则保持原有的超时语义（AC4）。
+fn identity_exhausted(endpoint: &Endpoint, transient: Option<String>) -> IpcError {
+    match transient {
+        Some(reason) => {
+            eprintln!(
+                "[photoprivacy-ipc] 服务端身份核验未完成（{}）：{reason}",
+                endpoint.display()
+            );
+            IpcError::Connect(io::Error::new(io::ErrorKind::TimedOut, reason))
+        }
+        None => IpcError::Timeout,
     }
 }
 
@@ -308,7 +316,7 @@ async fn attempt_connect(endpoint: &Endpoint, guard: Option<&ServerGuard>) -> Co
             // #7 D2：能力缺口（如 macOS 未实现镜像回退）放行但留可观测 warning。
             UnverifiablePolicy::FailOpen => {
                 eprintln!(
-                    "[photoprivacy-ui] IPC 服务端身份无法核验（{}），按 fail-open 放行: {reason}",
+                    "[photoprivacy-ipc] 服务端身份无法核验（{}），按 fail-open 放行: {reason}",
                     endpoint.display()
                 );
                 ConnectAttempt::Connected(stream)
@@ -560,9 +568,12 @@ mod tests {
         std::fs::create_dir_all(&dir).expect("临时目录");
         let path = dir.join("worker.sock");
         let listener = tokio::net::UnixListener::bind(&path).expect("绑定测试 socket");
+        let accepts = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let accepts_for_server = accepts.clone();
         let accept = tokio::spawn(async move {
-            // 每次连上即断开：模拟「核验瞬间进程消失」的竞争窗口。
+            // 每次连上即断开：模拟「核验瞬间进程消失」的竞争窗口，并按次数证明发生了重试。
             while let Ok((stream, _)) = listener.accept().await {
+                accepts_for_server.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 drop(stream);
             }
         });
@@ -575,7 +586,6 @@ mod tests {
         ));
         let client = IpcClient::new().with_server_guard(guard);
 
-        let started = Instant::now();
         let error = client
             .connect(&endpoint)
             .await
@@ -587,10 +597,10 @@ mod tests {
             !matches!(error, IpcError::ServerIdentity(_)),
             "瞬时核验失败不得升级为授权失败: {error:?}"
         );
+        let attempts = accepts.load(std::sync::atomic::Ordering::SeqCst);
         assert!(
-            started.elapsed() >= CONNECT_RETRY_INTERVAL,
-            "应在连接预算内至少重试一次，实际耗时 {:?}",
-            started.elapsed()
+            attempts >= 2,
+            "应在连接预算内重试，实际接受 {attempts} 次连接"
         );
     }
 }
