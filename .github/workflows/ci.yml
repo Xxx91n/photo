@@ -96,6 +96,53 @@ jobs:
         working-directory: ui
         run: cargo test -p photoprivacy-ui --locked
 
+  # 端到端发布链验证（#10）：CI 只跑测试不跑 publish，发布链坏在 main 上要等发版才暴露
+  # （#164 先例）。用 linux-x64 单 RID 代表性验证整条链：cargo release 构建 UI + dotnet
+  # publish Worker + ExifTool 下载/SHA256 校验/内置 + 产物结构核验，与 release.yml 的
+  # build job 同口径（同走 scripts/publish.sh，Linux 系统依赖同 #84）。不传 artifact，
+  # 只作门禁。
+  publish-e2e:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.201"
+      - name: Ensure Rust toolchain
+        run: rustup default stable
+      - name: Install Linux dependencies
+        run: |
+          sudo DEBIAN_FRONTEND=noninteractive apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libfontconfig1-dev pkg-config libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ui/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('ui/Cargo.lock') }}
+      - name: Publish end-to-end (linux-x64)
+        shell: bash
+        run: |
+          chmod +x scripts/publish.sh
+          ./scripts/publish.sh --version 0.1.0-ci --runtime linux-x64 --zip true
+      - name: Verify structure
+        shell: bash
+        run: |
+          test -f release/linux-x64/PhotoPrivacy
+          test -f release/linux-x64/PhotoPrivacyWorker
+          test -f release/linux-x64/config/config.sample.json
+          test -f release/linux-x64/config/config.json
+          test -f release/linux-x64/ExifTool/exiftool
+          test -d release/linux-x64/ExifTool/lib
+          test -f release/PhotoPrivacy-0.1.0-ci-linux-x64.tar.gz
+          # 内置 ExifTool 必须可执行且为钉扎版本（#164 同类下载链回归在此兜底）
+          [ "$(release/linux-x64/ExifTool/exiftool -ver)" = "13.60" ]
+
   markers:
     runs-on: ubuntu-latest
     steps:
