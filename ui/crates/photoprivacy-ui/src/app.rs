@@ -15,7 +15,9 @@ use gpui::{
     Render, Rgba, ScrollHandle, Stateful, StyleRefinement, Styled, Subscription,
     UniformListScrollHandle, Window, actions, div, px, uniform_list,
 };
-use photoprivacy_ipc::{ConnectionSnapshot, ConnectionState, ServiceReachability, WorkerMode};
+use photoprivacy_ipc::{
+    ConnectFailureCause, ConnectionSnapshot, ConnectionState, ServiceReachability, WorkerMode,
+};
 use photoprivacy_logs::{AuditRecord, EventTone, LevelFilter, LogBuffer};
 use photoprivacy_rules::RulesEditor;
 use photoprivacy_service::{ServiceRuntimeState, button_state};
@@ -188,16 +190,25 @@ impl ConfigUiState {
                 // 保存期间又有新编辑时保留草稿，等下一次 Saved 再刷新，避免输入被回滚。
                 let theme =
                     (revision == self.edit_revision).then(|| self.set_config(*config, false));
+                let reload_failed = worker_error.is_some();
                 self.save_state = match worker_error {
                     Some(error) => SaveState::SavedWorkerDown(error),
                     None => SaveState::Saved,
                 };
-                self.save_status_deadline = Some(Instant::now() + SAVE_STATUS_TTL);
+                // Design(#82): 只有成功态按 TTL 淡出。失败态（配置已落盘但 Worker 未重载）
+                // 常驻到下一次保存成功——否则阻断原因随 3 s 消失，用户被绕回「请前往配置页」，
+                // 看不到「ExifTool 缺失 / 目录不可写」这类真正原因。
+                self.save_status_deadline = if reload_failed {
+                    None
+                } else {
+                    Some(Instant::now() + SAVE_STATUS_TTL)
+                };
                 theme
             }
             ConfigEvent::SaveFailed(error) => {
                 self.save_state = SaveState::Failed(error);
-                self.save_status_deadline = Some(Instant::now() + SAVE_STATUS_TTL);
+                // 同上：保存失败原因常驻，不随 3 s 过期。
+                self.save_status_deadline = None;
                 None
             }
         }
@@ -208,7 +219,11 @@ impl ConfigUiState {
         // 旧 UI 的 ResolveExifToolPath：首次加载时当前路径不存在则探测并显示提示；
         // 外部回灌/保存回读不清掉已有提示（旧 UI 只在启动时设置 hint）。
         if auto_detect_exiftool {
-            if let Some(detected) = detect_exiftool_path(&config.exiftool.path) {
+            // Design(#82): 空路径 = 按运行时探测，只探测给提示，绝不写回 config.exiftool.path——
+            // UI 是 config.json 的写入方，写回会把「探测」冻结成绝对路径，包换个目录就指向旧位置。
+            if config.exiftool.path.trim().is_empty() {
+                self.exiftool_hint = detect_exiftool_path(&config.exiftool.path);
+            } else if let Some(detected) = detect_exiftool_path(&config.exiftool.path) {
                 config.exiftool.path = detected.clone();
                 self.exiftool_hint = Some(detected);
             } else {
@@ -368,7 +383,7 @@ struct FieldView {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Page {
+pub enum Page {
     Overview,
     Config,
     Service,
@@ -398,6 +413,18 @@ impl Page {
         }
     }
 
+    /// `--open-page` 取值解析：与 `id()` 互逆；未知 id 返回 None（调用方按参数错误处理）。
+    pub fn from_id(id: &str) -> Option<Self> {
+        match id {
+            "overview" => Some(Self::Overview),
+            "config" => Some(Self::Config),
+            "service" => Some(Self::Service),
+            "logs" => Some(Self::Logs),
+            "rules" => Some(Self::Rules),
+            _ => None,
+        }
+    }
+
     fn all() -> [Self; 5] {
         [
             Self::Overview,
@@ -424,6 +451,8 @@ pub struct AppDeps {
     pub config_path: PathBuf,
     pub rules: Rc<RefCell<RulesEditor>>,
     pub i18n: Rc<Catalog>,
+    /// `--open-page` 指定的启动页；None 时默认总览（虚拟环境截图取证用，#32）。
+    pub open_page: Option<Page>,
 }
 
 /// RTL 语言下主轴行反向，行内「标签 + 控件」的左右顺序整体镜像。
@@ -441,6 +470,41 @@ fn mode_key(mode: WorkerMode) -> &'static str {
     match mode {
         WorkerMode::Background => k::MODE_BACKGROUND,
         WorkerMode::Service => k::MODE_SERVICE,
+    }
+}
+
+/// 连接失败三态 → 分类文案（#169）：授权拒绝给行动指引——指引按平台分键（CodeRabbit 返修）：
+/// Windows 是安装脚本的 `-AuthorizedUsers` 集合，Unix 是服务 socket 的 0660+共享组边界
+/// （`install-systemd-service.sh --gui-user` / launchd 同构）；后台未就绪附启动/退出细节；
+/// 未安装引导重装。WorkerStartupFailed 的 `{0}` 是编排侧生成的自描述细节
+/// （spawn 错误 / 退出码 / 5s 未就绪）。
+fn connect_failure_text(catalog: &Catalog, locale: &str, cause: &ConnectFailureCause) -> String {
+    match cause {
+        ConnectFailureCause::ServiceAccessDenied => {
+            let key = if cfg!(windows) {
+                k::STATUS_CONNECT_DENIED
+            } else {
+                k::STATUS_CONNECT_DENIED_UNIX
+            };
+            catalog.get(locale, key)
+        }
+        ConnectFailureCause::WorkerStartupFailed(detail) => {
+            catalog.get_format(locale, k::STATUS_WORKER_STARTUP_FAILED, &[detail])
+        }
+        ConnectFailureCause::WorkerNotInstalled => {
+            catalog.get(locale, k::STATUS_WORKER_NOT_INSTALLED)
+        }
+    }
+}
+
+/// 连接失败三态 → 呈现色（#169）：授权拒绝是「找安装者」的引导（warning，同配置页引导色）；
+/// Worker 缺失/未就绪维持错误红。
+fn connect_failure_color(cause: &ConnectFailureCause, theme: &Theme) -> Rgba {
+    match cause {
+        ConnectFailureCause::ServiceAccessDenied => theme.warning,
+        ConnectFailureCause::WorkerStartupFailed(_) | ConnectFailureCause::WorkerNotInstalled => {
+            theme.danger
+        }
     }
 }
 
@@ -521,6 +585,7 @@ impl AppView {
             config_path,
             rules,
             i18n,
+            open_page,
         } = deps;
         let appearance_subscription = cx.observe_window_appearance(window, |_, _, cx| cx.notify());
         let snapshot = snapshots.borrow().clone();
@@ -554,7 +619,7 @@ impl AppView {
         // 启动即聚焦根句柄：无焦点时按键无人认领，Tab 进不了控件链（焦点可见示例同款做法）。
         window.focus(&focus_root, cx);
         let view = Self {
-            page: Page::Overview,
+            page: open_page.unwrap_or(Page::Overview),
             focus_root,
             config_scroll: ScrollHandle::new(),
             config_registry,
@@ -1882,6 +1947,36 @@ impl AppView {
             ConnectionState::Disconnected => self.t(k::STATUS_DISCONNECTED),
         };
 
+        // Design(#82): 保存已落盘但未生效（或保存本身失败）时，原因必须在概览页常驻可见，
+        // 并可直接点回配置页。以前它只是配置页里一条 3 s 淡出的状态文本，用户在概览页只看到
+        // 「请前往配置页设置监控目录」，被绕回同一步。
+        let reload_block = match &self.save_state {
+            SaveState::SavedWorkerDown(error) => Some((
+                self.tr(k::STATUS_SAVED_WORKER_DOWN, &[error]),
+                theme.warning,
+            )),
+            SaveState::Failed(error) => Some((
+                self.tr(k::MSG_SAVE_FAILED_EXCEPTION, &[error]),
+                theme.danger,
+            )),
+            _ => None,
+        };
+
+        // Design(#82): 连接失败行优先呈现编排结论的分类文案——服务授权拒绝与 Worker 缺失
+        // 是两种截然不同的处境（#169 落地后关票，决策归档），统一归到心跳的 os error 2 会让未授权用户无从采取正确动作。
+        // 无分类时维持 last_error 原样（未分类错误的兜底口径不变）。
+        let failure_line = match &self.snapshot.connect_failure {
+            Some(cause) => Some((
+                connect_failure_text(&self.i18n, &self.config.ui.locale, cause),
+                connect_failure_color(cause, theme),
+            )),
+            None => self
+                .snapshot
+                .last_error
+                .clone()
+                .map(|error| (error, theme.danger)),
+        };
+
         let status_card = div()
             .flex()
             .flex_col()
@@ -1917,7 +2012,7 @@ impl AppView {
                             .child(round_trip),
                     ),
             )
-            .children(self.snapshot.last_error.clone().map(|error| {
+            .children(failure_line.map(|(error, color)| {
                 div()
                     .flex()
                     .items_center()
@@ -1925,7 +2020,7 @@ impl AppView {
                     .child(
                         div()
                             .text_size(px(12.))
-                            .text_color(theme.danger)
+                            .text_color(color)
                             .child(error.clone()),
                     )
                     .child(self.copy_button(
@@ -1961,7 +2056,23 @@ impl AppView {
                         .text_color(theme.warning)
                         .child(self.t(k::STATUS_CONFIGURE_WATCH_FOLDER))
                 }),
-            );
+            )
+            .children(reload_block.map(|(text, color)| {
+                div()
+                    .id("reload-blocked")
+                    .cursor_pointer()
+                    .hover(|element| element.text_color(theme.text))
+                    .focusable()
+                    .tab_stop(true)
+                    .focus(focus_ring(theme.accent))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.page = Page::Config;
+                        cx.notify();
+                    }))
+                    .text_size(px(12.))
+                    .text_color(color)
+                    .child(text)
+            }));
 
         let rows = [
             (self.t(k::OVERVIEW_WORKER_MODE), mode.clone()),
@@ -2817,6 +2928,103 @@ mod tests {
         assert_eq!(element_ids.len(), FIELD_SPECS.len(), "element_id 不可重复");
     }
 
+    /// 防的回潮形态：#169 之前未授权用户最终只看到统一的「连接 Worker 失败: os error 2」，
+    /// 三态文案映射错位会把这层混同原样带回（未授权被引导去重装、缺 Worker 被引导去找安装者）。
+    #[test]
+    fn connect_failure_texts_map_to_distinct_guidance() {
+        let catalog = Catalog::embedded();
+
+        let denied =
+            connect_failure_text(&catalog, "zh-CN", &ConnectFailureCause::ServiceAccessDenied);
+        assert!(denied.contains("未被授权"), "denied: {denied}");
+        // 授权拒绝的行动指引按平台分键（CodeRabbit 返修）：Windows 指向安装脚本的
+        // -AuthorizedUsers 集合，Unix 指向 0660+共享组边界——两平台都不混入 os error 口径。
+        if cfg!(windows) {
+            assert!(denied.contains("-AuthorizedUsers"), "denied: {denied}");
+        } else {
+            assert!(denied.contains("授权组"), "denied: {denied}");
+        }
+        assert!(
+            !denied.contains("os error"),
+            "授权拒绝文案不得混入端点缺失的 os error 口径: {denied}"
+        );
+
+        let startup = connect_failure_text(
+            &catalog,
+            "zh-CN",
+            &ConnectFailureCause::WorkerStartupFailed("worker exited with code 1".to_string()),
+        );
+        assert!(startup.contains("未就绪"), "startup: {startup}");
+        assert!(
+            startup.contains("worker exited with code 1"),
+            "startup: {startup}"
+        );
+
+        let not_installed =
+            connect_failure_text(&catalog, "zh-CN", &ConnectFailureCause::WorkerNotInstalled);
+        assert!(
+            not_installed.contains("未找到 Worker 程序"),
+            "{not_installed}"
+        );
+
+        // 三态文案互异：全部落到同一键等于没有分类。
+        assert_ne!(denied, startup);
+        assert_ne!(denied, not_installed);
+        assert_ne!(startup, not_installed);
+
+        // 占位符替换在非中文语言下同样成立。
+        let en_startup = connect_failure_text(
+            &catalog,
+            "en",
+            &ConnectFailureCause::WorkerStartupFailed("spawn: boom".to_string()),
+        );
+        assert!(en_startup.contains("spawn: boom"), "en: {en_startup}");
+    }
+
+    /// 防的回潮形态：重载失败原因随 `SAVE_STATUS_TTL` 一起消失，用户被绕回「请前往配置页」。
+    // Design(#82): 失败态不挂 3 s TTL，只有成功态按 TTL 淡出。
+    #[test]
+    fn save_failure_status_stays_visible_instead_of_expiring() {
+        let mut state = ConfigUiState::new(Some(AppConfig::default()));
+
+        let _ = state.apply_event(ConfigEvent::Saved {
+            config: Box::new(AppConfig::default()),
+            revision: 0,
+            worker_error: Some("exiftool.path not found".to_string()),
+        });
+        assert!(matches!(&state.save_state, SaveState::SavedWorkerDown(_)));
+        assert_eq!(state.save_status_deadline, None);
+
+        let _ = state.apply_event(ConfigEvent::Saved {
+            config: Box::new(AppConfig::default()),
+            revision: 0,
+            worker_error: None,
+        });
+        assert!(matches!(&state.save_state, SaveState::Saved));
+        assert!(state.save_status_deadline.is_some());
+
+        let _ = state.apply_event(ConfigEvent::SaveFailed("磁盘只读".to_string()));
+        assert!(matches!(&state.save_state, SaveState::Failed(_)));
+        assert_eq!(state.save_status_deadline, None);
+    }
+
+    /// 防的具体回潮形态（CodeRabbit #155 Major）：加载时把空的 `exiftool.path` 填成探测到的绝对路径，
+    /// UI 一保存就写进 config.json——发布包换个目录解压后 Worker 仍指向旧位置。
+    #[test]
+    fn blank_exiftool_path_is_not_written_back_on_load() {
+        let mut state = ConfigUiState::new(None);
+        let mut config = AppConfig::default();
+        config.exiftool.path = String::new();
+
+        let _ = state.set_config(config, true);
+
+        assert_eq!(state.config.exiftool.path, "");
+        // 探测结果只作为提示展示，不进配置值。
+        if let Some(hint) = &state.exiftool_hint {
+            assert!(!hint.trim().is_empty());
+        }
+    }
+
     /// 最小 AppDeps：不接 Worker/服务/配置后台，只支撑渲染与焦点链。
     fn test_deps() -> AppDeps {
         let (_, snapshots) = watch::channel(ConnectionSnapshot::connecting());
@@ -2837,6 +3045,7 @@ mod tests {
                 std::env::temp_dir().join("photoprivacy-ui-focus-tests-rules.json"),
             ))),
             i18n: Rc::new(Catalog::embedded()),
+            open_page: None,
         }
     }
 

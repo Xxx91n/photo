@@ -939,7 +939,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
         // 则新 store 打开同一文件必然自我冲突（IOException「being used by another process」，
         // 单实例、任何模式皆然），ReloadConfig 从未真正生效。先置空 pipeline/audit 让 drain 循环
         // 走空转分支，再释放（释放失败只吞，不阻断重建）。
-        // Design(#85): 重载重建前必须释放旧 store/audit 的常驻句柄；失败只降级不阻断重建。
+        // Design(#82): 重载重建前必须释放旧 store/audit 的常驻句柄；失败只降级不阻断重建。
         _pipeline = null;
         var retiredStore = _processedRecordStore;
         _processedRecordStore = null;

@@ -4,22 +4,68 @@ namespace PhotoPrivacy.Core.Tests.Constants;
 
 public sealed class DefaultPathsTests
 {
+    // 防的具体回潮形态（#108 审查，CodeRabbit #155）：断言把 Windows 默认值钉死成 Program Files——
+    // 发布包自带 ExifTool/ 与 PATH 探测之后，任一前置候选命中都会合法地改变返回值，钉死它只会随安装环境误红。
+    // 保留仍成立的部分：Windows 侧必须是绝对路径（校验器要求）；Unix 侧允许裸 "exiftool" 作为
+    // 「交给 PATH/execvp 解析」的兜底。
     [Fact]
-    public void ExifToolPath_Should_Be_The_Required_Absolute_Path()
+    public void ExifToolPath_Should_Resolve_To_An_Absolute_Path_Or_Bare_Command()
     {
-        // 平台相关默认值：Windows = Program Files 绝对路径；Unix = PATH 探测失败时回退裸 "exiftool"（DefaultPaths.ResolveExifToolPath）
+        var path = DefaultPaths.ExifToolPath;
+
         if (OperatingSystem.IsWindows())
         {
-            Assert.Equal(
-                @"C:\Program Files\ExifTool\exiftool.exe",
-                DefaultPaths.ExifToolPath);
+            Assert.True(Path.IsPathFullyQualified(path), $"unexpected ExifToolPath: {path}");
         }
         else
         {
             Assert.True(
-                Path.IsPathFullyQualified(DefaultPaths.ExifToolPath)
-                    || Path.GetFileName(DefaultPaths.ExifToolPath) == DefaultPaths.ExifToolPath,
-                $"unexpected ExifToolPath: {DefaultPaths.ExifToolPath}");
+                Path.IsPathFullyQualified(path) || Path.GetFileName(path) == path,
+                $"unexpected ExifToolPath: {path}");
+        }
+    }
+
+    // 防的具体回潮形态（#108 审查，CodeRabbit #155）：Unix 候选把包根裸 exiftool 排在 ExifTool/ 之前。
+    // 包内那份自带同级 lib/，包根裸文件通常没有；顺序反了会选中缺运行时目录的副本，
+    // AppConfigValidator 随即以「缺 exiftool_files/lib」拒绝启用监控，而 UI 侧选中的却是可用的那份。
+    [Fact]
+    public void Unix_Candidates_Should_Prefer_The_App_Local_ExifTool_Directory()
+    {
+        var candidates = DefaultPaths.UnixCandidates();
+        var appDirectory = AppContext.BaseDirectory;
+
+        Assert.Equal(Path.Combine(appDirectory, "ExifTool", "exiftool"), candidates[0]);
+        Assert.Equal(Path.Combine(appDirectory, "exiftool"), candidates[1]);
+        // 系统安装位置仍作为后续候选保留（顺序：/usr/bin → /usr/local/bin → /opt/homebrew/bin）。
+        Assert.Contains("/usr/bin/exiftool", candidates);
+    }
+
+    // 防的具体回潮形态（#108 审查，CodeRabbit #155）：PATH 解析接受相对片段，返回一个依赖工作目录的
+    // 可执行路径——校验器随即以「must be absolute」拒绝启用监控，而 UI 侧显示「已自动检测到」。
+    // 相对片段必须被跳过，只认绝对路径片段。
+    [Fact]
+    public void FindExifToolInPathValue_Should_Skip_Relative_Entries_And_Return_The_Absolute_Hit()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "pp-path-" + Guid.NewGuid().ToString("N"));
+        var fileName = OperatingSystem.IsWindows() ? "exiftool.exe" : "exiftool";
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, fileName), "stub");
+
+        try
+        {
+            var separator = Path.PathSeparator;
+            var pathValue = $"relative{separator}{directory}{separator}/pp-nonexistent-root";
+
+            Assert.Equal(
+                Path.Combine(directory, fileName),
+                DefaultPaths.FindExifToolInPathValue(pathValue, fileName));
+
+            Assert.Null(DefaultPaths.FindExifToolInPathValue(null, fileName));
+            Assert.Null(DefaultPaths.FindExifToolInPathValue(string.Empty, fileName));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
         }
     }
 

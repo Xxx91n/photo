@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using PhotoPrivacy.Core.Configuration;
 using PhotoPrivacy.Core.Constants;
+using PhotoPrivacy.Core.ExifTool;
 using PhotoPrivacy.Core.Runtime;
 using PhotoPrivacy.Core.Worker;
 using PhotoPrivacy.Ipc;
@@ -94,6 +95,126 @@ public sealed class WorkerReloadConfigRegressionTests
             Assert.True(
                 await WaitForProcessedRecordsAsync(Path.Combine(audit, "processed.ndjson"), expectedAtLeast: 1, TimeSpan.FromSeconds(30)),
                 "空目录待机后 ReloadConfig 未恢复文件监控处理");
+        }
+        finally
+        {
+            await worker.StopAsync(CancellationToken.None);
+            TryDelete(root);
+        }
+    }
+
+    [Fact]
+    public async Task NonDryRun_Standby_Should_Enable_Monitoring_When_ExifTool_Is_Present()
+    {
+        // 防：#108 指出的测试缺口——所有待机用例都是 dry_run=true，validator 在 dry-run 分支早退，
+        // 配置里的 exiftool.path / exiftool_files / quarantine / audit 一律不被校验，
+        // 裸机「待机 → 保存目录 → 启用监控」这条链路从未进过 CI。
+        // 本用例走非 dry-run：校验完整执行（exiftool.path 绝对且存在、伴随运行时目录存在），
+        // 重载真的把 监控运行时建起来（watcher 已启动后 _currentConfig 才切到新目录）。
+        var root = Path.Combine(Path.GetTempPath(), "pp-108-live-" + Guid.NewGuid().ToString("N"));
+        var hot = Path.Combine(root, "hot");
+        var audit = Path.Combine(hot, "_audit");
+        var exifToolDir = Path.Combine(root, "ExifTool");
+        var configPath = Path.Combine(root, "config.json");
+        Directory.CreateDirectory(root);
+        Directory.CreateDirectory(exifToolDir);
+
+        // 两个平台的伴随运行时目录都建：Windows 用 exiftool_files（官方包形态），
+        // Unix 用 lib/（Perl 发行形态）。用例不替平台写分支断言，只证明校验与启用链路放行。
+        Directory.CreateDirectory(Path.Combine(exifToolDir, "exiftool_files"));
+        Directory.CreateDirectory(Path.Combine(exifToolDir, "lib"));
+        var exifToolPath = Path.Combine(
+            exifToolDir,
+            OperatingSystem.IsWindows() ? "exiftool.exe" : "exiftool");
+        await File.WriteAllTextAsync(exifToolPath, "stub-not-executed");
+
+        await File.WriteAllTextAsync(
+            configPath,
+            BuildConfigJson(string.Empty, audit, dryRun: false, exifToolPath: exifToolPath));
+        AssertViableFixtureConfig(configPath, expectDryRun: false);
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["config"] = configPath })
+            .Build();
+        var worker = new MetadataCleanerWorker(
+            configuration,
+            NullLogger<MetadataCleanerWorker>.Instance,
+            new NullApplicationLifetime(),
+            new RuntimeControl());
+
+        await worker.StartAsync(CancellationToken.None);
+        try
+        {
+            await Task.Delay(100);
+            Assert.Equal(string.Empty, worker.CurrentWatchDirectory);
+
+            Directory.CreateDirectory(hot);
+            await File.WriteAllTextAsync(
+                configPath,
+                BuildConfigJson(hot, audit, dryRun: false, exifToolPath: exifToolPath));
+            await worker.ReloadConfigAsync();
+
+            // 启用成功的判据：watcher 起来之后才切 _currentConfig（BuildRuntimeAsync 尾部），
+            // 加上审计目录被建出来（EnsureConfiguredDirectories 仅在启用分支执行）。
+            Assert.Equal(hot, worker.CurrentWatchDirectory);
+            Assert.True(Directory.Exists(audit), "启用监控后审计目录未被创建（#124 的启用分支未走到）");
+            // 桥接是惰性的：本用例不 spawn 任何 ExifTool，因此不依赖宿主机安装真实二进制。
+            Assert.True(
+                ExifToolVersionText.IsUnknown(worker.CurrentExifToolVersion),
+                "非 dry-run 启用路径不应为建运行时拉起 ExifTool（惰性桥接契约）");
+        }
+        finally
+        {
+            await worker.StopAsync(CancellationToken.None);
+            TryDelete(root);
+        }
+    }
+
+    [Fact]
+    public async Task NonDryRun_Standby_Should_Report_Missing_ExifTool_When_Enabling_Monitoring()
+    {
+        // 同一链路的拒绝侧（#108 AC1 第二分支）：裸机缺 ExifTool 时，保存有效目录必须以
+        // 可读原因失败，而不是静默不启用。这条原因现在由 UI 常驻显示（同票 UI 侧），
+        // 不再随 3 s 过期消失；worker 必须留在待机，不能停宿主。
+        var root = Path.Combine(Path.GetTempPath(), "pp-108-missing-" + Guid.NewGuid().ToString("N"));
+        var hot = Path.Combine(root, "hot");
+        var audit = Path.Combine(hot, "_audit");
+        var configPath = Path.Combine(root, "config.json");
+        var missingExifTool = Path.Combine(root, "no-such-exiftool", "exiftool.exe");
+        Directory.CreateDirectory(root);
+
+        await File.WriteAllTextAsync(
+            configPath,
+            BuildConfigJson(string.Empty, audit, dryRun: false, exifToolPath: missingExifTool));
+        // 待机态本该放行（监控资源只在启用时校验），这里先钉住这一点。
+        AssertViableFixtureConfig(configPath, expectDryRun: false);
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["config"] = configPath })
+            .Build();
+        var worker = new MetadataCleanerWorker(
+            configuration,
+            NullLogger<MetadataCleanerWorker>.Instance,
+            new NullApplicationLifetime(),
+            new RuntimeControl());
+
+        await worker.StartAsync(CancellationToken.None);
+        try
+        {
+            await Task.Delay(100);
+            Assert.Equal(string.Empty, worker.CurrentWatchDirectory);
+
+            Directory.CreateDirectory(hot);
+            await File.WriteAllTextAsync(
+                configPath,
+                BuildConfigJson(hot, audit, dryRun: false, exifToolPath: missingExifTool));
+
+            var ex = await Assert.ThrowsAsync<AppConfigValidationException>(
+                () => worker.ReloadConfigAsync());
+
+            Assert.Contains("exiftool.path not found", ex.Message, StringComparison.Ordinal);
+            // 失败必须回收成「仍在待机」，不是「监控目录已切过去但没在监控」。
+            Assert.Equal(string.Empty, worker.CurrentWatchDirectory);
         }
         finally
         {
@@ -591,8 +712,10 @@ public sealed class WorkerReloadConfigRegressionTests
     /// <c>/run/photoprivacy</c> 需 root，CI 绑不了，也不能与真实 worker 抢端点）。因此绑定
     /// 行为用同一工厂的形态访问策略在临时端点上验证，形态→端点选择映射
     /// （<c>ResolveEndpoint</c> 的形态分支，与宿主内同一调用）单独逐 OS 断言钉住。
-    /// 在 Windows 宿主上跑本用例时，服务形态一行会走 #70 的显式 DACL 建例路径
-    /// （CI test job 为 ubuntu，Windows 侧由发版机构建与实机 S4/S5 承担，见 ipc-contract.md）。
+    /// 在 Windows 宿主上跑本用例时，服务形态一行直接构造 ServiceShared 传输并注入通告器
+    /// （#7：随机名路径 + 细粒度客户端；不经工厂避免生产 HKLM 通告——elevated 运行会真实
+    /// 写/清注册表且覆盖路径随运行身份漂移；Unix 形态保持工厂，宿主形态本就只为工厂服务）。
+    /// （CI test job 为 ubuntu，Windows 侧由发版机构建与实机 S4/S5 承担，见 ipc-contract.md。）
     /// </summary>
     [Theory]
     [InlineData(RuntimeMode.Background, "background")]
@@ -636,7 +759,14 @@ public sealed class WorkerReloadConfigRegressionTests
                 Assert.Fail("未覆盖的 OS：形态→端点选择映射断言被静默跳过");
             }
 
-            transport = IpcTransportFactory.CreateServer(endpoint, isServiceMode);
+            // 审查返修（m2）：Windows + 服务形态直接构造并注入通告器，永不触碰真实注册表；
+            // 其余形态/平台走工厂（后台无熵，Unix 工厂选 UDS）。
+            transport = OperatingSystem.IsWindows() && isServiceMode
+                ? new NamedPipeIpcTransport(
+                    endpoint,
+                    WindowsPipeAccessMode.ServiceShared,
+                    servicePipeAdvertiser: _ => true)
+                : IpcTransportFactory.CreateServer(endpoint, isServiceMode);
 
             var handler = CreateHandler(fixture, runtimeMode);
 
@@ -849,11 +979,12 @@ public sealed class WorkerReloadConfigRegressionTests
     /// <c>CurrentWatchDirectory</c> 在「配置还没加载」时同样回空串，没有这道屏障，回包的空目录
     /// 可能只是「什么都还没发生」；而配置加载已是纯读路径（#124），不能再靠「审计目录被建出来」当屏障。
     ///
-    /// 覆盖边界（勿当作 #100 崩溃路径的替身）：<c>AppConfigValidator.Validate</c> 有两道早退——
-    /// <c>dry_run</c> 一条、空 <c>hot_folder</c> 一条（后者正是 #100 的改动），任一命中就走不到
-    /// exiftool 路径存在性、quarantine/audit 目录这些后续校验；本夹具两条都命中，所以就算把
-    /// <c>dry_run</c> 改成 false 也带不进那些校验。那条「非 dry-run 的待机链路」归 #108 裁定
-    /// （裸机发布包不含 ExifTool，空监控目录又让校验整体 fail-open），本票不替它把行为钉进 CI 门禁。
+    /// 覆盖边界（勿当作 #100 崩溃路径的替身）：<c>AppConfigValidator.Validate</c> 分层后仍有
+    /// <c>dry_run</c> 与空 <c>hot_folder</c> 两道早退，本夹具两条都命中，所以走不到 exiftool
+    /// 路径存在性、quarantine/audit 目录这些监控资源校验。「非 dry-run 的待机链路」由
+    /// <see cref="NonDryRun_Standby_Should_Enable_Monitoring_When_ExifTool_Is_Present"/>（放行侧）与
+    /// <see cref="NonDryRun_Standby_Should_Report_Missing_ExifTool_When_Enabling_Monitoring"/>（拒绝侧）
+    /// 负责，本票不替它们把行为钉进这里。
     /// </summary>
     [Fact]
     public async Task Standby_GetStatus_Through_Background_Endpoint_Should_Reply_With_Empty_Watch_Directory()
@@ -1424,11 +1555,19 @@ public sealed class WorkerReloadConfigRegressionTests
     /// 夹具自检：worker 启动路径对配置校验失败会直接 <c>Environment.Exit(1)</c>（杀死整个测试进程），
     /// 所以先在测试侧校验一遍——配置夹具漂移要以断言失败暴露，而不是让 CI 只看到进程消失。
     /// </summary>
-    private static void AssertViableFixtureConfig(string configPath)
+    private static void AssertViableFixtureConfig(string configPath, bool expectDryRun = true)
     {
         var parsed = AppConfigLoader.Load(configPath);
         AppConfigValidator.Validate(parsed);
-        Assert.True(parsed.ExifTool.DryRun, "夹具必须是 dry-run：否则会去 spawn ExifTool");
+        if (expectDryRun)
+        {
+            Assert.True(parsed.ExifTool.DryRun, "夹具必须是 dry-run：否则会去 spawn ExifTool");
+        }
+        else
+        {
+            // 非 dry-run 用例自带桩 exiftool（绝对路径 + 伴随运行时目录），校验应完整通过。
+            Assert.False(parsed.ExifTool.DryRun, "夹具声明为非 dry-run，dry_run 却为 true");
+        }
     }
 
     private static string BuildConfigJson(
@@ -1437,19 +1576,21 @@ public sealed class WorkerReloadConfigRegressionTests
         bool includeSubdirectories = true,
         int debounceMs = 100,
         int pollingSeconds = 1,
-        string? quarantineDirectory = null)
+        string? quarantineDirectory = null,
+        bool dryRun = true,
+        string? exifToolPath = null)
     {
-        // 全量键位对齐 config.sample.json；dry_run=true 让 validator 走早退分支
+        // 全量键位对齐 config.sample.json；默认 dry_run=true 让 validator 走早退分支
         // （不需要真实 exiftool.exe 与 exiftool_files 目录）。
         var payload = new
         {
             schema_version = 1,
             exiftool = new
             {
-                path = "exiftool.exe",
+                path = exifToolPath ?? "exiftool.exe",
                 enable_windows_long_path = true,
                 enable_large_file_support = true,
-                dry_run = true,
+                dry_run = dryRun,
                 extra_exiftool_args = Array.Empty<string>(),
                 stay_open_pool_size = 1,
                 max_parallel_drain = 1

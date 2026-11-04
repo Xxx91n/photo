@@ -67,13 +67,13 @@ if (mode == RuntimeMode.Service)
 // for source，Win32 1722）时 MEL Logger.Log 直接抛 AggregateException，沿 ReloadConfig 的 catch 链
 // 炸穿 IPC 响应路径（服务管道 ReloadConfig 挂起，#85）。ClearProviders 必须排在 AddWindowsService
 // 之后，才能把该 provider 一并摘掉；服务诊断改由下游 Serilog 文件日志承担（落点见 ResolveLogFilePath）。
-// Design(#85): 服务进程不得保留 EventLog provider——ClearProviders 紧随 AddWindowsService 之后。
+// Design(#82): 服务进程不得保留 EventLog provider——ClearProviders 紧随 AddWindowsService 之后。
 builder.Logging.ClearProviders();
 
 // Windows 服务进程的 CWD 是 %WINDIR%\System32：相对日志路径既不可发现，受限服务账户也写不进去。
 // 摘掉 EventLog 后 Serilog 文件是服务模式的唯一诊断落点，故服务进程改用 ProgramData 绝对路径；
 // 只认「真由 SCM 启动」（而非控制台 --mode service），避免与同机真实服务争同一文件。
-// Design(#85): 服务进程日志落点固定为 %ProgramData%\PhotoPrivacy\logs，其余情况保持相对 logs/。
+// Design(#82): 服务进程日志落点固定为 %ProgramData%\PhotoPrivacy\logs，其余情况保持相对 logs/。
 var logFilePath = ResolveLogFilePath(mode);
 
 var logConfig = new LoggerConfiguration()
@@ -98,6 +98,54 @@ if (mode != RuntimeMode.Cli)
 {
     builder.Logging.AddFilter("Microsoft.Hosting.Lifetime", LogLevel.None);
     builder.Logging.AddFilter("Microsoft.Extensions.Hosting", LogLevel.Warning);
+}
+
+// 单写者准入门（#162）：实例守卫按模式分锁（Service/Background 各一把）是 UI 回落场景的有意设计，
+// 代价是同 config 的服务与后台 Worker 可并存、争用同一 processed.ndjson——后启动者的 store 常驻句柄
+// 打不开即 IOException，被 BackgroundServiceExceptionBehavior.StopHost 放大成服务自停。此门以
+// 「有效审计目录」为身份补上跨模式互斥：拿不到锁 = 让位干净退出（日志 + 审计留痕），不触碰审计文件。
+// 门自身异常（含跨账户打不开既有锁）同样让位——无法确证独占就不写审计；放行 = 带未知争用风险，
+// 与本票要消灭的故障同类。
+// Design(#82): 常驻 Worker 触碰审计文件前必须过准入门；拿不到锁或门异常一律让位，禁静默降级。
+ISingleInstanceGuard? singleWriterGate = null;
+if (requestedMode != RuntimeMode.Cli)
+{
+    // 配置解析失败不归门管：门只拿审计目录，走回退口径继续；配置错误由 Worker 既有校验链报。
+    string? configuredAuditDirectory = null;
+    try
+    {
+        configuredAuditDirectory = InstanceConflictAudit.LoadConfigFromArgs(args).Audit.LogDirectory;
+    }
+    catch (Exception ex)
+    {
+        Log.Error(ex, "config could not be resolved for the single-writer gate; using the fallback audit directory (#162)");
+    }
+
+    var admission = SingleWriterGate.TryAcquire(configuredAuditDirectory);
+    if (admission.Error is not null)
+    {
+        Log.Error(
+            admission.Error,
+            "single-writer admission gate could not be verified for {AuditDirectory}; yielding conservatively (single-writer gate #162)",
+            admission.AuditDirectory);
+    }
+    else if (admission.Guard is null)
+    {
+        Log.Error(
+            "audit directory {AuditDirectory} is held by another worker; yielding cleanly instead of crashing (single-writer gate #162)",
+            admission.AuditDirectory);
+    }
+
+    if (admission.Guard is null)
+    {
+        Console.Error.WriteLine("[PhotoPrivacyWorker] 无法取得审计目录的单写者准入锁，本进程让位退出。 ");
+        Console.Error.WriteLine("[PhotoPrivacyWorker] audit directory is owned (or cannot be verified) — yielding.");
+        await InstanceConflictAudit.TryWriteSingleWriterYieldAsync(args, requestedMode, admission.AuditDirectory);
+        Log.CloseAndFlush();
+        return 1;
+    }
+
+    singleWriterGate = admission.Guard;
 }
 
 builder.Services.Configure<HostOptions>(options =>
@@ -180,6 +228,7 @@ TaskScheduler.UnobservedTaskException += (_, e) =>
 RegisterBestEffortShutdown(shutdownCoordinator, ref cancelKeyHandler, ref processExitHandler);
 
 await app.RunAsync();
+singleWriterGate?.Dispose();
 UnregisterBestEffortShutdown(cancelKeyHandler, processExitHandler);
 posixHooks.Dispose();
 Log.CloseAndFlush();

@@ -197,6 +197,67 @@ public sealed class AppConfigLoaderTests
     }
 
     // ---------------------------------------------------------------------------------------
+    // exiftool.path 空串回落运行时探测（Design(#108)）：
+    // 发布包内置 ExifTool 后模板不再写死绝对路径，留空 = 优先 <BaseDirectory>/ExifTool/。
+    // ---------------------------------------------------------------------------------------
+
+    [Fact]
+    public void Load_Should_Fall_Back_To_Runtime_Probe_When_ExifTool_Path_Is_Empty()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+
+        try
+        {
+            var configPath = Path.Combine(dir, "config.json");
+            File.WriteAllText(configPath, """
+            {
+              "schema_version": 1,
+              "exiftool": { "path": "" },
+              "watch": { "hot_folder": "D:\\hot" }
+            }
+            """);
+
+            var cfg = AppConfigLoader.Load(configPath);
+
+            Assert.Equal(DefaultPaths.ExifToolPath, cfg.ExifTool.Path);
+            Assert.False(string.IsNullOrWhiteSpace(cfg.ExifTool.Path));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Load_Should_Keep_Explicit_ExifTool_Path()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+
+        try
+        {
+            var configPath = Path.Combine(dir, "config.json");
+            var explicitPath = Path.Combine(dir, "custom", "exiftool.exe");
+            File.WriteAllText(configPath, $$"""
+            {
+              "schema_version": 1,
+              "exiftool": { "path": "{{explicitPath.Replace("\\", "\\\\")}}" },
+              "watch": { "hot_folder": "D:\\hot" }
+            }
+            """);
+
+            var cfg = AppConfigLoader.Load(configPath);
+
+            Assert.Equal(explicitPath, cfg.ExifTool.Path);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    // ---------------------------------------------------------------------------------------
     // 空配置兜底 —— quarantine.directory / audit.log_directory 空串回落 DefaultPaths。
     // 原 bug：空串直传 → Path.Combine("", 文件名) 退化成相对路径 → 隔离/审计文件落进进程 CWD
     //（config.sample.json 这两项就是空串，跟着 README 第一步走即命中）。

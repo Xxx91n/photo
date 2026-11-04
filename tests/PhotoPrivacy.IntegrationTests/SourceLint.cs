@@ -51,18 +51,51 @@ public static class SourceLint
 
     /// <summary>
     /// （#65）枚举 src/ 下全部手写 .cs（Core/Ipc/Worker 三工程），
-    /// 排除 bin/obj 与生成代码 —— 全仓级形态守卫的唯一枚举出处，不在各 guard 里重复。
+    /// 排除 bin/obj/target 与生成代码 —— 全仓级形态守卫的唯一枚举出处，不在各 guard 里重复。
     /// </summary>
     public static List<string> SrcCsFiles()
     {
         var srcRoot = Path.Combine(RepoRoot, "src");
         Assert.True(Directory.Exists(srcRoot), $"src root not found: {srcRoot}");
         return Directory.GetFiles(srcRoot, "*.cs", SearchOption.AllDirectories)
-            .Where(f => !f.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar) &&
-                        !f.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar) &&
+            .Where(f => IsNotBuildArtifact(RelativeToRoot(srcRoot, f)) &&
                         !f.EndsWith(".g.cs") && !f.EndsWith(".GlobalUsings.g.cs"))
             .ToList();
     }
+
+    /// <summary>
+    /// （#63）按仓库相对根名与通配枚举源码文件，排除 bin/obj/target 构建产物——
+    /// 新守卫的 tests/ .cs 与 ui/ .rs/.toml 等非 src 枚举走本方法（存量 guard 的
+    /// 既有枚举为预存状态，不在本方法收编范围），与 <see cref="SrcCsFiles"/> 同一出处，
+    /// 不在各 guard 里另起一套排除规则。
+    /// </summary>
+    public static List<string> EnumerateSourceFiles(string rootName, string pattern)
+    {
+        var root = Path.Combine(RepoRoot, rootName);
+        if (!Directory.Exists(root))
+        {
+            return [];
+        }
+
+        return Directory.GetFiles(root, pattern, SearchOption.AllDirectories)
+            .Where(f => IsNotBuildArtifact(RelativeToRoot(root, f)))
+            .ToList();
+    }
+
+    /// <summary>
+    /// （#63）对「带前导分隔符、相对各自扫描根」的路径判构建产物：排除 bin/obj/target 段。
+    /// 输入口径由调用方保证——相对路径限定在扫描根之下，祖先目录撞名（仓库恰住在
+    /// `~/bin/photo` 这类路径下）不会误杀全仓扫描；前导分隔符保证顶层 `bin/…` 也命中
+    /// （裸相对路径 `bin/file.cs` 缺分隔前缀，不匹配段判定）。
+    /// </summary>
+    private static bool IsNotBuildArtifact(string pathRelativeToRoot) =>
+        !pathRelativeToRoot.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar) &&
+        !pathRelativeToRoot.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar) &&
+        !pathRelativeToRoot.Contains(Path.DirectorySeparatorChar + "target" + Path.DirectorySeparatorChar);
+
+    /// <summary>把扫描根下的绝对路径转成带前导分隔符的相对路径（谓词的输入口径）。</summary>
+    private static string RelativeToRoot(string root, string path) =>
+        Path.DirectorySeparatorChar + Path.GetRelativePath(root, path);
 
     private static string FindRepoRoot()
     {

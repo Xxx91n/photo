@@ -7,12 +7,14 @@
 
 | 平台 | 后台端点 | 服务端点 |
 | --- | --- | --- |
-| Windows | 命名管道 `PhotoPrivacyCleaner.Background` | `PhotoPrivacyCleaner.Service` |
+| Windows | 命名管道 `PhotoPrivacyCleaner.Background` | 命名管道 `PhotoPrivacyCleaner.Service.<32hex>`（#7：每次监听随机化，先建首例再通告于 `HKLM\SOFTWARE\PhotoPrivacy\ServicePipeName`；通告缺失/非法回退静态 `PhotoPrivacyCleaner.Service`） |
 | Linux | `/run/photoprivacy/worker-background.sock` | `/run/photoprivacy/worker.sock` |
 | macOS | `~/Library/Application Support/photoprivacy/worker-background.sock` | 同目录 `worker.sock` |
 
-出处：`src/PhotoPrivacy.Ipc/WorkerIpcEndpointNames.cs`、`src/PhotoPrivacy.Ipc/IpcTransportFactory.cs`。
-客户端必须按 OS 解析端点（旧 Avalonia UI 全程硬编码 Windows 管道名，Linux/macOS 因此连不上）。
+出处：`src/PhotoPrivacy.Ipc/WorkerIpcEndpointNames.cs`、`src/PhotoPrivacy.Ipc/IpcTransportFactory.cs`、
+`src/PhotoPrivacy.Ipc/NamedPipeIpcTransport.cs`（#7 随机化）、`ui/crates/photoprivacy-ipc/src/endpoints.rs`（客户端动态发现）。
+客户端必须按 OS 解析端点（旧 Avalonia UI 全程硬编码 Windows 管道名，Linux/macOS 因此连不上）；
+Windows 服务端点自 #7 起按通告名动态解析（每次探测/失败重解析，详见认证边界节），其余端点静态。
 
 ## 帧与客户端约束
 
@@ -69,29 +71,76 @@ store/audit）建回来，再按上述契约回 `ok:false`（重建失败带 `re
 
 ## Worker 启动
 
-`PhotoPrivacyWorker --mode background [--config <config.json>]`。UI 侧连接顺序：服务端点 → 后台端点 → 启动后台 Worker 并轮询 5 s（`ui/crates/photoprivacy-ipc/src/monitor.rs`；旧栈实现 `src/PhotoPrivacy.Ui/Services/WorkerProcessManager.cs` 已随旧 Ui 工程退役，#61）。
+`PhotoPrivacyWorker --mode background [--config <config.json>]`。UI 侧连接顺序：服务端点 → 后台端点 → 启动后台 Worker 并轮询 5s（`ui/crates/photoprivacy-ipc/src/monitor.rs`；旧栈实现 `src/PhotoPrivacy.Ui/Services/WorkerProcessManager.cs` 已随旧 Ui 工程退役，#61）。
 当 `watch.hot_folder` 为空时，Worker 仍建立 IPC 并保持待机；`GetStatus.data.watchDirectory` 为空，UI 应引导用户到配置页选择监控目录。保存有效目录后通过 `ReloadConfig` 启动监控，无需重启 Worker（#100）。
+
+连接全部失败时，UI 按最近一次真实失败原因三态分类呈现（#169，编排顺序与轮询预算不变）：服务端点连接被管道 DACL 拒（`ERROR_ACCESS_DENIED`，端点存在的证明）→「未被授权使用服务模式」，行动指引**按平台分键**——Windows 指向安装脚本的 `-AuthorizedUsers` 集合，Unix 指向服务 socket 的 0660+共享组边界（`install-systemd-service.sh --gui-user` / launchd 同构）；UI 拉起的后台 Worker 未就绪（spawn 失败 / 已退出——含 #163 单写者准入门让位退出码 1 / 5s 超时）→ Worker 缺失语义并附退出细节；未找到可拉起的 Worker 可执行文件 → 引导安装。分类经 `ConnectionSnapshot.connect_failure` 广播，心跳连上即清空；心跳掉线不清（授权拒绝是编排期事实）。
 
 ## 认证边界与已知缺陷
 
 - Windows：后台管道 `PipeOptions.CurrentUserOnly`；Unix：0600/0660 + 对端 uid 白名单（fail-closed）。
-- Windows 服务管道（#70，决策 #82 D3）：显式 DACL 取代 `CurrentUserOnly`——安装脚本
-  （`scripts/install-service.ps1`）把安装者 SID 写入 `HKLM\SOFTWARE\PhotoPrivacy\ServicePipeInstallerSid`，
+- Windows 服务管道（#70，决策 #82 D3；#1 opt-in 授权集合）：显式 DACL 取代 `CurrentUserOnly`——
+  安装脚本（`scripts/install-service.ps1`）把安装者 SID 写入 `HKLM\SOFTWARE\PhotoPrivacy\ServicePipeInstallerSid`，
+  并把「安装者 + `-AuthorizedUsers` 显式授权用户」的完整 SID 集合写入 `ServicePipeAllowedSids`
+  （REG_MULTI_SZ，#1 opt-in：不传该参数则集合仍含安装者保底，默认不扩权）；
   服务端经 managed 正典 `NamedPipeServerStreamAcl.Create` 建例（传 `PipeSecurity`，不传
-  `CurrentUserOnly`——它会给创建者专属 DACL 并忽略传入值），授予安装者 SID
-  FILE_GENERIC_READ|WRITE + SYSTEM/Administrators 完全控制。DACL 必须给创建者保留
+  `CurrentUserOnly`——它会给创建者专属 DACL 并忽略传入值），授予集合内每个 SID
+  FILE_GENERIC_READ|WRITE **去位掩码**（#7 拆位，见下）+ SYSTEM/Administrators 完全控制。
+  DACL 必须给服务身份（SYSTEM/Administrators 的 FILE_ALL_ACCESS）保留
   FILE_CREATE_PIPE_INSTANCE（0x4）：服务建第 2..N 个实例时内核按 DACL 对创建者令牌做该项检查
   ——38142f9b 的「单文件 UnauthorizedAccessException + 254 实例泄漏」实为旧 WorldSid-ReadWrite
   DACL 缺此位（`PipeAccessRights.Write` 刻意不含它），非单文件问题。
+  解析优先级：授权集合值缺失/空/全非法 → 回退安装者单值（#70 默认行为）→ 仍缺失才回退
+  `CurrentUserOnly`；集合内非法条目逐条剔除，不放大为整体失效。
   ACL 代码按 `PP_WINDOWS_HOST`（csproj 按 `'$(OS)'=='Windows_NT'` 注入，Ipc 与测试工程同口径）
   编译：CI test job 只跑 ubuntu，Windows 编译覆盖由 release.yml win-x64 构建与发版机承担；
   交叉发布（非 Windows 宿主产出 win-x64）时解析与建例均被编译排除，fail-closed 回退
   `CurrentUserOnly`。SID 缺失/无效 fail-closed 回退 `CurrentUserOnly` 并记 warning；
-  重装/升级覆盖登记值，ACL 随最新安装者。
-  安装者账户的非提权 UI 可完成服务端点往返；其他账户仍被拒（多用户/跨账户归 #1）。
+  重装/升级覆盖登记值，ACL 随最新授权集合。
+  授权集合内账户的非提权 UI 可完成服务端点往返；集合外账户仍被拒（授权语义归 #1——
+  被授权账户可读服务侧 GetRecentLogs 审计信息，只应授予信任用户）。
   C# 传输层 `ConnectAsync` 客户端与所连模式同界：后台模式带 `CurrentUserOnly`（不变），
-  服务模式不带（与服务端 DACL 同界，否则会在客户端把对 SYSTEM 服务的合法连接整体拒绝）；
+  服务模式不带（与服务端 DACL 同界，否则会在客户端把对 SYSTEM 服务的合法连接整体拒绝）
+  且自 #7 起改走细粒度掩码重载（见下）；
   服务端点的产品客户端只有 Rust UI（本就不做属主校验）。
+- Windows 服务管道防 Hijack 加固（#7，CWE-732 + 命名熵）：
+  - **掩码拆位**：授权用户 ACE 从 FILE_GENERIC_READ|WRITE（0x12019F）剥除
+    FILE_CREATE_PIPE_INSTANCE（0x4，与客户端 GENERIC_WRITE 必需位 FILE_APPEND_DATA 同值——
+    微软 Named Pipe 文档登记的 API 位碰撞缺陷）→ 0x12019B；FirstPipeInstance 只保护首实例，
+    拆位前被授权用户可建后续实例（冒充服务端/抢占连接/DoS，PR #160 审查发现登记于 #7）。
+  - **客户端双端同步细粒度打开**（与拆位 DACL 同值 0x12019B，GENERIC 打开会因 0x4 位被
+    AccessCheck 整体拒绝）：C# 走 `NamedPipeClientStream(serverName, pipeName, PipeAccessRights, …)`
+    重载（.NET 10 实有该 API；#7 票内评论所记「无 access-rights 重载可用」已过时，无需 P/Invoke）
+    + `TokenImpersonationLevel.Identification`（.NET 内部生成 SECURITY_SQOS_PRESENT|Identification）；
+    Rust 侧 tokio 1.54 无 `ClientOptions::desired_access`（评论所记 API 不存在，docs.rs 核实）→
+    原生 CreateFileW（share=0、OPEN_EXISTING、SQOS 三件套 `SECURITY_SQOS_PRESENT|
+    SECURITY_IDENTIFICATION|FILE_FLAG_OVERLAPPED`，与 tokio `ClientOptions::new` 默认 flags
+    同构；SECURITY_SQOS_PRESENT 是微软 CreateFileW 文档的前置条件，漏它则 Identification
+    级别不生效——审查返修 M1 钉住）后经 `NamedPipeClient::from_raw_handle` 注册；busy/not-found
+    重试语义与错误码不变。双端冒充级别固定 Identification：防伪服务端（预蹲者）对客户端发起
+    ImpersonateNamedPipeClient 冒充；产品服务端从不冒充客户端，收紧不改变合法链路。
+  - **命名熵**：服务每次监听生成 crypto-random 后缀（基名.32hex），**先建首例**
+    （FirstPipeInstance fail-fast 传感器保留：名被占即绑定失败）**再通告**
+    `HKLM\SOFTWARE\PhotoPrivacy\ServicePipeName`（REG_SZ，键默认仅管理员/SYSTEM 可写——
+    发现通道完整性 ≥ 管道客户端集合，非提权无法伪造指针）。随机名使预蹲者无从得知未诞生的
+    名字，拆位使建例后无法加实例，HKLM 权限使指针不可伪造——三者闭环。通告失败（非
+    LocalSystem 服务账户/注册表损坏）回退静态名重绑：fail-safe 可用性优先（与 #70 的 SID
+    缺失回退同构），Worker 记 warning 观测，此时防抢占面回到 #7 前、拆位 DACL 仍生效；
+    回退时 best-effort 清除残留通告值（审查返修 m1：客户端只对缺失/非法回退静态名，不清
+    残留会把 UI 钉死在陈旧名上）。
+    优雅停机清除通告值；崩溃残留由下次启动覆盖/卸载清除（卸载脚本一并清三个登记值）。
+  - **UI 侧动态发现**：服务端点解析按拍/失败时重读通告名（3s 可达性探测、连接编排、心跳
+    失败重解析、1s 版本轮询）；通告缺失/非法（字符集/长度校验防注入）回退静态名——旧版服务
+    兼容。服务重启换名后心跳/版本/探测自愈；backfill 每轮 5s 重试时重读 endpoint watch
+    （心跳重解析以同值抑制推送）。
+  - **已知残余**（如实登记）：① 后台管道同用户抢先建面无法以熵闭环——同用户进程可伪造任何
+    发现通道（HKCU 可写/管道枚举），完整修复需协议级服务端认证（即下方既有「客户端不做服务端
+    认证」边界）；② 混合版本窗口：新服务 + 旧 UI 表现为「服务不可达→回退后台」（发布目录
+    同体、升级关 UI，实际窗口≈0）；③ UI 启动恰逢服务重启的毫秒级通告空窗内可能读到陈旧
+    通告名——探测失败一拍后自愈；④ 同机授权用户以客户端身份连服务管道发任意请求仍是信任
+    边界内的既有行为（#1 语义）；⑤ 通告持续失败（权限性）且回退时的残留清除也失败——
+    UI 会钉死在陈旧通告值上（探测恒失败），需修复注册表写入权限后服务重启才恢复
+    （清除是 best-effort，审查返修 m1 已登记）。
 - Unix 服务模式不变（0660 + 组白名单）；Linux/macOS 的服务管道访问按各自机制另行核对（#70 AC）。
 - 客户端**不做**旧 UI 的 `PipeOptions.CurrentUserOnly` 属主校验（服务模式下自相矛盾）；理由见 `ui/crates/photoprivacy-ipc/src/client.rs` 注释。
 
@@ -103,3 +152,5 @@ store/audit）建回来，再按上述契约回 `ok:false`（重建失败带 `re
 ## 改动规则
 
 协议扩展**只加 method 名**，不改既有字段语义（`Design(#49)`）。改完同步：本文件、`ui/crates/photoprivacy-ipc/src/protocol.rs`、对应 Rust 测试与 .NET 侧契约测试。
+
+> AI生成

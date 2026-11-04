@@ -5,6 +5,13 @@
 ## 治理
 
 **Design Marker（决策标记）**：源码里可检索的架构决策锚 `// Design(#<issue>): <决策>`，紧贴受约束声明；issue 号 = 决策存续出处。取舍判据见 `docs/agents/design-markers.md`，形态由 `DesignMarkerSourceTests` 守。
+**不变量①–⑤（运行不变量表）**：correctness-round（2026-09）拍的五条系统级正确性不变量，源码/测试以「不变量N」编号引用（含「不变量①④」连写与同句间隔两种形态）。原表体住 D 系决策账本 D-002（未入仓，fa360d6 拆治理层后散佚），本词条为对账重建：存续出处定 GLOSSARY、编号引用不折算不退役（#63）；引用与表体的对账由 `InvariantReferenceReconciliationTests` 守。
+- **不变量①（fail-closed）**：不可读、不识别、异常路径一律显式拒绝或可见告警，绝不静默放行、不静默降级。
+- **不变量②（数据零意外丢失）**：用户数据零意外丢失——备份镜像布局结构性消歧、restart 与停机窗口不丢在途任务。
+- **不变量③（最小攻击面，全档执行不降档）**：攻击面保持最小且任何执行档位不降档豁免；IPC 认证只信内核身份边界、不信用户态可伪造信号（PID/进程路径）是它在 IPC 面的具体应用，非定义全体。考古恢复：现行仓内无 ③ 引用点，取义自 correctness-round 票 04 报告（原表述「最小攻击面，全档执行不降档」），非新提。
+- **不变量④（驻守可观测）**：不允许「看起来在跑实际没在跑」——常驻收益（stay_open）不被摧毁、探针轻量不误杀、降级必留痕。
+- **不变量⑤（宣称-实现一致）**：宣称的承诺由机器断言兑现——对账守卫随 CI 硬失败，宣称数字由测试产出。
+
 **Stack Migration（换栈）**：UI 框架栈层面的整体更换，与栈内重构相对。
 **In-Stack Refactor（栈内重构）**：不换 UI 框架，只改栈内的结构与呈现模式。
 
@@ -45,7 +52,9 @@
 **SIGHUP Reload**：SIGHUP 触发配置热载，异常只记日志、不阻塞信号线程。
 **Zombie Reap**：ExifTool 子进程经 Exited→WaitForExit 回收，防 Unix 僵尸。
 **Shared Group Model**：服务与 GUI 用户共享组和 setgid 目录。
-**Service Pipe ACL**：Windows 服务管道显式 DACL（#70）——安装者 SID 由 install-service.ps1 登记，服务端建例时授予读写；SID 缺失 fail-closed 回退 CurrentUserOnly。
+**Service Pipe ACL**：Windows 服务管道显式 DACL（#70/#1/#7）——授权 SID 集合（安装者保底，`-AuthorizedUsers` opt-in 扩展）由 install-service.ps1 登记为单值 + MULTI_SZ 集合，服务端建例时逐 SID 授予读写**去位掩码**（#7 拆位：剥除 FILE_CREATE_PIPE_INSTANCE 0x4，建例权仅授服务身份）；集合缺失回退安装者单值，全缺失 fail-closed 回退 CurrentUserOnly。
+**Service Pipe Name Advertisement**：服务管道通告名（#7 命名熵）——服务每次监听生成 crypto-random 后缀（基名.32hex），先建首例再写入 `HKLM\SOFTWARE\PhotoPrivacy\ServicePipeName`；UI 动态解析服务端点优先读它，缺失/非法回退静态名。随机名防预蹲，HKLM 管理员可写防指针伪造；通告失败服务回退静态名（fail-safe）。
+**IPC Client Access Mask**：IPC 客户端细粒度请求掩码（#7/CWE-732）——FILE_GENERIC_READ|WRITE 剥除 0x4 后的 0x12019B，与服务端拆位 DACL 同值；C# 走 PipeAccessRights 构造重载，Rust 原生 CreateFileW（SQOS 三件套 SECURITY_SQOS_PRESENT|SECURITY_IDENTIFICATION|FILE_FLAG_OVERLAPPED，漏 PRESENT 位则 Identification 不生效），双端冒充级别 Identification。
 **IPC Protocol Version**：消息可选 `v` 字段（默认 1），新功能以方法名扩展。
 **Mode-Scoped Shutdown**：仅 CLI 模式可经 IPC 触发 Shutdown。
 **Post-Action Probe Retry**：服务操作后指数退避重试探测。
@@ -54,6 +63,7 @@
 **IPC Log Pull**：`GetRecentLogs` 从 Worker 拉审计尾部，补 FSW 盲区。
 **Channel&lt;T&gt; File Pipeline**：BoundedChannel 背压的生产-消费文件管线。
 **IpcClient**：UI↔Worker IPC 客户端（Rust 实现 `ui/crates/photoprivacy-ipc`）。
+**Connect Failure Cause**：连接编排失败的三态分类（#169）——服务端点被 DACL 拒 / 后台 Worker 启动未就绪（含单写者让位）/ 未找到 Worker 程序；经 `ConnectionSnapshot.connect_failure` 广播，心跳连上即清、掉线不清，UI 呈现优先于 `last_error`，不再统一归 os error 2。授权拒绝的行动指引按平台分键：Windows 指 `-AuthorizedUsers`，Unix 指服务授权组（0660+共享组边界）。
 
 ## 本地化
 
@@ -84,3 +94,5 @@
 **Visual Baseline**：4 页×关键态截图基线，人工目检见 `docs/agents/ui-smoke.md`，不上 CI 像素 diff。
 **Source-lint Test**：编译期源码文本断言，约定见 `tests/TEST-CONVENTIONS.md`。
 **CI Gate**：push/PR 自动跑过滤后的测试，是云端验收闸。
+
+> AI生成
