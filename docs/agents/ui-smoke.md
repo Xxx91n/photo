@@ -172,9 +172,9 @@
 
 > 背景：#174 的修复（PR #177，`da6d3f3`）在 main 上只有一行内联条件，无测试、无证据；票面 AC1/AC2
 > 因此一直空着（AC3 另受 macOS 取证链限制，见本节末）。本节补两样：Windows 实机 GUI 取证（AC1/AC2），
-> 以及 #32 取证链（`scripts/capture-ui-service-page.sh`）在静默机器上的判定口径——该脚本第 70 行
-> 正是以 `--open-page service` 启动 UI 等首屏；修复是它「首帧就落在目标页」的前提，但它的 PASS 判据
-> （PNG 非空）并不依赖这一点，见本节末第 3 条。
+> 以及 #32 取证链（`scripts/capture-ui-service-page.sh`）在静默机器上的判定口径——该脚本第 87 行
+> 正是以 `--open-page service` 启动 UI 等首屏；修复是它在静默配置下建窗的前提，而本 PR 同时把脚本判据
+> 从「PNG 非空」升级为「窗口几何必须取到」，见本节末第 3 条。
 >
 > **产物**：Release run [41835232955](https://github.com/Xxx91n/photo/actions/runs/41835232955)
 > （ref `t153-standby-audit-dir`，head `0fa995a`，version `0.1.0-verify153`，`create_release=false`）的
@@ -211,13 +211,23 @@
   `should_open_main_window` 真值表三条用例（静默+任一页 → 建窗、静默+无页 → 不建窗、非静默等价），
   加 `app.rs` 的 `open_page_decides_the_first_frame_page`（首帧 `page` 跟随 `open_page`）。
   GUI 行为由本节实机钉，布尔判定由那四条钉，二者都必要：只留单测的话，条件被绕过仍会绿。
-- **#32 取证链的边界（别把本节读成 AC3 已完成）**：
-  1. `capture-ui-service-page.sh` 是 macOS 专用，本机（Windows）无法实跑，AC3 仍无 mac 侧机器证据；
-     本节只证明它依赖的建窗行为在实机上成立。
+- **#32 取证链的边界与本轮加固（别把本节读成 AC3 已完成）**：
+  1. `capture-ui-service-page.sh` 是 macOS 专用，本机只有 WSL2（Microsoft Linux 内核，跑不了 macOS），
+     所以 AC3 只能在 GitHub 的 macOS runner 上跑。那条链本身是通的：run
+     [41829671191](https://github.com/Xxx91n/photo/actions/runs/41829671191)（head `9aa1c27`）里
+     四次截图全 PASS，`ui-shot-*.txt` 的窗口几何都是 `470, 150, 980, 748`，PNG 也不是黑帧
+     （1920×1080、灰度均值 103、43% 非黑像素，四帧内容各不相同）——所以「mac 侧执行」不是缺环境，是缺触发。
   2. CI 的 `launchd-verify.yml` 用 `config.sample.json`（`hide_main_window_on_startup: false`），
-     **静默分支从未在 CI 跑过**——#174 回归不会被那条流水线抓到。
-  3. 脚本第 75-78 行的第二次实例唤起会把窗口带出来，上层判据又是「PNG 非空即 PASS」，
-     即使首实例被静默吞掉也能绿；脚本头注释与兜底注释已写明这段不能当 #174 的判定依据（本 PR 一并改）。
+     **静默分支从未在那条流水线上跑过**；本 PR 让脚本自建配置副本并把该开关置 true（安装目录的
+     config.json 不动），push 后每次截图都带静默配置。**但静默真正生效的只有 `pre-install` 与
+     `uninstalled` 两个 tag**：`tray::should_show_tray_icon` 在服务已安装（`running`/`stopped`）时
+     返回 false，`should_start_hidden` 随之恒 false，窗口无论如何都会出——那两个 tag 测不到本票，
+     别把它们算进 AC3 的证据面。
+  3. 脚本的第二次实例唤起会把窗口带出来，上层判据又是「PNG 非空即 PASS」，即使首实例被静默吞掉也能绿。
+     本 PR 补了硬断言：`osascript … get {position, size} of window 1` 取不到几何（无窗口时是
+     `Invalid index (-1719)`）就非零退出。该通道在 runner 上可用（见第 1 条的四次几何输出）。
+     本机 WSL bash 只验证了配置翻转与几何正则三态（真实几何 PASS、`Invalid index` FAIL、
+     无 Apple Events 权限 FAIL），**mac 侧尚未实跑**——AC3 在 CI 跑出 PASS 之前仍按未取证计。
      要让 AC3 机器可判，得在 #32 的 harness 里显式构造 `hide_main_window_on_startup=true` 的用例，
      并产出可断言的页标识（`--service-probe-report` 只给服务态、不给页），属 #32 链加固，不在本票范围。
 

@@ -64,10 +64,27 @@ LAUNCHCTL_TXT="${OUT_DIR}/ui-${TAG}-launchctl.txt"
 # 清掉旧产物：同目录重跑时残留 PNG 会让上层“文件非空”断言假绿（CodeRabbit 审查意见）
 rm -f "$PNG"
 
+# #174：本脚本要证明的是「静默启动配置下 --open-page 仍能建窗」。发布包的 config 来自
+# config.sample.json（hide_main_window_on_startup: false），不显式打开这个开关，这条路径
+# 在 CI 上永远测不到。所以用配置副本打开它——安装目录里的 config.json 一字不动。
+UI_CONFIG="${OUT_DIR}/ui-config-${TAG}.json"
+cp "${INSTALL_DIR}/config/config.json" "$UI_CONFIG"
+SILENT_KEY='hide_main_window_on_startup'
+if [[ "$(grep -c "\"${SILENT_KEY}\"" "$UI_CONFIG")" -ne 1 ]]; then
+  echo "配置副本里找不到唯一的 ${SILENT_KEY}，无法构造静默启动场景（#174）: ${UI_CONFIG}" >&2
+  exit 1
+fi
+sed -E "s/(\"${SILENT_KEY}\"[[:space:]]*:[[:space:]]*)false/\1true/" "$UI_CONFIG" > "${UI_CONFIG}.tmp"
+mv "${UI_CONFIG}.tmp" "$UI_CONFIG"
+if ! grep -Eq "\"${SILENT_KEY}\"[[:space:]]*:[[:space:]]*true" "$UI_CONFIG"; then
+  echo "把 ${SILENT_KEY} 置 true 失败，静默启动场景未成立（#174）: ${UI_CONFIG}" >&2
+  exit 1
+fi
+
 # --worker 指向不存在路径：截图场景只看 Service 页探测，不拉起后台 Worker
 # （避免与服务 Worker 同 config 并存的单写者让位场景混入，#162）。
 UI_LOG="${OUT_DIR}/ui-${TAG}-ui.log"
-"$UI_BIN" --open-page service --worker "${OUT_DIR}/no-worker-for-shot" > "$UI_LOG" 2>&1 &
+"$UI_BIN" --open-page service --config "$UI_CONFIG" --worker "${OUT_DIR}/no-worker-for-shot" > "$UI_LOG" 2>&1 &
 UI_PID=$!
 
 # 首屏渲染余量：服务状态在建窗前已同步探测（main.rs 首拍），截图等窗口稳定。
@@ -75,14 +92,16 @@ sleep 4
 # 单实例唤起兜底：若已有一个实例在跑（本进程被单实例守卫挡下只唤起不重开，main.rs），
 # 这一拍会把主窗带出来；再点名置前台，避免截图截到别的应用/壁纸。走 --open-page 的正常路径上
 # 首实例已建窗（#174），这一拍实际是重复唤起，只作保险。
-"$UI_BIN" --open-page service --worker "${OUT_DIR}/no-worker-for-shot" >/dev/null 2>&1 || true
+"$UI_BIN" --open-page service --config "$UI_CONFIG" --worker "${OUT_DIR}/no-worker-for-shot" >/dev/null 2>&1 || true
 sleep 3
 osascript -e 'tell application "System Events" to tell process "PhotoPrivacy" to set frontmost to true' 2>&1 || true
 sleep 1
 
-# 窗口实存与几何留证（无窗时本文件只有报错，配合 UI 日志定位）
+# 窗口实存与几何留证（无窗时本文件只有报错，配合 UI 日志定位；判据在收口处断言）
+WINDOW_INFO="${OUT_DIR}/ui-${TAG}-window.txt"
 echo "---- window info ----"
-osascript -e 'tell application "System Events" to tell process "PhotoPrivacy" to get {position, size} of window 1' 2>&1 || true
+osascript -e 'tell application "System Events" to tell process "PhotoPrivacy" to get {position, size} of window 1' > "$WINDOW_INFO" 2>&1 || true
+cat "$WINDOW_INFO"
 pgrep -fl "PhotoPrivacy" 2>&1 || true
 
 # 配对状态对照（#172 根因对照，GUI 用户语境）：legacy `launchctl list <label>` 按调用者域
@@ -112,6 +131,14 @@ while kill -0 "$UI_PID" 2>/dev/null; do
   WAITED=$((WAITED + 1))
 done
 wait "$UI_PID" 2>/dev/null || true
+
+# #174 判据（硬）：静默配置 + --open-page service 必须建窗。osascript 取不到窗口几何就说明
+# 窗口没建（无窗口时报 Invalid index / 权限问题），此时整屏截图照样是「非空桌面帧」——
+# 只看 PNG 会假绿，所以这里先断言窗口几何，再谈截图。
+if ! grep -Eq '^[0-9-]+,[[:space:]]*[0-9-]+,[[:space:]]*[0-9]+,[[:space:]]*[0-9]+' "$WINDOW_INFO"; then
+  echo "静默配置下未建窗：窗口几何缺失（#174），见 ${WINDOW_INFO}" >&2
+  exit 1
+fi
 
 if [[ -s "$PNG" ]]; then
   echo "screenshot ok: ${PNG} ($(wc -c < "$PNG") bytes)"
