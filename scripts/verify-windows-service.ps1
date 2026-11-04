@@ -120,13 +120,22 @@ try {
     whoami /all
   }
 
-  # ---------- 1. 检查安装前状态（服务未安装） ----------
+  # ---------- 1. 检查安装前状态（服务未安装且无残留共享注册表配置） ----------
   $preService = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
-  if ($null -eq $preService) {
+  $sharedRegPath = "HKLM:\SOFTWARE\PhotoPrivacy"
+  $sharedValueExists = $false
+  foreach ($valueName in @("ServicePipeInstallerSid", "ServicePipeAllowedSids", "ServicePipeName")) {
+    if ((Test-Path $sharedRegPath) -and ($null -ne (Get-ItemProperty -Path $sharedRegPath -Name $valueName -ErrorAction SilentlyContinue))) {
+      $sharedValueExists = $true
+      break
+    }
+  }
+
+  if ($null -eq $preService -and -not $sharedValueExists) {
     Rec "PASS" "Pre-install baseline check: Service '$ServiceName' is not installed."
   } else {
-    Rec "FAIL" "Pre-install check failed: Service '$ServiceName' already exists. Aborting to avoid altering existing service."
-    throw "Pre-existing service detected: $ServiceName"
+    Rec "FAIL" "Pre-install check failed: Service '$ServiceName' or shared PhotoPrivacy registry values already exist. Aborting to avoid altering existing service."
+    throw "Pre-existing service or registry state detected: $ServiceName"
   }
 
   # ---------- 2. Staging 发布包到独立测试目录 ----------
@@ -149,7 +158,7 @@ try {
       -ServiceName $ServiceName `
       -ExePath $stagedWorker `
       -ConfigPath $stagedConfig `
-      -InstallerSid $currentUserSid
+      -InstallerSid $currentUserSid 6>&1
   }
 
   $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
@@ -345,7 +354,7 @@ try {
   Capture "06-uninstall.txt" {
     & $installScript `
       -Action "uninstall" `
-      -ServiceName $ServiceName
+      -ServiceName $ServiceName 6>&1
   }
 
   # 等待 SCM 标记删除完成（Windows 删除服务通常需要等全部句柄释放，带轮询）
