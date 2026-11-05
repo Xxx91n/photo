@@ -120,6 +120,7 @@ public sealed class UdsSecurityDefaultsTests
     // 缺口 1：socket 目录的分支二 —— 目录不存在时建成 0750（不落 umask 的 0755）
     // ------------------------------------------------------------------
 
+    /// <summary>缺口 1 分支二：目录不存在时建成 0750（不落 umask 的 0755），socket 仍为 0600。</summary>
     [Fact]
     public async Task Listen_Should_Create_Missing_Socket_Directory_As_0750_Not_Umask_0755()
     {
@@ -150,6 +151,7 @@ public sealed class UdsSecurityDefaultsTests
         }
     }
 
+    /// <summary>缺口 1 分支二（服务模式）：兜底建目录同样 0750，socket 为 0660。</summary>
     [Fact]
     public async Task Listen_Should_Create_Missing_Socket_Directory_As_0750_In_Service_Mode()
     {
@@ -184,6 +186,7 @@ public sealed class UdsSecurityDefaultsTests
     // 缺口 1：socket 目录的分支一 —— 目录已存在时**不改**权限（安装器/服务管理器是事实源）
     // ------------------------------------------------------------------
 
+    /// <summary>缺口 1 分支一：已存在的 0750 目录不被改写（安装器是权限事实源）。</summary>
     [Fact]
     public async Task Listen_Should_Not_Touch_Mode_Of_An_Existing_Socket_Directory()
     {
@@ -213,6 +216,7 @@ public sealed class UdsSecurityDefaultsTests
         }
     }
 
+    /// <summary>缺口 1 分支一（反向）：更紧的 0700 既存目录不得被兜底路径放宽到 0750。</summary>
     [Fact]
     public async Task Listen_Should_Preserve_A_Tighter_Existing_Socket_Directory_Mode()
     {
@@ -247,6 +251,7 @@ public sealed class UdsSecurityDefaultsTests
     // 缺口 2：组名缺失即 fail-closed，且诊断点明环境变量名
     // ------------------------------------------------------------------
 
+    /// <summary>缺口 2：环境变量缺失即 fail-closed，诊断消息点明变量名。</summary>
     [Fact]
     public void ResolveServiceGroupName_Should_Fail_Closed_Without_Environment_Variable()
     {
@@ -262,6 +267,7 @@ public sealed class UdsSecurityDefaultsTests
         });
     }
 
+    /// <summary>缺口 2：环境变量为空白同样 fail-closed（空白不等于「已注入」）。</summary>
     [Fact]
     public void ResolveServiceGroupName_Should_Fail_Closed_For_Whitespace_Environment_Variable()
     {
@@ -276,6 +282,7 @@ public sealed class UdsSecurityDefaultsTests
         });
     }
 
+    /// <summary>缺口 2：服务模式缺注入时构造期即拒（不留下已按 0660 绑定的半失效实例）。</summary>
     [Fact]
     public void Service_Mode_Transport_Should_Refuse_To_Construct_Without_Group_Injection()
     {
@@ -299,6 +306,7 @@ public sealed class UdsSecurityDefaultsTests
         });
     }
 
+    /// <summary>缺口 2：缺省组名不得等于数据组名（否则组隔离静默退化成 CWE-732）。</summary>
     [Fact]
     public void Default_Service_Group_Should_Not_Be_The_Data_Group()
     {
@@ -308,6 +316,7 @@ public sealed class UdsSecurityDefaultsTests
         Assert.Equal("photoprivacy-ipc", UnixDomainSocketIpcTransport.DefaultServiceGroupName);
     }
 
+    /// <summary>注入值前后空白被裁掉，按实际组名解析。</summary>
     [Fact]
     public void ResolveServiceGroupName_Should_Trim_Injected_Name()
     {
@@ -317,6 +326,7 @@ public sealed class UdsSecurityDefaultsTests
             Assert.Equal("photoprivacy-ipc-custom", UnixDomainSocketIpcTransport.ResolveServiceGroupName()));
     }
 
+    /// <summary>后台模式不看组（0600 仅属主）：缺注入照旧可绑定，fail-closed 不误伤手起场景。</summary>
     [Fact]
     public async Task Background_Mode_Should_Not_Require_Group_Injection()
     {
@@ -448,6 +458,7 @@ public sealed class UdsSecurityDefaultsTests
     /// 注入路径，源码结构判的是这两条缺省分支还在不在，故各留一道。
     /// 关联 issue #187。
     /// </summary>
+    /// <summary>结构守卫失效即红：基线必须绿，回落到缺省组名 / 裸创建 / 创建后不收紧三种突变必须被分类器判红。</summary>
     [Fact]
     public void Defaults_Guard_Should_Flag_Regressed_Transport_Source()
     {
