@@ -164,6 +164,15 @@ chmod 2770 "$HOT_FOLDER" "$QUARANTINE_FOLDER"
 # `sudo: unable to execute /opt/photoprivacy/PhotoPrivacy: Permission denied`，UI 直接起不来。
 # 故安装目录收到 0755（属主服务用户，其他人只读可执行、不可写），真正敏感的面单独收紧：
 # config/ 与 logs/（目录 0750/2750 组可进不可写、文件 0640 组只读），其他用户连目录都进不去。
+# ACL 剥离（#188 根因，先于 chmod）：chmod 只改基础 mode，发布包从 CI workspace 继承的
+# 命名 ACL（实证 config.json 带 user:runner:rwx #effective:r--）会绕过 0640，让非数据组的
+# GUI 用户读穿 config 与 worker 日志；目录 default ACL 还会让运行期新日志继续继承。
+# setfacl -b 清空扩展 ACL（含 default），使 mode 成为唯一访问控制。必须先剥再 chmod：
+# -b 保留 group:: 基础条目（可能 rwx），随后 chmod 才能把最终 mode 收到 0640/0750/2750。
+# acl 工具缺失则跳过（生产发布包不带 CI ACL；CI runner 必有 acl 包，getfacl 已实证在位）。
+if command -v setfacl >/dev/null 2>&1; then
+  find "$INSTALL_DIR" -exec setfacl -b {} + 2>/dev/null || true
+fi
 chmod 0755 "$INSTALL_DIR"
 chmod 2750 "${INSTALL_DIR}/logs"
 find "${INSTALL_DIR}/logs" -type f -exec chmod 0640 {} +
