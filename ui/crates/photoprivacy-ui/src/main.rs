@@ -174,7 +174,9 @@ fn main() -> anyhow::Result<()> {
             probe_options.config_path.clone(),
         );
         let probe_state = probe_manager.state();
-        // Design(#167): 只报 state 时，「安装态/探测态都对、但 UI 侧连不上」这类端点随身份
+        // 决策本体随 #167 关闭已落地（macOS 服务端点与 IPC 探针）；标记改指仍存续的治理票
+        // #82（死指针清理 / 验证门禁域），正文保留决策本身。
+        // Design(#82): 只报 state 时，「安装态/探测态都对、但 UI 侧连不上」这类端点随身份
         // 分裂的缺陷在取证链里完全隐形。--service-probe-ipc 追加客户端实际解析到的端点与
         // IPC 连通三态，供 verify 脚本以 GUI 用户（非服务用户）身份断言同一 socket 可达。
         let mut report = format!("{{\"state\":\"{:?}\"", probe_state);
