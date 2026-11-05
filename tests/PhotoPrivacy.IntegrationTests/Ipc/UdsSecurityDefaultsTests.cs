@@ -363,16 +363,36 @@ public sealed class UdsSecurityDefaultsTests
         }
 
         // 缺口 1 原形态：裸 CreateDirectory(dir)（单参）按 umask 建 0755。
-        // 允许的形态只有带 SocketDirectoryMode 的创建；单参创建出现在 ListenAsync 路径即违规。
-        if (transportSource.Contains("Directory.CreateDirectory(dir)", StringComparison.Ordinal)
-            || transportSource.Contains("Directory.CreateDirectory(dir);", StringComparison.Ordinal))
+        // 用正则而非字面量：变量名重命名不该把守卫打成假红，判的是「有没有不带模式的创建」。
+        var bareCreate = System.Text.RegularExpressions.Regex.IsMatch(
+            transportSource,
+            @"Directory\s*\.\s*CreateDirectory\s*\(\s*(?!path\s*,)[^,()]+\s*\)",
+            System.Text.RegularExpressions.RegexOptions.Compiled,
+            TimeSpan.FromSeconds(5));
+        if (bareCreate)
         {
-            violations.Add("socket 目录退回裸 Directory.CreateDirectory(dir)（umask 0755，绕开安装器 0750）");
+            violations.Add("socket 目录退回不带模式的 Directory.CreateDirectory(...)（umask 0755，绕开安装器 0750）");
         }
 
-        if (!transportSource.Contains("Directory.CreateDirectory(level, SocketDirectoryMode)", StringComparison.Ordinal))
+        var createsWithMode = System.Text.RegularExpressions.Regex.IsMatch(
+            transportSource,
+            @"Directory\s*\.\s*CreateDirectory\s*\(\s*\w+\s*,\s*SocketDirectoryMode\s*\)",
+            System.Text.RegularExpressions.RegexOptions.Compiled,
+            TimeSpan.FromSeconds(5));
+        if (!createsWithMode)
         {
             violations.Add("socket 目录兜底创建不再显式施加 SocketDirectoryMode（0750）");
+        }
+
+        // 目录从出现起就要是 0750：创建后必须显式 SetUnixFileMode（createMode 受 umask 影响）。
+        var chmodAfterCreate = System.Text.RegularExpressions.Regex.IsMatch(
+            transportSource,
+            @"File\s*\.\s*SetUnixFileMode\s*\(\s*\w+\s*,\s*SocketDirectoryMode\s*\)",
+            System.Text.RegularExpressions.RegexOptions.Compiled,
+            TimeSpan.FromSeconds(5));
+        if (!chmodAfterCreate)
+        {
+            violations.Add("socket 目录创建后不再显式 SetUnixFileMode(SocketDirectoryMode)（umask 可能放宽）");
         }
 
         return violations;
@@ -428,6 +448,9 @@ public sealed class UdsSecurityDefaultsTests
                     "Directory.CreateDirectory(level, SocketDirectoryMode);",
                     "Directory.CreateDirectory(dir);"),
                 "目录兜底退回裸创建"),
+            (
+                green.Replace("File.SetUnixFileMode(level, SocketDirectoryMode);", "// removed"),
+                "创建后不再收紧目录模式"),
         };
 
         var failures = new List<string>();

@@ -134,13 +134,7 @@ public sealed class UnixDomainSocketIpcTransport : IIpcTransport
         for (var i = missing.Count - 1; i >= 0; i--)
         {
             var level = missing[i];
-            if (OperatingSystem.IsWindows())
-            {
-                // Unix 模式在 Windows 上无从施加（生产路径走命名管道，到不了这里，只为防御性分支）。
-                Directory.CreateDirectory(level);
-                continue;
-            }
-
+            // 本类只在 Unix 上被 IpcTransportFactory 选中（Windows 走命名管道），故这里只写 Unix 路径。
             // 带模式创建：目录从出现起就是 0750，不留「先 0755 再 chmod」的窗口。
             Directory.CreateDirectory(level, SocketDirectoryMode);
             // createMode 仍受 umask 与平台实现影响，显式 SetUnixFileMode 才是与安装器同值（0750）的保证。

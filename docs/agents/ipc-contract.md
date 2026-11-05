@@ -36,8 +36,10 @@ socket 访问组与数据组（`hot`/`quarantine` 的 `2770` 组）严格分离�
 手起 Worker / unit 未更新 / 容器里运行会让 socket 组等于数据组，组隔离静默退化成 CWE-732 原始形态（#187 缺口 2）。
 后台模式不看组（socket 0600 仅属主可连），缺注入照旧可用；两组默认名分别为数据组 `photoprivacy`、
 socket 访问组 `photoprivacy-ipc`（与 `install-launchd-service.sh` 的 `SOCKET_GROUP` 对齐）。
-socket 目录不由安装器建出时（手工运行等），传输层兜底创建按 `0750`（`SocketDirectoryMode`，与安装器同口径）；
-**已存在的目录不改权限**（属主/组是安装器的事实源）。裸 `Directory.CreateDirectory` 按 umask 建 0755 的形态已钉掉（#187 缺口 1）。
+socket 目录不由安装器建出时（手工运行等），传输层兜底创建按 `0750`（`SocketDirectoryMode`；macOS
+`SERVICE_SOCKET_DIR` 同值，Linux systemd 侧是 `RuntimeDirectoryMode=0750`，安装链本身的口径缺位另见 #188）；
+**已存在的目录不改权限**（属主/组/模式都是安装器与服务管理器的事实源，运维收紧到 0700 的目录不得被兜底路径放宽）。
+裸 `Directory.CreateDirectory` 按 umask 建 0755 的形态已钉掉（#187 缺口 1）。
 
 ### 服务配置写入边界（#167：维持数据隔离）
 
