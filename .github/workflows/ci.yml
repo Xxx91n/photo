@@ -37,7 +37,8 @@ jobs:
         run: dotnet test PhotoPrivacy.sln --configuration Release --filter "Category!=Smoke&Category!=ExifTool${{ matrix.pipe_identity_isolation && '&FullyQualifiedName!~WindowsServicePipeAclTests&FullyQualifiedName!~ServicePipeNameEntropyTests' || '' }}"
 
   # 服务管道 DACL 命名熵两类（#7/#70 行为测试）的 Windows CI 专属隔离跑（#9）：
-  # 与任何其他 collection 并发会冻结 test host（见 test job 注释与 #9 证据链），单类隔离实证全绿。
+  # 与任何其他 collection 并发会冻结 test host（见 test job 注释与 #9 证据链）；
+  # 单类隔离实证（真跑）由本 job 建立——见下零匹配守卫注释的假绿教训。
   windows-pipe-isolation:
     runs-on: windows-latest
     timeout-minutes: 12
@@ -56,8 +57,16 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0.201"
-      - name: Run suite (isolated test host)
-        run: dotnet test tests/PhotoPrivacy.IntegrationTests --configuration Release --filter "FullyQualifiedName~PhotoPrivacy.IntegrationTests.${{ matrix.suite }}"
+      # 零匹配守卫（CodeRabbit #193 Major）：VSTest 对「过滤器零匹配」静默 exit 0——
+      # 曾用带命名空间前缀的 ~ 过滤器（Ipc 段不在前缀内）整腿空跑假绿（run 41927020125
+      # 实证 No test matches + success）。先 --list-tests 断言过滤器真选中该类，再真跑。
+      - name: Run suite (isolated test host, zero-match guard)
+        run: |
+          $listed = dotnet test tests/PhotoPrivacy.IntegrationTests --configuration Release --list-tests --filter "FullyQualifiedName~${{ matrix.suite }}"
+          if (-not ($listed | Select-String -SimpleMatch "${{ matrix.suite }}")) {
+            throw "filter selected zero tests for suite ${{ matrix.suite }} — refusing to fake-green"
+          }
+          dotnet test tests/PhotoPrivacy.IntegrationTests --configuration Release --filter "FullyQualifiedName~${{ matrix.suite }}"
 
   # rust 四 crate 矩阵（#9）：ubuntu 之外补 macOS——Windows 侧由 ui-check 覆盖
   # 测试（service/ui 原有，ipc/logs/rules 随 #9 补齐），不另建 Windows job。
