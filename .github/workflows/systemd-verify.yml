@@ -1,0 +1,89 @@
+name: Systemd verify
+
+# #188 Linux systemd 安装链权限/生命周期——虚拟环境验证链（GitHub ubuntu runner 即带 systemd 的
+# Linux VM）。发布构建走 scripts/publish.sh（与 release.yml 同口径，发布属性不经 csproj），再由
+# scripts/verify-systemd-service.sh 做 systemd 生命周期 + 权限口径断言（安装→注册→常驻→日志→
+# socket/组边界逐项对拍→停止/启动→卸载→清理），操作与判定口径对齐
+# ui/crates/photoprivacy-service/src/unix.rs 的 LinuxProbe/LinuxOps。
+# UI Service 页联动取证：--service-probe-report --service-probe-ipc 以 GUI 用户语境与 CLI 判定
+# 对拍（硬断言；探针建窗前退出，无头 runner 可跑）。权限口径出处：#188 / PR #180 R1（macOS 同款）。
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "scripts/install-systemd-service.sh"
+      - "scripts/verify-systemd-service.sh"
+      - "scripts/publish.sh"
+      - "config/config.sample.json"
+      # 服务探测/操作语义（LinuxProbe/LinuxOps）改动必须过 Linux VM 对拍门禁
+      - "ui/crates/photoprivacy-service/**"
+      # 服务模式 UDS 落点与组白名单（#167/#188）：端点常量在双端各有一份，改动任一侧都要过 Linux VM
+      - "src/PhotoPrivacy.Ipc/**"
+      - "ui/crates/photoprivacy-ipc/**"
+      - "ui/crates/photoprivacy-ui/src/main.rs"
+      - ".github/workflows/systemd-verify.yml"
+
+jobs:
+  systemd-lifecycle:
+    name: systemd lifecycle (linux-x64)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.201"
+      # GUI 入口为 cargo 构建的 photoprivacy-ui，工具链随 runner 预装 rustup 就绪（release.yml 同款）
+      - name: Ensure Rust toolchain
+        run: rustup default stable
+      # gpui Linux 系统依赖（与 ci.yml publish-e2e job 同口径，#84）
+      - name: Install Linux dependencies
+        run: |
+          sudo DEBIAN_FRONTEND=noninteractive apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libfontconfig1-dev pkg-config libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ui/target
+          # 与 publish-e2e 同 key：同为 Linux release 构建，产物可互相复用
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('ui/Cargo.lock') }}
+
+      - name: Publish (scripts/publish.sh, linux-x64)
+        shell: bash
+        run: |
+          chmod +x scripts/publish.sh
+          ./scripts/publish.sh --version 0.0.0-ci --runtime linux-x64 --zip false
+
+      - name: Verify systemd lifecycle (install/permissions/IPC/logs/uninstall)
+        shell: bash
+        run: |
+          chmod +x scripts/verify-systemd-service.sh
+          sudo ./scripts/verify-systemd-service.sh \
+            --release-dir "release/linux-x64" \
+            --evidence-dir "$RUNNER_TEMP/systemd-verify-linux-x64"
+
+      - name: Publish summary
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f "$RUNNER_TEMP/systemd-verify-linux-x64/summary.txt" ]]; then
+            {
+              echo "### systemd verify (linux-x64)"
+              echo '```'
+              cat "$RUNNER_TEMP/systemd-verify-linux-x64/summary.txt"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: systemd-verify-linux-x64
+          path: ${{ runner.temp }}/systemd-verify-linux-x64
+          if-no-files-found: warn
