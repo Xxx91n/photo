@@ -71,13 +71,20 @@ jobs:
         if: always()
         shell: bash
         run: |
-          if [[ -f "$RUNNER_TEMP/systemd-verify-linux-x64/summary.txt" ]]; then
+          summary="$RUNNER_TEMP/systemd-verify-linux-x64/summary.txt"
+          if [[ -f "$summary" ]]; then
             {
               echo "### systemd verify (linux-x64)"
               echo '```'
-              cat "$RUNNER_TEMP/systemd-verify-linux-x64/summary.txt"
+              cat "$summary"
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
+            # FAIL 行提升为 GitHub annotation：checks API / PR 页面直接可读，不依赖下载完整
+            # 日志或 artifact（其存储主机在受限出网环境不可达，annotation 是可靠诊断通道）。
+            # 本步骤以 runner 身份运行（非 sudo），GITHUB_ACTIONS 在位，workflow 命令生效。
+            while IFS= read -r line; do
+              printf '::error::%s\n' "$line"
+            done < <(grep '^FAIL' "$summary" || true)
           fi
 
       - name: Upload evidence

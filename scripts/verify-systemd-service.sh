@@ -51,6 +51,7 @@ SERVICE_SOCKET_DIR="/run/photoprivacy"
 RELEASE_DIR=""
 EVIDENCE_DIR=""
 
+# usage：打印命令行帮助（--release-dir 必填，--evidence-dir 可选）。
 usage() {
   cat <<EOF
 Usage: sudo $0 --release-dir <dir> [--evidence-dir <dir>]
@@ -195,6 +196,7 @@ probe_state() {
   esac
 }
 
+# state_is <状态>：probe_state 是否等于期望状态（wait_until 的谓词）。
 state_is() {
   [[ "$(probe_state)" == "$1" ]]
 }
@@ -233,6 +235,7 @@ get_pid() {
   printf '%s\n' "$pid"
 }
 
+# worker_logs_present：Worker Serilog 日志是否已落盘且非空（glob 展开逐个检查）。
 worker_logs_present() {
   # shellcheck disable=SC2086  # 有意走 glob
   local f
@@ -244,6 +247,7 @@ worker_logs_present() {
   return 1
 }
 
+# audit_files_present：审计目录是否已有 audit-* 文件（运行期审计事件的产物）。
 audit_files_present() {
   local f
   for f in "$AUDIT_FOLDER"/audit-*; do
@@ -254,6 +258,7 @@ audit_files_present() {
   return 1
 }
 
+# worker_absent：是否无 Worker 进程残留（卸载后的清理断言谓词）。
 worker_absent() {
   ! pgrep -f "${WORKER_BIN}" >/dev/null 2>&1
 }

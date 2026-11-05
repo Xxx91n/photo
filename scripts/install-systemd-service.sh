@@ -20,6 +20,7 @@ AUDIT_FOLDER="/var/log/photoprivacy"
 QUARANTINE_FOLDER="/var/lib/photoprivacy/quarantine"
 CONFIG_PATH="${INSTALL_DIR}/config/config.json"
 
+# usage：打印命令行帮助（选项、默认值与 --gui-user/--socket-group 的失败语义）。
 usage() {
   cat <<EOF
 Usage: sudo ./scripts/install-systemd-service.sh [options]
