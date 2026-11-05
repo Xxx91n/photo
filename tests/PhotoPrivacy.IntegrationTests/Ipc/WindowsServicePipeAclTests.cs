@@ -26,12 +26,13 @@ namespace PhotoPrivacy.IntegrationTests.Ipc;
 /// 掩码常量断言全平台可跑（CI ubuntu 为主证据，见 ServiceClientAccessMask_Drops_CreatePipe_Instance_Bit）。
 ///
 /// CI 平台（如实登记，#9 起多平台矩阵）：test job 在 ubuntu/windows/macos 三平台跑。
-/// Windows 专属断言（本类的 ServiceShared DACL 建例/回退往返）由 windows-pipe-isolation
-/// 专属 job 单类隔离真跑——本类与任何其他 collection 并发会冻结整个 test host
-/// （xunit.runner.visualstudio 3.1.4 + windows runner 实证，#9 组合二分 run 41920404363：
-/// 含本类的并发组合 0 完成直至超时、单类隔离 11/11 全绿），故不入主矩阵 windows 腿；
-/// 掩码常量断言（ServiceClientAccessMask_Drops_CreatePipe_Instance_Bit）跨平台编译，
-/// 随主矩阵 ubuntu 腿继续作为 CI 主证据（issue 04 AC#2 同口径）。
+/// Windows 专属断言（本类的 ServiceShared DACL 建例/回退往返）不入 CI，归人工 S4 实机
+/// 复测（#82 D3 既有边界）——#9 在 CI 实证这两类真跑即挂死整个 test host（xunit v2
+/// 2.9.3 + runner.visualstudio 3.1.4 + .NET 10 windows 宿主的执行层挂起：trx 0 完成、
+/// dump 显示 runner 各层阻塞等待、线程池空闲、测试执行线程缺席，证据链 run
+/// 41962838592/41964334172/41965777267/41967967629），故 windows 腿按过滤器排除本类；
+/// ubuntu/macos 腿全量真跑（本类 Windows 专属用例早退，跨平台编译面与掩码常量断言
+/// 照常执行）。上游追查与解禁条件登记于 #9 证据链。
 /// </summary>
 public sealed class WindowsServicePipeAclTests
 {

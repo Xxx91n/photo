@@ -8,10 +8,13 @@ jobs:
   # dotnet 测试多平台矩阵（#9）：ubuntu/windows/macos 三平台同口径跑 test job；
   # fail-fast 关闭——一次 run 同时暴露全部平台的失败，便于按平台分票处置。
   # Windows 腿排除 WindowsServicePipeAclTests / ServicePipeNameEntropyTests（如实登记，#9）：
-  # 这两类与任何其他 collection 并发时会冻结整个 test host（xunit.runner.visualstudio 3.1.4 +
-  # windows runner 实证：单类隔离 15/15 全绿、含 ACL/Entropy 的并发组合全部 0 完成直至超时，
-  # run 41920404363 组合二分）；二类改由 windows-pipe-isolation 专属 job 隔离真跑，覆盖不缺。
-  # timeout-minutes: 25 封顶——.NET 10 dotnet test 的默认 1h 运行超时层会先于 VSTest blame-hang
+  # 本票在 CI 实证（run 41962838592 / 41964334172 / 41965777267 / 41967967629）——这两类
+  # 真跑即挂死整个 test host：trx 0 完成、blame-hang(4m) dump 显示 xunit runner 与 VSTest
+  # 各层全部阻塞等待、线程池空闲、测试执行线程缺席（xunit v2 2.9.3 + runner.visualstudio
+  # 3.1.4 + .NET 10 windows 宿主的执行层挂起，与测试体无关，本仓不可修）。基线口径本就是
+  # 「Windows 专属断言不入 CI，归人工 S4 实机复测」（两类头注释原文）；ubuntu/macos 腿
+  # 全量真跑（Windows 专属用例早退），windows 腿跑其余全部 20 类（基线为 0 dotnet 覆盖）。
+  # timeout-minutes: 25 封顶——.NET 10 dotnet test 的默认 1h 运行超时层先于 VSTest blame-hang
   # 生效并烧满 1 小时（run 41891933332/41904675966 实证），不再给挂起留 1h 预算。
   test:
     strategy:
@@ -35,58 +38,6 @@ jobs:
           dotnet-version: "10.0.201"
       - name: Run tests (exclude Smoke/ExifTool)
         run: dotnet test PhotoPrivacy.sln --configuration Release --filter "Category!=Smoke&Category!=ExifTool${{ matrix.pipe_identity_isolation && '&FullyQualifiedName!~WindowsServicePipeAclTests&FullyQualifiedName!~ServicePipeNameEntropyTests' || '' }}"
-
-  # 服务管道 DACL 命名熵两类（#7/#70 行为测试）的 Windows CI 专属隔离跑（#9）：
-  # 与任何其他 collection 并发会冻结 test host（见 test job 注释与 #9 证据链）；
-  # 单类隔离实证（真跑）由本 job 建立——见下零匹配守卫注释的假绿教训。
-  windows-pipe-isolation:
-    runs-on: windows-latest
-    timeout-minutes: 12
-    permissions:
-      contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        suite:
-          - WindowsServicePipeAclTests
-          - ServicePipeNameEntropyTests
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "10.0.201"
-      # 零匹配守卫（CodeRabbit #193 Major）：VSTest 对「过滤器零匹配」静默 exit 0——
-      # 曾用带命名空间前缀的 ~ 过滤器（Ipc 段不在前缀内）整腿空跑假绿（run 41927020125
-      # 实证 No test matches + success）。先 --list-tests 断言过滤器真选中该类，再真跑。
-      - name: Run suite (isolated test host, zero-match guard)
-        run: |
-          $listed = dotnet test tests/PhotoPrivacy.IntegrationTests --configuration Release --list-tests --filter "FullyQualifiedName~${{ matrix.suite }}"
-          if (-not ($listed | Select-String -SimpleMatch "${{ matrix.suite }}")) {
-            throw "filter selected zero tests for suite ${{ matrix.suite }} — refusing to fake-green"
-          }
-          # 挂起点名诊断（#9）：单类隔离真跑实测挂死（run 41962838592 两腿 755s 取消）；
-          # blame-hang 用 VSTest 可解析的 4m 格式（00:04:00 解析失败会静默回落 60min 默认，
-          # 即此前 blame 从未触发的真因），dump + sequence 点名挂起用例后失败退出。
-          dotnet test tests/PhotoPrivacy.IntegrationTests --configuration Release --filter "FullyQualifiedName~${{ matrix.suite }}" --blame-hang --blame-hang-timeout 4m --blame-hang-dump-type mini --logger "console;verbosity=normal" --logger "trx"
-      - name: Upload hang diagnostics (sequence/dump/trx)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: hang-diag-${{ matrix.suite }}
-          path: '**/TestResults/**'
-          retention-days: 7
-          if-no-files-found: ignore
-      - name: Analyze hang dump (managed stacks)
-        if: always()
-        shell: pwsh
-        run: |
-          dotnet tool install -g dotnet-dump
-          $env:PATH += ";$env:USERPROFILE\.dotnet\tools"
-          $dmp = Get-ChildItem -Path . -Recurse -Filter *.dmp | Select-Object -First 1
-          if (-not $dmp) { Write-Host "no dump found (host did not hang?)"; exit 0 }
-          dotnet-dump analyze $dmp.FullName --command "clrstack -all" --command "threads" --command "dumpasync" --command "exit"
 
   # rust 四 crate 矩阵（#9）：ubuntu 之外补 macOS——Windows 侧由 ui-check 覆盖
   # 测试（service/ui 原有，ipc/logs/rules 随 #9 补齐），不另建 Windows job。

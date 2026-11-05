@@ -19,10 +19,11 @@ namespace PhotoPrivacy.IntegrationTests.Ipc;
 ///    通告（HKLM 写入）与 UI 侧动态解析的行为验收归人工 S4 复测。
 ///
 /// CI 平台（如实登记，#9 起多平台矩阵）：test job 在 ubuntu/windows/macos 三平台跑。
-/// Windows 专属断言（本类的 ServiceShared 随机名/静态回退往返）由 windows-pipe-isolation
-/// 专属 job 单类隔离真跑——本类与任何其他 collection 并发会冻结整个 test host
-/// （同 WindowsServicePipeAclTests 的 #9 实证，run 41920404363 组合二分），故不入主矩阵
-/// windows 腿。随机后缀分布（不可预测性）不做统计断言——随机源为
+/// Windows 专属断言（本类的 ServiceShared 随机名/静态回退往返）不入 CI，归人工 S4 实机
+/// 复测——#9 在 CI 实证本类真跑即挂死整个 test host（同 WindowsServicePipeAclTests 的
+/// 执行层挂起实证，证据链 run 41962838592/41964334172/41965777267/41967967629），故
+/// windows 腿按过滤器排除本类；ubuntu/macos 腿全量真跑（Windows 专属用例早退）。
+/// 随机后缀分布（不可预测性）不做统计断言——随机源为
 /// RandomNumberGenerator（CSPRNG），格式与绑定行为是这里的主证据。
 /// </summary>
 public sealed class ServicePipeNameEntropyTests
