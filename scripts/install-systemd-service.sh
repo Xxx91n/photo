@@ -248,9 +248,10 @@ Environment=PHOTOPRIVACY_SERVICE_GROUP=${SOCKET_GROUP}
 # 运行期新文件也要落在组只读口径，安装期 chmod 只覆盖既有文件。
 UMask=0027
 WorkingDirectory=${INSTALL_DIR}
-# umask 0027 经 sh 兜底再 exec：UMask= 已写入 unit，但 CI Ubuntu runner 实证 Worker 进程
-# umask 仍为 000（Serilog 日志落 0666 而非 0640）——服务管理器未把 UMask 施加到进程时，
-# 由启动壳显式 umask 保证运行期新文件 0640/新目录 0750，exec 替换后 MainPID 仍是 Worker。
+# umask 0027 经 sh 兜底再 exec（纵深防御）：UMask= 已写入 unit，启动壳再显式 umask 0027，
+# 防个别服务管理器不把 UMask 施加到进程时运行期新文件（含审计）落 0666；exec 替换后
+# MainPID 仍是 Worker。注：#188 读穿根因实为发布包继承的命名/default ACL（绕过 umask 与
+# 0640），已由上方 setfacl -b 剥离；本壳与日志 hook 同为口径兜底，非根因修复。
 ExecStart=/bin/sh -c 'umask 0027; exec "${EXE_PATH}" --mode service --config "${CONFIG_PATH}" --hot-folder "${HOT_FOLDER}" --audit-folder "${AUDIT_FOLDER}"'
 Restart=always
 RestartSec=3

@@ -89,8 +89,8 @@ logConfig.WriteTo.Async(a => a.File(
     rollOnFileSizeLimit: true,
     fileSizeLimitBytes: 104857600,
     retainedFileCountLimit: 31,
-    // #188：运行期日志文件显式收 0640（含日滚/大小滚新文件）——创建路径不遵循 umask，
-    // 仅靠 unit UMask/ExecStart 壳兜底不够，hook 在每次打开时施加组只读口径。
+    // #188：运行期日志文件显式收 0640（含日滚/大小滚新文件）——读穿根因是继承的 default
+    // ACL（安装脚本已 setfacl -b 剥离），hook 作纵深防御在每次打开时施加组只读口径。
     hooks: new LogFilePermissionHook(),
     outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}"));
 
