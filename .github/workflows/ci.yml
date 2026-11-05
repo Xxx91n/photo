@@ -86,7 +86,7 @@ jobs:
           $env:PATH += ";$env:USERPROFILE\.dotnet\tools"
           $dmp = Get-ChildItem -Path . -Recurse -Filter *.dmp | Select-Object -First 1
           if (-not $dmp) { Write-Host "no dump found (host did not hang?)"; exit 0 }
-          dotnet-dump analyze $dmp.FullName --command "clrstack -all" --command "dumpasync -sts" --command "exit"
+          dotnet-dump analyze $dmp.FullName --command "clrstack -all" --command "threads" --command "dumpasync" --command "exit"
 
   # rust 四 crate 矩阵（#9）：ubuntu 之外补 macOS——Windows 侧由 ui-check 覆盖
   # 测试（service/ui 原有，ipc/logs/rules 随 #9 补齐），不另建 Windows job。
