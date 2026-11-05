@@ -35,6 +35,12 @@ public sealed class WorkerIpcServerHostedService : BackgroundService
         _loop = new WorkerIpcServerLoop(loggerFactory.CreateLogger<WorkerIpcServerLoop>());
     }
 
+    /// <summary>
+    /// 解析形态端点并绑定传输，随后把连接循环跑到停机。绑定失败（含 #187 服务模式缺
+    /// <c>PHOTOPRIVACY_SERVICE_GROUP</c> 的 fail-closed）时释放传输、置非零退出码并停宿主——
+    /// 进程不得在「活着但没有端点」的状态下静默挂住。
+    /// </summary>
+    /// <param name="stoppingToken">宿主停机令牌，透传给连接循环与绑定路径。</param>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var endpoint = IpcTransportFactory.ResolveEndpoint(_runtime.Mode == RuntimeMode.Service);
