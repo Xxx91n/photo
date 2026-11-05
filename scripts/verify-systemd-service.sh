@@ -689,28 +689,32 @@ if wait_until 30 test -S "$SERVICE_SOCKET"; then
   # 逐条独立追加（不用组合块重定向、不用 sed 管道）：前两版组合块在 systemctl show 处反复
   # 截断，unit/worker-proc/gui 行丢失。本版每条 printf/stat/awk 独立 >> summary，任何一条
   # 失败不影响其余；sudo 一律 timeout 兜底，组身份用 id（root 语境直查，无需 sudo）。
+  # 命令替换一律 timeout 预计算成变量再 rec INFO（tee -a，与 PASS/FAIL 同可靠通道）：
+  # 上一版直接 printf "$(id/systemctl/sudo)" 在 worker-proc 后截断，疑 NSS/dbus  lookup 挂起。
   set +e
   DIAG_PID="$(get_pid)"
-  printf 'DIAG meta pid=%s gui_user=%s\n' "${DIAG_PID:-none}" "${GUI_USER:-none}" >> "$SUMMARY_FILE"
+  rec INFO "DIAG meta pid=${DIAG_PID:-none} gui_user=${GUI_USER:-none}"
   stat -c 'DIAG ownership %n mode=%a owner=%U:%G' \
     "$INSTALL_DIR" "${INSTALL_DIR}/config" "${INSTALL_DIR}/config/config.json" \
     "${INSTALL_DIR}/logs" "$AUDIT_FOLDER" "$HOT_FOLDER" >> "$SUMMARY_FILE" 2>/dev/null
   # shellcheck disable=SC2086
   stat -c 'DIAG ownership %n mode=%a owner=%U:%G' ${WORKER_LOG_GLOB} >> "$SUMMARY_FILE" 2>/dev/null
-  if [[ -n "$DIAG_PID" && "$DIAG_PID" != "0" && -r "/proc/${DIAG_PID}/status" ]]; then
-    awk '/^(Umask|Uid|Gid):/{print "DIAG worker-proc " $0}' "/proc/${DIAG_PID}/status" >> "$SUMMARY_FILE" 2>/dev/null
-  fi
-  printf 'DIAG gui-id %s\n' "$(id "$GUI_USER" 2>&1)" >> "$SUMMARY_FILE"
-  printf 'DIAG unit-umask %s\n' "$(systemctl show "$SERVICE_NAME" -p UMask --value 2>&1)" >> "$SUMMARY_FILE"
-  timeout 10 sudo -u "$GUI_USER" test -r "${INSTALL_DIR}/config/config.json" 2>/dev/null
-  printf 'DIAG gui-config-read rc=%s\n' "$?" >> "$SUMMARY_FILE"
-  timeout 10 sudo -u "$GUI_USER" test -x "${INSTALL_DIR}/config" 2>/dev/null
-  printf 'DIAG gui-config-dir-traverse rc=%s\n' "$?" >> "$SUMMARY_FILE"
-  timeout 10 sudo -u "$GUI_USER" test -x "$HOT_FOLDER" 2>/dev/null
-  printf 'DIAG gui-hot-traverse rc=%s\n' "$?" >> "$SUMMARY_FILE"
-  printf 'DIAG gui-cap %s\n' "$(timeout 10 sudo -u "$GUI_USER" grep '^CapEff' /proc/self/status 2>&1)" >> "$SUMMARY_FILE"
-  getfacl -p "${INSTALL_DIR}/config/config.json" 2>/dev/null | awk '{print "DIAG acl " $0}' >> "$SUMMARY_FILE"
-  namei -l "${INSTALL_DIR}/config/config.json" 2>/dev/null | awk '{print "DIAG namei " $0}' >> "$SUMMARY_FILE"
+  DIAG_WUMASK="$(timeout 5 awk '/^Umask:/{print $2}' "/proc/${DIAG_PID}/status" 2>/dev/null)"
+  rec INFO "DIAG worker-umask ${DIAG_WUMASK:-none}"
+  DIAG_GUIID="$(timeout 5 id "$GUI_USER" 2>&1)"
+  rec INFO "DIAG gui-id ${DIAG_GUIID:-none}"
+  DIAG_UUMASK="$(timeout 5 systemctl show "$SERVICE_NAME" -p UMask --value 2>&1)"
+  rec INFO "DIAG unit-umask ${DIAG_UUMASK:-none}"
+  timeout 8 sudo -u "$GUI_USER" test -r "${INSTALL_DIR}/config/config.json" 2>/dev/null
+  rec INFO "DIAG gui-config-read rc=$?"
+  timeout 8 sudo -u "$GUI_USER" test -x "${INSTALL_DIR}/config" 2>/dev/null
+  rec INFO "DIAG gui-config-dir-traverse rc=$?"
+  timeout 8 sudo -u "$GUI_USER" test -x "$HOT_FOLDER" 2>/dev/null
+  rec INFO "DIAG gui-hot-traverse rc=$?"
+  DIAG_CAP="$(timeout 8 sudo -u "$GUI_USER" grep '^CapEff' /proc/self/status 2>&1)"
+  rec INFO "DIAG gui-cap ${DIAG_CAP:-none}"
+  DIAG_ACL="$(timeout 5 getfacl -p "${INSTALL_DIR}/config/config.json" 2>&1 | tr '\n' ' ')"
+  rec INFO "DIAG acl ${DIAG_ACL:-none}"
   set -e
 
   # 组隔离的第二道事实：socket 访问组与数据组必须是两条不同 GID 的组记录。

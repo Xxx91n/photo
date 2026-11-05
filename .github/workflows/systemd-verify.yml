@@ -89,7 +89,7 @@ jobs:
             # 供受限出网环境经 checks API 读取根因数据（日志/artifact 存储主机不可达）。
             while IFS= read -r line; do
               printf '::warning::%s\n' "$line"
-            done < <(grep '^DIAG' "$summary" || true)
+            done < <(grep 'DIAG' "$summary" || true)
           fi
 
       - name: Upload evidence
