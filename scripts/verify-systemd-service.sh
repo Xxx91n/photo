@@ -496,10 +496,10 @@ if wait_until 30 test -S "$SERVICE_SOCKET"; then
   # 组边界必须真的落在盘上——socket 0660 + 服务用户/socket 访问组，目录 0750。
   # 权限偏了（umask 收成 0600、目录被改成 0755、属组退回数据组）意味着 GUI 用户要么连不上、
   # 要么谁都能连；这里按安装脚本与 UnixDomainSocketIpcTransport 的承诺逐项对拍。
-  SOCKET_MODE="$(stat -c '%a' "$SERVICE_SOCKET" 2>/dev/null)"
-  SOCKET_OWNER="$(stat -c '%U:%G' "$SERVICE_SOCKET" 2>/dev/null)"
-  SOCKET_DIR_MODE="$(stat -c '%a' "$SERVICE_SOCKET_DIR" 2>/dev/null)"
-  SOCKET_DIR_OWNER="$(stat -c '%U:%G' "$SERVICE_SOCKET_DIR" 2>/dev/null)"
+  SOCKET_MODE="$(stat -c '%a' "$SERVICE_SOCKET" 2>/dev/null || true)"
+  SOCKET_OWNER="$(stat -c '%U:%G' "$SERVICE_SOCKET" 2>/dev/null || true)"
+  SOCKET_DIR_MODE="$(stat -c '%a' "$SERVICE_SOCKET_DIR" 2>/dev/null || true)"
+  SOCKET_DIR_OWNER="$(stat -c '%U:%G' "$SERVICE_SOCKET_DIR" 2>/dev/null || true)"
   if [[ "$SOCKET_MODE" == "660" ]] \
     && [[ "$SOCKET_OWNER" == "${SERVICE_USER}:${SOCKET_GROUP}" ]] \
     && [[ "$SOCKET_DIR_MODE" == "750" ]] \
@@ -510,8 +510,8 @@ if wait_until 30 test -S "$SERVICE_SOCKET"; then
   fi
 
   # 审计目录：组换 socket 访问组、2750（组只读）、文件 0640——能看日志页，不能写、不能删。
-  AUDIT_MODE="$(stat -c '%a' "$AUDIT_FOLDER" 2>/dev/null)"
-  AUDIT_OWNER="$(stat -c '%U:%G' "$AUDIT_FOLDER" 2>/dev/null)"
+  AUDIT_MODE="$(stat -c '%a' "$AUDIT_FOLDER" 2>/dev/null || true)"
+  AUDIT_OWNER="$(stat -c '%U:%G' "$AUDIT_FOLDER" 2>/dev/null || true)"
   if [[ "$AUDIT_MODE" == "2750" ]] && [[ "$AUDIT_OWNER" == "${SERVICE_USER}:${SOCKET_GROUP}" ]]; then
     rec PASS "审计目录组边界正确（${AUDIT_FOLDER} ${AUDIT_MODE} ${AUDIT_OWNER}：组只读，无组写）"
   else
@@ -521,8 +521,8 @@ if wait_until 30 test -S "$SERVICE_SOCKET"; then
   # 有文件则硬断言 0640 + socket 组；无文件记 INFO——文件 0640 的运行期口径（UMask=0027）
   # 已由 Worker Serilog 日志文件硬断言覆盖（同一进程 umask），安装期既有文件口径由安装脚本 chmod 覆盖。
   if audit_files_present; then
-    AUDIT_FILE_MODE="$(find "$AUDIT_FOLDER" -maxdepth 1 -type f -name 'audit-*' -exec stat -c '%a' {} + 2>/dev/null | sort -u | tr '\n' ' ')"
-    AUDIT_FILE_GROUP="$(find "$AUDIT_FOLDER" -maxdepth 1 -type f -name 'audit-*' -exec stat -c '%G' {} + 2>/dev/null | sort -u | tr '\n' ' ')"
+    AUDIT_FILE_MODE="$(find "$AUDIT_FOLDER" -maxdepth 1 -type f -name 'audit-*' -exec stat -c '%a' {} + 2>/dev/null | sort -u | tr '\n' ' ' || true)"
+    AUDIT_FILE_GROUP="$(find "$AUDIT_FOLDER" -maxdepth 1 -type f -name 'audit-*' -exec stat -c '%G' {} + 2>/dev/null | sort -u | tr '\n' ' ' || true)"
     if [[ "$AUDIT_FILE_MODE" == "640 " ]] && [[ "$AUDIT_FILE_GROUP" == "${SOCKET_GROUP} " ]]; then
       rec PASS "审计文件组只读（mode=${AUDIT_FILE_MODE% } group=${AUDIT_FILE_GROUP% }）"
     else
@@ -534,12 +534,14 @@ if wait_until 30 test -S "$SERVICE_SOCKET"; then
 
   # 安装目录与 Worker 日志（macOS R1 同款）：安装目录 0755（GUI 用户要执行其中的 UI 二进制，
   # 0750 会把 UI 一起锁死）+ 敏感面 config/ 750/640、logs/ 2750/640，逐项对拍。
-  INSTALL_MODE="$(stat -c '%a' "$INSTALL_DIR" 2>/dev/null)"
-  WLOG_DIR_MODE="$(stat -c '%a' "${INSTALL_DIR}/logs" 2>/dev/null)"
+  INSTALL_MODE="$(stat -c '%a' "$INSTALL_DIR" 2>/dev/null || true)"
+  WLOG_DIR_MODE="$(stat -c '%a' "${INSTALL_DIR}/logs" 2>/dev/null || true)"
+  # 各取值管道一律 `|| true` 收尾：set -e -o pipefail 下上游 stat/find 失败会让赋值语句直接
+  # 终止 harness、丢掉 FAIL 汇总；取值落空时由下方比对记 FAIL（fail-closed），不静默跳过。
   # shellcheck disable=SC2086
-  WLOG_MODE="$(stat -c '%a' ${WORKER_LOG_GLOB} 2>/dev/null | sort -u | tr '\n' ' ')"
-  CFG_DIR_MODE="$(stat -c '%a' "${INSTALL_DIR}/config" 2>/dev/null)"
-  CFG_FILE_MODE="$(find "${INSTALL_DIR}/config" -maxdepth 1 -type f -exec stat -c '%a' {} + 2>/dev/null | sort -u | tr '\n' ' ')"
+  WLOG_MODE="$(stat -c '%a' ${WORKER_LOG_GLOB} 2>/dev/null | sort -u | tr '\n' ' ' || true)"
+  CFG_DIR_MODE="$(stat -c '%a' "${INSTALL_DIR}/config" 2>/dev/null || true)"
+  CFG_FILE_MODE="$(find "${INSTALL_DIR}/config" -maxdepth 1 -type f -exec stat -c '%a' {} + 2>/dev/null | sort -u | tr '\n' ' ' || true)"
   if [[ "$INSTALL_MODE" == "755" ]] \
     && [[ "$WLOG_DIR_MODE" == "2750" ]] \
     && [[ "$WLOG_MODE" == "640 " ]] \
@@ -551,10 +553,10 @@ if wait_until 30 test -S "$SERVICE_SOCKET"; then
   fi
 
   # hot/quarantine 保持数据组 2770：GUI 用户不进数据组就完全不可见。
-  HOT_MODE="$(stat -c '%a' "$HOT_FOLDER" 2>/dev/null)"
-  HOT_OWNER="$(stat -c '%U:%G' "$HOT_FOLDER" 2>/dev/null)"
-  QUAR_MODE="$(stat -c '%a' "$QUARANTINE_FOLDER" 2>/dev/null)"
-  QUAR_OWNER="$(stat -c '%U:%G' "$QUARANTINE_FOLDER" 2>/dev/null)"
+  HOT_MODE="$(stat -c '%a' "$HOT_FOLDER" 2>/dev/null || true)"
+  HOT_OWNER="$(stat -c '%U:%G' "$HOT_FOLDER" 2>/dev/null || true)"
+  QUAR_MODE="$(stat -c '%a' "$QUARANTINE_FOLDER" 2>/dev/null || true)"
+  QUAR_OWNER="$(stat -c '%U:%G' "$QUARANTINE_FOLDER" 2>/dev/null || true)"
   if [[ "$HOT_MODE" == "2770" ]] && [[ "$HOT_OWNER" == "${SERVICE_USER}:${SERVICE_GROUP}" ]] \
     && [[ "$QUAR_MODE" == "2770" ]] && [[ "$QUAR_OWNER" == "${SERVICE_USER}:${SERVICE_GROUP}" ]]; then
     rec PASS "hot/quarantine 保持数据组 2770（${HOT_MODE} ${HOT_OWNER} / ${QUAR_MODE} ${QUAR_OWNER}）"
@@ -613,7 +615,7 @@ if wait_until 30 test -S "$SERVICE_SOCKET"; then
       rec PASS "GUI 用户不可写审计目录（删不掉、改不了审计文件）"
     fi
     if audit_files_present; then
-      AUDIT_FIRST="$(find "$AUDIT_FOLDER" -maxdepth 1 -type f -name 'audit-*' | head -n 1)"
+      AUDIT_FIRST="$(find "$AUDIT_FOLDER" -maxdepth 1 -type f -name 'audit-*' 2>/dev/null | head -n 1 || true)"
       if sudo -u "$GUI_USER" test -r "$AUDIT_FIRST"; then
         rec PASS "GUI 用户可读审计文件（${AUDIT_FIRST}）"
       else
@@ -622,15 +624,21 @@ if wait_until 30 test -S "$SERVICE_SOCKET"; then
     fi
     # 敏感面：config 与 Worker 日志对 GUI 用户不可读（服务配置写入边界，#167 决策）；
     # hot/quarantine 对 GUI 用户不可遍历（数据组 2770，GUI 不在数据组）。
-    CFG_FIRST="$(find "${INSTALL_DIR}/config" -maxdepth 1 -type f -name 'config.json' | head -n 1)"
-    if [[ -n "$CFG_FIRST" ]] && sudo -u "$GUI_USER" test -r "$CFG_FIRST"; then
+    # 目标文件缺失不得洗成空泛 PASS：config.json 由 staging 预检保证存在，Worker 日志由
+    # 上方落盘断言保证存在——取不到即记 FAIL（fail-closed），而不是跳过检查。
+    CFG_FIRST="$(find "${INSTALL_DIR}/config" -maxdepth 1 -type f -name 'config.json' 2>/dev/null | head -n 1 || true)"
+    if [[ -z "$CFG_FIRST" ]]; then
+      rec FAIL "config.json 缺失——无法验证 GUI 不可读服务配置（staging 应已保证存在）"
+    elif sudo -u "$GUI_USER" test -r "$CFG_FIRST"; then
       rec FAIL "GUI 用户可读 ${CFG_FIRST}——服务配置边界被放宽（config 含 exiftool.path，可读即可探测服务行为）"
     else
       rec PASS "GUI 用户不可读服务配置（config/ 0750+0640 数据组）"
     fi
     # shellcheck disable=SC2086
-    WLOG_FIRST="$(ls ${WORKER_LOG_GLOB} 2>/dev/null | head -n 1)"
-    if [[ -n "$WLOG_FIRST" ]] && sudo -u "$GUI_USER" test -r "$WLOG_FIRST"; then
+    WLOG_FIRST="$(ls ${WORKER_LOG_GLOB} 2>/dev/null | head -n 1 || true)"
+    if [[ -z "$WLOG_FIRST" ]]; then
+      rec FAIL "Worker 日志缺失——无法验证 GUI 不可读 Worker 日志（上方落盘断言应已保证存在）"
+    elif sudo -u "$GUI_USER" test -r "$WLOG_FIRST"; then
       rec FAIL "GUI 用户可读 Worker 日志 ${WLOG_FIRST}——请求 URL/文件名/错误栈外泄"
     else
       rec PASS "GUI 用户不可读 Worker 日志（logs/ 2750+0640 数据组）"
@@ -662,8 +670,8 @@ if wait_until 30 test -S "$SERVICE_SOCKET"; then
   # 组隔离的第二道事实：socket 访问组与数据组必须是两条不同 GID 的组记录。
   # 同名/同 GID 的崩坏形态会让 GUI 用户虽然只进了 socket 组，却继承数据组对 hot/quarantine 的 2770
   # 组写（macOS #180 评审 Major 同款）。这里按 getent 记录对拍，不依赖安装器自述。
-  SOCKET_GID="$(getent group "$SOCKET_GROUP" | cut -d: -f3)"
-  SERVICE_GID="$(getent group "$SERVICE_GROUP" | cut -d: -f3)"
+  SOCKET_GID="$(getent group "$SOCKET_GROUP" 2>/dev/null | cut -d: -f3 || true)"
+  SERVICE_GID="$(getent group "$SERVICE_GROUP" 2>/dev/null | cut -d: -f3 || true)"
   if [[ -n "$SOCKET_GID" && -n "$SERVICE_GID" && "$SOCKET_GID" != "$SERVICE_GID" ]]; then
     rec PASS "socket 访问组 GID 独立于数据组（${SOCKET_GROUP}=${SOCKET_GID} ≠ ${SERVICE_GROUP}=${SERVICE_GID}）"
   else
