@@ -53,11 +53,15 @@ public sealed class UdsSecurityDefaultsTests
         }
     }
 
+    /// <summary>固定 uid 的伪造凭据策略：让白名单/拒绝分支可被判据而不是判本机身份。</summary>
     private sealed class FixedUidPolicy : UnixPeerCredentialPolicy
     {
         private readonly uint? _ownUid;
         private readonly IReadOnlySet<uint> _groupMembers;
 
+        /// <summary>构造固定凭据策略。</summary>
+        /// <param name="ownUid">伪造的本进程 uid（null 模拟读不到）。</param>
+        /// <param name="groupMemberUids">伪造的组名 → 成员 uid 集合。</param>
         public FixedUidPolicy(uint? ownUid, IReadOnlySet<uint>? groupMemberUids = null)
         {
             _ownUid = ownUid;
@@ -71,6 +75,9 @@ public sealed class UdsSecurityDefaultsTests
         public override IReadOnlySet<uint> ReadGroupMemberUids(string groupName) => _groupMembers;
     }
 
+    /// <summary>在给定 PHOTOPRIVACY_SERVICE_GROUP（含 null/空白）下执行同步动作，退出时恢复原值。</summary>
+    /// <param name="value">本次注入值。</param>
+    /// <param name="action">被测动作。</param>
     private static void WithServiceGroupEnv(string? value, Action action)
     {
         var name = UnixDomainSocketIpcTransport.ServiceGroupEnvironmentVariable;
@@ -86,6 +93,9 @@ public sealed class UdsSecurityDefaultsTests
         }
     }
 
+    /// <summary>异步版 <see cref="WithServiceGroupEnv"/>：await 期间环境变量保持注入，结束后恢复。</summary>
+    /// <param name="value">本次注入值。</param>
+    /// <param name="action">被测异步动作。</param>
     private static async Task WithServiceGroupEnvAsync(string? value, Func<Task> action)
     {
         var name = UnixDomainSocketIpcTransport.ServiceGroupEnvironmentVariable;
@@ -398,6 +408,11 @@ public sealed class UdsSecurityDefaultsTests
         return violations;
     }
 
+    /// <summary>从指定开括号位置截取平衡的 {…} 块（守卫分类器用）。</summary>
+    /// <param name="text">源码文本。</param>
+    /// <param name="openBraceIndex">开括号下标。</param>
+    /// <returns>含首尾括号的块文本。</returns>
+    /// <exception cref="InvalidOperationException">括号不配对。</exception>
     private static string ExtractBalancedBlock(string text, int openBraceIndex)
     {
         var depth = 0;

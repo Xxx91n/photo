@@ -74,6 +74,17 @@ public sealed class UnixDomainSocketIpcTransport : IIpcTransport
     private Socket? _listener;
     private IReadOnlySet<uint> _allowedPeerUids = new HashSet<uint>();
 
+    /// <summary>
+    /// 构造传输实例（不绑定端点；绑定发生在 <see cref="ListenAsync"/> 或 <see cref="ConnectAsync"/>）。
+    /// </summary>
+    /// <param name="socketPath">socket 文件绝对路径（客户端与服务端共用同一路径，见 EndpointName）。</param>
+    /// <param name="accessMode">访问策略：后台 0600 仅属主；服务 0660 + 组边界。</param>
+    /// <param name="serviceGroupName">
+    /// socket 访问组名。服务模式缺失/空白时经 <see cref="ResolveServiceGroupName"/> fail-closed（#187 缺口 2）；
+    /// 后台模式不看组，缺失只落到占位名。
+    /// </param>
+    /// <param name="peerCredentialPolicy">对端凭据策略（测试注入伪造凭据用）。</param>
+    /// <exception cref="InvalidOperationException">服务模式且未提供组名、环境变量亦缺失或空白。</exception>
     public UnixDomainSocketIpcTransport(
         string socketPath,
         UnixSocketAccessMode accessMode = UnixSocketAccessMode.BackgroundOnly,
@@ -143,6 +154,11 @@ public sealed class UnixDomainSocketIpcTransport : IIpcTransport
         }
     }
 
+    /// <summary>
+    /// 绑定并开始监听端点（非阻塞）：清残留 socket → 按需兜底建目录（0750）→ bind → 施加 socket 文件模式
+    /// （后台 0600 / 服务 0660）→ 解析对端 uid 白名单。
+    /// </summary>
+    /// <param name="cancellationToken">绑定本身是同步内核调用，此参数仅为接口一致性保留。</param>
     public Task ListenAsync(CancellationToken cancellationToken)
     {
         // Stale socket cleanup — delete stale .sock file before bind
@@ -210,6 +226,12 @@ public sealed class UnixDomainSocketIpcTransport : IIpcTransport
         return allowed;
     }
 
+    /// <summary>
+    /// 接受一条连接并做纵深第二层校验：对端 uid 不可读或不在白名单内即 close 并抛
+    /// <see cref="UnauthorizedAccessException"/>（不变量①：内核只识别不拦截）。
+    /// </summary>
+    /// <param name="cancellationToken">取消等待接受。</param>
+    /// <returns>已通过身份校验的连接流（所有权随流转移）。</returns>
     public async Task<Stream> AcceptClientAsync(CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_listener is null, this);
@@ -229,6 +251,12 @@ public sealed class UnixDomainSocketIpcTransport : IIpcTransport
         return new NetworkStream(client, ownsSocket: true);
     }
 
+    /// <summary>
+    /// 以给定预算连接端点（客户端侧）：超时与上游取消合并为一个取消源，超时即中止握手。
+    /// </summary>
+    /// <param name="timeout">单次连接预算（UI 侧为 700 ms / 探测 250 ms，见 docs/agents/ipc-contract.md）。</param>
+    /// <param name="cancellationToken">调用方取消。</param>
+    /// <returns>连接流（所有权随流转移）。</returns>
     public async Task<Stream> ConnectAsync(TimeSpan timeout, CancellationToken cancellationToken)
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -238,6 +266,11 @@ public sealed class UnixDomainSocketIpcTransport : IIpcTransport
         return new NetworkStream(client, ownsSocket: true);
     }
 
+    /// <summary>
+    /// 释放监听器；仅端点属主（本实例调用过 ListenAsync）best-effort 删除 socket 文件——
+    /// 客户端实例同路径，删了会摘掉存活的服务端点（后续 connect 报 AddressNotAvailable）。
+    /// </summary>
+    /// <returns>已完成的 ValueTask（无异步收尾）。</returns>
     public ValueTask DisposeAsync()
     {
         bool ownsEndpoint = _listener is not null;
