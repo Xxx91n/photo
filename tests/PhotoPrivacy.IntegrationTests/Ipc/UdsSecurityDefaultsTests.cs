@@ -26,11 +26,16 @@ public sealed class UdsSecurityDefaultsTests
         UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
         UnixFileMode.GroupRead | UnixFileMode.GroupExecute;
 
-    /// <summary>待建 socket 目录路径（父目录已存在、<c>sockets/</c> 一层尚不存在——正是缺目录的分支）。</summary>
+    /// <summary>
+    /// 待建 socket 目录路径（父目录已存在、<c>s/</c> 一层尚不存在——正是缺目录的分支）。
+    /// 长度是硬约束：macOS 的 <c>sockaddr_un.sun_path</c> 只有 104 字节，路径再长则
+    /// <c>UnixDomainSocketEndPoint</c> 在构造期就抛 ArgumentOutOfRangeException（与传输层无关），
+    /// macOS 腿会把整条用例判红。故此处用短前缀 + 8 位十六进制目录，典型 macOS 临时目录下约 76 字节。
+    /// </summary>
     private static string NewMissingDirectorySocketPath()
     {
-        var parent = Path.Combine(Path.GetTempPath(), "pp-ipc-187-" + Guid.NewGuid().ToString("N"));
-        var sockets = Path.Combine(parent, "sockets");
+        var parent = Path.Combine(Path.GetTempPath(), "pp187" + Guid.NewGuid().ToString("N")[..8]);
+        var sockets = Path.Combine(parent, "s");
         Directory.CreateDirectory(parent);
         return Path.Combine(sockets, "worker.sock");
     }
@@ -285,7 +290,7 @@ public sealed class UdsSecurityDefaultsTests
             // 「组隔离」只剩一层同组可写的空壳。必须构造期即拒。
             var ex = Assert.Throws<InvalidOperationException>(() =>
                 new UnixDomainSocketIpcTransport(
-                    Path.Combine(Path.GetTempPath(), "pp-ipc-187-missing-group.sock"),
+                    Path.Combine(Path.GetTempPath(), "pp187-missing-group.sock"),
                     UnixSocketAccessMode.ServiceShared));
             Assert.Contains(
                 UnixDomainSocketIpcTransport.ServiceGroupEnvironmentVariable,

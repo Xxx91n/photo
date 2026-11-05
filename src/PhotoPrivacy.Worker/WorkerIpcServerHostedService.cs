@@ -95,9 +95,10 @@ public sealed class WorkerIpcServerHostedService : BackgroundService
             }
 
             // #187：服务模式组名 fail-closed（缺注入即拒启）不得让进程「活着但没有端点」——
-            // 宿主静默跑着、UI 只见连不上，安装现场无从判断是配置缺失还是服务没起。
-            // 停宿主让服务管理器看到「起了又停」（launchd KeepAlive=false + SuccessfulExit=false 不复活、
-            // systemd Restart=always 会重试并把失败刷进 journal），与 #162 单写者准入的「让位干净退出」同口径。
+            // 宿主静默跑着、UI 只见连不上，安装现场无从判断是配置缺失还是服务没起。停宿主让服务管理器
+            // 看到「起了又停」；非零退出码与 MetadataCleanerWorker 的致命配置路径同口径（Environment.ExitCode=1），
+            // 否则服务管理器与实机取证只能看到一次干净退出、判成正常停机。
+            Environment.ExitCode = 1;
             _lifetime.StopApplication();
             return;
         }
