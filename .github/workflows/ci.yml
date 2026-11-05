@@ -66,7 +66,18 @@ jobs:
           if (-not ($listed | Select-String -SimpleMatch "${{ matrix.suite }}")) {
             throw "filter selected zero tests for suite ${{ matrix.suite }} — refusing to fake-green"
           }
-          dotnet test tests/PhotoPrivacy.IntegrationTests --configuration Release --filter "FullyQualifiedName~${{ matrix.suite }}"
+          # 挂起点名诊断（#9）：单类隔离真跑实测挂死（run 41962838592 两腿 755s 取消）；
+          # blame-hang 用 VSTest 可解析的 4m 格式（00:04:00 解析失败会静默回落 60min 默认，
+          # 即此前 blame 从未触发的真因），dump + sequence 点名挂起用例后失败退出。
+          dotnet test tests/PhotoPrivacy.IntegrationTests --configuration Release --filter "FullyQualifiedName~${{ matrix.suite }}" --blame-hang --blame-hang-timeout 4m --blame-hang-dump-type mini --logger "console;verbosity=normal" --logger "trx"
+      - name: Upload hang diagnostics (sequence/dump/trx)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hang-diag-${{ matrix.suite }}
+          path: '**/TestResults/**'
+          retention-days: 7
+          if-no-files-found: ignore
 
   # rust 四 crate 矩阵（#9）：ubuntu 之外补 macOS——Windows 侧由 ui-check 覆盖
   # 测试（service/ui 原有，ipc/logs/rules 随 #9 补齐），不另建 Windows job。
