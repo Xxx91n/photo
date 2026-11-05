@@ -14,7 +14,8 @@ const COMMAND_TIMEOUT: Duration = Duration::from_secs(60);
 #[cfg(any(target_os = "linux", target_os = "macos", test))]
 /// 安装脚本声明的是 Bash（`set -euo pipefail`），不能再用 `sh` 覆盖解释器。
 /// pkexec 与 osascript 两条提权通道都不保证提供 `SUDO_USER`，所以从 UI 进程带一个校验过的
-/// `--gui-user` 给安装脚本；macOS 侧靠它把 GUI 用户加进 socket 访问组（#167 评审）。
+/// `--gui-user` 给安装脚本；Unix 侧靠它把 GUI 用户加进 socket 访问组（macOS #167 评审，
+/// Linux #188 同款）。
 fn install_args(script_path: &Path, gui_user: Option<&str>) -> Vec<String> {
     let mut args = vec![
         "bash".to_string(),

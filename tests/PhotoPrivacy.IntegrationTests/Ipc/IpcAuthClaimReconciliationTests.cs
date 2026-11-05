@@ -5,6 +5,8 @@ namespace PhotoPrivacy.IntegrationTests.Ipc;
 /// <summary>
 /// IPC 与部署安全不变量守卫：每条断言都直接对账代码/脚本/配置，改措辞不会让它变红。
 /// 1) install-systemd-service.sh 的 unit 模板必须钉住 RuntimeDirectoryMode=0750 并提供 GUI 用户组供给；
+/// 1b/1c) launchd/systemd 的 socket 访问组必须独立于数据组，systemd 侧另钉住权限收敛
+///    （安装目录 0755、config/ 0750、logs/ 2750、审计目录 socket 组 2750、UMask=0027，#188）；
 /// 2) NamedPipeIpcTransport 的 FirstPipeInstance 仅施加于 listen 期首例（#7 拓扑：后台直建/
 ///    服务随机名建例/通告失败回退静态名重绑，恰 3 处；accept 后预建的后续实例不得携带）；
 /// 3) 服务管道通告名登记键的 Rust 读侧与 C# 写侧字面量对账（#7 命名熵的发现通道主缝）。
@@ -146,6 +148,115 @@ public sealed class IpcAuthClaimReconciliationTests
                 continue;
             }
             if (ClassifyLaunchdGroupBoundary(source, envName).Count == 0)
+            {
+                failures.Add("MISSED (should be red): " + reason);
+            }
+        }
+
+        Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
+    }
+
+    // ---------- 1c. systemd 组边界 + 权限收敛（#188，macOS #167 R1 同款） ----------
+
+    internal static List<string> ClassifySystemdGroupBoundary(string script, string socketEnvName)
+    {
+        var violations = new List<string>();
+        if (!script.Contains("--socket-group", StringComparison.Ordinal))
+        {
+            violations.Add("systemd 安装脚本缺少独立的 --socket-group（GUI 用户只能退回数据组）");
+        }
+        if (script.Contains("usermod -aG \"$GROUP_NAME\" \"$GUI_USER\"", StringComparison.Ordinal))
+        {
+            violations.Add("systemd 安装脚本仍把 GUI 用户加进数据组（2770 组写可绕过 IPC 删审计/隔离）");
+        }
+        if (!script.Contains("usermod -aG \"$SOCKET_GROUP\" \"$GUI_USER\"", StringComparison.Ordinal))
+        {
+            violations.Add("systemd 安装脚本未把 GUI 用户加进 socket 访问组");
+        }
+        if (!script.Contains("Group=${SOCKET_GROUP}", StringComparison.Ordinal))
+        {
+            violations.Add("systemd unit 的 Group 未指向 socket 访问组（socket/RuntimeDirectory 属组退回数据组）");
+        }
+        if (!script.Contains("Environment=" + socketEnvName + "=${SOCKET_GROUP}", StringComparison.Ordinal))
+        {
+            violations.Add("systemd unit 未把 " + socketEnvName + " 注入为 socket 组（服务端白名单与 socket 组脱节）");
+        }
+        if (!script.Contains("UMask=0027", StringComparison.Ordinal))
+        {
+            violations.Add("systemd unit 缺少 UMask=0027（运行期新日志/审计文件落 0644，组只读口径只覆盖安装期）");
+        }
+        if (!script.Contains("chmod 0755 \"$INSTALL_DIR\"", StringComparison.Ordinal))
+        {
+            violations.Add("安装目录未收敛 0755（发布包按 umask 解压，任意本地用户可遍历读走 config/logs）");
+        }
+        if (!script.Contains("chmod 0750 \"${INSTALL_DIR}/config\"", StringComparison.Ordinal))
+        {
+            violations.Add("config/ 未收敛 0750（config.json 可被任意本地用户读走）");
+        }
+        if (!script.Contains("chmod 2750 \"${INSTALL_DIR}/logs\"", StringComparison.Ordinal))
+        {
+            violations.Add("logs/ 未收敛 2750（worker 日志可被任意本地用户读走）");
+        }
+        if (!script.Contains("chown -R \"$USER_NAME:$SOCKET_GROUP\" \"$AUDIT_FOLDER\"", StringComparison.Ordinal))
+        {
+            violations.Add("审计目录组未换 socket 访问组（GUI 读日志须进数据组，拿到 hot/quarantine 组写）");
+        }
+        if (!script.Contains("find \"$AUDIT_FOLDER\" -type d -exec chmod 2750 {} +", StringComparison.Ordinal))
+        {
+            violations.Add("审计目录未收敛 2750（组只读，能看不能改）");
+        }
+        if (script.Contains("chmod 2770 \"$HOT_FOLDER\" \"$AUDIT_FOLDER\" \"$QUARANTINE_FOLDER\"", StringComparison.Ordinal))
+        {
+            violations.Add("审计目录仍先给数据组 2770（先放宽再收紧窗口 + 组写回潮）");
+        }
+        return violations;
+    }
+
+    [Fact]
+    public void Systemd_Installer_Should_Separate_Socket_Group_And_Converge_Permissions()
+    {
+        var violations = ClassifySystemdGroupBoundary(
+            SourceLint.Read("scripts", "install-systemd-service.sh"),
+            UnixDomainSocketIpcTransport.ServiceGroupEnvironmentVariable);
+        Assert.True(violations.Count == 0, string.Join(Environment.NewLine, violations));
+    }
+
+    [Fact]
+    public void Systemd_Group_Boundary_Guard_Negative_Self_Proof()
+    {
+        var green = SourceLint.Read("scripts", "install-systemd-service.sh");
+        var envName = UnixDomainSocketIpcTransport.ServiceGroupEnvironmentVariable;
+        var failing = new (string Source, string Reason)[]
+        {
+            (
+                green.Replace(
+                    "usermod -aG \"$SOCKET_GROUP\" \"$GUI_USER\"",
+                    "usermod -aG \"$GROUP_NAME\" \"$GUI_USER\""),
+                "GUI 用户被加进数据组（组写回潮）"),
+            (green.Replace("Group=${SOCKET_GROUP}", "Group=${GROUP_NAME}"), "unit Group 退回数据组"),
+            (green.Replace("UMask=0027", "UMask=0022"), "运行期 umask 被放宽"),
+            (green.Replace("chmod 0755 \"$INSTALL_DIR\"", "chmod 0777 \"$INSTALL_DIR\""), "安装目录被放宽"),
+            (
+                green.Replace(
+                    "chown -R \"$USER_NAME:$SOCKET_GROUP\" \"$AUDIT_FOLDER\"",
+                    "chown -R \"$USER_NAME:$GROUP_NAME\" \"$AUDIT_FOLDER\""),
+                "审计目录组退回数据组"),
+            (
+                green.Replace(
+                    "chmod 2770 \"$HOT_FOLDER\" \"$QUARANTINE_FOLDER\"",
+                    "chmod 2770 \"$HOT_FOLDER\" \"$AUDIT_FOLDER\" \"$QUARANTINE_FOLDER\""),
+                "审计目录先给 2770（先放宽再收紧窗口）"),
+        };
+
+        var failures = new List<string>();
+        foreach (var (source, reason) in failing)
+        {
+            if (source == green)
+            {
+                failures.Add("MUTATION DID NOT APPLY (sample equals green): " + reason);
+                continue;
+            }
+            if (ClassifySystemdGroupBoundary(source, envName).Count == 0)
             {
                 failures.Add("MISSED (should be red): " + reason);
             }

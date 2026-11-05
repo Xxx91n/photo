@@ -8,7 +8,7 @@
 | 平台 | 后台端点 | 服务端点 |
 | --- | --- | --- |
 | Windows | 命名管道 `PhotoPrivacyCleaner.Background` | 命名管道 `PhotoPrivacyCleaner.Service.<32hex>`（#7：每次监听随机化，先建首例再通告于 `HKLM\SOFTWARE\PhotoPrivacy\ServicePipeName`；通告缺失/非法回退静态 `PhotoPrivacyCleaner.Service`） |
-| Linux | `/run/photoprivacy/worker-background.sock` | `/run/photoprivacy/worker.sock` |
+| Linux | `/run/photoprivacy/worker-background.sock` | `/run/photoprivacy/worker.sock`（权限口径见下方 Linux 段，#188） |
 | macOS | `~/Library/Application Support/photoprivacy/worker-background.sock` | `/Library/Application Support/photoprivacy/worker.sock`（系统级固定落点，#167） |
 
 出处：`src/PhotoPrivacy.Ipc/WorkerIpcEndpointNames.cs`、`src/PhotoPrivacy.Ipc/IpcTransportFactory.cs`、
@@ -36,13 +36,28 @@ socket 访问组与数据组（`hot`/`quarantine` 的 `2770` 组）严格分离�
 手起 Worker / unit 未更新 / 容器里运行会让 socket 组等于数据组，组隔离静默退化成 CWE-732 原始形态（#187 缺口 2）。
 后台模式不看组（socket 0600 仅属主可连），缺注入照旧可用；两组默认名分别为数据组 `photoprivacy`、
 socket 访问组 `photoprivacy-ipc`（与 `install-launchd-service.sh` 的 `SOCKET_GROUP` 对齐）。
-**残余状态（Linux）**：`install-systemd-service.sh` 目前仍把数据组名注入 `PHOTOPRIVACY_SERVICE_GROUP`
-（`Group=${GROUP_NAME}`），即 Linux 服务模式的 socket 组仍等于数据组——fail-closed 只保证「缺注入不再静默
-回落」，不改变这一既有映射；Linux 侧拆组与目录/日志 chmod 归 #188，不在本票范围。
+**Linux 安装链（#188 已落地）**：`install-systemd-service.sh` 已完成拆组——`Group=${SOCKET_GROUP}` 与
+`Environment=PHOTOPRIVACY_SERVICE_GROUP=${SOCKET_GROUP}` 均指向 socket 访问组（缺省 `photoprivacy-ipc`），
+不再注入数据组名；安装目录/config/logs/审计的权限收敛同票落地（口径见下方 Linux 段），
+`verify-systemd-service.sh` 在 CI Ubuntu runner 逐项对拍 mode/group。
 socket 目录不由安装器建出时（手工运行等），传输层兜底创建按 `0750`（`SocketDirectoryMode`；macOS
-`SERVICE_SOCKET_DIR` 同值，Linux systemd 侧是 `RuntimeDirectoryMode=0750`，安装链本身的口径缺位另见 #188）；
+`SERVICE_SOCKET_DIR` 同值，Linux systemd 侧是 `RuntimeDirectoryMode=0750`，安装链口径已由 #188 收敛，见下方 Linux 段）；
 **已存在的目录不改权限**（属主/组/模式都是安装器与服务管理器的事实源，运维收紧到 0700 的目录不得被兜底路径放宽）。
 裸 `Directory.CreateDirectory` 按 umask 建 0755 的形态已钉掉（#187 缺口 1）。
+
+Linux 服务模式权限口径与 macOS 对齐（#188，PR #180 R1 同款）：`scripts/install-systemd-service.sh`
+把安装目录 `/opt/photoprivacy` 收敛为 `0755`（属主服务用户，其他用户只读可执行、不可写——GUI 用户要从这里
+执行 UI 二进制，`0750` 会把 UI 一起锁死，macOS 实测同款教训），敏感面单独收紧：`config/` 为 `0750` + 文件 `0640`，
+Worker Serilog 落点 `logs/` 为 `2750` + 文件 `0640`（属主服务用户:数据组）。socket 访问组 `photoprivacy-ipc`
+与数据组 `photoprivacy` 严格分离：GUI 用户经 `--gui-user`（默认 `SUDO_USER`）**只加入 socket 访问组**；
+unit `Group=` 指向 socket 组——Worker 主 GID 决定 `/run/photoprivacy/worker.sock`（`0660`）与
+`RuntimeDirectory`（`0750`）的属组，`UMask=0027` 让运行期新文件也落在 `0640`（macOS plist `Umask 23` 同款）。
+审计目录 `/var/log/photoprivacy` 是唯一读例外：组换 socket 访问组、目录 `2750`、文件 `0640`（组只读，能看不能改）；
+`hot`/`quarantine` 保持数据组 `2770`，GUI 用户拿不到组写。`--socket-group` 与数据组同名/为空/复用同一 GID 一律拒绝；
+显式 `--gui-user` 在账号不存在或加不进组时硬失败，`SUDO_USER` 推断只告警（与 macOS 同款）。
+验证链：`scripts/verify-systemd-service.sh`（CI Ubuntu runner，`.github/workflows/systemd-verify.yml`）
+逐项对拍 mode/group，并以 GUI 用户语境 UI 探针对拍 IPC 可达性。传输层兜底已由 #187 落地（socket 目录
+缺失时按 `0750` 兜底创建、服务模式缺注入 fail-closed 拒启）；已存在目录的权限仍以安装器为事实源，代码不兜底。
 
 ### 服务配置写入边界（#167：维持数据隔离）
 
@@ -59,7 +74,8 @@ socket 访问组只授予「调用服务」权限，**不授予「定义服务�
 初始加载失败，保存会回显失败——即**服务模式暂不支持 GUI 读写配置**。不要把放宽 `config/` 权限当作修复
 ——那等于把「调用权」升级成「服务身份代码执行权」。GUI 改配置需要受控配置 / 规则通道（可执行路径白名单
 + 签名 / 前缀校验），涉及协议扩展与契约调整；在该通道落地前，不得放宽 `config/` 权限。
-决策出处：#167（PR #180）。
+决策出处：#167（PR #180）。#188 起 Linux 安装链同口径（`config/` `0750`+`0640` 数据组），
+该边界同样适用于 Linux 服务模式。
 
 ## 帧与客户端约束
 
