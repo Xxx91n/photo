@@ -164,9 +164,10 @@ where
 
 /// 服务态轮询：3s 一拍（旧 UI 的服务模式轮询同节奏），先等一拍再探，避免启动瞬间与连接编排抢管道。
 ///
-/// 探针由调用方注入：生产用服务端点的连通性（短连接预算），#58 接入 SCM/launchd/systemd 安装态后
-/// 只换探针，不改节拍与快照字段。
-// Design(#58): 服务安装态探测未落地，本票用端点可达性代位；3s 节拍与消费点已固定。
+/// 探针由调用方注入：生产用服务端点的连通性（短连接预算），安装态探测另经
+/// `photoprivacy-service` 的 `ServiceProbe`（SCM / launchctl / systemd）取得；只换探针，
+/// 不改节拍与快照字段。
+// Design(#49): 服务态轮询 3s 节拍与快照字段固定、探针注入可换；安装态探测已在 photoprivacy-service 落地（#58 收口）。
 pub async fn watch_service_reachability<F, Fut>(probe: F, tx: watch::Sender<ConnectionSnapshot>)
 where
     F: Fn() -> Fut,
