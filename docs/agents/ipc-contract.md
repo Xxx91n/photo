@@ -31,7 +31,18 @@ socket 访问组与数据组（`hot`/`quarantine` 的 `2770` 组）严格分离�
 敏感面单独收紧：`config/` 为 `0750` + 文件 `0640`，Worker Serilog 落点 `logs/` 为 `2750` + 文件 `0640`
 （属主服务用户:数据组，本地其他用户既不进目录也读不到请求 URL/文件名）。
 服务端以 `UnixPeerCredentialPolicy` 的组白名单做第二层校验，
-组名由 plist/systemd 注入 `PHOTOPRIVACY_SERVICE_GROUP`，缺省回落 `photoprivacy`。
+组名由 plist/systemd 注入 `PHOTOPRIVACY_SERVICE_GROUP`。**服务模式缺失/空白注入即拒绝启动**（fail-closed，
+`InvalidOperationException` 点明变量名），不再回落任何组名——旧缺省值 `photoprivacy` 正好是数据组，
+手起 Worker / unit 未更新 / 容器里运行会让 socket 组等于数据组，组隔离静默退化成 CWE-732 原始形态（#187 缺口 2）。
+后台模式不看组（socket 0600 仅属主可连），缺注入照旧可用；两组默认名分别为数据组 `photoprivacy`、
+socket 访问组 `photoprivacy-ipc`（与 `install-launchd-service.sh` 的 `SOCKET_GROUP` 对齐）。
+**残余状态（Linux）**：`install-systemd-service.sh` 目前仍把数据组名注入 `PHOTOPRIVACY_SERVICE_GROUP`
+（`Group=${GROUP_NAME}`），即 Linux 服务模式的 socket 组仍等于数据组——fail-closed 只保证「缺注入不再静默
+回落」，不改变这一既有映射；Linux 侧拆组与目录/日志 chmod 归 #188，不在本票范围。
+socket 目录不由安装器建出时（手工运行等），传输层兜底创建按 `0750`（`SocketDirectoryMode`；macOS
+`SERVICE_SOCKET_DIR` 同值，Linux systemd 侧是 `RuntimeDirectoryMode=0750`，安装链本身的口径缺位另见 #188）；
+**已存在的目录不改权限**（属主/组/模式都是安装器与服务管理器的事实源，运维收紧到 0700 的目录不得被兜底路径放宽）。
+裸 `Directory.CreateDirectory` 按 umask 建 0755 的形态已钉掉（#187 缺口 1）。
 
 ### 服务配置写入边界（#167：维持数据隔离）
 
