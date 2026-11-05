@@ -31,7 +31,13 @@ socket 访问组与数据组（`hot`/`quarantine` 的 `2770` 组）严格分离�
 敏感面单独收紧：`config/` 为 `0750` + 文件 `0640`，Worker Serilog 落点 `logs/` 为 `2750` + 文件 `0640`
 （属主服务用户:数据组，本地其他用户既不进目录也读不到请求 URL/文件名）。
 服务端以 `UnixPeerCredentialPolicy` 的组白名单做第二层校验，
-组名由 plist/systemd 注入 `PHOTOPRIVACY_SERVICE_GROUP`，缺省回落 `photoprivacy`。
+组名由 plist/systemd 注入 `PHOTOPRIVACY_SERVICE_GROUP`。**服务模式缺失/空白注入即拒绝启动**（fail-closed，
+`InvalidOperationException` 点明变量名），不再回落任何组名——旧缺省值 `photoprivacy` 正好是数据组，
+手起 Worker / unit 未更新 / 容器里运行会让 socket 组等于数据组，组隔离静默退化成 CWE-732 原始形态（#187 缺口 2）。
+后台模式不看组（socket 0600 仅属主可连），缺注入照旧可用；两组默认名分别为数据组 `photoprivacy`、
+socket 访问组 `photoprivacy-ipc`（与 `install-launchd-service.sh` 的 `SOCKET_GROUP` 对齐）。
+socket 目录不由安装器建出时（手工运行等），传输层兜底创建按 `0750`（`SocketDirectoryMode`，与安装器同口径）；
+**已存在的目录不改权限**（属主/组是安装器的事实源）。裸 `Directory.CreateDirectory` 按 umask 建 0755 的形态已钉掉（#187 缺口 1）。
 
 ### 服务配置写入边界（#167：维持数据隔离）
 

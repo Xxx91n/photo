@@ -51,6 +51,20 @@ public sealed class WorkerIpcServerHostedService : BackgroundService
                 WindowsServicePipeAcl.RegistrySubKeyName + "\\" + WindowsServicePipeAcl.InstallerSidValueName));
         }
 
+        // 服务模式 socket 组 fail-closed 可观测性（#187）：服务模式必须由 plist/systemd 注入
+        // PHOTOPRIVACY_SERVICE_GROUP，缺注入时传输层直接拒启（不再回落数据组）。这里先给出指向安装
+        // 动作的诊断，否则宿主只剩一句 InvalidOperationException，S4 复测又要靠猜。
+        if (_runtime.Mode == RuntimeMode.Service && !OperatingSystem.IsWindows()
+            && string.IsNullOrWhiteSpace(
+                Environment.GetEnvironmentVariable(UnixDomainSocketIpcTransport.ServiceGroupEnvironmentVariable)))
+        {
+            SafeLog.Try(() => _logger.LogError(
+                "Service mode requires {Key} to be injected by the installer unit (plist EnvironmentVariables / " +
+                "systemd Environment=); the Unix socket group boundary is fail-closed without it. " +
+                "Reinstall the service so the unit carries the socket access group (#187).",
+                UnixDomainSocketIpcTransport.ServiceGroupEnvironmentVariable));
+        }
+
         IIpcTransport? transport = null;
         try
         {
@@ -79,6 +93,12 @@ public sealed class WorkerIpcServerHostedService : BackgroundService
             {
                 await transport.DisposeAsync();
             }
+
+            // #187：服务模式组名 fail-closed（缺注入即拒启）不得让进程「活着但没有端点」——
+            // 宿主静默跑着、UI 只见连不上，安装现场无从判断是配置缺失还是服务没起。
+            // 停宿主让服务管理器看到「起了又停」（launchd KeepAlive=false + SuccessfulExit=false 不复活、
+            // systemd Restart=always 会重试并把失败刷进 journal），与 #162 单写者准入的「让位干净退出」同口径。
+            _lifetime.StopApplication();
             return;
         }
 
