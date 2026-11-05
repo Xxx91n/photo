@@ -686,35 +686,31 @@ if wait_until 30 test -S "$SERVICE_SOCKET"; then
   fi
 
   # ---------- 5b. 诊断留证（DIAG 行经 workflow 提升为 annotation，受限出网环境可读） ----------
-  # 权限断言 FAIL 时的根因数据。整块 set +e 保护：诊断命令任何失败都不得中断 harness
-  # （上一版在 systemctl show 后被 set -e/pipefail 截断，worker-umask/gui-id 行丢失）。
+  # 逐条独立追加（不用组合块重定向、不用 sed 管道）：前两版组合块在 systemctl show 处反复
+  # 截断，unit/worker-proc/gui 行丢失。本版每条 printf/stat/awk 独立 >> summary，任何一条
+  # 失败不影响其余；sudo 一律 timeout 兜底，组身份用 id（root 语境直查，无需 sudo）。
   set +e
-  {
-    DIAG_PID="$(get_pid)"
-    if [[ -z "$DIAG_PID" || "$DIAG_PID" == "0" ]]; then
-      DIAG_PID="$(pgrep -f 'PhotoPrivacy.Worker' 2>/dev/null | head -n 1)"
-    fi
-    printf 'DIAG meta pid=%s gui_user=%s\n' "${DIAG_PID:-<empty>}" "${GUI_USER:-<empty>}"
-    stat -c 'DIAG ownership %n mode=%a owner=%U:%G' \
-      "$INSTALL_DIR" "${INSTALL_DIR}/config" "${INSTALL_DIR}/config/config.json" \
-      "${INSTALL_DIR}/logs" "$AUDIT_FOLDER" "$HOT_FOLDER" 2>/dev/null
-    # shellcheck disable=SC2086
-    stat -c 'DIAG ownership %n mode=%a owner=%U:%G' ${WORKER_LOG_GLOB} 2>/dev/null
-    # 父目录 mode：hot/quarantine 负验若因父目录不可遍历而「假 PASS」，这里能看出来。
-    stat -c 'DIAG parent %n mode=%a owner=%U:%G' /var/lib/photoprivacy /opt/photoprivacy 2>/dev/null
-    systemctl show "$SERVICE_NAME" -p User -p Group -p UMask -p RuntimeDirectoryMode -p MainPID 2>/dev/null \
-      | sed 's/^/DIAG unit /'
-    if [[ -n "$DIAG_PID" && "$DIAG_PID" != "0" ]]; then
-      grep -E '^(Umask|Uid|Gid):' "/proc/${DIAG_PID}/status" 2>/dev/null | sed 's/^/DIAG worker-proc /'
-    fi
-    if [[ -n "$GUI_USER" && "$GUI_USER" != "root" ]]; then
-      sudo -u "$GUI_USER" id 2>&1 | sed 's/^/DIAG gui-id /'
-      sudo -u "$GUI_USER" grep -E '^Cap' /proc/self/status 2>&1 | sed 's/^/DIAG gui-cap /'
-      sudo -u "$GUI_USER" test -r "${INSTALL_DIR}/config/config.json" 2>/dev/null
-      printf 'DIAG gui-config-read rc=%s\n' "$?"
-      getfacl -p "${INSTALL_DIR}/config/config.json" 2>/dev/null | sed 's/^/DIAG acl /'
-    fi
-  } >> "$SUMMARY_FILE" 2>&1
+  DIAG_PID="$(get_pid)"
+  printf 'DIAG meta pid=%s gui_user=%s\n' "${DIAG_PID:-none}" "${GUI_USER:-none}" >> "$SUMMARY_FILE"
+  stat -c 'DIAG ownership %n mode=%a owner=%U:%G' \
+    "$INSTALL_DIR" "${INSTALL_DIR}/config" "${INSTALL_DIR}/config/config.json" \
+    "${INSTALL_DIR}/logs" "$AUDIT_FOLDER" "$HOT_FOLDER" >> "$SUMMARY_FILE" 2>/dev/null
+  # shellcheck disable=SC2086
+  stat -c 'DIAG ownership %n mode=%a owner=%U:%G' ${WORKER_LOG_GLOB} >> "$SUMMARY_FILE" 2>/dev/null
+  if [[ -n "$DIAG_PID" && "$DIAG_PID" != "0" && -r "/proc/${DIAG_PID}/status" ]]; then
+    awk '/^(Umask|Uid|Gid):/{print "DIAG worker-proc " $0}' "/proc/${DIAG_PID}/status" >> "$SUMMARY_FILE" 2>/dev/null
+  fi
+  printf 'DIAG gui-id %s\n' "$(id "$GUI_USER" 2>&1)" >> "$SUMMARY_FILE"
+  printf 'DIAG unit-umask %s\n' "$(systemctl show "$SERVICE_NAME" -p UMask --value 2>&1)" >> "$SUMMARY_FILE"
+  timeout 10 sudo -u "$GUI_USER" test -r "${INSTALL_DIR}/config/config.json" 2>/dev/null
+  printf 'DIAG gui-config-read rc=%s\n' "$?" >> "$SUMMARY_FILE"
+  timeout 10 sudo -u "$GUI_USER" test -x "${INSTALL_DIR}/config" 2>/dev/null
+  printf 'DIAG gui-config-dir-traverse rc=%s\n' "$?" >> "$SUMMARY_FILE"
+  timeout 10 sudo -u "$GUI_USER" test -x "$HOT_FOLDER" 2>/dev/null
+  printf 'DIAG gui-hot-traverse rc=%s\n' "$?" >> "$SUMMARY_FILE"
+  printf 'DIAG gui-cap %s\n' "$(timeout 10 sudo -u "$GUI_USER" grep '^CapEff' /proc/self/status 2>&1)" >> "$SUMMARY_FILE"
+  getfacl -p "${INSTALL_DIR}/config/config.json" 2>/dev/null | awk '{print "DIAG acl " $0}' >> "$SUMMARY_FILE"
+  namei -l "${INSTALL_DIR}/config/config.json" 2>/dev/null | awk '{print "DIAG namei " $0}' >> "$SUMMARY_FILE"
   set -e
 
   # 组隔离的第二道事实：socket 访问组与数据组必须是两条不同 GID 的组记录。

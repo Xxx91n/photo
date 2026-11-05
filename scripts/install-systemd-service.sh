@@ -239,7 +239,10 @@ Environment=PHOTOPRIVACY_SERVICE_GROUP=${SOCKET_GROUP}
 # 运行期新文件也要落在组只读口径，安装期 chmod 只覆盖既有文件。
 UMask=0027
 WorkingDirectory=${INSTALL_DIR}
-ExecStart=${EXE_PATH} --mode service --config ${CONFIG_PATH} --hot-folder ${HOT_FOLDER} --audit-folder ${AUDIT_FOLDER}
+# umask 0027 经 sh 兜底再 exec：UMask= 已写入 unit，但 CI Ubuntu runner 实证 Worker 进程
+# umask 仍为 000（Serilog 日志落 0666 而非 0640）——服务管理器未把 UMask 施加到进程时，
+# 由启动壳显式 umask 保证运行期新文件 0640/新目录 0750，exec 替换后 MainPID 仍是 Worker。
+ExecStart=/bin/sh -c 'umask 0027; exec "${EXE_PATH}" --mode service --config "${CONFIG_PATH}" --hot-folder "${HOT_FOLDER}" --audit-folder "${AUDIT_FOLDER}"'
 Restart=always
 RestartSec=3
 NoNewPrivileges=true
