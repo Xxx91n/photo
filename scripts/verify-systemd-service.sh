@@ -557,6 +557,19 @@ if wait_until 30 test -S "$SERVICE_SOCKET"; then
     rec FAIL "安装目录/日志权限未收敛（install=${INSTALL_MODE:-<空>} config=${CFG_DIR_MODE:-<空>}/${CFG_FILE_MODE:-<空>} logs=${WLOG_DIR_MODE:-<空>} file=${WLOG_MODE:-<空>}；期望 755 / 750+640 / 2750 / 640）"
   fi
 
+  # config/logs 属组必须是数据组：GUI 用户只在 socket 组，属组若错归 socket 组，GUI 经组权限
+  # 就能读穿 config/worker 日志（mode 750/640 本身正确也挡不住）。mode 对拍之外补属组对拍。
+  CFG_DIR_OWNER="$(stat -c '%U:%G' "${INSTALL_DIR}/config" 2>/dev/null || true)"
+  CFG_FILE_OWNER="$(stat -c '%U:%G' "${INSTALL_DIR}/config/config.json" 2>/dev/null || true)"
+  WLOG_DIR_OWNER="$(stat -c '%U:%G' "${INSTALL_DIR}/logs" 2>/dev/null || true)"
+  if [[ "$CFG_DIR_OWNER" == "${SERVICE_USER}:${SERVICE_GROUP}" ]] \
+    && [[ "$CFG_FILE_OWNER" == "${SERVICE_USER}:${SERVICE_GROUP}" ]] \
+    && [[ "$WLOG_DIR_OWNER" == "${SERVICE_USER}:${SERVICE_GROUP}" ]]; then
+    rec PASS "config/logs 属组为数据组（config ${CFG_DIR_OWNER}，config.json ${CFG_FILE_OWNER}，logs ${WLOG_DIR_OWNER}）"
+  else
+    rec FAIL "config/logs 属组错归（config=${CFG_DIR_OWNER:-<空>} config.json=${CFG_FILE_OWNER:-<空>} logs=${WLOG_DIR_OWNER:-<空>}；期望 ${SERVICE_USER}:${SERVICE_GROUP}）——GUI 用户经 socket 组可读穿敏感面"
+  fi
+
   # hot/quarantine 保持数据组 2770：GUI 用户不进数据组就完全不可见。
   HOT_MODE="$(stat -c '%a' "$HOT_FOLDER" 2>/dev/null || true)"
   HOT_OWNER="$(stat -c '%U:%G' "$HOT_FOLDER" 2>/dev/null || true)"
@@ -671,6 +684,28 @@ if wait_until 30 test -S "$SERVICE_SOCKET"; then
   if [[ "$SVC_WRITE_OK" == 1 ]]; then
     rec PASS "服务用户对 hot/quarantine/audit/logs 仍可写（属主身份，收敛不打断数据路径）"
   fi
+
+  # ---------- 5b. 诊断留证（DIAG 行经 workflow 提升为 annotation，受限出网环境可读） ----------
+  # 权限断言 FAIL 时的根因数据：文件所有权（mode+owner+group）、systemd 解析后的有效 unit
+  # 属性（UMask 是否真被解析）、Worker 进程实际 umask（/proc）、GUI 用户在 sudo 语境的实际组。
+  {
+    stat -c 'DIAG ownership %n mode=%a owner=%U:%G' \
+      "$INSTALL_DIR" "${INSTALL_DIR}/config" "${INSTALL_DIR}/config/config.json" \
+      "${INSTALL_DIR}/logs" "$AUDIT_FOLDER" "$HOT_FOLDER" 2>/dev/null || true
+    # shellcheck disable=SC2086
+    stat -c 'DIAG ownership %n mode=%a owner=%U:%G' ${WORKER_LOG_GLOB} 2>/dev/null || true
+    systemctl show "$SERVICE_NAME" -p User -p Group -p UMask -p RuntimeDirectoryMode 2>/dev/null \
+      | sed 's/^/DIAG unit /' || true
+    DIAG_PID="$(get_pid)"
+    if [[ -n "$DIAG_PID" && "$DIAG_PID" != "0" ]]; then
+      grep Umask "/proc/${DIAG_PID}/status" 2>/dev/null | sed 's/^/DIAG worker-umask /' || true
+    fi
+    if [[ -n "$GUI_USER" && "$GUI_USER" != "root" ]]; then
+      sudo -u "$GUI_USER" id 2>/dev/null | sed 's/^/DIAG gui-id /' || true
+      sudo -u "$GUI_USER" test -r "${INSTALL_DIR}/config/config.json" 2>/dev/null \
+        && echo "DIAG gui-config-read rc=0(readable)" || echo "DIAG gui-config-read rc=?(unreadable)"
+    fi
+  } >> "$SUMMARY_FILE"
 
   # 组隔离的第二道事实：socket 访问组与数据组必须是两条不同 GID 的组记录。
   # 同名/同 GID 的崩坏形态会让 GUI 用户虽然只进了 socket 组，却继承数据组对 hot/quarantine 的 2770
