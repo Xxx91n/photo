@@ -25,10 +25,14 @@ namespace PhotoPrivacy.IntegrationTests.Ipc;
 /// （往返同时覆盖细粒度客户端对拆位 DACL 的可达性），且永不触碰真实注册表（含 elevated 运行）。
 /// 掩码常量断言全平台可跑（CI ubuntu 为主证据，见 ServiceClientAccessMask_Drops_CreatePipe_Instance_Bit）。
 ///
-/// CI 平台限制（如实登记，先例 IpcAuthenticationLayeringTests）：.github/workflows/ci.yml 的
-/// test job 为 ubuntu-latest，Windows 专属断言在 CI 不执行；类型与调用的编译覆盖由 ubuntu
-/// 全量编译承担；Windows 实机验收（非提权令牌对服务管道 GetStatus 往返、后台管道只许当前用户）
-/// 按 #82 D3 归人工 S4 复测，不在 CI 内替证。
+/// CI 平台（如实登记，#9 起多平台矩阵）：test job 在 ubuntu/windows/macos 三平台跑。
+/// Windows 专属断言（本类的 ServiceShared DACL 建例/回退往返）不入 CI，归人工 S4 实机
+/// 复测（#82 D3 既有边界）——#9 在 CI 实证这两类真跑即挂死整个 test host（xunit v2
+/// 2.9.3 + runner.visualstudio 3.1.4 + .NET 10 windows 宿主的执行层挂起：trx 0 完成、
+/// dump 显示 runner 各层阻塞等待、线程池空闲、测试执行线程缺席，证据链 run
+/// 41962838592/41964334172/41965777267/41967967629），故 windows 腿按过滤器排除本类；
+/// ubuntu/macos 腿全量真跑（本类 Windows 专属用例早退，跨平台编译面与掩码常量断言
+/// 照常执行）。上游追查与解禁条件登记于 #9 证据链。
 /// </summary>
 public sealed class WindowsServicePipeAclTests
 {

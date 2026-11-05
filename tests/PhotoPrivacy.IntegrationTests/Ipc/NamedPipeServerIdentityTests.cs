@@ -5,9 +5,10 @@ namespace PhotoPrivacy.IntegrationTests.Ipc;
 
 /// <summary>
 /// 行为测试：后台管道的服务端进程身份核验（#7 残余①）。
-/// CI 平台限制（如实登记）：test job 在 ubuntu-latest 上覆盖跨平台 API 形状与期望基准校验；
-/// 真实管道核验（GetNamedPipeServerProcessId / OpenProcess）是 Windows 专属，在非 Windows
-/// 宿主上跳过，Windows 实机由 S4 复测承担（同 #70/#7 既有口径）。
+/// CI 平台（如实登记，#9 起多平台矩阵）：test job 在 ubuntu/windows/macos 三平台跑——
+/// 跨平台 API 形状与期望基准校验随主矩阵全平台真跑（Windows 上走真实管道核验）；
+/// GetNamedPipeServerProcessId / OpenProcess 的 Windows 实机验收由 S4 复测承担
+/// （同 #70/#7 既有口径）。
 /// </summary>
 public sealed class NamedPipeServerIdentityTests
 {
@@ -110,7 +111,11 @@ public sealed class NamedPipeServerIdentityTests
 
     private static (NamedPipeServerStream Server, NamedPipeClientStream Client) CreateConnectedPair()
     {
-        var name = "PhotoPrivacyTest.Identity." + Guid.NewGuid().ToString("N");
+        // macOS UDS 路径上限 104 字节（含 NUL）：NamedPipeServerStream 在 macOS 落 TMPDIR
+        // （约 49 字节）+ 本前缀 26 字节，随机段必须短——32 字符 GUID 段在 mac 实跑超限
+        // （#9 矩阵 mac 腿红实证，run 41964334172）；与 IpcAuthenticationLayeringTests/
+        // WorkerReloadConfigRegressionTests 的短段先例同口径。
+        var name = "PhotoPrivacyTest.Identity." + Guid.NewGuid().ToString("N")[..8];
         var server = new NamedPipeServerStream(
             name,
             PipeDirection.InOut,

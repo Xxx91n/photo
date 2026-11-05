@@ -761,12 +761,32 @@ public sealed class WorkerReloadConfigRegressionTests
 
             // 审查返修（m2）：Windows + 服务形态直接构造并注入通告器，永不触碰真实注册表；
             // 其余形态/平台走工厂（后台无熵，Unix 工厂选 UDS）。
-            transport = OperatingSystem.IsWindows() && isServiceMode
-                ? new NamedPipeIpcTransport(
-                    endpoint,
-                    WindowsPipeAccessMode.ServiceShared,
-                    servicePipeAdvertiser: _ => true)
-                : IpcTransportFactory.CreateServer(endpoint, isServiceMode);
+            // #187：Unix 服务形态组名 fail-closed，不再回落数据组——按 plist/systemd 的同通道
+            // 注入环境变量，使这行仍走真实工厂（不用服务模式构造器旁路），再恢复原值。
+            var serviceGroupEnvVar = UnixDomainSocketIpcTransport.ServiceGroupEnvironmentVariable;
+            var originalServiceGroup = Environment.GetEnvironmentVariable(serviceGroupEnvVar);
+            if (!OperatingSystem.IsWindows() && isServiceMode)
+            {
+                Environment.SetEnvironmentVariable(
+                    serviceGroupEnvVar, UnixDomainSocketIpcTransport.DefaultServiceGroupName);
+            }
+
+            try
+            {
+                transport = OperatingSystem.IsWindows() && isServiceMode
+                    ? new NamedPipeIpcTransport(
+                        endpoint,
+                        WindowsPipeAccessMode.ServiceShared,
+                        servicePipeAdvertiser: _ => true)
+                    : IpcTransportFactory.CreateServer(endpoint, isServiceMode);
+            }
+            finally
+            {
+                if (!OperatingSystem.IsWindows() && isServiceMode)
+                {
+                    Environment.SetEnvironmentVariable(serviceGroupEnvVar, originalServiceGroup);
+                }
+            }
 
             var handler = CreateHandler(fixture, runtimeMode);
 

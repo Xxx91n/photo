@@ -11,9 +11,9 @@ namespace PhotoPrivacy.IntegrationTests.Ipc;
 /// 本套全部断言真实行为（真实 bind/connect、真实文件模式、真实内核 fail-fast），
 /// 不是读源码文本断言。
 ///
-/// CI 平台限制（如实登记）：.github/workflows/ci.yml 的 test job 为 ubuntu-latest，
-/// 故 Windows 专属断言（FirstPipeInstance fail-fast）在 CI 不执行。
-/// Unix 侧断言（文件模式 + 对端凭据）在 ubuntu-latest 上真跑，是 CI 可测范围内
+/// CI 平台（如实登记，#9 起多平台矩阵）：test job 在 ubuntu/windows/macos 三平台跑。
+/// Windows 专属断言（FirstPipeInstance fail-fast）在 windows-latest 真跑；
+/// Unix 侧断言（文件模式 + 对端凭据）在 ubuntu 与 macos 真跑，是 CI 可测范围内
 /// 的主证据（issue 04 AC#2）。
 /// </summary>
 public sealed class IpcAuthenticationLayeringTests
@@ -24,9 +24,18 @@ public sealed class IpcAuthenticationLayeringTests
     private const UnixFileMode ServiceSocketMode =
         UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.GroupWrite;
 
+    /// <summary>
+    /// 服务模式 socket 访问组（#187 起 fail-closed：必须显式注入或用例显式传入）。
+    /// 取代码里的缺省名，保证用例断言的是「与安装脚本同名的 socket 访问组」而不是孤立字面量。
+    /// </summary>
+    private const string TestSocketGroupName = UnixDomainSocketIpcTransport.DefaultServiceGroupName;
+
     private static string NewSocketPath()
     {
-        var dir = Path.Combine(Path.GetTempPath(), "pp-ipc-t04-" + Guid.NewGuid().ToString("N"));
+        // macOS UDS 路径上限 104 字节（含 NUL）：长随机子目录在 macOS 约 49 字节 TMPDIR 下
+        // 恰好触顶（#9 多平台矩阵 macos 首跑 6 条红实证）；与 WorkerReloadConfigRegressionTests
+        // 端点夹具同口径——短随机段（GUID 前 8 位）压回限内。
+        var dir = Path.Combine(Path.GetTempPath(), "pp-ipc-" + Guid.NewGuid().ToString("N")[..8]);
         Directory.CreateDirectory(dir);
         return Path.Combine(dir, "worker.sock");
     }
@@ -68,6 +77,7 @@ public sealed class IpcAuthenticationLayeringTests
         }
     }
 
+    /// <summary>第 1 层（服务模式）：socket 文件模式落到 0660，且与实例自报的 AppliedSocketMode 一致。</summary>
     [Fact]
     public async Task UnixTransport_Service_Mode_Should_Set_Socket_Mode_To_0660()
     {
@@ -79,8 +89,9 @@ public sealed class IpcAuthenticationLayeringTests
         var path = NewSocketPath();
         try
         {
+            // #187：服务模式组名 fail-closed，不再回落数据组——用例显式注入 socket 访问组。
             await using var transport = new UnixDomainSocketIpcTransport(
-                path, UnixSocketAccessMode.ServiceShared);
+                path, UnixSocketAccessMode.ServiceShared, TestSocketGroupName);
             await transport.ListenAsync(CancellationToken.None);
 
             Assert.Equal(ServiceSocketMode, File.GetUnixFileMode(path));
@@ -187,6 +198,7 @@ public sealed class IpcAuthenticationLayeringTests
         }
     }
 
+    /// <summary>第 2 层（服务模式）：组内成员被接纳、组外 uid 被 fail-closed 拒绝。</summary>
     [Fact]
     public async Task UnixTransport_Service_Mode_Should_Admit_Group_Member_And_Reject_Outsider()
     {
@@ -202,7 +214,7 @@ public sealed class IpcAuthenticationLayeringTests
             var memberPolicy = new FakePeerCredentialPolicy(
                 ownUid: 1000, peerUid: 2000, groupMemberUids: new HashSet<uint> { 2000 });
             await using (var server = new UnixDomainSocketIpcTransport(
-                path, UnixSocketAccessMode.ServiceShared, peerCredentialPolicy: memberPolicy))
+                path, UnixSocketAccessMode.ServiceShared, TestSocketGroupName, memberPolicy))
             {
                 await server.ListenAsync(CancellationToken.None);
                 Assert.Contains(2000u, server.AllowedPeerUids);
@@ -221,7 +233,7 @@ public sealed class IpcAuthenticationLayeringTests
                 var outsiderPolicy = new FakePeerCredentialPolicy(
                     ownUid: 1000, peerUid: 9999, groupMemberUids: new HashSet<uint> { 2000 });
                 await using var server2 = new UnixDomainSocketIpcTransport(
-                    path2, UnixSocketAccessMode.ServiceShared, peerCredentialPolicy: outsiderPolicy);
+                    path2, UnixSocketAccessMode.ServiceShared, TestSocketGroupName, outsiderPolicy);
                 await server2.ListenAsync(CancellationToken.None);
 
                 var acceptTask2 = server2.AcceptClientAsync(CancellationToken.None);
@@ -312,6 +324,7 @@ public sealed class IpcAuthenticationLayeringTests
         }
     }
 
+    /// <summary>工厂按形态选访问策略：服务模式必须请求 ServiceShared（组边界），后台为 BackgroundOnly。</summary>
     [Fact]
     public void IpcTransportFactory_Service_Mode_Should_Request_Shared_Unix_Access()
     {
@@ -320,9 +333,23 @@ public sealed class IpcAuthenticationLayeringTests
             return;
         }
 
-        var transport = Assert.IsType<UnixDomainSocketIpcTransport>(
-            IpcTransportFactory.CreateServer("/run/photoprivacy/worker.sock", isServiceMode: true));
-        Assert.Equal(UnixSocketAccessMode.ServiceShared, transport.AccessMode);
+        // #187：服务模式缺注入即 fail-closed，故此处经环境变量注入（与 plist/systemd 同通道），
+        // 断言完恢复原值——本程序集禁用并行，不存在跨用例串扰。
+        var original = Environment.GetEnvironmentVariable(
+            UnixDomainSocketIpcTransport.ServiceGroupEnvironmentVariable);
+        try
+        {
+            Environment.SetEnvironmentVariable(
+                UnixDomainSocketIpcTransport.ServiceGroupEnvironmentVariable, TestSocketGroupName);
+            var transport = Assert.IsType<UnixDomainSocketIpcTransport>(
+                IpcTransportFactory.CreateServer("/run/photoprivacy/worker.sock", isServiceMode: true));
+            Assert.Equal(UnixSocketAccessMode.ServiceShared, transport.AccessMode);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(
+                UnixDomainSocketIpcTransport.ServiceGroupEnvironmentVariable, original);
+        }
     }
 
     /// <summary>可配置的伪造凭据策略：模拟跨用户连接与凭据不可读场景。</summary>

@@ -5,8 +5,28 @@ on:
   pull_request:
 
 jobs:
+  # dotnet 测试多平台矩阵（#9）：ubuntu/windows/macos 三平台同口径跑 test job；
+  # fail-fast 关闭——一次 run 同时暴露全部平台的失败，便于按平台分票处置。
+  # Windows 腿排除 WindowsServicePipeAclTests / ServicePipeNameEntropyTests（如实登记，#9）：
+  # 本票在 CI 实证（run 41962838592 / 41964334172 / 41965777267 / 41967967629）——这两类
+  # 真跑即挂死整个 test host：trx 0 完成、blame-hang(4m) dump 显示 xunit runner 与 VSTest
+  # 各层全部阻塞等待、线程池空闲、测试执行线程缺席（xunit v2 2.9.3 + runner.visualstudio
+  # 3.1.4 + .NET 10 windows 宿主的执行层挂起，与测试体无关，本仓不可修）。基线口径本就是
+  # 「Windows 专属断言不入 CI，归人工 S4 实机复测」（两类头注释原文）；ubuntu/macos 腿
+  # 全量真跑（Windows 专属用例早退），windows 腿跑其余全部 20 类（基线为 0 dotnet 覆盖）。
+  # timeout-minutes: 25 封顶——.NET 10 dotnet test 的默认 1h 运行超时层先于 VSTest blame-hang
+  # 生效并烧满 1 小时（run 41891933332/41904675966 实证），不再给挂起留 1h 预算。
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+          - os: windows-latest
+            pipe_identity_isolation: true
+          - os: macos-latest
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
     permissions:
       contents: read
     steps:
@@ -17,10 +37,16 @@ jobs:
         with:
           dotnet-version: "10.0.201"
       - name: Run tests (exclude Smoke/ExifTool)
-        run: dotnet test PhotoPrivacy.sln --configuration Release --filter "Category!=Smoke&Category!=ExifTool"
+        run: dotnet test PhotoPrivacy.sln --configuration Release --filter "Category!=Smoke&Category!=ExifTool${{ matrix.pipe_identity_isolation && '&FullyQualifiedName!~WindowsServicePipeAclTests&FullyQualifiedName!~ServicePipeNameEntropyTests' || '' }}"
 
+  # rust 四 crate 矩阵（#9）：ubuntu 之外补 macOS——Windows 侧由 ui-check 覆盖
+  # 测试（service/ui 原有，ipc/logs/rules 随 #9 补齐），不另建 Windows job。
   rust:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     permissions:
       contents: read
     steps:
@@ -92,6 +118,9 @@ jobs:
       - name: Rust tests (photoprivacy-service, Windows)
         working-directory: ui
         run: cargo test -p photoprivacy-service --locked
+      - name: Rust tests (photoprivacy-ipc + photoprivacy-logs + photoprivacy-rules, Windows)
+        working-directory: ui
+        run: cargo test -p photoprivacy-ipc -p photoprivacy-logs -p photoprivacy-rules --locked
       - name: Rust tests (photoprivacy-ui, Windows)
         working-directory: ui
         run: cargo test -p photoprivacy-ui --locked
@@ -147,6 +176,11 @@ jobs:
 
   markers:
     runs-on: ubuntu-latest
+    # CodeRabbit 返修（#193）：显式只读最小权限——与 test/rust/ui-check 的 contents: read
+    # 同口径；check-design-markers.sh 的 gh api 只读 open issue，不给多余写面。
+    permissions:
+      contents: read
+      issues: read
     steps:
       - uses: actions/checkout@v4
       - name: Design markers must point to open issues
