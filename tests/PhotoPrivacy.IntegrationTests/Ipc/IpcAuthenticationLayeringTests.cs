@@ -74,6 +74,7 @@ public sealed class IpcAuthenticationLayeringTests
         }
     }
 
+    /// <summary>第 1 层（服务模式）：socket 文件模式落到 0660，且与实例自报的 AppliedSocketMode 一致。</summary>
     [Fact]
     public async Task UnixTransport_Service_Mode_Should_Set_Socket_Mode_To_0660()
     {
@@ -194,6 +195,7 @@ public sealed class IpcAuthenticationLayeringTests
         }
     }
 
+    /// <summary>第 2 层（服务模式）：组内成员被接纳、组外 uid 被 fail-closed 拒绝。</summary>
     [Fact]
     public async Task UnixTransport_Service_Mode_Should_Admit_Group_Member_And_Reject_Outsider()
     {
@@ -319,6 +321,7 @@ public sealed class IpcAuthenticationLayeringTests
         }
     }
 
+    /// <summary>工厂按形态选访问策略：服务模式必须请求 ServiceShared（组边界），后台为 BackgroundOnly。</summary>
     [Fact]
     public void IpcTransportFactory_Service_Mode_Should_Request_Shared_Unix_Access()
     {
