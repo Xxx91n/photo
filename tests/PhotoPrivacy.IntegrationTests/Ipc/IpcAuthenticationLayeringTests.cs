@@ -11,9 +11,9 @@ namespace PhotoPrivacy.IntegrationTests.Ipc;
 /// 本套全部断言真实行为（真实 bind/connect、真实文件模式、真实内核 fail-fast），
 /// 不是读源码文本断言。
 ///
-/// CI 平台限制（如实登记）：.github/workflows/ci.yml 的 test job 为 ubuntu-latest，
-/// 故 Windows 专属断言（FirstPipeInstance fail-fast）在 CI 不执行。
-/// Unix 侧断言（文件模式 + 对端凭据）在 ubuntu-latest 上真跑，是 CI 可测范围内
+/// CI 平台（如实登记，#9 起多平台矩阵）：test job 在 ubuntu/windows/macos 三平台跑。
+/// Windows 专属断言（FirstPipeInstance fail-fast）在 windows-latest 真跑；
+/// Unix 侧断言（文件模式 + 对端凭据）在 ubuntu 与 macos 真跑，是 CI 可测范围内
 /// 的主证据（issue 04 AC#2）。
 /// </summary>
 public sealed class IpcAuthenticationLayeringTests
@@ -26,7 +26,10 @@ public sealed class IpcAuthenticationLayeringTests
 
     private static string NewSocketPath()
     {
-        var dir = Path.Combine(Path.GetTempPath(), "pp-ipc-t04-" + Guid.NewGuid().ToString("N"));
+        // macOS UDS 路径上限 104 字节（含 NUL）：长随机子目录在 macOS 约 49 字节 TMPDIR 下
+        // 恰好触顶（#9 多平台矩阵 macos 首跑 6 条红实证）；与 WorkerReloadConfigRegressionTests
+        // 端点夹具同口径——短随机段（GUID 前 8 位）压回限内。
+        var dir = Path.Combine(Path.GetTempPath(), "pp-ipc-" + Guid.NewGuid().ToString("N")[..8]);
         Directory.CreateDirectory(dir);
         return Path.Combine(dir, "worker.sock");
     }
