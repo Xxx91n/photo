@@ -691,30 +691,36 @@ if wait_until 30 test -S "$SERVICE_SOCKET"; then
   # 失败不影响其余；sudo 一律 timeout 兜底，组身份用 id（root 语境直查，无需 sudo）。
   # 命令替换一律 timeout 预计算成变量再 rec INFO（tee -a，与 PASS/FAIL 同可靠通道）：
   # 上一版直接 printf "$(id/systemctl/sudo)" 在 worker-proc 后截断，疑 NSS/dbus  lookup 挂起。
+  # 根因数据最优先（config 读穿之谜）：GUI 进程实际降权身份/能力 + config ACL + 实际读 rc。
+  # 注意：unit-umask 的 systemctl show 已移除——命令替换里 dbus 子进程持有 stdout 管道，
+  # timeout 杀主进程后 $(...) 仍挂起，致其后 DIAG 全丢（GUI 检查的 sudo test 不挂可证）。
+  # umask 口径已由 worker-umask（/proc 直读）实证，无需再走 systemctl。
   set +e
   DIAG_PID="$(get_pid)"
   rec INFO "DIAG meta pid=${DIAG_PID:-none} gui_user=${GUI_USER:-none}"
-  stat -c 'DIAG ownership %n mode=%a owner=%U:%G' \
-    "$INSTALL_DIR" "${INSTALL_DIR}/config" "${INSTALL_DIR}/config/config.json" \
-    "${INSTALL_DIR}/logs" "$AUDIT_FOLDER" "$HOT_FOLDER" >> "$SUMMARY_FILE" 2>/dev/null
-  # shellcheck disable=SC2086
-  stat -c 'DIAG ownership %n mode=%a owner=%U:%G' ${WORKER_LOG_GLOB} >> "$SUMMARY_FILE" 2>/dev/null
-  DIAG_WUMASK="$(timeout 5 awk '/^Umask:/{print $2}' "/proc/${DIAG_PID}/status" 2>/dev/null)"
-  rec INFO "DIAG worker-umask ${DIAG_WUMASK:-none}"
-  DIAG_GUIID="$(timeout 5 id "$GUI_USER" 2>&1)"
-  rec INFO "DIAG gui-id ${DIAG_GUIID:-none}"
-  DIAG_UUMASK="$(timeout 5 systemctl show "$SERVICE_NAME" -p UMask --value 2>&1)"
-  rec INFO "DIAG unit-umask ${DIAG_UUMASK:-none}"
+  DIAG_DATAGRP="$(timeout 5 getent group "$SERVICE_GROUP" 2>&1)"
+  rec INFO "DIAG data-group ${DIAG_DATAGRP:-none}"
+  DIAG_SUDO_ID="$(timeout 8 sudo -u "$GUI_USER" id 2>&1)"
+  rec INFO "DIAG gui-sudo-id ${DIAG_SUDO_ID:-none}"
+  DIAG_CAP="$(timeout 8 sudo -u "$GUI_USER" grep '^CapEff' /proc/self/status 2>&1)"
+  rec INFO "DIAG gui-cap ${DIAG_CAP:-none}"
+  DIAG_ACL="$(timeout 5 getfacl -p "${INSTALL_DIR}/config/config.json" 2>&1 | tr '\n' ' ')"
+  rec INFO "DIAG acl ${DIAG_ACL:-none}"
   timeout 8 sudo -u "$GUI_USER" test -r "${INSTALL_DIR}/config/config.json" 2>/dev/null
   rec INFO "DIAG gui-config-read rc=$?"
   timeout 8 sudo -u "$GUI_USER" test -x "${INSTALL_DIR}/config" 2>/dev/null
   rec INFO "DIAG gui-config-dir-traverse rc=$?"
   timeout 8 sudo -u "$GUI_USER" test -x "$HOT_FOLDER" 2>/dev/null
   rec INFO "DIAG gui-hot-traverse rc=$?"
-  DIAG_CAP="$(timeout 8 sudo -u "$GUI_USER" grep '^CapEff' /proc/self/status 2>&1)"
-  rec INFO "DIAG gui-cap ${DIAG_CAP:-none}"
-  DIAG_ACL="$(timeout 5 getfacl -p "${INSTALL_DIR}/config/config.json" 2>&1 | tr '\n' ' ')"
-  rec INFO "DIAG acl ${DIAG_ACL:-none}"
+  DIAG_GUIID="$(timeout 5 id "$GUI_USER" 2>&1)"
+  rec INFO "DIAG gui-id ${DIAG_GUIID:-none}"
+  DIAG_WUMASK="$(timeout 5 awk '/^Umask:/{print $2}' "/proc/${DIAG_PID}/status" 2>/dev/null)"
+  rec INFO "DIAG worker-umask ${DIAG_WUMASK:-none}"
+  stat -c 'DIAG ownership %n mode=%a owner=%U:%G' \
+    "$INSTALL_DIR" "${INSTALL_DIR}/config" "${INSTALL_DIR}/config/config.json" \
+    "${INSTALL_DIR}/logs" "$AUDIT_FOLDER" "$HOT_FOLDER" >> "$SUMMARY_FILE" 2>/dev/null
+  # shellcheck disable=SC2086
+  stat -c 'DIAG ownership %n mode=%a owner=%U:%G' ${WORKER_LOG_GLOB} >> "$SUMMARY_FILE" 2>/dev/null
   set -e
 
   # 组隔离的第二道事实：socket 访问组与数据组必须是两条不同 GID 的组记录。
