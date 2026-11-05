@@ -73,7 +73,7 @@ async fn run_coordinator(
 ) {
     let mut feed = AuditFeed::new(directory);
     feed.start();
-    // Design(#102): 重启后的 backfill 由落盘清空水位过滤——用户清空后重启，历史行不回灌；
+    // Design(#209): 重启后的 backfill 由落盘清空水位过滤——用户清空后重启，历史行不回灌；
     // 水位缺失或损坏按无水位处理（fail-open），首启语义不变。
     feed.set_backfill_watermark(watermark.load());
 
@@ -90,7 +90,7 @@ async fn run_coordinator(
                 match command {
                     Some(LogCommand::Clear { generation: next }) => {
                         generation = next;
-                        // Design(#102): 清空 = 写入新水位（绝对 UTC 时刻，落盘 + 内存过滤）
+                        // Design(#209): 清空 = 写入新水位（绝对 UTC 时刻，落盘 + 内存过滤）
                         // + tail 推到文件末尾（既有 clear_view 语义）；落盘失败按 fail-open
                         // 继续——本会话过滤仍生效，最坏重启回灌一次，与损坏水位同一兜底。
                         let cleared_at = Utc::now();

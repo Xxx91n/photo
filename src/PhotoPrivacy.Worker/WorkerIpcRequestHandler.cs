@@ -216,7 +216,7 @@ public sealed class WorkerIpcRequestHandler
                 return [];
             }
 
-            // Design(#129): IPC 回填按本地「今天」基础名读取，与写入端、UI tail 同口径——统一基准前 UTC+8 00:00–07:59 时窗内写入端落昨天名、读取端找今天名，日志页恒空。
+            // Design(#208): IPC 回填按本地「今天」基础名读取，与写入端、UI tail 同口径——统一基准前 UTC+8 00:00–07:59 时窗内写入端落昨天名、读取端找今天名，日志页恒空。
             var auditPath = Path.Combine(logDir, AuditLogFileNames.BaseName(DateTime.Today) + ".jsonl");
             if (!File.Exists(auditPath))
             {
