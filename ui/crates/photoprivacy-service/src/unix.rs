@@ -9,6 +9,37 @@ use std::time::Duration;
 const PROBE_TIMEOUT: Duration = Duration::from_secs(3);
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(60);
 
+// 只有 Unix 通道（以及跨平台单测）用到这三个 helper；Windows 非 test 构建下它们没有调用者，
+// 不设 cfg 会被 `clippy -D warnings` 的 dead_code 判红。
+#[cfg(any(target_os = "linux", target_os = "macos", test))]
+/// 安装脚本声明的是 Bash（`set -euo pipefail`），不能再用 `sh` 覆盖解释器。
+/// pkexec 与 osascript 两条提权通道都不保证提供 `SUDO_USER`，所以从 UI 进程带一个校验过的
+/// `--gui-user` 给安装脚本；macOS 侧靠它把 GUI 用户加进 socket 访问组（#167 评审）。
+fn install_args(script_path: &Path, gui_user: Option<&str>) -> Vec<String> {
+    let mut args = vec![
+        "bash".to_string(),
+        script_path.to_string_lossy().into_owned(),
+    ];
+    if let Some(user) = gui_user.filter(|user| is_valid_gui_user(user)) {
+        args.push("--gui-user".to_string());
+        args.push(user.to_string());
+    }
+    args
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos", test))]
+fn current_gui_user() -> Option<String> {
+    std::env::var("USER")
+        .ok()
+        .or_else(|| std::env::var("LOGNAME").ok())
+        .map(|user| user.trim().to_string())
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos", test))]
+fn is_valid_gui_user(user: &str) -> bool {
+    !user.is_empty() && !user.starts_with('-') && !user.chars().any(char::is_whitespace)
+}
+
 #[cfg(any(target_os = "linux", test))]
 mod linux {
     use super::*;
@@ -104,31 +135,6 @@ mod linux {
         }
     }
 
-    /// 安装脚本声明的是 Bash（`set -euo pipefail`），不能再用 `sh` 覆盖解释器。
-    /// pkexec 不会提供 `SUDO_USER`，所以从 UI 进程带一个校验过的 `--gui-user` 给安装脚本。
-    pub(super) fn install_args(script_path: &Path, gui_user: Option<&str>) -> Vec<String> {
-        let mut args = vec![
-            "bash".to_string(),
-            script_path.to_string_lossy().into_owned(),
-        ];
-        if let Some(user) = gui_user.filter(|user| is_valid_gui_user(user)) {
-            args.push("--gui-user".to_string());
-            args.push(user.to_string());
-        }
-        args
-    }
-
-    fn current_gui_user() -> Option<String> {
-        std::env::var("USER")
-            .ok()
-            .or_else(|| std::env::var("LOGNAME").ok())
-            .map(|user| user.trim().to_string())
-    }
-
-    fn is_valid_gui_user(user: &str) -> bool {
-        !user.is_empty() && !user.starts_with('-') && !user.chars().any(char::is_whitespace)
-    }
-
     fn elevated_result(output: CommandOutput, success_message: &str) -> ServiceCommandResult {
         result_from_output(
             "pkexec",
@@ -208,10 +214,51 @@ mod macos {
             }
         }
 
+        /// macOS 安装命令串：与 Linux 同源构造参数（bash + 校验过的 `--gui-user`），
+        /// 再按 shell 语义逐个引用后交给 `do shell script`。
+        pub(super) fn install_command(script_path: &Path, gui_user: Option<&str>) -> String {
+            let args = install_args(script_path, gui_user);
+            let mut parts = Vec::with_capacity(args.len());
+            for (index, arg) in args.iter().enumerate() {
+                // 程序名与 `--` 选项名都是固定字面量，引用它们只会产出 `'bash'` 这类噪声；
+                // 外部取值（脚本路径、用户名）必须按 shell 语义引用。
+                let literal = index == 0
+                    || (arg.starts_with("--")
+                        && arg.chars().all(|c| c.is_ascii_lowercase() || c == '-'));
+                parts.push(if literal {
+                    arg.clone()
+                } else {
+                    shell_quote(arg)
+                });
+            }
+            parts.join(" ")
+        }
+
         fn run_admin_shell(&self, command: &str, success_message: &str) -> ServiceCommandResult {
             let script = admin_shell_script(command);
             let args = vec!["-e".to_string(), script];
             let output = self.runner.run("osascript", &args, COMMAND_TIMEOUT);
+            macos_result(output, success_message)
+        }
+
+        /// 与 `run_admin_shell` 相同，但成功时把脚本 stdout 附在消息后：安装脚本靠 stdout 传达
+        /// 「已把 GUI 用户加进 socket 组」「需要重新登录才生效」这类后续动作，丢掉就等于 UI 报成功、
+        /// 用户不知道该做什么（PR #180 评审）。
+        fn run_admin_shell_with_output(
+            &self,
+            command: &str,
+            success_message: &str,
+        ) -> ServiceCommandResult {
+            let script = admin_shell_script(command);
+            let args = vec!["-e".to_string(), script];
+            let output = self.runner.run("osascript", &args, COMMAND_TIMEOUT);
+            let notes = output.stdout.trim();
+            if output.exit_code == Some(0) && !notes.is_empty() {
+                return ServiceCommandResult::success(
+                    Some(0),
+                    format!("{success_message}\n{notes}"),
+                );
+            }
             macos_result(output, success_message)
         }
     }
@@ -225,8 +272,10 @@ mod macos {
                 );
             }
 
-            let command = format!("sh {}", shell_quote(&self.script_path.to_string_lossy()));
-            self.run_admin_shell(&command, "launchd service installed")
+            // #167 评审：osascript 提权路径不提供 `SUDO_USER`，安装脚本会把 GUI 用户当成未知，
+            // 装完没人被加进 socket 访问组，UI 永远连不上服务端点。这里显式下传 GUI 用户。
+            let command = Self::install_command(&self.script_path, current_gui_user().as_deref());
+            self.run_admin_shell_with_output(&command, "launchd service installed")
         }
 
         fn start(&self, _: Option<&Path>, _: Option<&Path>) -> ServiceCommandResult {
@@ -451,7 +500,7 @@ mod tests {
         // 防：用 sh 跑 Bash 脚本（pipefail 失败）或把未校验的 GUI 用户传给安装脚本（#58 CodeRabbit）。
         let script = Path::new("/repo/scripts/install-systemd-service.sh");
         assert_eq!(
-            linux::install_args(script, Some("alice")),
+            install_args(script, Some("alice")),
             vec![
                 "bash".to_string(),
                 script.display().to_string(),
@@ -460,15 +509,15 @@ mod tests {
             ]
         );
         assert_eq!(
-            linux::install_args(script, None),
+            install_args(script, None),
             vec!["bash".to_string(), script.display().to_string()]
         );
         assert_eq!(
-            linux::install_args(script, Some("-bad")),
+            install_args(script, Some("-bad")),
             vec!["bash".to_string(), script.display().to_string()]
         );
         assert_eq!(
-            linux::install_args(script, Some("bad user")),
+            install_args(script, Some("bad user")),
             vec!["bash".to_string(), script.display().to_string()]
         );
     }
@@ -560,6 +609,31 @@ mod tests {
     }
 
     #[test]
+    fn macos_install_passes_validated_gui_user_and_bash() {
+        // 防：osascript 提权链路漏传 `--gui-user`，安装脚本不知道 GUI 用户是谁，装完没人进
+        // socket 访问组，UI 连不上服务端点（PR #180 评审 Major）；也防：仍在用 `sh` 跑
+        // 声明了 `set -euo pipefail` 的 Bash 安装脚本。
+        let script = Path::new("/repo/scripts/install-launchd-service.sh");
+        assert_eq!(
+            macos::MacOps::install_command(script, Some("alice")),
+            "bash '/repo/scripts/install-launchd-service.sh' --gui-user 'alice'"
+        );
+        // 未校验的取值一律不下传（-bad 会被脚本当成选项，含空格会拆成两个参数）。
+        assert_eq!(
+            macos::MacOps::install_command(script, Some("-bad")),
+            "bash '/repo/scripts/install-launchd-service.sh'"
+        );
+        assert_eq!(
+            macos::MacOps::install_command(script, Some("bad user")),
+            "bash '/repo/scripts/install-launchd-service.sh'"
+        );
+        assert_eq!(
+            macos::MacOps::install_command(script, None),
+            "bash '/repo/scripts/install-launchd-service.sh'"
+        );
+    }
+
+    #[test]
     fn macos_install_uses_osascript_with_admin_privileges() {
         // 防：macOS 安装没走 osascript 提权，launchd plist 写入被拒（#58，旧 LaunchdCommandExecutor）。
         let runner = Arc::new(QueueRunner::new("osascript", vec![ok()]));
@@ -576,6 +650,41 @@ mod tests {
         // AppleScript 字符串会把路径里的反斜杠再转义一层；按最终命令比对，避免宿主路径分隔符差异。
         let quoted_path = macos::shell_quote(&script.display().to_string()).replace('\\', "\\\\");
         assert!(calls[0][1].contains(&quoted_path));
+        let _ = std::fs::remove_file(script);
+    }
+
+    #[test]
+    fn macos_install_keeps_installer_output() {
+        // 防：安装脚本 stdout（含「已加入 socket 组」与 `Note: re-login required ...`）被固定成功文案
+        // 吞掉——UI 报「已安装」，用户不知道要先重新登录才连得上服务端点（PR #180 评审）。
+        let note = CommandOutput {
+            exit_code: Some(0),
+            stdout: "Added GUI user 'alice' to group 'photoprivacy-ipc' (IPC socket 0660 group boundary).\n\
+                     Note: re-login required for the new group membership to reach existing sessions.\n"
+                .to_string(),
+            ..CommandOutput::default()
+        };
+        let runner = Arc::new(QueueRunner::new("osascript", vec![note, ok()]));
+        let script = temp_script("relogin");
+        let ops = macos::MacOps::new(runner.clone(), script.clone());
+
+        let with_note = ops.install(None, None);
+        assert_eq!(with_note.status, ServiceCommandStatus::Success);
+        assert!(
+            with_note.message.starts_with("launchd service installed"),
+            "成功摘要仍要在首位：{}",
+            with_note.message
+        );
+        assert!(
+            with_note.message.contains("re-login required"),
+            "安装脚本的输出必须透出到结果：{}",
+            with_note.message
+        );
+
+        // 脚本没有输出时保持原文案，避免给 UI 塞一个空行尾巴。
+        let plain = ops.install(None, None);
+        assert_eq!(plain.status, ServiceCommandStatus::Success);
+        assert_eq!(plain.message, "launchd service installed");
         let _ = std::fs::remove_file(script);
     }
 

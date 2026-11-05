@@ -80,6 +80,80 @@ public sealed class IpcAuthClaimReconciliationTests
         Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
     }
 
+    // ---------- 1b. launchd 组边界：socket 访问组必须独立于数据组（#167 评审 CWE-732） ----------
+
+    internal static List<string> ClassifyLaunchdGroupBoundary(string script, string socketEnvName)
+    {
+        var violations = new List<string>();
+        if (!script.Contains("--socket-group", StringComparison.Ordinal))
+        {
+            violations.Add("launchd 安装脚本缺少独立的 --socket-group（GUI 用户只能退回数据组）");
+        }
+        if (script.Contains("-a \"$GUI_USER\" -t user \"$GROUP_NAME\"", StringComparison.Ordinal))
+        {
+            violations.Add("launchd 安装脚本仍把 GUI 用户加进数据组（2770 组写可绕过 IPC 删审计/隔离）");
+        }
+        if (!script.Contains("-a \"$GUI_USER\" -t user \"$SOCKET_GROUP\"", StringComparison.Ordinal))
+        {
+            violations.Add("launchd 安装脚本未把 GUI 用户加进 socket 访问组");
+        }
+        if (!script.Contains("<string>${SOCKET_GROUP}</string>", StringComparison.Ordinal))
+        {
+            violations.Add("launchd plist 的 GroupName 未指向 socket 访问组");
+        }
+        if (!script.Contains(socketEnvName, StringComparison.Ordinal))
+        {
+            violations.Add("launchd plist 未注入 " + socketEnvName + "（服务端白名单与 socket 组脱节）");
+        }
+        if (!script.Contains("--gui-user", StringComparison.Ordinal))
+        {
+            violations.Add("launchd 安装脚本缺少 --gui-user 入口（osascript 提权链路拿不到 SUDO_USER）");
+        }
+        return violations;
+    }
+
+    [Fact]
+    public void Launchd_Installer_Should_Separate_Socket_Group_From_Data_Group()
+    {
+        var violations = ClassifyLaunchdGroupBoundary(
+            SourceLint.Read("scripts", "install-launchd-service.sh"),
+            UnixDomainSocketIpcTransport.ServiceGroupEnvironmentVariable);
+        Assert.True(violations.Count == 0, string.Join(Environment.NewLine, violations));
+    }
+
+    [Fact]
+    public void Launchd_Group_Boundary_Guard_Negative_Self_Proof()
+    {
+        var green = SourceLint.Read("scripts", "install-launchd-service.sh");
+        var envName = UnixDomainSocketIpcTransport.ServiceGroupEnvironmentVariable;
+        var failing = new (string Source, string Reason)[]
+        {
+            (
+                green.Replace(
+                    "-a \"$GUI_USER\" -t user \"$SOCKET_GROUP\"",
+                    "-a \"$GUI_USER\" -t user \"$GROUP_NAME\""),
+                "GUI 用户被加进数据组（组写回潮）"),
+            (green.Replace("--gui-user", "--user"), "GUI 用户入口被移除"),
+            (green.Replace("<string>${SOCKET_GROUP}</string>", "<string>${GROUP_NAME}</string>"), "plist GroupName 退回数据组"),
+        };
+
+        var failures = new List<string>();
+        foreach (var (source, reason) in failing)
+        {
+            if (source == green)
+            {
+                failures.Add("MUTATION DID NOT APPLY (sample equals green): " + reason);
+                continue;
+            }
+            if (ClassifyLaunchdGroupBoundary(source, envName).Count == 0)
+            {
+                failures.Add("MISSED (should be red): " + reason);
+            }
+        }
+
+        Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
+    }
+
     // ---------- 2. FirstPipeInstance 仅 listen 期首例 ----------
 
     internal static List<string> ClassifyFirstInstanceOnly(string strippedTransportSource)

@@ -130,6 +130,9 @@ After=network.target
 Type=simple
 User=${USER_NAME}
 Group=${GROUP_NAME}
+# 服务端对端白名单跟着 unit 的 Group 走（#167）：GUI 用户进的就是这个组，
+# 不注入的话 Worker 会拿硬编码默认名比对，自定义 --group 的机器上合法调用者被拒。
+Environment=PHOTOPRIVACY_SERVICE_GROUP=${GROUP_NAME}
 WorkingDirectory=${INSTALL_DIR}
 ExecStart=${EXE_PATH} --mode service --config ${CONFIG_PATH} --hot-folder ${HOT_FOLDER} --audit-folder ${AUDIT_FOLDER}
 Restart=always

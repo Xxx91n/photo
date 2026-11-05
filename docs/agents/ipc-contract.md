@@ -9,12 +9,46 @@
 | --- | --- | --- |
 | Windows | 命名管道 `PhotoPrivacyCleaner.Background` | 命名管道 `PhotoPrivacyCleaner.Service.<32hex>`（#7：每次监听随机化，先建首例再通告于 `HKLM\SOFTWARE\PhotoPrivacy\ServicePipeName`；通告缺失/非法回退静态 `PhotoPrivacyCleaner.Service`） |
 | Linux | `/run/photoprivacy/worker-background.sock` | `/run/photoprivacy/worker.sock` |
-| macOS | `~/Library/Application Support/photoprivacy/worker-background.sock` | 同目录 `worker.sock` |
+| macOS | `~/Library/Application Support/photoprivacy/worker-background.sock` | `/Library/Application Support/photoprivacy/worker.sock`（系统级固定落点，#167） |
 
 出处：`src/PhotoPrivacy.Ipc/WorkerIpcEndpointNames.cs`、`src/PhotoPrivacy.Ipc/IpcTransportFactory.cs`、
 `src/PhotoPrivacy.Ipc/NamedPipeIpcTransport.cs`（#7 随机化）、`ui/crates/photoprivacy-ipc/src/endpoints.rs`（客户端动态发现）。
 客户端必须按 OS 解析端点（旧 Avalonia UI 全程硬编码 Windows 管道名，Linux/macOS 因此连不上）；
 Windows 服务端点自 #7 起按通告名动态解析（每次探测/失败重解析，详见认证边界节），其余端点静态。
+
+macOS 服务端点自 #167 起为系统级固定落点：LaunchDaemon 以服务用户运行（`NFSHomeDirectory=/opt/photoprivacy`），
+GUI 用户按自身 home 拼同一相对路径只会指向各自的幽灵 socket，故服务端点不再参与 home 解析（与 Linux `/run/photoprivacy` 同构）。
+目录由 `scripts/install-launchd-service.sh` 以 root 建为 `0750`（属主服务用户:socket 访问组 `photoprivacy-ipc`），
+GUI 用户经 `--gui-user`（默认 `SUDO_USER`）**只加入 socket 访问组**，方可穿过目录并连上 `0660` 的 socket。
+显式 `--gui-user` 是调用方的明确意图，该账号不存在或加不进 socket 组时安装以非零退出失败；
+仅由 `SUDO_USER` 推断得来的用户只告警继续（推断噪声不升级为安装失败）。
+socket 访问组与数据组（`hot`/`quarantine` 的 `2770` 组）严格分离：GUI 用户不进数据组，即拿不到组写，
+无法绕过 IPC 直接删审计或隔离文件（PR #180 评审 CWE-732）。审计目录是唯一例外——本地 tail 工具
+（`photoprivacy-logs`）与取证脚本以 GUI 用户身份直接读日志，故该目录组改为 socket 访问组并收成 `2750`
+（组只读）、文件 `0640`，能看不能改。安装目录与 Worker 日志目录同样是权限面（R1）：`/opt/photoprivacy`
+为 `0755`（属主服务用户，其他用户只读可执行、不可写）——不能收成 `0750`，GUI 用户要从这里执行 UI 二进制，
+`0750` 下实测 `sudo: unable to execute …/PhotoPrivacy: Permission denied`，等于把 UI 一起收敛掉；
+敏感面单独收紧：`config/` 为 `0750` + 文件 `0640`，Worker Serilog 落点 `logs/` 为 `2750` + 文件 `0640`
+（属主服务用户:数据组，本地其他用户既不进目录也读不到请求 URL/文件名）。
+服务端以 `UnixPeerCredentialPolicy` 的组白名单做第二层校验，
+组名由 plist/systemd 注入 `PHOTOPRIVACY_SERVICE_GROUP`，缺省回落 `photoprivacy`。
+
+### 服务配置写入边界（#167：维持数据隔离）
+
+socket 访问组只授予「调用服务」权限，**不授予「定义服务行为」权限**。服务模式配置仍只由服务账户 / root
+写入；`config/` 的组写不授予 socket 访问组，GUI 用户（socket 组成员）既不可读也不可写。
+
+这条边界必须保持：配置含 `exiftool.path` 这类可执行路径，Worker 会以服务身份拉起该程序；一旦 socket 组
+可写配置，组员就能把路径指向恶意二进制，以服务身份访问 `hot`/`audit`/`quarantine` 并按服务权限删改——
+即 CWE-732 的「文本编辑器式提权」（CWE-732 缓解条款要求配置文件仅管理员可写；Apple Secure Coding Guide
+要求 helper 不信任调用者、避免被 puppeteering）。
+
+现状与后果：UI 是 `config.json` 的写入方，服务模式下它的默认配置路径就是
+`/opt/photoprivacy/config/config.json`；该文件对 GUI 用户不可读也不可写，因此配置页只能退回默认值 /
+初始加载失败，保存会回显失败——即**服务模式暂不支持 GUI 读写配置**。不要把放宽 `config/` 权限当作修复
+——那等于把「调用权」升级成「服务身份代码执行权」。GUI 改配置需要受控配置 / 规则通道（可执行路径白名单
++ 签名 / 前缀校验），涉及协议扩展与契约调整；在该通道落地前，不得放宽 `config/` 权限。
+决策出处：#167（PR #180）。
 
 ## 帧与客户端约束
 

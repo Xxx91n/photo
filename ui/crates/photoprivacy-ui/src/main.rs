@@ -20,7 +20,7 @@ use gpui::{
 };
 use log_service::LogBatch;
 use photoprivacy_ipc::{
-    ConnectionSnapshot, SingleInstanceGuard, UI_INSTANCE_NAME, notify_existing_instance,
+    ConnectionSnapshot, IpcClient, SingleInstanceGuard, UI_INSTANCE_NAME, notify_existing_instance,
 };
 use photoprivacy_rules::RulesEditor;
 use photoprivacy_service::{SERVICE_MANAGEMENT_SUPPORTED, platform_manager};
@@ -41,16 +41,37 @@ PhotoPrivacy 新 UI（gpui）
   --worker  后台 Worker 可执行文件路径（默认同目录 PhotoPrivacyWorker[.exe]，存在才用）
   --open-page  启动即打开指定页（overview|config|service|logs|rules，默认 overview）
   --service-probe-report  把 Service 页同源服务探测结果写成 JSON（state 字段）后退出，不建窗不连 Worker（虚拟环境取证用）
+  --service-probe-ipc  与 --service-probe-report 联用：追加客户端解析到的端点与 IPC 连通三态（Reachable|Denied|Unavailable）
 ";
 
 /// 托盘/唤起事件的轮询间隔：事件来自托盘库的线程或 tokio 侧，统一切回 UI 线程处理。
 const EVENT_POLL_INTERVAL: Duration = Duration::from_millis(200);
+
+/// 探针 JSON 的最小字符串转义：端点路径与错误文本可能含反斜杠/引号/换行，
+/// 直接拼进去会让 `--service-probe-ipc` 的产出无法被解析（取证脚本按行读 JSON）。
+fn json_string(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len() + 2);
+    out.push('"');
+    for ch in raw.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            // 其余控制字符（\n \r \t 及 C0/C1）一律降级为空格：探针 JSON 是单行格式，
+            // 留着裸控制字符会让按行读取的取证脚本拿到非法 JSON。
+            c if c.is_control() => out.push(' '),
+            other => out.push(other),
+        }
+    }
+    out.push('"');
+    out
+}
 
 struct Args {
     config_path: Option<PathBuf>,
     worker_path: Option<PathBuf>,
     open_page: Option<app::Page>,
     service_probe_report: Option<PathBuf>,
+    service_probe_ipc: bool,
 }
 
 impl Args {
@@ -59,6 +80,7 @@ impl Args {
         let mut worker_path = None;
         let mut open_page = None;
         let mut service_probe_report = None;
+        let mut service_probe_ipc = false;
         let mut args = std::env::args_os().skip(1);
 
         while let Some(arg) = args.next() {
@@ -76,6 +98,7 @@ impl Args {
                 "--service-probe-report" => {
                     service_probe_report = args.next().map(PathBuf::from);
                 }
+                "--service-probe-ipc" => service_probe_ipc = true,
                 "-h" | "--help" => {
                     println!("{USAGE}");
                     std::process::exit(0);
@@ -89,6 +112,7 @@ impl Args {
             worker_path,
             open_page,
             service_probe_report,
+            service_probe_ipc,
         }
     }
 }
@@ -150,10 +174,40 @@ fn main() -> anyhow::Result<()> {
             probe_options.config_path.clone(),
         );
         let probe_state = probe_manager.state();
-        std::fs::write(
-            report_path,
-            format!("{{\"state\":\"{:?}\"}}\n", probe_state),
-        )?;
+        // Design(#167): 只报 state 时，「安装态/探测态都对、但 UI 侧连不上」这类端点随身份
+        // 分裂的缺陷在取证链里完全隐形。--service-probe-ipc 追加客户端实际解析到的端点与
+        // IPC 连通三态，供 verify 脚本以 GUI 用户（非服务用户）身份断言同一 socket 可达。
+        let mut report = format!("{{\"state\":\"{:?}\"", probe_state);
+        if args.service_probe_ipc {
+            match photoprivacy_ipc::current_service_endpoint(
+                photoprivacy_ipc::current_platform(),
+                photoprivacy_ipc::current_home().as_deref(),
+            ) {
+                Some(endpoint) => {
+                    let client = IpcClient::with_connect_timeout(Duration::from_millis(700));
+                    let (verdict, detail) = match runtime.block_on(client.status(&endpoint)) {
+                        Ok((status, _)) => ("Reachable".to_string(), format!("{status:?}")),
+                        Err(err) => {
+                            let verdict = if photoprivacy_ipc::is_service_access_denied(&err) {
+                                "Denied"
+                            } else {
+                                "Unavailable"
+                            };
+                            (verdict.to_string(), err.to_string())
+                        }
+                    };
+                    report.push_str(&format!(
+                        ",\"endpoint\":{},\"ipc\":{},\"ipc_detail\":{}",
+                        json_string(&endpoint.display()),
+                        json_string(&verdict),
+                        json_string(&detail)
+                    ));
+                }
+                None => report.push_str(",\"endpoint\":null,\"ipc\":\"Unresolved\""),
+            }
+        }
+        report.push_str("}\n");
+        std::fs::write(report_path, report)?;
         return Ok(());
     }
 

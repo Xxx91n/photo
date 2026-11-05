@@ -34,12 +34,17 @@ QUARANTINE_FOLDER="/var/lib/photoprivacy/quarantine"
 CONFIG_PATH="${INSTALL_DIR}/config/config.json"
 SERVICE_USER="photoprivacy"
 SERVICE_GROUP="photoprivacy"
+# socket 访问组独立于数据组：GUI 用户只进这个组，拿不到 hot/audit/quarantine 的组写权限
+# （评审 CWE-732：同组可绕过 IPC 直接删审计与隔离文件）。
+SOCKET_GROUP="photoprivacy-ipc"
 WORKER_BIN="${INSTALL_DIR}/PhotoPrivacyWorker"
 # Worker Serilog 落点：相对 CWD 的 logs/worker-.log（Program.cs ResolveLogFilePath 非 Windows 分支），
 # launchd WorkingDirectory=INSTALL_DIR（install 脚本写入的 plist）→ INSTALL_DIR/logs/worker-*.log。
 WORKER_LOG_GLOB="${INSTALL_DIR}/logs/worker-*.log"
-# 服务模式 UDS 端点（WorkerIpcEndpointNames.MacServiceSocket，服务用户 home=NFSHomeDirectory=INSTALL_DIR）。
-SERVICE_SOCKET="${INSTALL_DIR}/Library/Application Support/photoprivacy/worker.sock"
+# 服务模式 UDS 端点（WorkerIpcEndpointNames.MacServiceSocketPath）：系统级固定落点，
+# 与调用者身份无关（#167）。不再随服务用户 home（NFSHomeDirectory=INSTALL_DIR）漂移。
+SERVICE_SOCKET="/Library/Application Support/photoprivacy/worker.sock"
+SERVICE_SOCKET_DIR="/Library/Application Support/photoprivacy"
 
 RELEASE_DIR=""
 EVIDENCE_DIR=""
@@ -131,6 +136,25 @@ capture() {
   return 0
 }
 
+# ---------- GUI 用户（安装脚本 --gui-user 的显式语义） ----------
+# harness 要求 sudo 从 GUI 用户运行，SUDO_USER 即调用者；这里显式传给安装脚本，让 --gui-user 的显式
+# 分支（指定用户不存在/加不进组必须让安装失败）在 CI 里真的被走到，而不是全程只靠 SUDO_USER 推断兜底
+# （评审 nit：安装调用漏传 --gui-user，显式语义零覆盖）。
+GUI_USER="${SUDO_USER:-}"
+INSTALL_GUI_ARGS=()
+if [[ -n "$GUI_USER" ]]; then
+  INSTALL_GUI_ARGS=(--gui-user "$GUI_USER")
+fi
+
+# 显式空 --gui-user 必须硬失败（评审 R5 回归锚点）：早前它会静默落进「未解析到 GUI 用户」的告警分支
+# 并以 exit 0 收场，调用方会把「没给名字」误判成「IPC 权限已供给完成」。安装脚本在参数解析阶段就拒绝，
+# 早于任何账户/目录副作用，因此可以在铺发布包之前安全地跑这条负向自证。
+if bash "$INSTALL_SCRIPT" --gui-user "" >/dev/null 2>&1; then
+  rec FAIL "install-launchd-service.sh 接受了空 --gui-user（期望非零退出）"
+else
+  rec PASS "空 --gui-user 被拒绝（显式语义不再静默降级成告警+成功）"
+fi
+
 probe_raw() {
   # launchctl print system/<label> 的退出码与 stdout（显式系统域；0=系统域已加载，#172）
   set +e
@@ -142,6 +166,15 @@ probe_raw() {
 extract_pid() {
   # 从 print 输出提取 PID 行（新式 `pid = N`，兼容旧式 `"PID" = N;` 的引号；无 PID 行则空）
   printf '%s\n' "$1" | sed -n 's/.*[Pp][Ii][Dd]"*[[:space:]]*=[[:space:]]*\([0-9][0-9]*\).*/\1/p' | head -n 1
+}
+
+group_primary_gid() {
+  # 组记录的 PrimaryGroupID；缺失或不可读时输出空串。`|| true` 是必须的：`set -euo pipefail`
+  # 下 dscl 非零会直接终止 harness，后面的 FAIL 汇总与停止/卸载都跑不到。
+  local name="$1" gid
+  gid="$(dscl . -read "/Groups/${name}" PrimaryGroupID 2>/dev/null \
+    | awk 'NR==1 && $2 ~ /^[0-9]+$/ {print $2}')" || true
+  printf '%s\n' "$gid"
 }
 
 get_pid() {
@@ -249,7 +282,9 @@ ui_probe_report() {
   # 一致 = 「新 UI Service 页探测到服务状态」的机器可读证据（建窗前退出，无需图形会话）。
   # 探测以 GUI 用户语境运行（launchctl asuser + sudo -u，与截图同语境）——对拍结果才代表
   # 真实 Service 页行为；root 语境探测会掩盖 launchctl 域语义缺陷（#172）。
+  # 第二参数 expect_reachable=1 时要求 IPC 真的可达（仅服务应运行阶段）。
   local tag="$1"
+  local expect_reachable="${2:-0}"
   if [[ -z "${SUDO_USER:-}" ]] || [[ "$SUDO_USER" == "root" ]]; then
     rec FAIL "UI 探测 ${tag}：需经 sudo 从 GUI 用户运行（SUDO_USER 缺失）——root 语境对拍不代表真实 Service 页行为"
     return 0
@@ -272,6 +307,7 @@ ui_probe_report() {
   run_with_timeout 30 "$out" launchctl asuser "$uid" sudo -u "$SUDO_USER" \
     "${INSTALL_DIR}/PhotoPrivacy" \
     --service-probe-report "$report" \
+    --service-probe-ipc \
     --worker "$user_dir/no-worker-for-probe" || rc=$?
   if [[ -f "$report" ]]; then
     mv -f "$report" "$EVIDENCE_DIR/ui-probe-$tag.json"
@@ -287,13 +323,35 @@ ui_probe_report() {
     rec FAIL "UI Service 页探测报告未产出（${tag}，rc=${rc}，见 ui-probe-$tag.txt）"
     return 0
   fi
-  local ui_state cli_state
+  local ui_state cli_state ui_ipc ui_endpoint
   ui_state="$(sed -n 's/.*"state":"\([A-Za-z]*\)".*/\1/p' "$report")"
   cli_state="$(probe_state)"
   if [[ -n "$ui_state" ]] && [[ "$ui_state" == "$cli_state" ]]; then
     rec PASS "UI Service 页探测与 launchctl 判定一致（${tag}: ${ui_state}，GUI 用户语境）"
   else
     rec FAIL "UI/CLI 探测分歧（${tag}: ui=${ui_state:-<空>} cli=${cli_state}）"
+  fi
+  # #167：服务模式 UDS 落点必须与调用者身份无关——无论服务在跑还是已停，GUI 用户语境的
+  # 客户端都要解析到安装脚本建的那个系统级 socket，而不是自己 home 下的幽灵路径。
+  ui_ipc="$(sed -n 's/.*"ipc":"\([A-Za-z]*\)".*/\1/p' "$report")"
+  ui_endpoint="$(sed -n 's/.*"endpoint":"\([^"]*\)".*/\1/p' "$report")"
+  if [[ "$ui_endpoint" == "$SERVICE_SOCKET" ]]; then
+    rec PASS "UI 服务模式端点解析一致（${tag}: ${ui_endpoint}，GUI 用户语境）"
+  else
+    rec FAIL "UI 服务模式端点解析分歧（${tag}: endpoint=${ui_endpoint:-<空>}，期望 ${SERVICE_SOCKET}）"
+  fi
+  if [[ "$expect_reachable" == 1 ]]; then
+    # 运行态必须真的连上：目录 0750 / socket 0660 / 组边界 / 服务未就绪，任一项不成立都会在这里露头。
+    if [[ "$ui_ipc" == "Reachable" ]]; then
+      rec PASS "UI 服务模式 IPC 可达（${tag}: ${ui_endpoint}）"
+    else
+      rec FAIL "UI 服务模式 IPC 不可达（${tag}: ipc=${ui_ipc:-<空>}，见 ui-probe-$tag.json）"
+    fi
+  elif [[ "$ui_ipc" == "Reachable" ]]; then
+    # 未装/已停/已卸载阶段仍有人应答，说明进程或 socket 残留，服务页会给出假的「运行中」。
+    rec FAIL "UI 服务模式 IPC 在服务不应运行阶段仍可达（${tag}）——疑似进程或 socket 残留"
+  else
+    rec PASS "UI 服务模式 IPC 在非运行阶段不可达（${tag}: ${ui_ipc:-<空>}）"
   fi
 }
 
@@ -303,8 +361,8 @@ ui_shot() {
   if [[ "$UI_SHOTS" != 1 ]]; then
     return 0
   fi
-  if [[ -z "${SUDO_USER:-}" ]] || [[ "$SUDO_USER" == "root" ]]; then
-    rec FAIL "UI 截图 ${tag}：--ui-shots 需经 sudo 从 GUI 用户运行（SUDO_USER 缺失）"
+  if [[ -z "$GUI_USER" || "$GUI_USER" == "root" ]]; then
+    rec FAIL "UI 截图 ${tag}：--ui-shots 需经 sudo 从 GUI 用户运行（GUI_USER 缺失或为 root）"
     return 0
   fi
   if [[ ! -f "$SHOT_SCRIPT" ]]; then
@@ -312,15 +370,18 @@ ui_shot() {
     return 0
   fi
   local uid out shot_dir
-  uid="$(id -u "$SUDO_USER")"
+  uid="$(id -u "$GUI_USER")"
   out="$EVIDENCE_DIR/ui-shot-$tag.txt"
   # 截图只给 GUI 用户开一个专用子目录可写：root 侧证据文件不交出去，消除符号链接
   # 截断攻击面（CodeRabbit 审查意见，CWE-59）
   shot_dir="$EVIDENCE_DIR/ui-shots"
   mkdir -p "$shot_dir"
-  chown "$SUDO_USER" "$shot_dir" 2>/dev/null || true
+  chown "$GUI_USER" "$shot_dir" 2>/dev/null || true
+  # 安装后 config.json 对 GUI 不可读（0750/0640 服务账户:数据组，#167 配置写入边界）；
+  # 截图脚本自行退回最小默认配置（只开 #174 静默开关），这里不再以 root 复制受保护配置，
+  # 避免把配置字节交给 GUI 或为取证放宽安装目录权限。
   local rc=0
-  run_with_timeout 60 "$out" launchctl asuser "$uid" sudo -u "$SUDO_USER" \
+  run_with_timeout 60 "$out" launchctl asuser "$uid" sudo -u "$GUI_USER" \
     bash "$SHOT_SCRIPT" --install-dir "$INSTALL_DIR" --tag "$tag" --out-dir "$shot_dir" || rc=$?
   if [[ $rc -eq 0 ]] && [[ -s "$shot_dir/ui-$tag.png" ]]; then
     rec PASS "UI Service 页截图文件已产出（${tag}，内容待目检；无图形加速 VM 里 gpui 可能黑屏）：ui-shots/ui-$tag.png"
@@ -396,7 +457,9 @@ bash -x "$INSTALL_SCRIPT" \
   --audit-folder "$AUDIT_FOLDER" \
   --quarantine "$QUARANTINE_FOLDER" \
   --user "$SERVICE_USER" \
-  --group "$SERVICE_GROUP" >> "${EVIDENCE_DIR}/02-install.txt" 2>&1
+  --group "$SERVICE_GROUP" \
+  --socket-group "$SOCKET_GROUP" \
+  ${INSTALL_GUI_ARGS[@]+"${INSTALL_GUI_ARGS[@]}"} >> "${EVIDENCE_DIR}/02-install.txt" 2>&1
 INSTALL_RC=$?
 set -e
 echo "[exit ${INSTALL_RC}]" >> "${EVIDENCE_DIR}/02-install.txt"
@@ -441,7 +504,7 @@ fi
 OLD_PID="$STABLE_PID"
 
 # UI 层取证：运行中态（Service 页同源探测 + 截图），在 KeepAlive 试验前取稳定态
-ui_probe_report running
+ui_probe_report running 1
 ui_shot running
 
 # KeepAlive 常驻（SuccessfulExit=false）：SIGKILL 后 launchd 应拉起新进程
@@ -486,12 +549,99 @@ if grep -q "no watch folder is configured" ${WORKER_LOG_GLOB} 2>/dev/null; then
 fi
 
 # 服务模式 UDS 端点（硬断言：worker 绑定失败会在 Serilog 记 bind error，服务页数据源将不可用）
-capture 06-socket.txt ls -la "${INSTALL_DIR}/Library/Application Support/photoprivacy"
+capture 06-socket.txt ls -la "$SERVICE_SOCKET_DIR"
 if wait_until 30 test -S "$SERVICE_SOCKET"; then
   rec PASS "服务模式 UDS 端点已绑定（${SERVICE_SOCKET}）"
+  # #167：组边界必须真的落在盘上——socket 0660 + 服务用户/socket 访问组，目录 0750。
+  # 权限偏了（umask 收成 0600、目录被改成 0755）意味着 GUI 用户要么连不上、要么谁都能连；
+  # 这里按安装脚本与 UnixDomainSocketIpcTransport 的承诺逐项对拍，而不是只看 socket 在不在。
+  SOCKET_MODE="$(stat -f '%Lp' "$SERVICE_SOCKET" 2>/dev/null)"
+  SOCKET_OWNER="$(stat -f '%Su:%Sg' "$SERVICE_SOCKET" 2>/dev/null)"
+  SOCKET_DIR_MODE="$(stat -f '%Lp' "$SERVICE_SOCKET_DIR" 2>/dev/null)"
+  if [[ "$SOCKET_MODE" == "660" ]] \
+    && [[ "$SOCKET_OWNER" == "${SERVICE_USER}:${SOCKET_GROUP}" ]] \
+    && [[ "$SOCKET_DIR_MODE" == "750" ]]; then
+    rec PASS "服务模式 UDS 权限符合组边界（socket ${SOCKET_MODE} ${SOCKET_OWNER}，目录 ${SOCKET_DIR_MODE}）"
+  else
+    rec FAIL "服务模式 UDS 权限不符（socket=${SOCKET_MODE:-<空>} ${SOCKET_OWNER:-<空>}，目录=${SOCKET_DIR_MODE:-<空>}；期望 660 ${SERVICE_USER}:${SOCKET_GROUP} / 750）"
+  fi
+
+  # 评审 CWE-732：审计目录给 GUI 用户的只能是「组读」——能看日志页，不能写、不能删。
+  AUDIT_MODE="$(stat -f '%Lp' "$AUDIT_FOLDER" 2>/dev/null)"
+  AUDIT_GROUP="$(stat -f '%Sg' "$AUDIT_FOLDER" 2>/dev/null)"
+  # setgid 位以符号串为准：部分 BSD 实现的 %Lp 只回三位（750），%Sp 的 group 执行位会显示 s/S。
+  AUDIT_SYM="$(stat -f '%Sp' "$AUDIT_FOLDER" 2>/dev/null)"
+  AUDIT_RAW="$(stat -f '%p' "$AUDIT_FOLDER" 2>/dev/null)"
+  AUDIT_SGID="${AUDIT_SYM:6:1}"
+  if [[ "$AUDIT_GROUP" == "$SOCKET_GROUP" ]] \
+    && [[ "$AUDIT_SGID" == "s" || "$AUDIT_SGID" == "S" ]] \
+    && [[ "$AUDIT_MODE" == "2750" || "$AUDIT_MODE" == "750" ]]; then
+    rec PASS "审计目录组边界正确（${AUDIT_FOLDER} mode=${AUDIT_MODE} raw=${AUDIT_RAW} ${AUDIT_SYM} ${AUDIT_GROUP}：组只读，无组写）"
+  else
+    rec FAIL "审计目录组边界不符（${AUDIT_FOLDER} mode=${AUDIT_MODE:-<空>} raw=${AUDIT_RAW:-<空>} sym=${AUDIT_SYM:-<空>} ${AUDIT_GROUP:-<空>}；期望 2750 ${SOCKET_GROUP} 的组只读视图）"
+  fi
+
+  # 评审 R1：安装目录与 Worker 日志此前没有任何 chmod，发布包按 umask 落在 0755，本地任意用户能
+  # 遍历读走 config 与 logs/worker-*.log（请求 URL、文件名、错误栈）。安装脚本承诺 0755 的安装目录
+  # （GUI 用户要执行其中的 UI 二进制：0750 下实测 sudo 报 Permission denied，收敛不能把 UI 一起收掉）
+  # + 敏感面 config/ 750/640、logs/ 2750/640，这里逐项对拍。
+  INSTALL_MODE="$(stat -f '%Lp' "$INSTALL_DIR" 2>/dev/null)"
+  WLOG_DIR_MODE="$(stat -f '%Lp' "${INSTALL_DIR}/logs" 2>/dev/null)"
+  # shellcheck disable=SC2086
+  WLOG_MODE="$(stat -f '%Lp' ${WORKER_LOG_GLOB} 2>/dev/null | head -n 1)"
+  CFG_DIR_MODE="$(stat -f '%Lp' "${INSTALL_DIR}/config" 2>/dev/null)"
+  CFG_FILE="$(find "${INSTALL_DIR}/config" -maxdepth 1 -type f 2>/dev/null | head -n 1)"
+  CFG_FILE_MODE=""
+  [[ -n "$CFG_FILE" ]] && CFG_FILE_MODE="$(stat -f '%Lp' "$CFG_FILE" 2>/dev/null)"
+  if [[ "$INSTALL_MODE" == "755" ]] \
+    && [[ "$WLOG_DIR_MODE" == "2750" || "$WLOG_DIR_MODE" == "750" ]] \
+    && [[ "$WLOG_MODE" == "640" ]] \
+    && [[ -z "$CFG_DIR_MODE" || "$CFG_DIR_MODE" == "750" ]] \
+    && [[ -z "$CFG_FILE_MODE" || "$CFG_FILE_MODE" == "640" ]]; then
+    rec PASS "安装目录权限收敛（install ${INSTALL_MODE}，config ${CFG_DIR_MODE:-<无>}/${CFG_FILE_MODE:-<无>}，logs ${WLOG_DIR_MODE}，日志文件 ${WLOG_MODE}）"
+  else
+    rec FAIL "安装目录/日志权限未收敛（install=${INSTALL_MODE:-<空>} config=${CFG_DIR_MODE:-<无>}/${CFG_FILE_MODE:-<无>} logs=${WLOG_DIR_MODE:-<空>} file=${WLOG_MODE:-<空>}；期望 755 / 750+640 / 2750 / 640）"
+  fi
+
+  # R1 的功能面 + GUI 组边界：GUI_USER 是 `SUDO_USER` 的受控投影（`set -u` 下裸 `$SUDO_USER`
+  # 会直接终止脚本）。root 直登或 `SUDO_USER=root` 无法代表真实 GUI 用户，与 ui_probe_report
+  # 同口径记 FAIL，而不是静默跳过——否则汇总会在「组边界根本没验」时仍显示全绿（fail-closed）。
+  if [[ -z "$GUI_USER" || "$GUI_USER" == "root" ]]; then
+    rec FAIL "GUI 组边界未验证：需经 sudo 从 GUI 用户运行（GUI_USER 缺失或为 root）"
+  else
+    if sudo -u "$GUI_USER" test -x "${INSTALL_DIR}/PhotoPrivacy"; then
+      rec PASS "GUI 用户 ${GUI_USER} 可执行安装目录内的 UI 二进制（${INSTALL_DIR}/PhotoPrivacy）"
+    else
+      rec FAIL "GUI 用户 ${GUI_USER} 无法执行 ${INSTALL_DIR}/PhotoPrivacy——安装目录收紧过头，UI 无法启动"
+    fi
+    # GUI 用户只应进 socket 访问组：进了数据组就等于拿到 2770 的组写权限，可绕过 IPC 删审计/隔离文件。
+    if dseditgroup -o checkmember -m "$GUI_USER" "$SOCKET_GROUP" >/dev/null 2>&1; then
+      rec PASS "GUI 用户 ${GUI_USER} 已在 socket 访问组 ${SOCKET_GROUP}"
+    else
+      rec FAIL "GUI 用户 ${GUI_USER} 不在 socket 访问组 ${SOCKET_GROUP}——服务模式 UI 连不上端点"
+    fi
+    if dseditgroup -o checkmember -m "$GUI_USER" "$SERVICE_GROUP" >/dev/null 2>&1; then
+      rec FAIL "GUI 用户 ${GUI_USER} 仍在数据组 ${SERVICE_GROUP}——可绕过 IPC 直接删审计/隔离文件"
+    else
+      rec PASS "GUI 用户 ${GUI_USER} 未获授数据组 ${SERVICE_GROUP}（无组写）"
+    fi
+  fi
+
+  # 组隔离的第二道事实：socket 访问组与数据组必须是两条不同 GID 的组记录。
+  # 同名/同 GID 的崩坏形态会让 GUI 用户虽然只进了 socket 组，却继承数据组对 hot/quarantine 的 2770
+  # 组写（#180 评审 Major：安装器早期把数据组 GID 复用给 socket 组）。这里按 dscl 记录对拍，
+  # 不依赖安装器自述。放在「服务已起来」分支内：安装失败时早已提前收口，不产出脱离上下文的 PASS。
+  SOCKET_GID="$(group_primary_gid "$SOCKET_GROUP")"
+  SERVICE_GID="$(group_primary_gid "$SERVICE_GROUP")"
+  if [[ -n "$SOCKET_GID" && -n "$SERVICE_GID" \
+    && "$SOCKET_GID" != "$SERVICE_GID" ]]; then
+    rec PASS "socket 访问组 GID 独立于数据组（${SOCKET_GROUP}=${SOCKET_GID} ≠ ${SERVICE_GROUP}=${SERVICE_GID}）"
+  else
+    rec FAIL "socket 访问组 GID 未与数据组分离（${SOCKET_GROUP}=${SOCKET_GID:-<空>}，${SERVICE_GROUP}=${SERVICE_GID:-<空>}）——同 GID 等于同组权限"
+  fi
 else
-  capture 06-socket.txt find "$INSTALL_DIR" \( -name "*.sock" -o -name "*.log" \)
-  # 诊断 HOME 解析分歧：.NET UserProfile 取 HOME/或 passwd home，落点不同 socket 路径就不同
+  capture 06-socket.txt find "$SERVICE_SOCKET_DIR" "${INSTALL_DIR}" \( -name "*.sock" -o -name "*.log" \)
+  # 诊断 HOME 解析分歧：落点若仍停在服务用户 home 下，这里会直接列出那个幽灵 socket。
   CUR_PID="$(get_pid)"
   if [[ -n "$CUR_PID" ]]; then
     capture 06-socket.txt ps eww -p "$CUR_PID"

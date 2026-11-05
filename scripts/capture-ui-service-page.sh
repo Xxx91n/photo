@@ -67,8 +67,16 @@ rm -f "$PNG"
 # #174：本脚本要证明的是「静默启动配置下 --open-page 仍能建窗」。发布包的 config 来自
 # config.sample.json（hide_main_window_on_startup: false），不显式打开这个开关，这条路径
 # 在 CI 上永远测不到。所以用配置副本打开它——安装目录里的 config.json 一字不动。
+# 安装后 config.json 对 GUI 用户不可读（0750/0640，服务账户:数据组，#167 配置写入边界）；
+# 此时不复制受保护配置、也不放宽安装目录权限，改用最小默认配置（各节 serde default）只打开
+# 静默开关。UI 探测腿在加载配置前即返回，同样不依赖安装目录配置。
 UI_CONFIG="${OUT_DIR}/ui-config-${TAG}.json"
-cp "${INSTALL_DIR}/config/config.json" "$UI_CONFIG"
+if [[ -r "${INSTALL_DIR}/config/config.json" ]]; then
+  cp "${INSTALL_DIR}/config/config.json" "$UI_CONFIG"
+else
+  echo "安装目录 config.json 对 GUI 不可读（预期：服务安装后 0750/0640）；截图改用最小默认配置" >&2
+  printf '{\n  "ui": {\n    "hide_main_window_on_startup": true\n  }\n}\n' > "$UI_CONFIG"
+fi
 SILENT_KEY='hide_main_window_on_startup'
 if [[ "$(grep -c "\"${SILENT_KEY}\"" "$UI_CONFIG")" -ne 1 ]]; then
   echo "配置副本里找不到唯一的 ${SILENT_KEY}，无法构造静默启动场景（#174）: ${UI_CONFIG}" >&2
