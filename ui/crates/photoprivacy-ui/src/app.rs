@@ -2973,7 +2973,11 @@ mod tests {
     #[test]
     fn start_timeout_cause_distinguishes_yield_from_true_timeout() {
         assert_eq!(
-            start_timeout_cause(1053, ConnectionState::Connected, Some(WorkerMode::Background)),
+            start_timeout_cause(
+                1053,
+                ConnectionState::Connected,
+                Some(WorkerMode::Background)
+            ),
             StartTimeoutCause::SingleWriterYield
         );
         assert_eq!(
