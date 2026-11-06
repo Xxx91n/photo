@@ -40,7 +40,9 @@ public sealed class InstanceConflictAuditBoundaryTests
             Assert.Contains("审计目录不可写", record!, StringComparison.Ordinal);
             // 降级记录必须保留冲突上下文；缺 requested_mode 会让排障时分不清后台/服务形态。
             Assert.Contains("requested_mode=background", record!, StringComparison.Ordinal);
-            Assert.False(Directory.Exists(audit), "降级路径不得建出审计目录");
+            // 父分量仍是文件：降级不得为了建目录把它替换掉。
+            // （Directory.Exists(audit) 在父分量是文件时结构上恒假，没有鉴别力。）
+            Assert.True(File.Exists(blocker), "降级路径不得改写父分量");
         }
         finally
         {
@@ -71,7 +73,7 @@ public sealed class InstanceConflictAuditBoundaryTests
             Assert.Contains("检测到另一 Worker", record!, StringComparison.Ordinal);
             Assert.Contains("审计目录不可写", record!, StringComparison.Ordinal);
             Assert.Contains("requested_mode=service", record!, StringComparison.Ordinal);
-            Assert.False(Directory.Exists(audit));
+            Assert.True(File.Exists(blocker), "降级路径不得改写父分量");
         }
         finally
         {
