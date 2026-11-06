@@ -13,6 +13,8 @@ description = "PhotoPrivacy 三平台服务状态探测与提权操作（sc/syst
 windows-sys = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_Security",
+    # #200：安装者 SID 取进程令牌 TokenUser 后转字符串（ConvertSidToStringSidW）。
+    "Win32_Security_Authorization",
     "Win32_System_Registry",
     "Win32_System_SystemInformation",
     "Win32_System_Threading",
