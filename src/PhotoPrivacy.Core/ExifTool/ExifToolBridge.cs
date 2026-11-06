@@ -842,6 +842,15 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
         }
     }
 
+    /// <summary>
+    /// stdout pump 的归属点：一句 stdout 要么是某命令块的 <c>-echo1</c> 回显（认领成「该块已开始处理」），
+    /// 要么是「最近被回显那一块」窗口内的输出（收进它的收集器，只有探测块收），要么是块结束信号
+    /// <c>{ready}</c> —— 后者不带块身份，交给 <see cref="CompleteBlockJustEchoed"/> 按位置结清。
+    ///
+    /// marker 认领一律<b>整行相等</b>：擦除 / 探测的 id 是桥内自增整数，marker 之间互为前缀
+    /// （<c>TASK_DONE_1</c> ⊂ <c>TASK_DONE_12</c>、<c>PROBE_DONE_1</c> ⊂ <c>PROBE_DONE_10</c>，
+    /// 见 #97 / #111）。别块的 marker 回显行不是数据，不收进任何块的收集器。
+    /// </summary>
     private void OnStdoutLine(string line)
     {
         // {ready} 是 ExifTool 的块结束信号：本块的输出与写盘到此才保证完成。
