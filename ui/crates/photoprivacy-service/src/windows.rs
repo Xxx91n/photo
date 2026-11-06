@@ -1023,6 +1023,15 @@ mod tests {
         }
     }
 
+    /// 防裸名劫持（#58）：提权通道里的程序必须来自 System32 的系统程序。
+    fn is_system32_program(program: &str) -> bool {
+        let lower = program.to_ascii_lowercase();
+        if !lower.contains("\\system32\\") {
+            return false;
+        }
+        lower.ends_with("\\sc.exe") || lower.ends_with("\\powershell.exe")
+    }
+
     fn ok() -> CommandOutput {
         CommandOutput {
             exit_code: Some(0),
@@ -1180,16 +1189,10 @@ mod tests {
         );
         let _ = ops_elevated.uninstall();
         assert!(runner.programs().is_empty(), "非管理员时卸装应走提权路径");
-        assert!(
-            elevated
-                .programs()
-                .iter()
-                .all(|program| {
-                    let program = program.to_ascii_lowercase();
-                    program.contains("\\system32\\")
-                        && (program.ends_with("\\sc.exe") || program.ends_with("\\powershell.exe"))
-                })
-        );
+        assert!(elevated
+            .programs()
+            .iter()
+            .all(|program| is_system32_program(program)));
 
         let (ops_direct, runner, _) = ops(
             ServiceRuntimeState::Running,
@@ -1198,16 +1201,10 @@ mod tests {
             RecordingElevated::default(),
         );
         let _ = ops_direct.uninstall();
-        assert!(
-            runner
-                .programs()
-                .iter()
-                .all(|program| {
-                    let program = program.to_ascii_lowercase();
-                    program.contains("\\system32\\")
-                        && (program.ends_with("\\sc.exe") || program.ends_with("\\powershell.exe"))
-                })
-        );
+        assert!(runner
+            .programs()
+            .iter()
+            .all(|program| is_system32_program(program)));
     }
 
     #[test]
@@ -1537,7 +1534,8 @@ mod tests {
         let programs = elevated.programs();
         assert_eq!(programs.len(), 2, "registration + create: {programs:?}");
         assert!(programs[0].ends_with(r"WindowsPowerShell\v1.0\powershell.exe"));
-        assert!(programs[1].to_ascii_lowercase().ends_with(r"\system32\sc.exe"));
+        let sc_program = programs[1].to_ascii_lowercase();
+        assert!(sc_program.ends_with(r"\system32\sc.exe"));
         assert_eq!(runner.calls().len(), 0, "both steps must go through runas");
 
         let registration_args = &elevated.calls()[0];
@@ -1692,7 +1690,8 @@ mod tests {
 
         let programs = elevated.programs();
         assert_eq!(programs.len(), 2, "delete + cleanup: {programs:?}");
-        assert!(programs[0].to_ascii_lowercase().ends_with(r"\system32\sc.exe"));
+        let sc_program = programs[0].to_ascii_lowercase();
+        assert!(sc_program.ends_with(r"\system32\sc.exe"));
         assert!(programs[1].ends_with(r"WindowsPowerShell\v1.0\powershell.exe"));
 
         let cleanup_script = elevated.calls()[1].last().cloned().unwrap_or_default();
