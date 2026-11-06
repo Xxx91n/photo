@@ -206,9 +206,13 @@ impl InstallerSidRegistry for WindowsInstallerSidRegistry {
 
     fn clear(&self) -> Result<(), String> {
         let key = open_acl_key()?;
-        let result = [INSTALLER_SID_VALUE, ALLOWED_SIDS_VALUE, ADVERTISED_PIPE_VALUE]
-            .iter()
-            .try_for_each(|name| delete_value(key, name));
+        let result = [
+            INSTALLER_SID_VALUE,
+            ALLOWED_SIDS_VALUE,
+            ADVERTISED_PIPE_VALUE,
+        ]
+        .iter()
+        .try_for_each(|name| delete_value(key, name));
         unsafe { RegCloseKey(key) };
         result.map_err(describe_registry_error)
     }
@@ -289,17 +293,15 @@ fn describe_registry_error(code: u32) -> String {
     }
 }
 
-fn wide(text: &str) -> Vec<u16> {
-    text.encode_utf16().chain(std::iter::once(0)).collect()
-}
-
 fn system32_directory() -> Option<PathBuf> {
     let mut buffer = [0u16; 260];
     let len = unsafe { GetSystemDirectoryW(buffer.as_mut_ptr(), buffer.len() as u32) };
     if len == 0 || len as usize >= buffer.len() {
         return None;
     }
-    Some(PathBuf::from(String::from_utf16_lossy(&buffer[..len as usize])))
+    Some(PathBuf::from(String::from_utf16_lossy(
+        &buffer[..len as usize],
+    )))
 }
 
 /// 提权登记走系统自带 Windows PowerShell（#200）：不依赖发布目录里的脚本，也不走 PATH 搜索。
@@ -364,13 +366,17 @@ fn open_acl_key() -> Result<HKEY, String> {
 
 fn set_value_bytes(key: HKEY, name: &str, kind: u32, data: &[u8]) -> Result<(), u32> {
     let name = wide(name);
-    let status =
-        unsafe { RegSetValueExW(key, name.as_ptr(), 0, kind, data.as_ptr(), data.len() as u32) };
-    if status == 0 {
-        Ok(())
-    } else {
-        Err(status)
-    }
+    let status = unsafe {
+        RegSetValueExW(
+            key,
+            name.as_ptr(),
+            0,
+            kind,
+            data.as_ptr(),
+            data.len() as u32,
+        )
+    };
+    if status == 0 { Ok(()) } else { Err(status) }
 }
 
 fn set_string_value(key: HKEY, name: &str, value: &str) -> Result<(), u32> {
@@ -676,8 +682,7 @@ impl ServiceOps for WindowsOps {
         // #200：服务已不在时（1060）也要清掉遗留登记，否则陈旧 SID 会继续被当作管道授权来源；
         // 提权被取消则保持原样，避免服务仍在运行却把登记清空。
         let service_gone = matches!(deleted.status, ServiceCommandStatus::Success)
-            || (deleted.status == ServiceCommandStatus::Failed
-                && deleted.exit_code == Some(1060));
+            || (deleted.status == ServiceCommandStatus::Failed && deleted.exit_code == Some(1060));
         if !service_gone {
             return deleted;
         }
@@ -1425,8 +1430,16 @@ mod tests {
         let result = ops.install(Some(worker.as_path()), Some(config.as_path()));
 
         assert_eq!(result.status, ServiceCommandStatus::Failed);
-        assert!(result.message.contains("Unable to resolve the installing user SID"));
-        assert!(result.message.contains("ConvertSidToStringSidW failed (87)"));
+        assert!(
+            result
+                .message
+                .contains("Unable to resolve the installing user SID")
+        );
+        assert!(
+            result
+                .message
+                .contains("ConvertSidToStringSidW failed (87)")
+        );
         assert!(runner.calls().is_empty(), "abort must not touch sc.exe");
         assert!(elevated.calls().is_empty(), "abort must not prompt for UAC");
         assert!(acl.registered().is_empty());
@@ -1471,10 +1484,17 @@ mod tests {
         let result = ops.install(Some(worker.as_path()), Some(config.as_path()));
 
         assert_eq!(result.status, ServiceCommandStatus::Failed);
-        assert!(result.message.contains("Unable to register the service pipe ACL"));
+        assert!(
+            result
+                .message
+                .contains("Unable to register the service pipe ACL")
+        );
         assert!(result.message.contains("access denied (5)"));
         assert!(result.message.contains("the service was not installed"));
-        assert!(runner.calls().is_empty(), "registration failure must abort before sc.exe");
+        assert!(
+            runner.calls().is_empty(),
+            "registration failure must abort before sc.exe"
+        );
         assert!(acl.registered().is_empty());
         cleanup_worker(&worker);
     }
@@ -1555,7 +1575,11 @@ mod tests {
 
         assert_eq!(result.status, ServiceCommandStatus::Failed);
         assert_eq!(acl.registered(), vec![TEST_INSTALLER_SID.to_string()]);
-        assert_eq!(acl.clear_calls(), 1, "failed create must roll the registration back");
+        assert_eq!(
+            acl.clear_calls(),
+            1,
+            "failed create must roll the registration back"
+        );
         cleanup_worker(&worker);
     }
 
@@ -1646,7 +1670,11 @@ mod tests {
         let result = ops.uninstall();
 
         assert_eq!(result.status, ServiceCommandStatus::Success);
-        assert_eq!(acl.clear_calls(), 0, "non-elevated UI must not clear HKLM directly");
+        assert_eq!(
+            acl.clear_calls(),
+            0,
+            "non-elevated UI must not clear HKLM directly"
+        );
         assert_eq!(runner.calls().len(), 0);
 
         let programs = elevated.programs();

@@ -88,8 +88,7 @@ pub fn platform_manager(worker: Option<PathBuf>, config: Option<PathBuf>) -> Ser
 fn platform_manager_windows(worker: Option<PathBuf>, config: Option<PathBuf>) -> ServiceManager {
     use crate::process::SystemProcessRunner;
     use crate::windows::{
-        RealAdminChecker, ShellExecuteRunner, WindowsInstallerSidRegistry, WindowsOps,
-        WindowsProbe,
+        RealAdminChecker, ShellExecuteRunner, WindowsInstallerSidRegistry, WindowsOps, WindowsProbe,
     };
 
     let runner = Arc::new(SystemProcessRunner);
