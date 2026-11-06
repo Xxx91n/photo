@@ -184,6 +184,26 @@ pub trait InstallerSidRegistry: Send + Sync {
     fn register(&self, sid: &str) -> Result<(), String>;
     /// 清除 InstallerSid / AllowedSids / ServicePipeName 三项登记。
     fn clear(&self) -> Result<(), String>;
+    /// 读既有登记作为安装失败时的恢复快照；实现不得为了读取而创建注册表键。
+    fn snapshot(&self) -> Result<InstallerRegistration, String>;
+    /// 安装失败收尾：把登记恢复成 `previous` 的样子。
+    ///
+    /// 只有登记项仍是本尝试写入的 `attempted_sid` 时才恢复——若并发安装者已经改成自己的
+    /// SID，就保留对方的值，避免拿本次的旧快照覆盖别人的新登记。
+    fn rollback(
+        &self,
+        previous: &InstallerRegistration,
+        attempted_sid: &str,
+    ) -> Result<(), String>;
+}
+
+/// 安装前的登记快照：`None` 表示该项本来不存在，恢复时应当删除而不是写成空串。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct InstallerRegistration {
+    /// 安装前的 `InstallerSid` 值。
+    pub installer_sid: Option<String>,
+    /// 安装前的 `AllowedSids` 值。
+    pub allowed_sids: Option<Vec<String>>,
 }
 
 pub struct WindowsInstallerSidRegistry;
@@ -236,6 +256,40 @@ impl InstallerSidRegistry for WindowsInstallerSidRegistry {
         ]
         .iter()
         .try_for_each(|name| delete_value(key, name));
+        unsafe { RegCloseKey(key) };
+        result.map_err(describe_registry_error)
+    }
+
+    fn snapshot(&self) -> Result<InstallerRegistration, String> {
+        let (installer_sid, allowed_sids) = read_acl_registration()?;
+        Ok(InstallerRegistration {
+            installer_sid,
+            allowed_sids,
+        })
+    }
+
+    fn rollback(
+        &self,
+        previous: &InstallerRegistration,
+        attempted_sid: &str,
+    ) -> Result<(), String> {
+        // 键不存在说明本次登记已被移除，没有可恢复的内容，也不该为回滚新建空键。
+        let Some(existing) = open_acl_key_read()? else {
+            return Ok(());
+        };
+        let current = read_string_value(existing, INSTALLER_SID_VALUE);
+        unsafe { RegCloseKey(existing) };
+        if !matches!(current, Ok(Some(ref sid)) if sid == attempted_sid) {
+            // 读不到或登记已不是本尝试写下的值：并发安装者改了它，保留对方的值。
+            return current.map(|_| ()).map_err(describe_registry_error);
+        }
+
+        let key = open_acl_key()?;
+        let result = restore_registration_values(
+            key,
+            previous.installer_sid.as_deref(),
+            previous.allowed_sids.as_deref(),
+        );
         unsafe { RegCloseKey(key) };
         result.map_err(describe_registry_error)
     }
@@ -758,6 +812,23 @@ impl ServiceOps for WindowsOps {
             return precheck;
         }
 
+        // 快照必须在 register 之前读：失败退出时用它把登记恢复原状，
+        // 而不是给 HKLM 留下指向不存在服务的授权值。读不到快照时退回「清掉本次登记」的旧语义。
+        let previous_registration = self.acl.snapshot().unwrap_or_default();
+        let rollback_registration = |status: ServiceCommandResult| -> ServiceCommandResult {
+            match self.acl.rollback(&previous_registration, &installer_sid) {
+                Ok(()) => status,
+                Err(reason) => ServiceCommandResult {
+                    message: format!(
+                        "{} The service pipe ACL registration left by this attempt could not be \
+                         rolled back ({reason}).",
+                        status.message
+                    ),
+                    ..status
+                },
+            }
+        };
+
         // #200 AC2：与 scripts/install-service.ps1 同格式落登记，写不进就不装——
         // 否则服务建好了却只有提权会话能连，用户看到「安装成功」却用不了。
         if let Err(reason) = self.register_installer_sid(&installer_sid) {
@@ -780,7 +851,9 @@ impl ServiceOps for WindowsOps {
             // 旧 UI 的竞态兜底：清理窗口里服务又被安装回来时，再删一次再 create。
             let retry = self.ensure_removed_before_install();
             if retry.status != ServiceCommandStatus::Success {
-                return retry;
+                // 重试停/删失败或用户取消：服务没建成，本次写下的登记也必须撤回，
+                // 否则被安装回来的服务会拿它当管道 ACL 来源。
+                return rollback_registration(retry);
             }
             create = self.run_sc(args, true);
         }
@@ -789,19 +862,7 @@ impl ServiceOps for WindowsOps {
         if created.status == ServiceCommandStatus::Success {
             return created;
         }
-
-        // 服务没建成：回滚刚写下的登记，避免 HKLM 里留下指向不存在服务的授权值。
-        if let Err(reason) = self.clear_installer_sid() {
-            return ServiceCommandResult {
-                message: format!(
-                    "{} The service pipe ACL registration left by this attempt could not be \
-                     rolled back ({reason}).",
-                    created.message
-                ),
-                ..created
-            };
-        }
-        created
+        rollback_registration(created)
     }
 
     fn start(&self, worker: Option<&Path>, config: Option<&Path>) -> ServiceCommandResult {
@@ -1140,6 +1201,7 @@ mod tests {
         register_error: Mutex<Option<String>>,
         clear_error: Mutex<Option<String>>,
         registered: Mutex<Vec<String>>,
+        registration: Mutex<InstallerRegistration>,
         clear_calls: Mutex<u32>,
     }
 
@@ -1170,6 +1232,20 @@ mod tests {
             self.registered.lock().unwrap().clone()
         }
 
+        /// 预置一次「安装前已存在的登记」，用于验证失败恢复。
+        fn with_existing_registration(sid: &str) -> Self {
+            let acl = Self::default();
+            *acl.registration.lock().unwrap() = InstallerRegistration {
+                installer_sid: Some(sid.to_string()),
+                allowed_sids: Some(vec![sid.to_string()]),
+            };
+            acl
+        }
+
+        fn registration(&self) -> InstallerRegistration {
+            self.registration.lock().unwrap().clone()
+        }
+
         fn clear_calls(&self) -> u32 {
             *self.clear_calls.lock().unwrap()
         }
@@ -1188,10 +1264,40 @@ mod tests {
                 return Err(error);
             }
             self.registered.lock().unwrap().push(sid.to_string());
+            *self.registration.lock().unwrap() = InstallerRegistration {
+                installer_sid: Some(sid.to_string()),
+                allowed_sids: Some(vec![sid.to_string()]),
+            };
             Ok(())
         }
 
         fn clear(&self) -> Result<(), String> {
+            *self.clear_calls.lock().unwrap() += 1;
+            match self.clear_error.lock().unwrap().clone() {
+                Some(error) => Err(error),
+                None => {
+                    *self.registration.lock().unwrap() = InstallerRegistration::default();
+                    Ok(())
+                }
+            }
+        }
+
+        fn snapshot(&self) -> Result<InstallerRegistration, String> {
+            Ok(self.registration())
+        }
+
+        fn rollback(
+            &self,
+            previous: &InstallerRegistration,
+            attempted_sid: &str,
+        ) -> Result<(), String> {
+            let mut current = self.registration.lock().unwrap();
+            if current.installer_sid.as_deref() != Some(attempted_sid) {
+                // 已被并发安装者改写：保留对方的值，不拿旧快照覆盖。
+                return Ok(());
+            }
+            *current = previous.clone();
+            drop(current);
             *self.clear_calls.lock().unwrap() += 1;
             match self.clear_error.lock().unwrap().clone() {
                 Some(error) => Err(error),
@@ -1772,7 +1878,77 @@ mod tests {
             1,
             "failed create must roll the registration back"
         );
+        assert_eq!(
+            acl.registration(),
+            InstallerRegistration::default(),
+            "rollback must not leave the SID of a service that was never created"
+        );
         cleanup_worker(&worker);
+    }
+
+    #[test]
+    fn install_failure_restores_the_registration_it_found() {
+        // 返修（PR #217 review）：既有登记是别人的授权，安装失败要恢复它，不能连带清空。
+        let previous_sid = "S-1-5-21-111111111-222222222-333333333-1002";
+        let (ops, _, acl, _) = ops_with_acl(
+            ServiceRuntimeState::NotInstalled,
+            vec![code(5)],
+            true,
+            RecordingElevated::default(),
+            FakeAcl::with_existing_registration(previous_sid),
+        );
+
+        let worker = temp_worker();
+        let config = std::path::PathBuf::from(r"C:\cfg\config.json");
+        let result = ops.install(Some(worker.as_path()), Some(config.as_path()));
+
+        assert_eq!(result.status, ServiceCommandStatus::Failed);
+        assert_eq!(acl.registration().installer_sid.as_deref(), Some(previous_sid));
+        assert_eq!(
+            acl.registration().allowed_sids.as_deref(),
+            Some(&[previous_sid.to_string()][..])
+        );
+        cleanup_worker(&worker);
+    }
+
+    #[test]
+    fn install_failure_after_removal_retry_restores_the_registration() {
+        // 返修（PR #217 review）：1073 兜底重试里停/删失败也属「服务没建成」，
+        // 本次写下的登记同样必须撤回，否则被装回来的服务会拿它当管道 ACL 来源。
+        let previous_sid = "S-1-5-21-111111111-222222222-333333333-1002";
+        let (ops, _, acl, _) = ops_with_acl(
+            ServiceRuntimeState::Running,
+            vec![code(0), code(0), code(1073), code(5)],
+            true,
+            RecordingElevated::default(),
+            FakeAcl::with_existing_registration(previous_sid),
+        );
+
+        let worker = temp_worker();
+        let config = std::path::PathBuf::from(r"C:\cfg\config.json");
+        let result = ops.install(Some(worker.as_path()), Some(config.as_path()));
+
+        assert_eq!(result.status, ServiceCommandStatus::Failed);
+        assert_eq!(
+            acl.registration().installer_sid.as_deref(),
+            Some(previous_sid),
+            "cancelled or failed removal retry must roll the registration back"
+        );
+        cleanup_worker(&worker);
+    }
+
+    #[test]
+    fn rollback_keeps_a_registration_written_by_another_installer() {
+        // 返修（PR #217 review）：并发安装者已改成自己的 SID，旧快照回滚不得覆盖它。
+        let other_sid = "S-1-5-21-111111111-222222222-333333333-1002";
+        let acl = FakeAcl::healthy();
+        acl.register(other_sid).unwrap();
+        let snapshot = InstallerRegistration::default();
+
+        acl.rollback(&snapshot, TEST_INSTALLER_SID).unwrap();
+
+        assert_eq!(acl.registration().installer_sid.as_deref(), Some(other_sid));
+        assert_eq!(acl.clear_calls(), 0, "must not touch another install's SID");
     }
 
     #[test]
