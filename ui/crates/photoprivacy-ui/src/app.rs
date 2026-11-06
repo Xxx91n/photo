@@ -12,7 +12,7 @@ use gpui::prelude::*;
 use gpui::{
     AnyElement, App, Bounds, BoxShadow, ClipboardItem, Context, CursorStyle, Div, FocusHandle,
     FontWeight, IntoElement, KeyBinding, KeyDownEvent, MouseButton, PathPromptOptions, Pixels,
-    Render, Rgba, ScrollHandle, Stateful, StyleRefinement, Styled, Subscription,
+    Render, Rgba, ScrollHandle, ScrollStrategy, Stateful, StyleRefinement, Styled, Subscription,
     UniformListScrollHandle, Window, actions, div, px, uniform_list,
 };
 use photoprivacy_ipc::{
@@ -565,6 +565,9 @@ pub struct AppView {
     service_commands: mpsc::UnboundedSender<ServiceCommand>,
     log_service: LogService,
     log_scroll: UniformListScrollHandle,
+    /// 日志行复制按钮的稳定焦点句柄（entry_index → 句柄）：虚拟列表 Tab 边界滚动跟进
+    /// 需要按行反查/直取相邻行句柄（见 `Self::step_log_copy_focus`）。
+    log_copy_focus: RefCell<HashMap<usize, FocusHandle>>,
     config_state: Rc<RefCell<ConfigUiState>>,
     config_commands: mpsc::UnboundedSender<ConfigCommand>,
     config_path: PathBuf,
@@ -644,6 +647,7 @@ impl AppView {
             service_commands,
             log_service,
             log_scroll: UniformListScrollHandle::new(),
+            log_copy_focus: RefCell::new(HashMap::new()),
             config_state,
             config_commands,
             config_path,
@@ -677,16 +681,98 @@ impl AppView {
         i18n::is_rtl(&self.config.ui.locale)
     }
 
-    /// Tab：焦点移到下一个 tab stop（依渲染顺序循环），随后把聚焦控件滚入视口。
+    /// Tab：日志列表边界滚动跟进优先（见 `Self::step_log_copy_focus`），其余走焦点遍历，
+    /// 随后把聚焦控件滚入配置页视口。
     fn on_focus_next(&mut self, _action: &FocusNext, window: &mut Window, cx: &mut Context<Self>) {
-        window.focus_next(cx);
-        self.reveal_focused(window, cx);
+        if !self.step_log_copy_focus(true, window, cx) {
+            window.focus_next(cx);
+            self.reveal_focused(window, cx);
+        }
     }
 
-    /// Shift+Tab：焦点移到上一个 tab stop（反向循环），随后把聚焦控件滚入视口。
+    /// Shift+Tab：日志列表边界对称回退（见 `Self::step_log_copy_focus`），其余走焦点遍历。
     fn on_focus_prev(&mut self, _action: &FocusPrev, window: &mut Window, cx: &mut Context<Self>) {
-        window.focus_prev(cx);
-        self.reveal_focused(window, cx);
+        if !self.step_log_copy_focus(false, window, cx) {
+            window.focus_prev(cx);
+            self.reveal_focused(window, cx);
+        }
+    }
+
+    /// 日志行复制按钮的稳定焦点句柄：按 entry_index 登记创建（tab_stop 已置），跨渲染身份不变。
+    fn log_copy_handle(&self, entry_index: usize, cx: &mut Context<Self>) -> FocusHandle {
+        self.log_copy_focus
+            .borrow_mut()
+            .entry(entry_index)
+            .or_insert_with(|| cx.focus_handle().tab_stop(true))
+            .clone()
+    }
+
+    /// 反查句柄归属：是日志行复制按钮时返回其 entry_index。
+    fn log_copy_entry_of(&self, handle: &FocusHandle) -> Option<usize> {
+        self.log_copy_focus
+            .borrow()
+            .iter()
+            .find(|(_, candidate)| *candidate == handle)
+            .map(|(entry, _)| *entry)
+    }
+
+    // Design(#119): 虚拟列表只把可见行的复制按钮登记进 tab 链，末个可见行再按 Tab 会在
+    // 到达后续行之前回绕——移焦后检测回绕（焦点不再是日志行按钮），其后（前）仍有行就
+    // 滚动揭示相邻行并聚焦其复制按钮；已是过滤列表首/末行则不接管，Tab 照常离开列表。
+    // 返回 true 表示本次 Tab 已完全处置（列表内步进或边界跟进），调用方不再 focus_next/prev。
+    fn step_log_copy_focus(
+        &self,
+        forward: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(before) = window.focused(cx) else {
+            return false;
+        };
+        let Some(entry_index) = self.log_copy_entry_of(&before) else {
+            return false;
+        };
+        let state = self.log_state.borrow();
+        let visible = &state.visible_indices;
+        let position = match visible.iter().position(|entry| *entry == entry_index) {
+            Some(position) => position,
+            // 过滤变化后残留的陈旧焦点（行已不在列表）按默认移焦路径走。
+            None => return false,
+        };
+        let next_position = if forward {
+            position.checked_add(1)
+        } else {
+            position.checked_sub(1)
+        };
+        let next_position = match next_position {
+            Some(next_position) if next_position < visible.len() => next_position,
+            // 已是过滤列表首/末行：不接管，焦点遍历自然回绕离开列表。
+            _ => return false,
+        };
+        let next_entry = visible[next_position];
+        drop(state);
+        if forward {
+            window.focus_next(cx);
+        } else {
+            window.focus_prev(cx);
+        }
+        if let Some(after) = window.focused(cx)
+            && self.log_copy_entry_of(&after).is_some()
+        {
+            // 下一行已渲染：列表内正常步进，处置完毕。
+            return true;
+        }
+        // 回绕离表且仍有相邻行：滚动揭示并聚焦其复制按钮（deferred scroll 随下一帧生效）。
+        let strategy = if forward {
+            ScrollStrategy::Bottom
+        } else {
+            ScrollStrategy::Top
+        };
+        self.log_scroll.scroll_to_item(next_position, strategy);
+        let next_focus = self.log_copy_handle(next_entry, cx);
+        window.focus(&next_focus, cx);
+        cx.notify();
+        true
     }
 
     /// 配置页控件的焦点接线：从登记表取稳定句柄 + 布局探针（跨渲染身份不变）。
@@ -819,6 +905,7 @@ impl AppView {
         let generation = state.generation;
         drop(state);
         self.log_scroll = UniformListScrollHandle::new();
+        self.log_copy_focus.borrow_mut().clear();
         self.log_service.clear(generation);
     }
 
@@ -2039,6 +2126,7 @@ impl AppView {
                         "copy-error".to_string(),
                         &error,
                         k::STATUS_COPY_ERROR,
+                        None,
                         theme,
                         cx,
                     ))
@@ -2347,6 +2435,7 @@ impl AppView {
             entry.time_text, entry.display_event, entry.source_path_masked, entry.message
         );
         let button_id = format!("copy-log-{entry_index}");
+        let row_focus = self.log_copy_handle(entry_index, cx);
         div()
             .h(px(40.))
             .w_full()
@@ -2397,23 +2486,33 @@ impl AppView {
                     .text_color(theme.text)
                     .child(entry.message.clone()),
             )
-            .child(self.copy_button(button_id, &copy_text, k::LOG_BTN_COPY, theme, cx))
+            .child(self.copy_button(
+                button_id,
+                &copy_text,
+                k::LOG_BTN_COPY,
+                Some(row_focus),
+                theme,
+                cx,
+            ))
     }
 
     /// 构造统一风格的复制按钮：点击后复制 `text` 到剪贴板，反馈期间按钮文字变为"已复制"。
     /// `id` 同时用作 gpui 元素 ID 和反馈归属判定，须保证同帧内唯一。
+    /// `focus` 传 `Some` 时用登记句柄（虚拟列表行的边界滚动跟进需要按行反查/直取），
+    /// 传 `None` 时用元素自带句柄，两者焦点链行为一致。
     fn copy_button(
         &self,
         id: String,
         text: &str,
         label_key: &str,
+        focus: Option<FocusHandle>,
         theme: &Theme,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
         let copy_text = text.to_string();
         let feedback = self.copy_feedback_for(&id);
         let button_id = id.clone();
-        div()
+        let button = div()
             .id(id)
             .px(px(8.))
             .py(px(2.))
@@ -2423,11 +2522,14 @@ impl AppView {
             .text_size(px(11.))
             .text_color(theme.text_muted)
             .hover(|element| element.bg(theme.surface_raised).text_color(theme.text))
-            .cursor_pointer()
-            // Design(#119): 复制按钮是可交互控件，必须入焦点链（focusable + tab_stop +
-            // 焦点环）；Enter/Space 经 gpui 合成点击与鼠标同效。无底色描边取默认强调色。
-            .focusable()
-            .tab_stop(true)
+            .cursor_pointer();
+        let button = match focus {
+            Some(focus) => button.track_focus(&focus),
+            None => button.focusable().tab_stop(true),
+        };
+        // Design(#119): 复制按钮是可交互控件，必须入焦点链（track_focus/focusable + tab_stop
+        // + 焦点环）；Enter/Space 经 gpui 合成点击与鼠标同效。无底色描边取默认强调色。
+        button
             .focus(focus_ring(theme.accent))
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.copy_to_clipboard(&button_id, &copy_text, cx);
@@ -3378,18 +3480,37 @@ mod tests {
         );
     }
 
-    /// 往日志页共享状态注入一条 Info 级审计记录并重建可见索引（测试装配，生产走 LogService）。
-    fn inject_log_record(cx: &mut TestAppContext, window: WindowHandle<AppView>) {
+    /// 往日志页共享状态注入 `count` 条 Info 级审计记录并重建可见索引（测试装配，生产走 LogService）。
+    fn inject_log_records(cx: &mut TestAppContext, window: WindowHandle<AppView>, count: usize) {
         window
             .update(cx, |view, _, _| {
-                let record = photoprivacy_logs::parse_line(
-                    r#"{"event_type":"file_detected","level":"INFO","timestamp_utc":"2026-11-06T00:00:00Z","source_path_masked":"C:/p.jpg","message":"复制我"}"#,
-                )
-                .expect("样例审计行应可解析");
-                view.log_state.borrow_mut().logs.push_batch([record]);
+                let records = (0..count)
+                    .map(|seq| {
+                        photoprivacy_logs::parse_line(&format!(
+                            r#"{{"event_type":"file_detected","level":"INFO","timestamp_utc":"2026-11-06T00:00:{seq:02}Z","source_path_masked":"C:/p.jpg","message":"行{seq}"}}"#,
+                        ))
+                        .expect("样例审计行应可解析")
+                    })
+                    .collect::<Vec<_>>();
+                view.log_state.borrow_mut().logs.push_batch(records);
                 view.rebuild_visible();
             })
             .unwrap();
+    }
+
+    /// 当前焦点对应的日志行 entry_index；焦点不在日志行复制按钮上时 `None`。
+    fn focused_log_entry(cx: &mut TestAppContext, window: WindowHandle<AppView>) -> Option<usize> {
+        let any_window: AnyWindowHandle = window.into();
+        let focused = focused(cx, any_window)?;
+        window
+            .update(cx, |view, _, _| {
+                view.log_copy_focus
+                    .borrow()
+                    .iter()
+                    .find(|(_, handle)| *handle == &focused)
+                    .map(|(entry, _)| *entry)
+            })
+            .unwrap()
     }
 
     /// Tab 走到日志行复制按钮并按 Enter 复制（#119 AC1/AC2）：
@@ -3399,7 +3520,7 @@ mod tests {
     fn tab_reaches_log_copy_button_and_enter_copies() {
         let (mut cx, window) = setup();
         let any_window: AnyWindowHandle = window.into();
-        inject_log_record(&mut cx, window);
+        inject_log_records(&mut cx, window, 1);
 
         // 切到日志页（第 4 个导航项）
         for _ in 0..4 {
@@ -3428,7 +3549,7 @@ mod tests {
         );
         let clipboard = cx.read(|cx| cx.read_from_clipboard().and_then(|item| item.text()));
         assert!(
-            clipboard.as_ref().is_some_and(|text| text.contains("复制我")),
+            clipboard.as_ref().is_some_and(|text| text.contains("行0")),
             "剪贴板应包含日志行文本，实际 {clipboard:?}"
         );
         let (page, log_len) = window
@@ -3522,6 +3643,108 @@ mod tests {
         assert!(
             control_in_view(&mut cx, window, &top),
             "反向回顶后顶部字段也应在视口内"
+        );
+    }
+
+    /// 日志超过一屏时连续 Tab 逐行下探到屏幕外的复制按钮，末行之后回绕离开列表
+    /// （#119 CodeRabbit 审计项：虚拟列表只登记可见行，边界必须滚动跟进而非回绕）。
+    #[test]
+    fn tab_walks_off_screen_log_copy_buttons_without_wrapping() {
+        let (mut cx, window) = setup();
+        let any_window: AnyWindowHandle = window.into();
+        // 60 行 × 40px ≈ 2400px，远超任何测试窗口高度，必然跨屏。
+        inject_log_records(&mut cx, window, 60);
+
+        // 切到日志页（第 4 个导航项），再走 11 跳到首行复制按钮（第 15 站）。
+        for _ in 0..4 {
+            press_tab(&mut cx, any_window, true);
+        }
+        press_activation_key(&mut cx, any_window, "enter");
+        draw(&mut cx, any_window);
+        for _ in 0..11 {
+            press_tab(&mut cx, any_window, true);
+        }
+        assert_eq!(
+            focused_log_entry(&mut cx, window),
+            Some(0),
+            "11 跳后应落在首行复制按钮"
+        );
+
+        // 逐行下探：每次 Tab 焦点都落在下一行（跨屏行由边界滚动跟进揭示），不回绕。
+        for expected in 1..60 {
+            press_tab(&mut cx, any_window, true);
+            assert_eq!(
+                focused_log_entry(&mut cx, window),
+                Some(expected),
+                "第 {expected} 次 Tab 应落到 entry {expected} 的复制按钮而不是回绕"
+            );
+        }
+
+        // 末行（entry 59）之后 Tab 离开日志列表，不再有下一行。
+        press_tab(&mut cx, any_window, true);
+        assert_eq!(
+            focused_log_entry(&mut cx, window),
+            None,
+            "末行之后 Tab 应回绕离开日志列表"
+        );
+        let page = window.update(&mut cx, |view, _, _| view.page).unwrap();
+        assert_eq!(page, Page::Logs, "逐行下探全程不应切换页面");
+    }
+
+    /// Shift+Tab 对称回退：从屏幕外逐行回退到首行，首行再往上回绕离表落在清空按钮上
+    /// （#119 CodeRabbit 审计项的反向面）。
+    #[test]
+    fn shift_tab_walks_back_off_screen_rows_and_leaves_list_at_first_row() {
+        let (mut cx, window) = setup();
+        let any_window: AnyWindowHandle = window.into();
+        inject_log_records(&mut cx, window, 60);
+
+        // 切到日志页，11 跳到首行后向下跨过可见边界走到 entry 20。
+        for _ in 0..4 {
+            press_tab(&mut cx, any_window, true);
+        }
+        press_activation_key(&mut cx, any_window, "enter");
+        draw(&mut cx, any_window);
+        for _ in 0..11 {
+            press_tab(&mut cx, any_window, true);
+        }
+        for expected in 1..=20 {
+            press_tab(&mut cx, any_window, true);
+            assert_eq!(
+                focused_log_entry(&mut cx, window),
+                Some(expected),
+                "下探第 {expected} 行失败"
+            );
+        }
+
+        // Shift+Tab 逐行回退到首行（含屏幕外行由边界滚动跟进揭示）。
+        for expected in (0..20).rev() {
+            press_tab(&mut cx, any_window, false);
+            assert_eq!(
+                focused_log_entry(&mut cx, window),
+                Some(expected),
+                "回退应落到 entry {expected} 的复制按钮而不是回绕"
+            );
+        }
+
+        // 首行再 Shift+Tab 离开列表向上：落点是清空按钮（Enter 应触发清空）。
+        press_tab(&mut cx, any_window, false);
+        assert_eq!(
+            focused_log_entry(&mut cx, window),
+            None,
+            "首行之后 Shift+Tab 应回绕离开日志列表"
+        );
+        let generation_before = window
+            .update(&mut cx, |view, _, _| view.log_state.borrow().generation)
+            .unwrap();
+        press_activation_key(&mut cx, any_window, "enter");
+        draw(&mut cx, any_window);
+        let generation_after = window
+            .update(&mut cx, |view, _, _| view.log_state.borrow().generation)
+            .unwrap();
+        assert_ne!(
+            generation_before, generation_after,
+            "离表向上应落在清空按钮上且 Enter 触发清空"
         );
     }
 }
