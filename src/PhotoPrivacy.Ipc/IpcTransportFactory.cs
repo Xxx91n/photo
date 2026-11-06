@@ -36,8 +36,11 @@ public static class IpcTransportFactory
 
     /// <summary>
     /// Resolve the endpoint name based on OS and runtime mode (Service vs Background).
+    /// Linux 背景端点随 <c>XDG_RUNTIME_DIR</c> 解析（#201）：缺失/空/非绝对根路径 → null
+    /// （端点不可解析）；其余平台/形态恒非 null。调用方对 null 必须 fail-closed
+    /// （见 WorkerIpcServerHostedService：非零退出码停宿主，不得静默挂在「活着但没有端点」）。
     /// </summary>
-    public static string ResolveEndpoint(bool isServiceMode)
+    public static string? ResolveEndpoint(bool isServiceMode)
     {
         if (OperatingSystem.IsLinux())
         {

@@ -134,8 +134,10 @@ pub fn start(
             None => {
                 snapshots.send_modify(|snapshot| {
                     snapshot.state = ConnectionState::Disconnected;
-                    snapshot.last_error =
-                        Some("无法解析 Worker 端点（缺少用户主目录）".to_string());
+                    snapshot.last_error = Some(
+                        "无法解析 Worker 端点（缺少用户主目录或有效的 XDG_RUNTIME_DIR）"
+                            .to_string(),
+                    );
                 });
             }
         }
@@ -373,7 +375,7 @@ fn unverifiable_policy(platform: HostPlatform) -> UnverifiablePolicy {
     }
 }
 
-/// 构造后台服务端身份核验作用域（#7 残余①）：端点解析不到时（mac 无 HOME，仅理论可达）
+/// 构造后台服务端身份核验作用域（#7 残余①）：端点解析不到时（mac 无 HOME 或 Linux 无有效 XDG_RUNTIME_DIR）
 /// 返回 None——与连接编排同样拿不到端点，不额外产生行为。
 fn background_server_guard(
     options: &ConnectOptions,
