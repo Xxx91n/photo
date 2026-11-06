@@ -485,6 +485,27 @@ fn mode_key(mode: WorkerMode) -> &'static str {
     }
 }
 
+/// Windows 退出码 1053（ERROR_SERVICE_REQUEST_TIMEOUT）的两种成因（#202 AC1）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum StartTimeoutCause {
+    /// #162 单写者准入门让位：服务 Worker 撞上已被占用的审计目录后干净退出，
+    /// SCM 等不到 RUNNING，只能回 1053。
+    SingleWriterYield,
+    /// ExifTool/配置/提权等真超时，沿用 service.exitcode.1053 原文案。
+    TrueTimeout,
+}
+
+/// 1053 归因判据（#202）：UI 当前连着后台 Worker 时，那个 Worker 就是同一份审计目录的
+/// 持有者，服务 Worker 必然撞门让位，因此 1053 是确定成因而非猜测；不连后台 Worker
+/// （直连服务/未连接）则保持真超时归因，不让真超时文案回归。
+fn start_timeout_cause(exit_code: i32, worker_mode: Option<WorkerMode>) -> StartTimeoutCause {
+    if exit_code == 1053 && worker_mode == Some(WorkerMode::Background) {
+        StartTimeoutCause::SingleWriterYield
+    } else {
+        StartTimeoutCause::TrueTimeout
+    }
+}
+
 /// 连接失败三态 → 分类文案（#169）：授权拒绝给行动指引——指引按平台分键（CodeRabbit 返修）：
 /// Windows 是安装脚本的 `-AuthorizedUsers` 集合，Unix 是服务 socket 的 0660+共享组边界
 /// （`install-systemd-service.sh --gui-user` / launchd 同构）；后台未就绪附启动/退出细节；
@@ -2594,7 +2615,16 @@ impl AppView {
         } else {
             None
         };
-        let exit_code_key = exit_code.map(|code| format!("service.exitcode.{code}"));
+        // #202：1053 且正连着后台 Worker 时改走让位文案，不再把单写者冲突指向 ExifTool/配置；
+        // 其余退出码与真超时（未连后台 Worker）保持原有 service.exitcode.* 映射。
+        let worker_mode = self.snapshot.worker_mode;
+        let exit_code_key = exit_code.map(|code| {
+            if start_timeout_cause(code, worker_mode) == StartTimeoutCause::SingleWriterYield {
+                k::SERVICE_EXITCODE_1053_SINGLE_WRITER.to_string()
+            } else {
+                format!("service.exitcode.{code}")
+            }
+        });
         let message = match &exit_code_key {
             Some(key) if self.i18n.contains(&self.config.ui.locale, key) => self.t(key),
             _ => feedback.message.clone(),
@@ -2918,10 +2948,33 @@ impl Render for AppView {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     use gpui::{
         AnyWindowHandle, AppContext, InputEvent, KeyUpEvent, Keystroke, TestAppContext,
         WindowHandle, size,
     };
+
+    /// #202 AC1/AC3：1053 只有在连着后台 Worker 时才归因为单写者让位；真超时（直连服务/
+    /// 未连接）与其余退出码必须保持原归因，不让真超时文案回归。
+    #[test]
+    fn start_timeout_cause_distinguishes_yield_from_true_timeout() {
+        assert_eq!(
+            start_timeout_cause(1053, Some(WorkerMode::Background)),
+            StartTimeoutCause::SingleWriterYield
+        );
+        assert_eq!(
+            start_timeout_cause(1053, Some(WorkerMode::Service)),
+            StartTimeoutCause::TrueTimeout
+        );
+        assert_eq!(
+            start_timeout_cause(1053, None),
+            StartTimeoutCause::TrueTimeout
+        );
+        assert_eq!(
+            start_timeout_cause(5, Some(WorkerMode::Background)),
+            StartTimeoutCause::TrueTimeout
+        );
+    }
 
     #[test]
     fn field_ids_and_specs_stay_aligned() {

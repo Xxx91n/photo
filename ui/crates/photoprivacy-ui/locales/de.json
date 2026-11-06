@@ -96,7 +96,7 @@
       "uninstall": "Dienst deinstallieren"
     },
     "desc": {
-      "install": "PhotoPrivacyWorker als Windows-Systemdienst registrieren",
+      "install": "PhotoPrivacyWorker als Systemdienst registrieren",
       "start_stop": "Manuelles Steuerung des Laufzustands des installierten Dienstes",
       "uninstall": "Dienst aus dem System entfernen, in den Tray-Modus wechseln",
       "applying": "Dienstbefehl wird ausgeführt…",
@@ -141,6 +141,7 @@
       "0": "Vorgang erfolgreich",
       "5": "Zugriff verweigert, bitte als Administrator ausführen",
       "1053": "Dienststartzeitüberschreitung, Pfad von ExifTool und Config-Datei prüfen",
+      "1053_single_writer": "Dienststartzeitüberschreitung: Ein weiterer Hintergrund-Worker nutzt dasselbe Audit-Verzeichnis, daher hat sich der Dienst-Worker beendet, um Doppelschreiben zu vermeiden. Beenden Sie die App, um den Hintergrund-Worker zu stoppen, und starten Sie den Dienst erneut",
       "1055": "Datenbank des Dienstes gesperrt, später erneut versuchen",
       "1056": "Dienst läuft bereits",
       "1058": "Dienst ist deaktiviert",

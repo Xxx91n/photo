@@ -96,7 +96,7 @@
       "uninstall": "Uninstall service"
     },
     "desc": {
-      "install": "Register PhotoPrivacyWorker as a Windows system service",
+      "install": "Register PhotoPrivacyWorker as a system service",
       "start_stop": "Manually control run state of the installed service",
       "uninstall": "Remove service from system, switch to tray mode",
       "applying": "Applying service command…",
@@ -141,6 +141,7 @@
       "0": "Operation succeeded",
       "5": "Access denied, please run as administrator",
       "1053": "Service start timeout, check ExifTool path and config file",
+      "1053_single_writer": "Service start timeout: another background worker is using the same audit directory, so the service worker exited instead of writing twice. Quit the app to stop the background worker, then start the service again",
       "1055": "Service database locked, please retry later",
       "1056": "Service is already running",
       "1058": "Service is disabled",

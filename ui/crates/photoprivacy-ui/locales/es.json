@@ -96,7 +96,7 @@
       "uninstall": "Desinstalar servicio"
     },
     "desc": {
-      "install": "Registrar PhotoPrivacyWorker como un servicio de sistema de Windows",
+      "install": "Registrar PhotoPrivacyWorker como un servicio de sistema",
       "start_stop": "Controlar manualmente el estado de ejecución del servicio instalado",
       "uninstall": "Eliminar el servicio del sistema, cambiar a modo bandeja",
       "applying": "Aplicando comando de servicio…",
@@ -141,6 +141,7 @@
       "0": "Operación exitosa",
       "5": "Acceso denegado, por favor ejecute como administrador",
       "1053": "Tiempo de espera al arrancar el servicio, verifique la ruta de ExifTool y el archivo de configuración",
+      "1053_single_writer": "Tiempo de espera al iniciar el servicio: otro worker en segundo plano usa el mismo directorio de auditoría, por lo que el worker del servicio se cerró para evitar la doble escritura. Cierre la aplicación para detener el worker en segundo plano y vuelva a iniciar el servicio",
       "1055": "La base de datos del servicio está bloqueada, por favor reintente más tarde",
       "1056": "El servicio ya está en ejecución",
       "1058": "El servicio está deshabilitado",
