@@ -8,13 +8,26 @@
 | 平台 | 后台端点 | 服务端点 |
 | --- | --- | --- |
 | Windows | 命名管道 `PhotoPrivacyCleaner.Background` | 命名管道 `PhotoPrivacyCleaner.Service.<32hex>`（#7：每次监听随机化，先建首例再通告于 `HKLM\SOFTWARE\PhotoPrivacy\ServicePipeName`；通告缺失/非法回退静态 `PhotoPrivacyCleaner.Service`） |
-| Linux | `/run/photoprivacy/worker-background.sock` | `/run/photoprivacy/worker.sock`（权限口径见下方 Linux 段，#188） |
+| Linux | `$XDG_RUNTIME_DIR/photoprivacy/worker-background.sock`（#201：per-user；变量缺失/空/非根路径时不可用） | `/run/photoprivacy/worker.sock`（权限口径见下方 Linux 段，#188） |
 | macOS | `~/Library/Application Support/photoprivacy/worker-background.sock` | `/Library/Application Support/photoprivacy/worker.sock`（系统级固定落点，#167） |
 
 出处：`src/PhotoPrivacy.Ipc/WorkerIpcEndpointNames.cs`、`src/PhotoPrivacy.Ipc/IpcTransportFactory.cs`、
 `src/PhotoPrivacy.Ipc/NamedPipeIpcTransport.cs`（#7 随机化）、`ui/crates/photoprivacy-ipc/src/endpoints.rs`（客户端动态发现）。
 客户端必须按 OS 解析端点（旧 Avalonia UI 全程硬编码 Windows 管道名，Linux/macOS 因此连不上）；
 Windows 服务端点自 #7 起按通告名动态解析（每次探测/失败重解析，详见认证边界节），其余端点静态。
+
+Linux 背景端点自 #201 起使用 `$XDG_RUNTIME_DIR/photoprivacy/worker-background.sock`：
+旧 `/run/photoprivacy` 仅在服务安装/启动时由 systemd 创建，未安装服务的普通用户无权 mkdir，
+导致后台 Worker 启动失败。选择候选 1（用户会话运行时目录）；候选 2（tmpfiles.d 预建）仍依赖
+root 安装动作，不能解决未安装服务形态，故不采用。`XDG_RUNTIME_DIR` 通常由 pam_systemd/logind
+提供（如 `/run/user/<uid>`，0700 属主用户）；两端均按原值解析，不裁剪空白。
+变量缺失、空或非根路径时 Rust 返回 `None`、C# 返回 `null`：UI 不启动后台 Worker，
+Worker 记录变量诊断、置退出码 1 并停宿主；**CLI 模式同样承接背景端点要求**，无会话的容器/root shell
+需显式提供指向用户可写运行时目录的 `XDG_RUNTIME_DIR`。不回落 `/run/photoprivacy`（原缺陷），
+也不回落 `/tmp`（可预测路径预蹲及跨用户相撞风险）。子目录仍由传输层按 #187 的 `0750` 规则创建，
+后台 socket 保持 `0600` 与同 UID 核验；服务端点 `/run/photoprivacy/worker.sock`、systemd
+`RuntimeDirectory` 与服务 socket `0660` + socket 访问组边界均不变。双端路径行为测试与
+`IpcAuthClaimReconciliationTests` 字面量对账共同防漂移；单实例锁不依赖 IPC socket 路径，无需迁移。
 
 macOS 服务端点自 #167 起为系统级固定落点：LaunchDaemon 以服务用户运行（`NFSHomeDirectory=/opt/photoprivacy`），
 GUI 用户按自身 home 拼同一相对路径只会指向各自的幽灵 socket，故服务端点不再参与 home 解析（与 Linux `/run/photoprivacy` 同构）。

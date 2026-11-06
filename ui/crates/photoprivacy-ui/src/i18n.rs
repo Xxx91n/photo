@@ -319,6 +319,8 @@ pub mod keys {
     pub const SERVICE_DESC_INSTALL: &str = "service.desc.install";
     pub const SERVICE_DESC_START_STOP: &str = "service.desc.start_stop";
     pub const SERVICE_DESC_UNINSTALL: &str = "service.desc.uninstall";
+    /// #202：1053 且 UI 连着后台 Worker 时的单写者让位文案（区别于 ExifTool/配置真超时）。
+    pub const SERVICE_EXITCODE_1053_SINGLE_WRITER: &str = "service.exitcode.1053_single_writer";
     pub const SERVICE_RESULT_SUCCESS: &str = "service.result.success";
     pub const SERVICE_RESULT_SKIPPED: &str = "service.result.skipped";
     pub const SERVICE_RESULT_CANCELLED: &str = "service.result.cancelled";
@@ -369,6 +371,22 @@ pub mod keys {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #202 AC2：安装描述必须平台中性，任何语言的 service.desc.install 都不得声称
+    /// 注册的是 Windows 服务（Linux/macOS 上会直接说错）。
+    #[test]
+    fn service_install_description_is_platform_neutral() {
+        let catalog = Catalog::embedded();
+        for (locale, strings) in &catalog.locales {
+            let value = strings
+                .get("service.desc.install")
+                .unwrap_or_else(|| panic!("{locale} 缺 service.desc.install"));
+            assert!(
+                !value.contains("Windows") && !value.contains("ويندوز"),
+                "{locale} 的安装描述仍点名 Windows：{value}"
+            );
+        }
+    }
 
     /// AC1：10 语言键集与 en.json 全等（键值复用，含内嵌兜底语义等效）。
     #[test]

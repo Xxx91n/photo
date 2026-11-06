@@ -45,6 +45,23 @@ public sealed class WorkerIpcServerHostedService : BackgroundService
     {
         var endpoint = IpcTransportFactory.ResolveEndpoint(_runtime.Mode == RuntimeMode.Service);
 
+        // 背景端点不可解析 fail-closed（#201）：Linux 背景/CLI 形态在 XDG_RUNTIME_DIR 缺失
+        // （容器、root shell、无 logind 会话）时解析为 null——不得静默挂在「活着但没有端点」
+        // （#187 同款口径），也不得回落与 UI 解析不同的落点（端点分裂 = UI 永远发现不了）。
+        // 非零退出码停宿主，诊断点明变量名与会话外语境的注入动作。
+        if (endpoint is null)
+        {
+            SafeLog.Try(() => _logger.LogError(
+                "Background IPC endpoint is unresolvable: {Variable} must be set to an absolute, " +
+                "user-writable runtime directory (pam_systemd/logind sets it for user sessions). " +
+                "Inject it explicitly when starting the worker outside a user session " +
+                "(containers, root shells). The worker exits (#201).",
+                WorkerIpcEndpointNames.LinuxRuntimeDirectoryVariable));
+            Environment.ExitCode = 1;
+            _lifetime.StopApplication();
+            return;
+        }
+
         // 服务模式 fail-closed 可观测性（#70）：安装者 SID 解析不到时传输层回退 CurrentUserOnly，
         // 桌面用户仍会被拒——这里记 warning 指向安装动作，否则 S4 复测只剩一句 ACCESS_DENIED 无从下手。
         if (_runtime.Mode == RuntimeMode.Service && OperatingSystem.IsWindows()

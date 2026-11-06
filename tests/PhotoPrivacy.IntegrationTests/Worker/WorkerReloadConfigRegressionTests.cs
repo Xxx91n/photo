@@ -738,9 +738,28 @@ public sealed class WorkerReloadConfigRegressionTests
             // 需 root），故绑定行为在临时端点上验证。
             if (OperatingSystem.IsLinux())
             {
-                Assert.Equal(
-                    isServiceMode ? WorkerIpcEndpointNames.LinuxServiceSocket : WorkerIpcEndpointNames.LinuxBackgroundSocket,
-                    IpcTransportFactory.ResolveEndpoint(isServiceMode));
+                // 防（#201）：工厂仍走旧落点，或背景环境缺失影响服务端点。注入并恢复，避免依赖 CI 会话。
+                var previousRuntimeDirectory = Environment.GetEnvironmentVariable(WorkerIpcEndpointNames.LinuxRuntimeDirectoryVariable);
+                try
+                {
+                    Environment.SetEnvironmentVariable(WorkerIpcEndpointNames.LinuxRuntimeDirectoryVariable, "/run/user/4242");
+                    Assert.Equal(
+                        isServiceMode ? WorkerIpcEndpointNames.LinuxServiceSocket : "/run/user/4242/photoprivacy/worker-background.sock",
+                        IpcTransportFactory.ResolveEndpoint(isServiceMode));
+                    Environment.SetEnvironmentVariable(WorkerIpcEndpointNames.LinuxRuntimeDirectoryVariable, null);
+                    if (isServiceMode)
+                    {
+                        Assert.Equal(WorkerIpcEndpointNames.LinuxServiceSocket, IpcTransportFactory.ResolveEndpoint(true));
+                    }
+                    else
+                    {
+                        Assert.Null(IpcTransportFactory.ResolveEndpoint(false));
+                    }
+                }
+                finally
+                {
+                    Environment.SetEnvironmentVariable(WorkerIpcEndpointNames.LinuxRuntimeDirectoryVariable, previousRuntimeDirectory);
+                }
             }
             else if (OperatingSystem.IsMacOS())
             {

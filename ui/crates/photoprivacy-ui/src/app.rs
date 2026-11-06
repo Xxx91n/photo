@@ -12,7 +12,7 @@ use gpui::prelude::*;
 use gpui::{
     AnyElement, App, Bounds, BoxShadow, ClipboardItem, Context, CursorStyle, Div, FocusHandle,
     FontWeight, IntoElement, KeyBinding, KeyDownEvent, MouseButton, PathPromptOptions, Pixels,
-    Render, Rgba, ScrollHandle, Stateful, StyleRefinement, Styled, Subscription,
+    Render, Rgba, ScrollHandle, ScrollStrategy, Stateful, StyleRefinement, Styled, Subscription,
     UniformListScrollHandle, Window, actions, div, px, uniform_list,
 };
 use photoprivacy_ipc::{
@@ -35,7 +35,7 @@ const SAVE_STATUS_TTL: Duration = Duration::from_secs(3);
 /// 复制反馈显示时长。
 const COPY_FEEDBACK_TTL: Duration = Duration::from_secs(2);
 
-// Design(#119): Tab/Shift+Tab 绑定到焦点遍历动作，动作回调只调 window.focus_next/prev；
+// Design(#219): Tab/Shift+Tab 绑定到焦点遍历动作，动作回调只调 window.focus_next/prev；
 // Enter/Space 激活沿用 gpui 内建的合成点击（focusable + on_click 控件），不再自管按键。
 actions!(photoprivacy_ui, [FocusNext, FocusPrev]);
 
@@ -64,7 +64,7 @@ pub(crate) fn focus_ring(ring: Rgba) -> impl FnOnce(StyleRefinement) -> StyleRef
 }
 
 /// 配置页可聚焦控件登记：稳定句柄（跨渲染身份不变）+ 布局探针（供滚动揭示取坐标）。
-// Design(#119): Tab/Shift+Tab 移焦后必须把聚焦控件滚入 config-scroll 视口，否则焦点环在
+// Design(#219): Tab/Shift+Tab 移焦后必须把聚焦控件滚入 config-scroll 视口，否则焦点环在
 // 视口外不可见、键盘用户失位；探针不设 overflow，滚轮 delta 恒为 0 且不吞事件，
 // 只借 track_scroll 记录控件窗口坐标。
 #[derive(Default)]
@@ -485,6 +485,37 @@ fn mode_key(mode: WorkerMode) -> &'static str {
     }
 }
 
+/// Windows 退出码 1053（ERROR_SERVICE_REQUEST_TIMEOUT）的两种成因（#202 AC1）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum StartTimeoutCause {
+    /// #162 单写者准入门让位：服务 Worker 撞上已被占用的审计目录后干净退出，
+    /// SCM 等不到 RUNNING，只能回 1053。
+    SingleWriterYield,
+    /// ExifTool/配置/提权等真超时，沿用 service.exitcode.1053 原文案。
+    TrueTimeout,
+}
+
+/// 1053 归因判据（#202）：UI 此刻确实连着后台 Worker 时，那个 Worker 就是同一份审计目录的
+/// 持有者，服务 Worker 必然撞门让位，因此 1053 是确定成因而非猜测；不连后台 Worker
+/// （直连服务/未连接）则保持真超时归因，不让真超时文案回归。
+///
+/// 连接态必须一起判（CodeRabbit 返修）：`worker_mode` 是上一次成功握手留下的残留值，
+/// 连接失败后仍可能是 `Background`；只看它会把真超时误标成单写者让位，威胁 AC3。
+fn start_timeout_cause(
+    exit_code: i32,
+    connection: ConnectionState,
+    worker_mode: Option<WorkerMode>,
+) -> StartTimeoutCause {
+    if exit_code == 1053
+        && connection == ConnectionState::Connected
+        && worker_mode == Some(WorkerMode::Background)
+    {
+        StartTimeoutCause::SingleWriterYield
+    } else {
+        StartTimeoutCause::TrueTimeout
+    }
+}
+
 /// 连接失败三态 → 分类文案（#169）：授权拒绝给行动指引——指引按平台分键（CodeRabbit 返修）：
 /// Windows 是安装脚本的 `-AuthorizedUsers` 集合，Unix 是服务 socket 的 0660+共享组边界
 /// （`install-systemd-service.sh --gui-user` / launchd 同构）；后台未就绪附启动/退出细节；
@@ -565,6 +596,9 @@ pub struct AppView {
     service_commands: mpsc::UnboundedSender<ServiceCommand>,
     log_service: LogService,
     log_scroll: UniformListScrollHandle,
+    /// 日志行复制按钮的稳定焦点句柄（entry_index → 句柄）：虚拟列表 Tab 边界滚动跟进
+    /// 需要按行反查/直取相邻行句柄（见 `Self::step_log_copy_focus`）。
+    log_copy_focus: RefCell<HashMap<usize, FocusHandle>>,
     config_state: Rc<RefCell<ConfigUiState>>,
     config_commands: mpsc::UnboundedSender<ConfigCommand>,
     config_path: PathBuf,
@@ -615,7 +649,7 @@ impl AppView {
         let config_registry = Rc::new(RefCell::new(FocusRegistry::default()));
         let mut fields = HashMap::new();
         for id in FieldId::ALL {
-            // Design(#119): 输入框句柄经登记表创建（tab_stop 已置），Tab/Shift+Tab 依序经过全部字段。
+            // Design(#219): 输入框句柄经登记表创建（tab_stop 已置），Tab/Shift+Tab 依序经过全部字段。
             let focus = config_registry
                 .borrow_mut()
                 .focus_handle(id.element_id(), cx);
@@ -644,6 +678,7 @@ impl AppView {
             service_commands,
             log_service,
             log_scroll: UniformListScrollHandle::new(),
+            log_copy_focus: RefCell::new(HashMap::new()),
             config_state,
             config_commands,
             config_path,
@@ -677,16 +712,98 @@ impl AppView {
         i18n::is_rtl(&self.config.ui.locale)
     }
 
-    /// Tab：焦点移到下一个 tab stop（依渲染顺序循环），随后把聚焦控件滚入视口。
+    /// Tab：日志列表边界滚动跟进优先（见 `Self::step_log_copy_focus`），其余走焦点遍历，
+    /// 随后把聚焦控件滚入配置页视口。
     fn on_focus_next(&mut self, _action: &FocusNext, window: &mut Window, cx: &mut Context<Self>) {
-        window.focus_next(cx);
-        self.reveal_focused(window, cx);
+        if !self.step_log_copy_focus(true, window, cx) {
+            window.focus_next(cx);
+            self.reveal_focused(window, cx);
+        }
     }
 
-    /// Shift+Tab：焦点移到上一个 tab stop（反向循环），随后把聚焦控件滚入视口。
+    /// Shift+Tab：日志列表边界对称回退（见 `Self::step_log_copy_focus`），其余走焦点遍历。
     fn on_focus_prev(&mut self, _action: &FocusPrev, window: &mut Window, cx: &mut Context<Self>) {
-        window.focus_prev(cx);
-        self.reveal_focused(window, cx);
+        if !self.step_log_copy_focus(false, window, cx) {
+            window.focus_prev(cx);
+            self.reveal_focused(window, cx);
+        }
+    }
+
+    /// 日志行复制按钮的稳定焦点句柄：按 entry_index 登记创建（tab_stop 已置），跨渲染身份不变。
+    fn log_copy_handle(&self, entry_index: usize, cx: &mut Context<Self>) -> FocusHandle {
+        self.log_copy_focus
+            .borrow_mut()
+            .entry(entry_index)
+            .or_insert_with(|| cx.focus_handle().tab_stop(true))
+            .clone()
+    }
+
+    /// 反查句柄归属：是日志行复制按钮时返回其 entry_index。
+    fn log_copy_entry_of(&self, handle: &FocusHandle) -> Option<usize> {
+        self.log_copy_focus
+            .borrow()
+            .iter()
+            .find(|(_, candidate)| *candidate == handle)
+            .map(|(entry, _)| *entry)
+    }
+
+    // Design(#219): 虚拟列表只把可见行的复制按钮登记进 tab 链，末个可见行再按 Tab 会在
+    // 到达后续行之前回绕——移焦后检测回绕（焦点不再是日志行按钮），其后（前）仍有行就
+    // 滚动揭示相邻行并聚焦其复制按钮；已是过滤列表首/末行则不接管，Tab 照常离开列表。
+    // 返回 true 表示本次 Tab 已完全处置（列表内步进或边界跟进），调用方不再 focus_next/prev。
+    fn step_log_copy_focus(
+        &self,
+        forward: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(before) = window.focused(cx) else {
+            return false;
+        };
+        let Some(entry_index) = self.log_copy_entry_of(&before) else {
+            return false;
+        };
+        let state = self.log_state.borrow();
+        let visible = &state.visible_indices;
+        let position = match visible.iter().position(|entry| *entry == entry_index) {
+            Some(position) => position,
+            // 过滤变化后残留的陈旧焦点（行已不在列表）按默认移焦路径走。
+            None => return false,
+        };
+        let next_position = if forward {
+            position.checked_add(1)
+        } else {
+            position.checked_sub(1)
+        };
+        let next_position = match next_position {
+            Some(next_position) if next_position < visible.len() => next_position,
+            // 已是过滤列表首/末行：不接管，焦点遍历自然回绕离开列表。
+            _ => return false,
+        };
+        let next_entry = visible[next_position];
+        drop(state);
+        if forward {
+            window.focus_next(cx);
+        } else {
+            window.focus_prev(cx);
+        }
+        if let Some(after) = window.focused(cx)
+            && self.log_copy_entry_of(&after).is_some()
+        {
+            // 下一行已渲染：列表内正常步进，处置完毕。
+            return true;
+        }
+        // 回绕离表且仍有相邻行：滚动揭示并聚焦其复制按钮（deferred scroll 随下一帧生效）。
+        let strategy = if forward {
+            ScrollStrategy::Bottom
+        } else {
+            ScrollStrategy::Top
+        };
+        self.log_scroll.scroll_to_item(next_position, strategy);
+        let next_focus = self.log_copy_handle(next_entry, cx);
+        window.focus(&next_focus, cx);
+        cx.notify();
+        true
     }
 
     /// 配置页控件的焦点接线：从登记表取稳定句柄 + 布局探针（跨渲染身份不变）。
@@ -819,6 +936,7 @@ impl AppView {
         let generation = state.generation;
         drop(state);
         self.log_scroll = UniformListScrollHandle::new();
+        self.log_copy_focus.borrow_mut().clear();
         self.log_service.clear(generation);
     }
 
@@ -2039,6 +2157,7 @@ impl AppView {
                         "copy-error".to_string(),
                         &error,
                         k::STATUS_COPY_ERROR,
+                        None,
                         theme,
                         cx,
                     ))
@@ -2347,6 +2466,7 @@ impl AppView {
             entry.time_text, entry.display_event, entry.source_path_masked, entry.message
         );
         let button_id = format!("copy-log-{entry_index}");
+        let row_focus = self.log_copy_handle(entry_index, cx);
         div()
             .h(px(40.))
             .w_full()
@@ -2397,23 +2517,33 @@ impl AppView {
                     .text_color(theme.text)
                     .child(entry.message.clone()),
             )
-            .child(self.copy_button(button_id, &copy_text, k::LOG_BTN_COPY, theme, cx))
+            .child(self.copy_button(
+                button_id,
+                &copy_text,
+                k::LOG_BTN_COPY,
+                Some(row_focus),
+                theme,
+                cx,
+            ))
     }
 
     /// 构造统一风格的复制按钮：点击后复制 `text` 到剪贴板，反馈期间按钮文字变为"已复制"。
     /// `id` 同时用作 gpui 元素 ID 和反馈归属判定，须保证同帧内唯一。
+    /// `focus` 传 `Some` 时用登记句柄（虚拟列表行的边界滚动跟进需要按行反查/直取），
+    /// 传 `None` 时用元素自带句柄，两者焦点链行为一致。
     fn copy_button(
         &self,
         id: String,
         text: &str,
         label_key: &str,
+        focus: Option<FocusHandle>,
         theme: &Theme,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
         let copy_text = text.to_string();
         let feedback = self.copy_feedback_for(&id);
         let button_id = id.clone();
-        div()
+        let button = div()
             .id(id)
             .px(px(8.))
             .py(px(2.))
@@ -2423,7 +2553,15 @@ impl AppView {
             .text_size(px(11.))
             .text_color(theme.text_muted)
             .hover(|element| element.bg(theme.surface_raised).text_color(theme.text))
-            .cursor_pointer()
+            .cursor_pointer();
+        let button = match focus {
+            Some(focus) => button.track_focus(&focus),
+            None => button.focusable().tab_stop(true),
+        };
+        // Design(#219): 复制按钮是可交互控件，必须入焦点链（track_focus/focusable + tab_stop
+        // + 焦点环）；Enter/Space 经 gpui 合成点击与鼠标同效。无底色描边取默认强调色。
+        button
+            .focus(focus_ring(theme.accent))
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.copy_to_clipboard(&button_id, &copy_text, cx);
             }))
@@ -2594,7 +2732,19 @@ impl AppView {
         } else {
             None
         };
-        let exit_code_key = exit_code.map(|code| format!("service.exitcode.{code}"));
+        // #202：1053 且正连着后台 Worker 时改走让位文案，不再把单写者冲突指向 ExifTool/配置；
+        // 其余退出码与真超时（未连后台 Worker）保持原有 service.exitcode.* 映射。
+        let connection = self.snapshot.state;
+        let worker_mode = self.snapshot.worker_mode;
+        let exit_code_key = exit_code.map(|code| {
+            if start_timeout_cause(code, connection, worker_mode)
+                == StartTimeoutCause::SingleWriterYield
+            {
+                k::SERVICE_EXITCODE_1053_SINGLE_WRITER.to_string()
+            } else {
+                format!("service.exitcode.{code}")
+            }
+        });
         let message = match &exit_code_key {
             Some(key) if self.i18n.contains(&self.config.ui.locale, key) => self.t(key),
             _ => feedback.message.clone(),
@@ -2918,10 +3068,55 @@ impl Render for AppView {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     use gpui::{
         AnyWindowHandle, AppContext, InputEvent, KeyUpEvent, Keystroke, TestAppContext,
         WindowHandle, size,
     };
+
+    /// #202 AC1/AC3：1053 只有在「此刻连着」后台 Worker 时才归因为单写者让位；真超时
+    /// （直连服务/未连接/连接失败后残留的 Background）与其余退出码必须保持原归因，
+    /// 不让真超时文案回归。
+    #[test]
+    fn start_timeout_cause_distinguishes_yield_from_true_timeout() {
+        assert_eq!(
+            start_timeout_cause(
+                1053,
+                ConnectionState::Connected,
+                Some(WorkerMode::Background)
+            ),
+            StartTimeoutCause::SingleWriterYield
+        );
+        assert_eq!(
+            start_timeout_cause(1053, ConnectionState::Connected, Some(WorkerMode::Service)),
+            StartTimeoutCause::TrueTimeout
+        );
+        assert_eq!(
+            start_timeout_cause(1053, ConnectionState::Connected, None),
+            StartTimeoutCause::TrueTimeout
+        );
+        assert_eq!(
+            start_timeout_cause(5, ConnectionState::Connected, Some(WorkerMode::Background)),
+            StartTimeoutCause::TrueTimeout
+        );
+    }
+
+    /// CodeRabbit 返修：#202 AC3 回归锁——连接失败时快照里的 `worker_mode` 可能仍是上次
+    /// 握手的 `Background`，此时真超时不能被误标成单写者让位。
+    #[test]
+    fn start_timeout_cause_ignores_stale_background_mode_without_connection() {
+        for state in [
+            ConnectionState::Disconnected,
+            ConnectionState::Connecting,
+            ConnectionState::Reconnecting,
+        ] {
+            assert_eq!(
+                start_timeout_cause(1053, state, Some(WorkerMode::Background)),
+                StartTimeoutCause::TrueTimeout,
+                "{state:?} 下残留 Background 不能归因为单写者让位"
+            );
+        }
+    }
 
     #[test]
     fn field_ids_and_specs_stay_aligned() {
@@ -3373,6 +3568,87 @@ mod tests {
         );
     }
 
+    /// 往日志页共享状态注入 `count` 条 Info 级审计记录并重建可见索引（测试装配，生产走 LogService）。
+    fn inject_log_records(cx: &mut TestAppContext, window: WindowHandle<AppView>, count: usize) {
+        window
+            .update(cx, |view, _, _| {
+                let records = (0..count)
+                    .map(|seq| {
+                        photoprivacy_logs::parse_line(&format!(
+                            r#"{{"event_type":"file_detected","level":"INFO","timestamp_utc":"2026-11-06T00:00:{seq:02}Z","source_path_masked":"C:/p.jpg","message":"行{seq}"}}"#,
+                        ))
+                        .expect("样例审计行应可解析")
+                    })
+                    .collect::<Vec<_>>();
+                view.log_state.borrow_mut().logs.push_batch(records);
+                view.rebuild_visible();
+            })
+            .unwrap();
+    }
+
+    /// 当前焦点对应的日志行 entry_index；焦点不在日志行复制按钮上时 `None`。
+    fn focused_log_entry(cx: &mut TestAppContext, window: WindowHandle<AppView>) -> Option<usize> {
+        let any_window: AnyWindowHandle = window.into();
+        let focused = focused(cx, any_window)?;
+        window
+            .update(cx, |view, _, _| {
+                view.log_copy_focus
+                    .borrow()
+                    .iter()
+                    .find(|(_, handle)| *handle == &focused)
+                    .map(|(entry, _)| *entry)
+            })
+            .unwrap()
+    }
+
+    /// Tab 走到日志行复制按钮并按 Enter 复制（#119 AC1/AC2）：
+    /// 清空按钮（第 14 站）之后的下一站即首行复制按钮——焦点次序跟随渲染次序；
+    /// Enter 激活与鼠标点击同效（剪贴板 + 已复制反馈），且不切换页面、不动日志数据（AC4）。
+    #[test]
+    fn tab_reaches_log_copy_button_and_enter_copies() {
+        let (mut cx, window) = setup();
+        let any_window: AnyWindowHandle = window.into();
+        inject_log_records(&mut cx, window, 1);
+
+        // 切到日志页（第 4 个导航项）
+        for _ in 0..4 {
+            press_tab(&mut cx, any_window, true);
+        }
+        press_activation_key(&mut cx, any_window, "enter");
+        draw(&mut cx, any_window);
+
+        // 日志页 tab stop：5 导航 + 3 主题选项 + 5 级别过滤 + 清空按钮 + 首行复制按钮 = 15 个。
+        // 当前焦点停在第 4 个（日志导航），再走 11 跳到第 15 个（首行复制按钮）。
+        for _ in 0..11 {
+            press_tab(&mut cx, any_window, true);
+        }
+        press_activation_key(&mut cx, any_window, "enter");
+        draw(&mut cx, any_window);
+
+        let feedback = window
+            .update(&mut cx, |view, _, _| {
+                view.copy_feedback.as_ref().map(|(id, _)| id.clone())
+            })
+            .unwrap();
+        assert_eq!(
+            feedback.as_deref(),
+            Some("copy-log-0"),
+            "Enter 应激活首行复制按钮并触发已复制反馈"
+        );
+        let clipboard = cx.read(|cx| cx.read_from_clipboard().and_then(|item| item.text()));
+        assert!(
+            clipboard.as_ref().is_some_and(|text| text.contains("行0")),
+            "剪贴板应包含日志行文本，实际 {clipboard:?}"
+        );
+        let (page, log_len) = window
+            .update(&mut cx, |view, _, _| {
+                (view.page, view.log_state.borrow().logs.len())
+            })
+            .unwrap();
+        assert_eq!(page, Page::Logs, "复制按钮的 Enter 不应切换页面");
+        assert_eq!(log_len, 1, "复制不应改动日志缓冲");
+    }
+
     /// 输入框的 FocusHandle 接管焦点态，且作为 tab stop 进出不陷获（AC2/AC4）。
     #[test]
     fn text_field_focus_handle_drives_focus_state() {
@@ -3455,6 +3731,108 @@ mod tests {
         assert!(
             control_in_view(&mut cx, window, &top),
             "反向回顶后顶部字段也应在视口内"
+        );
+    }
+
+    /// 日志超过一屏时连续 Tab 逐行下探到屏幕外的复制按钮，末行之后回绕离开列表
+    /// （#119 CodeRabbit 审计项：虚拟列表只登记可见行，边界必须滚动跟进而非回绕）。
+    #[test]
+    fn tab_walks_off_screen_log_copy_buttons_without_wrapping() {
+        let (mut cx, window) = setup();
+        let any_window: AnyWindowHandle = window.into();
+        // 60 行 × 40px ≈ 2400px，远超任何测试窗口高度，必然跨屏。
+        inject_log_records(&mut cx, window, 60);
+
+        // 切到日志页（第 4 个导航项），再走 11 跳到首行复制按钮（第 15 站）。
+        for _ in 0..4 {
+            press_tab(&mut cx, any_window, true);
+        }
+        press_activation_key(&mut cx, any_window, "enter");
+        draw(&mut cx, any_window);
+        for _ in 0..11 {
+            press_tab(&mut cx, any_window, true);
+        }
+        assert_eq!(
+            focused_log_entry(&mut cx, window),
+            Some(0),
+            "11 跳后应落在首行复制按钮"
+        );
+
+        // 逐行下探：每次 Tab 焦点都落在下一行（跨屏行由边界滚动跟进揭示），不回绕。
+        for expected in 1..60 {
+            press_tab(&mut cx, any_window, true);
+            assert_eq!(
+                focused_log_entry(&mut cx, window),
+                Some(expected),
+                "第 {expected} 次 Tab 应落到 entry {expected} 的复制按钮而不是回绕"
+            );
+        }
+
+        // 末行（entry 59）之后 Tab 离开日志列表，不再有下一行。
+        press_tab(&mut cx, any_window, true);
+        assert_eq!(
+            focused_log_entry(&mut cx, window),
+            None,
+            "末行之后 Tab 应回绕离开日志列表"
+        );
+        let page = window.update(&mut cx, |view, _, _| view.page).unwrap();
+        assert_eq!(page, Page::Logs, "逐行下探全程不应切换页面");
+    }
+
+    /// Shift+Tab 对称回退：从屏幕外逐行回退到首行，首行再往上回绕离表落在清空按钮上
+    /// （#119 CodeRabbit 审计项的反向面）。
+    #[test]
+    fn shift_tab_walks_back_off_screen_rows_and_leaves_list_at_first_row() {
+        let (mut cx, window) = setup();
+        let any_window: AnyWindowHandle = window.into();
+        inject_log_records(&mut cx, window, 60);
+
+        // 切到日志页，11 跳到首行后向下跨过可见边界走到 entry 20。
+        for _ in 0..4 {
+            press_tab(&mut cx, any_window, true);
+        }
+        press_activation_key(&mut cx, any_window, "enter");
+        draw(&mut cx, any_window);
+        for _ in 0..11 {
+            press_tab(&mut cx, any_window, true);
+        }
+        for expected in 1..=20 {
+            press_tab(&mut cx, any_window, true);
+            assert_eq!(
+                focused_log_entry(&mut cx, window),
+                Some(expected),
+                "下探第 {expected} 行失败"
+            );
+        }
+
+        // Shift+Tab 逐行回退到首行（含屏幕外行由边界滚动跟进揭示）。
+        for expected in (0..20).rev() {
+            press_tab(&mut cx, any_window, false);
+            assert_eq!(
+                focused_log_entry(&mut cx, window),
+                Some(expected),
+                "回退应落到 entry {expected} 的复制按钮而不是回绕"
+            );
+        }
+
+        // 首行再 Shift+Tab 离开列表向上：落点是清空按钮（Enter 应触发清空）。
+        press_tab(&mut cx, any_window, false);
+        assert_eq!(
+            focused_log_entry(&mut cx, window),
+            None,
+            "首行之后 Shift+Tab 应回绕离开日志列表"
+        );
+        let generation_before = window
+            .update(&mut cx, |view, _, _| view.log_state.borrow().generation)
+            .unwrap();
+        press_activation_key(&mut cx, any_window, "enter");
+        draw(&mut cx, any_window);
+        let generation_after = window
+            .update(&mut cx, |view, _, _| view.log_state.borrow().generation)
+            .unwrap();
+        assert_ne!(
+            generation_before, generation_after,
+            "离表向上应落在清空按钮上且 Enter 触发清空"
         );
     }
 }
