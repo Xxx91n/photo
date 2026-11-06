@@ -579,13 +579,18 @@ impl ServiceOps for WindowsOps {
         // #200 AC2：与 scripts/install-service.ps1 同格式先落登记，写不进就不装——
         // 否则服务建好了却只有提权会话能连，用户看到「安装成功」却用不了。
         if let Err(reason) = self.register_installer_sid(&installer_sid) {
-            return ServiceCommandResult::failed(
+            // 用户取消 UAC 不是失败：与 sc.exe 通道一致报 ElevationCancelled，UI 才不会提示"安装失败"。
+            let mut aborted = ServiceCommandResult::failed(
                 format!(
                     "Unable to register the service pipe ACL for the installing user ({reason}); \
                      the service was not installed"
                 ),
                 None,
             );
+            if reason.contains("elevation was cancelled") {
+                aborted.status = ServiceCommandStatus::ElevationCancelled;
+            }
+            return aborted;
         }
 
         let precheck = self.ensure_removed_before_install();
@@ -1179,7 +1184,11 @@ mod tests {
             elevated
                 .programs()
                 .iter()
-                .all(|program| program.to_ascii_lowercase().ends_with("\\system32\\sc.exe"))
+                .all(|program| {
+                    let program = program.to_ascii_lowercase();
+                    program.contains("\\system32\\")
+                        && (program.ends_with("\\sc.exe") || program.ends_with("\\powershell.exe"))
+                })
         );
 
         let (ops_direct, runner, _) = ops(
@@ -1193,7 +1202,11 @@ mod tests {
             runner
                 .programs()
                 .iter()
-                .all(|program| program.to_ascii_lowercase().ends_with("\\system32\\sc.exe"))
+                .all(|program| {
+                    let program = program.to_ascii_lowercase();
+                    program.contains("\\system32\\")
+                        && (program.ends_with("\\sc.exe") || program.ends_with("\\powershell.exe"))
+                })
         );
     }
 
@@ -1524,7 +1537,7 @@ mod tests {
         let programs = elevated.programs();
         assert_eq!(programs.len(), 2, "registration + create: {programs:?}");
         assert!(programs[0].ends_with(r"WindowsPowerShell\v1.0\powershell.exe"));
-        assert!(programs[1].ends_with(r"System32\sc.exe"));
+        assert!(programs[1].to_ascii_lowercase().ends_with(r"\system32\sc.exe"));
         assert_eq!(runner.calls().len(), 0, "both steps must go through runas");
 
         let registration_args = &elevated.calls()[0];
@@ -1551,7 +1564,7 @@ mod tests {
         let config = std::path::PathBuf::from(r"C:\cfg\config.json");
         let result = ops.install(Some(worker.as_path()), Some(config.as_path()));
 
-        assert_eq!(result.status, ServiceCommandStatus::Failed);
+        assert_eq!(result.status, ServiceCommandStatus::ElevationCancelled);
         assert!(result.message.contains("elevation was cancelled"));
         assert_eq!(elevated.calls().len(), 1, "must not reach sc.exe create");
         assert!(runner.calls().is_empty());
@@ -1679,7 +1692,7 @@ mod tests {
 
         let programs = elevated.programs();
         assert_eq!(programs.len(), 2, "delete + cleanup: {programs:?}");
-        assert!(programs[0].ends_with(r"System32\sc.exe"));
+        assert!(programs[0].to_ascii_lowercase().ends_with(r"\system32\sc.exe"));
         assert!(programs[1].ends_with(r"WindowsPowerShell\v1.0\powershell.exe"));
 
         let cleanup_script = elevated.calls()[1].last().cloned().unwrap_or_default();
