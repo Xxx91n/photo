@@ -180,6 +180,125 @@ public sealed class ExifToolBridgeTests
     }
 
     [Fact]
+    public async Task WipeMetadataAsync_Should_Not_Settle_Probe_On_A_Prefixed_Foreign_Probe_Marker()
+    {
+        // 防的具体回潮形态（issue #111）：探测块用 Contains 认领 PROBE_DONE_{id} 回显，而 id 是桥内自增
+        // 整数、marker 之间互为前缀（PROBE_DONE_1 ⊂ PROBE_DONE_10）。于是别的文件（id=10）那块的回显行
+        // 会被 id=1 的探测认领，紧跟其后的那句别块的 {ready} 就把 id=1 的探测结清在空输出上 →
+        // HasClearableFields 解析不出东西 → Skipped_NoMetadata：文件里的隐私元数据被静默跳过（不擦除、不告警）。
+        // 协议级假件把「一块的回显到 {ready} 之间插不进别块的行」当回放前提（#39 的未实测假设），
+        // 故本用例改用块产出可延后的假件，把「别块的回显与它的 {ready} 插进本块窗口」这一时序钉死。
+        var process = new DeferredBlockFakeExifToolProcess();
+        var bridge = new ExifToolBridge(process, Config);
+        await bridge.StartAsync(CancellationToken.None);
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var dir = Path.Combine(Path.GetTempPath(), "pp-bridge");
+
+        // 10 个并发擦除：第 1 个拿到 PROBE_DONE_1、第 10 个拿到 PROBE_DONE_10（互为前缀）。
+        // 逐个发起并等到它把探测块写进来，块序号才与 id 一一对应（id 由桥内自增分配）。
+        var wipes = new Task<WipeResult>[10];
+        for (var i = 0; i < wipes.Length; i++)
+        {
+            wipes[i] = bridge.WipeMetadataAsync(Path.Combine(dir, $"prefix-collision-{i}.jpg"), cts.Token);
+            await WaitUntilAsync(() => process.Blocks.Count >= i + 1, $"第 {i + 1} 个探测块写入");
+        }
+
+        var ownerIndex = process.IndexOfMarker("PROBE_DONE_1");
+        var foreignIndex = process.IndexOfMarker("PROBE_DONE_10");
+        Assert.True(ownerIndex >= 0, "文件 #1 的探测块未写入");
+        Assert.True(foreignIndex >= 0, "文件 #10 的探测块未写入");
+        // 前缀关系自证：id 编号方式变了（本用例就不再复现缺陷）时这里先红，而不是默默放行。
+        Assert.StartsWith(process.Blocks[ownerIndex].Marker, process.Blocks[foreignIndex].Marker, StringComparison.Ordinal);
+
+        // 别块（id=10）的回显紧跟着它自己的 {ready} 先到，中间没有文件 #1 的探测数据——
+        // 这正是把缺陷逼出来的形状：认领判据若是 Contains，文件 #1 会拿这句别块的 {ready} 结清在空输出上。
+        process.EmitEcho(foreignIndex);
+        process.EmitReady(foreignIndex);
+
+        await Task.Delay(150);
+        Assert.False(
+            wipes[0].IsCompleted,
+            "文件 #1 的探测不得被别块的 PROBE_DONE_10 回显或它的 {ready} 结清（#111）");
+
+        // 自己那块的回显 → 数据 → {ready} 到齐后才结清，且拿到的是自己的探测数据。
+        process.EmitEcho(ownerIndex);
+        process.EmitBody(ownerIndex);
+        process.EmitReady(ownerIndex);
+
+        // 探测结清后擦除块（TASK_DONE_1）才写入，同样只等自己那块的 {ready}。
+        await WaitUntilAsync(() => process.IndexOfMarker("TASK_DONE_1") >= 0, "文件 #1 的擦除块写入");
+        var wipeIndex = process.IndexOfMarker("TASK_DONE_1");
+        process.EmitEcho(wipeIndex);
+        process.EmitReady(wipeIndex);
+
+        Assert.Equal(WipeResult.Cleaned_Modified, await wipes[0].WaitAsync(TimeSpan.FromSeconds(10)));
+
+        // 收尾：其余 9 个文件从未被放行（#10 只放行了一个空输出的探测块），取消后必须退干净。
+        // 不对它们的结果作断言——本用例只盯文件 #1 的归属，其余块怎么收场与它无关。
+        cts.Cancel();
+        foreach (var other in wipes.Skip(1))
+        {
+            _ = await Record.ExceptionAsync(() => other);
+        }
+
+        Assert.Equal(0, bridge.PendingCount);
+    }
+
+    [Fact]
+    public async Task WipeMetadataAsync_Should_Report_Skipped_NoMetadata_Only_When_Probe_Output_Is_Really_Empty()
+    {
+        // 防的具体回潮形态（issue #111 AC3）：归属收紧后探测只由自己那块的 {ready} 结清，
+        // 于是「空输出」必须真的来自空输出——不得由别块的回显 / 结清凭空制造出来。
+        // 这里让本块的回显与 {ready} 之间没有任何数据行：Skipped_NoMetadata 是唯一合法结论
+        // （file_skipped / no_metadata_found 记账语义不变）。
+        var process = new DeferredBlockFakeExifToolProcess();
+        var bridge = new ExifToolBridge(process, Config);
+        await bridge.StartAsync(CancellationToken.None);
+
+        var wipe = bridge.WipeMetadataAsync(
+            Path.Combine(Path.GetTempPath(), "pp-bridge", "really-no-metadata.jpg"),
+            CancellationToken.None);
+
+        await WaitUntilAsync(() => process.IndexOfMarker("PROBE_DONE_1") >= 0, "探测块写入");
+        var probeIndex = process.IndexOfMarker("PROBE_DONE_1");
+
+        process.EmitEcho(probeIndex);
+        process.EmitReady(probeIndex);   // 本块真的没有数据行
+
+        Assert.Equal(WipeResult.Skipped_NoMetadata, await wipe.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Equal(0, bridge.PendingCount);
+        Assert.DoesNotContain(process.Blocks, b => b.Marker.StartsWith("TASK_DONE_", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task WipeMetadataAsync_Should_Fail_Probe_Not_Report_NoMetadata_When_Process_Dies_During_Probe()
+    {
+        // 防的具体回潮形态（issue #111 AC2）：进程在探测途中没了时，本块永远不会再有自己那句 {ready}。
+        // 原来的局部 ProbeLineHandler 只会被某一句 {ready} 结清——自己的没来、别人的先来就会误结清空输出
+        // （Skipped_NoMetadata，隐私元数据被静默跳过），一个都没来则谁也不收口，调用方挂到取消为止。
+        // 修复后探测与擦除共用 #97 的 ProcessExited 收口：认领不到就继续等，进程没了就地判失败。
+        var process = new DeferredBlockFakeExifToolProcess();
+        var bridge = new ExifToolBridge(process, Config);
+        await bridge.StartAsync(CancellationToken.None);
+
+        var wipe = bridge.WipeMetadataAsync(
+            Path.Combine(Path.GetTempPath(), "pp-bridge", "died-during-probe.jpg"),
+            CancellationToken.None);
+
+        await WaitUntilAsync(() => process.IndexOfMarker("PROBE_DONE_1") >= 0, "探测块写入");
+        var probeIndex = process.IndexOfMarker("PROBE_DONE_1");
+        process.EmitEcho(probeIndex);   // 本块已开始处理，但它那句 {ready} 永远不会到
+
+        await process.StopAsync(CancellationToken.None);
+
+        var ex = await Assert.ThrowsAnyAsync<InvalidOperationException>(
+            () => wipe.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Contains("PROBE_DONE_1", ex.Message, StringComparison.Ordinal);
+        Assert.Equal(0, bridge.PendingCount);
+    }
+
+    [Fact]
     public async Task WipeMetadataAsync_Should_Timeout_And_Remove_Pending_Task_When_Marker_Missing()
     {
         var process = new ProtocolLevelFakeExifToolProcess
@@ -752,6 +871,23 @@ public sealed class ExifToolBridgeTests
         Assert.Equal(WipeResult.Cleaned_NoOp, result);
         Assert.Equal(0, bridge.PendingCount);
         Assert.DoesNotContain(process.Writes, w => w.Contains("TASK_DONE_", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// 等到条件成立（默认 10 s 上限）。用它定位「协议里的某一步确实已经到了」，而不是靠固定等待赌时序。
+    /// </summary>
+    private static async Task WaitUntilAsync(Func<bool> condition, string what)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        while (!condition())
+        {
+            if (DateTime.UtcNow > deadline)
+            {
+                throw new TimeoutException($"等待超时：{what}。");
+            }
+
+            await Task.Delay(10);
+        }
     }
 
     /// <summary>
