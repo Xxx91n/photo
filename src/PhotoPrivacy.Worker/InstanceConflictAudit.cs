@@ -1,5 +1,7 @@
 using PhotoPrivacy.Core.Audit;
 using PhotoPrivacy.Core.Configuration;
+using PhotoPrivacy.Core.Runtime;
+using Serilog;
 
 namespace PhotoPrivacy.Worker;
 
@@ -7,7 +9,8 @@ namespace PhotoPrivacy.Worker;
 /// 重复启动 / 单写者准入门让位时的冲突留痕（#127）。
 /// 这是「真正写审计」的路径，是「配置加载期零目录副作用」（#124 / #153）的显式例外：
 /// 目录只在这里创建，且创建前有界确认可写；只读 / 不可写安装目录下不改写冲突审计落点
-/// （不另择 %ProgramData% 或 ~/.local/state），只降级为可读的 stderr 记录并保留冲突事实。
+/// （不另择 %ProgramData% 或 ~/.local/state），只降级为可读记录并保留冲突事实：
+/// stderr 恒写，Serilog 已初始化时再补一路文件日志（服务会话下 stderr 不落盘）。
 /// 残余：留痕本身仍是 best-effort，后台落盘失败由 JsonLineAuditLogger 内部吞掉；
 /// 既有 3 次有界重试只覆盖入队阶段的 IOException，后台 flush 与常驻 Worker 抢
 /// audit-*.jsonl 的共享冲突不可由该重试感知。两条残余均继承 #162 / PR #163，登记在 #82。
@@ -16,9 +19,9 @@ namespace PhotoPrivacy.Worker;
 internal static class InstanceConflictAudit
 {
     /// <summary>
-    /// 留痕结果：DegradationRecord 非空即表示降级（可读记录已由 Degrade 写 stderr）；
+    /// 留痕结果：DegradationRecord 非空即表示降级（可读记录已由 Degrade 写 stderr + Serilog）；
     /// 为空只表示「未观察到同步失败」，不等于落盘成功——后台 flush 仍是 best-effort（残余见类注释）。
-    /// 生产调用方可丢弃返回值；它供测试与调用方判读降级，并在服务会话里补一路文件日志。
+    /// 生产调用方可丢弃返回值：两路可观测面都在 Degrade 内落地；返回值供测试与后续调用方判读。
     /// </summary>
     internal sealed record ConflictAuditOutcome(
         string AuditDirectory,
@@ -94,9 +97,10 @@ internal static class InstanceConflictAudit
                 payload[key] = value;
             }
 
-            // 有界重试：常驻 Worker 的 JsonLineAuditLogger 按次打开 audit-*.jsonl（FileShare.Read），
-            // 让位留痕/冲突留痕与其短暂撞上会被共享冲突打掉——best-effort 留痕值得 3 次机会，
-            // 仍失败则由外层降级为可读记录（留痕永不阻断退出；stderr 是另一路可观测面）。
+            // 有界重试（#162 引入）：只覆盖本处 WriteAsync 入队阶段的 IOException。
+            // 注意 JsonLineAuditLogger.WriteAsync 只入队、不碰文件，后台 flush 与常驻 Worker
+            // 抢 audit-*.jsonl 的共享冲突不由这里感知——该残余登记在类注释与 #82。
+            // 入队/构造阶段仍失败则由外层降级为可读记录（留痕永不阻断退出）。
             for (var attempt = 1; ; attempt++)
             {
                 try
@@ -178,6 +182,8 @@ internal static class InstanceConflictAudit
     /// <summary>
     /// 降级记录必须自洽可读：既写清失败原因与审计目录，也带上冲突事实本身，
     /// 避免只读安装目录下「留痕消失且无痕迹可查」的静默失败。
+    /// 双通道：stderr 恒写；Serilog 已初始化（单写者让位路径）时补一路文件日志，
+    /// 未初始化（重复启动路径）时静态 Log 是默认静默 logger，自然空转、不新增落点。
     /// </summary>
     private static ConflictAuditOutcome Degrade(
         string auditDirectory,
@@ -201,6 +207,10 @@ internal static class InstanceConflictAudit
         {
             // stderr 本身不可写时也不得阻断退出。
         }
+
+        // 服务会话下 stderr 不落盘：Serilog 已就绪时再补一路文件日志。
+        // 按 #85 口径吞掉 provider 故障，日志不得反过来阻断让位退出。
+        SafeLog.Try(() => Log.Warning("conflict audit degraded: {DegradationRecord}", record));
 
         return new ConflictAuditOutcome(auditDirectory, record);
     }

@@ -165,7 +165,16 @@ public sealed class InstanceConflictAuditBoundaryTests
         }
         finally
         {
-            File.SetUnixFileMode(audit, originalMode);
+            // 恢复权限失败也不得跳过清理：否则 /tmp 残留一个 0555 目录且测试以未处理异常失败。
+            try
+            {
+                File.SetUnixFileMode(audit, originalMode);
+            }
+            catch
+            {
+                // best effort：目录即将被删除，恢复失败不得阻断清理。
+            }
+
             TryDelete(root);
         }
     }
@@ -179,7 +188,6 @@ public sealed class InstanceConflictAuditBoundaryTests
             {
             }
 
-            File.Delete(path);
             return true;
         }
         catch (IOException)
@@ -189,6 +197,18 @@ public sealed class InstanceConflictAuditBoundaryTests
         catch (UnauthorizedAccessException)
         {
             return false;
+        }
+        finally
+        {
+            // 删除失败只当清理问题，不得被误判成「目录不可写」（否则下游断言假红）。
+            try
+            {
+                File.Delete(path);
+            }
+            catch
+            {
+                // best effort：删除失败不得被误判成「目录不可写」。
+            }
         }
     }
 

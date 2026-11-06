@@ -41,8 +41,6 @@ if (!instanceGuard.IsOwner)
 {
     Console.Error.WriteLine("[PhotoPrivacyWorker] 另一个 Worker 实例已在运行，退出。");
     Console.Error.WriteLine("[PhotoPrivacyWorker] another worker instance is already in use.");
-    // Serilog 此时尚未初始化：留痕降级的可读记录只由 InstanceConflictAudit 写 stderr（#127），
-    // 返回值在此无第二路可落，故丢弃。
     await InstanceConflictAudit.TryWriteAsync(args, requestedMode, mutexName);
     return 1;
 }
@@ -145,14 +143,7 @@ if (requestedMode != RuntimeMode.Cli)
     {
         Console.Error.WriteLine("[PhotoPrivacyWorker] 无法取得审计目录的单写者准入锁，本进程让位退出。 ");
         Console.Error.WriteLine("[PhotoPrivacyWorker] audit directory is owned (or cannot be verified) — yielding.");
-        var conflictAudit = await InstanceConflictAudit.TryWriteSingleWriterYieldAsync(args, requestedMode, admission.AuditDirectory);
-        if (conflictAudit.DegradationRecord is not null)
-        {
-            // 服务会话（session 0 / systemd）下 stderr 不落盘；此路径 Serilog 已就绪，
-            // 再补一路文件日志，降级原因才真正可读（#127）。日志 provider 不健康时
-            // 按 #85 口径吞掉，不得反过来阻断让位退出。
-            SafeLog.Try(() => Log.Warning("conflict audit degraded: {DegradationRecord}", conflictAudit.DegradationRecord));
-        }
+        await InstanceConflictAudit.TryWriteSingleWriterYieldAsync(args, requestedMode, admission.AuditDirectory);
         Log.CloseAndFlush();
         return 1;
     }
