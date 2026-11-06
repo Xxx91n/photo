@@ -10,16 +10,17 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use windows_sys::Win32::Foundation::{
-    CloseHandle, ERROR_CANCELLED, GetLastError, HANDLE, LocalFree, SetLastError, WAIT_OBJECT_0,
-    WAIT_TIMEOUT,
+    CloseHandle, ERROR_CANCELLED, ERROR_FILE_NOT_FOUND, GetLastError, HANDLE, LocalFree,
+    SetLastError, WAIT_OBJECT_0, WAIT_TIMEOUT,
 };
 use windows_sys::Win32::Security::Authorization::ConvertSidToStringSidW;
 use windows_sys::Win32::Security::{
     GetTokenInformation, TOKEN_ELEVATION, TOKEN_QUERY, TOKEN_USER, TokenElevation, TokenUser,
 };
 use windows_sys::Win32::System::Registry::{
-    HKEY, HKEY_LOCAL_MACHINE, KEY_SET_VALUE, REG_MULTI_SZ, REG_OPTION_NON_VOLATILE, REG_SZ,
-    RegCloseKey, RegCreateKeyExW, RegDeleteValueW, RegSetValueExW,
+    HKEY, HKEY_LOCAL_MACHINE, KEY_QUERY_VALUE, KEY_SET_VALUE, REG_MULTI_SZ, REG_OPTION_NON_VOLATILE,
+    REG_SZ, RegCloseKey, RegCreateKeyExW, RegDeleteValueW, RegOpenKeyExW, RegQueryValueExW,
+    RegSetValueExW,
 };
 use windows_sys::Win32::System::SystemInformation::GetSystemDirectoryW;
 use windows_sys::Win32::System::Threading::{
@@ -197,11 +198,33 @@ impl InstallerSidRegistry for WindowsInstallerSidRegistry {
             return Err(format!("refusing to register a malformed SID ({sid})"));
         }
 
+        // 两项值不是原子写入：中途失败会把既有安装者授权换成「新 SID + 旧集合」的混合值，
+        // 下次服务启动可能把原用户挡在管道外，所以失败时按读到的旧值恢复，而不是留着半成品。
+        let (previous_installer_sid, previous_allowed_sids) = read_acl_registration()?;
+
         let key = open_acl_key()?;
-        let result = set_string_value(key, INSTALLER_SID_VALUE, sid)
+        let written = set_string_value(key, INSTALLER_SID_VALUE, sid)
             .and_then(|()| set_multi_string_value(key, ALLOWED_SIDS_VALUE, &[sid]));
+        let rolled_back = if written.is_err() {
+            restore_registration_values(
+                key,
+                previous_installer_sid.as_deref(),
+                previous_allowed_sids.as_deref(),
+            )
+        } else {
+            Ok(())
+        };
         unsafe { RegCloseKey(key) };
-        result.map_err(describe_registry_error)
+
+        match (written, rolled_back) {
+            (Ok(()), _) => Ok(()),
+            (Err(status), Ok(())) => Err(describe_registry_error(status)),
+            (Err(status), Err(restore_status)) => Err(format!(
+                "{}; restoring the previous registration also failed ({})",
+                describe_registry_error(status),
+                describe_registry_error(restore_status)
+            )),
+        }
     }
 
     fn clear(&self) -> Result<(), String> {
@@ -335,7 +358,9 @@ fn clear_script() -> String {
          if (Test-Path -LiteralPath $key) {{ \
              '{INSTALLER_SID_VALUE}','{ALLOWED_SIDS_VALUE}','{ADVERTISED_PIPE_VALUE}' | \
                  ForEach-Object {{ \
-                     Remove-ItemProperty -LiteralPath $key -Name $_ -ErrorAction SilentlyContinue \
+                     if ($null -ne (Get-ItemProperty -LiteralPath $key -Name $_ -ErrorAction SilentlyContinue)) {{ \
+                         Remove-ItemProperty -LiteralPath $key -Name $_ -ErrorAction Stop \
+                     }} \
                  }} \
          }}"
     )
@@ -364,6 +389,149 @@ fn open_acl_key() -> Result<HKEY, String> {
     Ok(key)
 }
 
+/// 只读打开登记键：键不存在返回 `None`，不用 `RegCreateKeyExW` 顺手建出空键。
+fn open_acl_key_read() -> Result<Option<HKEY>, String> {
+    let subkey = wide(ACL_REGISTRY_SUBKEY);
+    let mut key: HKEY = std::ptr::null_mut();
+    let status = unsafe {
+        RegOpenKeyExW(
+            HKEY_LOCAL_MACHINE,
+            subkey.as_ptr(),
+            0,
+            KEY_QUERY_VALUE,
+            &mut key,
+        )
+    };
+    if status == ERROR_FILE_NOT_FOUND {
+        return Ok(None);
+    }
+    if status != 0 {
+        return Err(describe_registry_error(status));
+    }
+    Ok(Some(key))
+}
+
+fn read_raw_value(key: HKEY, name: &str) -> Result<Option<(u32, Vec<u8>)>, u32> {
+    let name = wide(name);
+    let mut kind = 0u32;
+    let mut size = 0u32;
+    let status = unsafe {
+        RegQueryValueExW(
+            key,
+            name.as_ptr(),
+            std::ptr::null_mut(),
+            &mut kind,
+            std::ptr::null_mut(),
+            &mut size,
+        )
+    };
+    // 值不存在是「没有旧值」，不是读取失败。
+    if status == ERROR_FILE_NOT_FOUND {
+        return Ok(None);
+    }
+    if status != 0 {
+        return Err(status);
+    }
+    let mut buffer = vec![0u8; size as usize];
+    let status = unsafe {
+        RegQueryValueExW(
+            key,
+            name.as_ptr(),
+            std::ptr::null_mut(),
+            &mut kind,
+            buffer.as_mut_ptr(),
+            &mut size,
+        )
+    };
+    if status != 0 {
+        return Err(status);
+    }
+    buffer.truncate(size as usize);
+    Ok(Some((kind, buffer)))
+}
+
+/// 读回既有 `REG_SZ`：值缺失或类型不符都算「没有可恢复的旧值」，只有真实读取失败才报错。
+fn read_string_value(key: HKEY, name: &str) -> Result<Option<String>, u32> {
+    let Some((kind, bytes)) = read_raw_value(key, name)? else {
+        return Ok(None);
+    };
+    if kind != REG_SZ {
+        return Ok(None);
+    }
+    let units: Vec<u16> = bytes
+        .chunks_exact(2)
+        .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+        .collect();
+    Ok(Some(
+        String::from_utf16_lossy(&units)
+            .trim_end_matches('\0')
+            .to_string(),
+    ))
+}
+
+/// 读回既有 `REG_MULTI_SZ`，语义同 `read_string_value`。
+fn read_multi_string_value(key: HKEY, name: &str) -> Result<Option<Vec<String>>, u32> {
+    let Some((kind, bytes)) = read_raw_value(key, name)? else {
+        return Ok(None);
+    };
+    if kind != REG_MULTI_SZ {
+        return Ok(None);
+    }
+    let mut values: Vec<String> = Vec::new();
+    let mut current: Vec<u16> = Vec::new();
+    for unit in bytes
+        .chunks_exact(2)
+        .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+    {
+        if unit == 0 {
+            if current.is_empty() {
+                break;
+            }
+            values.push(String::from_utf16_lossy(&current));
+            current.clear();
+        } else {
+            current.push(unit);
+        }
+    }
+    if !current.is_empty() {
+        values.push(String::from_utf16_lossy(&current));
+    }
+    Ok(Some(values))
+}
+
+/// 按旧值恢复：有值写回，旧值为空才删除——不把既有安装者授权换成一半新值。
+fn restore_registration_values(
+    key: HKEY,
+    installer_sid: Option<&str>,
+    allowed_sids: Option<&[String]>,
+) -> Result<(), u32> {
+    match installer_sid {
+        Some(sid) => set_string_value(key, INSTALLER_SID_VALUE, sid)?,
+        None => delete_value(key, INSTALLER_SID_VALUE)?,
+    }
+    match allowed_sids {
+        Some(values) => {
+            let borrowed: Vec<&str> = values.iter().map(String::as_str).collect();
+            set_multi_string_value(key, ALLOWED_SIDS_VALUE, &borrowed)?;
+        }
+        None => delete_value(key, ALLOWED_SIDS_VALUE)?,
+    }
+    Ok(())
+}
+
+/// 读既有登记的两项值，供登记失败时恢复：键不存在即「从未登记过」。
+fn read_acl_registration() -> Result<(Option<String>, Option<Vec<String>>), String> {
+    let Some(key) = open_acl_key_read()? else {
+        return Ok((None, None));
+    };
+    let result = read_string_value(key, INSTALLER_SID_VALUE).and_then(|installer_sid| {
+        read_multi_string_value(key, ALLOWED_SIDS_VALUE)
+            .map(|allowed_sids| (installer_sid, allowed_sids))
+    });
+    unsafe { RegCloseKey(key) };
+    result.map_err(describe_registry_error)
+}
+
 fn set_value_bytes(key: HKEY, name: &str, kind: u32, data: &[u8]) -> Result<(), u32> {
     let name = wide(name);
     let status = unsafe {
@@ -380,11 +548,14 @@ fn set_value_bytes(key: HKEY, name: &str, kind: u32, data: &[u8]) -> Result<(), 
 }
 
 fn set_string_value(key: HKEY, name: &str, value: &str) -> Result<(), u32> {
-    let bytes: Vec<u8> = value
-        .encode_utf16()
-        .flat_map(|unit| unit.to_le_bytes())
-        .collect();
-    set_value_bytes(key, name, REG_SZ, &bytes)
+    set_value_bytes(key, name, REG_SZ, &string_value_bytes(value))
+}
+
+/// `REG_SZ` 的字节数必须包含结尾 NUL，否则按 REG_SZ 读回的值没有终止符。
+fn string_value_bytes(value: &str) -> Vec<u8> {
+    let mut units: Vec<u16> = value.encode_utf16().collect();
+    units.push(0);
+    units.iter().flat_map(|unit| unit.to_le_bytes()).collect()
 }
 
 /// `REG_MULTI_SZ`：每个串以 NUL 结尾，整体再补一个 NUL，与 PowerShell 的 `-Type MultiString` 一致。
@@ -576,7 +747,14 @@ impl ServiceOps for WindowsOps {
             }
         };
 
-        // #200 AC2：与 scripts/install-service.ps1 同格式先落登记，写不进就不装——
+        // #200 返修：先清旧服务再落登记——停/删失败或用户取消时，HKLM 里的既有登记必须原样
+        // 保留，否则服务重启后会拿新 SID 的 ACL 把原本被授权的用户挡在管道外。
+        let precheck = self.ensure_removed_before_install();
+        if precheck.status != ServiceCommandStatus::Success {
+            return precheck;
+        }
+
+        // #200 AC2：与 scripts/install-service.ps1 同格式落登记，写不进就不装——
         // 否则服务建好了却只有提权会话能连，用户看到「安装成功」却用不了。
         if let Err(reason) = self.register_installer_sid(&installer_sid) {
             // 用户取消 UAC 不是失败：与 sc.exe 通道一致报 ElevationCancelled，UI 才不会提示"安装失败"。
@@ -591,11 +769,6 @@ impl ServiceOps for WindowsOps {
                 aborted.status = ServiceCommandStatus::ElevationCancelled;
             }
             return aborted;
-        }
-
-        let precheck = self.ensure_removed_before_install();
-        if precheck.status != ServiceCommandStatus::Success {
-            return precheck;
         }
 
         let mut create = self.run_sc(args.clone(), true);
@@ -1599,6 +1772,64 @@ mod tests {
     }
 
     #[test]
+    fn install_keeps_existing_registration_when_precheck_fails() {
+        // #200 返修：旧服务停不下来时不得先写新登记，否则既有授权被换成新 SID，
+        // 服务下次启动会拿它去拒绝原本被授权的用户。
+        let (ops, _, acl, _) = ops_with_acl(
+            ServiceRuntimeState::Running,
+            vec![code(5)],
+            true,
+            RecordingElevated::default(),
+            FakeAcl::healthy(),
+        );
+
+        let worker = temp_worker();
+        let config = std::path::PathBuf::from(r"C:\cfg\config.json");
+        let result = ops.install(Some(worker.as_path()), Some(config.as_path()));
+
+        assert_eq!(result.status, ServiceCommandStatus::Failed);
+        assert!(
+            acl.registered().is_empty(),
+            "a failed precheck must leave the existing registration untouched"
+        );
+        assert_eq!(acl.clear_calls(), 0);
+        cleanup_worker(&worker);
+    }
+
+    #[test]
+    fn install_does_not_register_when_cleanup_elevation_is_cancelled() {
+        // 防：用户取消「停掉旧服务」的 UAC 后，新 SID 仍被写进 HKLM。
+        let (ops, runner, _, elevated) = ops_with_acl(
+            ServiceRuntimeState::Running,
+            Vec::new(),
+            false,
+            RecordingElevated::new(ElevatedOutcome::Cancelled),
+            FakeAcl::healthy(),
+        );
+
+        let worker = temp_worker();
+        let config = std::path::PathBuf::from(r"C:\cfg\config.json");
+        let result = ops.install(Some(worker.as_path()), Some(config.as_path()));
+
+        assert_eq!(result.status, ServiceCommandStatus::ElevationCancelled);
+        assert_eq!(
+            elevated.calls().len(),
+            1,
+            "cancelled cleanup must not be followed by a registration script"
+        );
+        assert!(runner.calls().is_empty());
+        cleanup_worker(&worker);
+    }
+
+    #[test]
+    fn string_values_are_written_with_a_terminating_null() {
+        // #200 返修：REG_SZ 的字节数必须含结尾 NUL，否则按 REG_SZ 读回的值没有终止符。
+        let bytes = string_value_bytes(TEST_INSTALLER_SID);
+        assert_eq!(bytes.len(), (TEST_INSTALLER_SID.len() + 1) * 2);
+        assert_eq!(&bytes[bytes.len() - 2..], [0, 0]);
+    }
+
+    #[test]
     fn uninstall_clears_pipe_acl_after_delete() {
         // 防：#200 ② —— 卸载只删服务不清登记，重装到别的账户后陈旧 SID 仍被当作授权来源。
         let (ops, runner, acl, _) = ops_with_acl(
@@ -1701,6 +1932,10 @@ mod tests {
         let cleanup_script = elevated.calls()[1].last().cloned().unwrap_or_default();
         assert!(cleanup_script.contains(INSTALLER_SID_VALUE));
         assert!(cleanup_script.contains(ADVERTISED_PIPE_VALUE));
+        assert!(
+            cleanup_script.contains("-ErrorAction Stop"),
+            "cleanup must surface real removal failures instead of reporting success: {cleanup_script}"
+        );
     }
 
     #[test]
