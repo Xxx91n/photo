@@ -3417,7 +3417,9 @@ mod tests {
         draw(&mut cx, any_window);
 
         let feedback = window
-            .update(&mut cx, |view, _, _| view.copy_feedback.as_ref().map(|(id, _)| id.clone()))
+            .update(&mut cx, |view, _, _| {
+                view.copy_feedback.as_ref().map(|(id, _)| id.clone())
+            })
             .unwrap();
         assert_eq!(
             feedback.as_deref(),
@@ -3430,7 +3432,9 @@ mod tests {
             "剪贴板应包含日志行文本，实际 {clipboard:?}"
         );
         let (page, log_len) = window
-            .update(&mut cx, |view, _, _| (view.page, view.log_state.borrow().logs.len()))
+            .update(&mut cx, |view, _, _| {
+                (view.page, view.log_state.borrow().logs.len())
+            })
             .unwrap();
         assert_eq!(page, Page::Logs, "复制按钮的 Enter 不应切换页面");
         assert_eq!(log_len, 1, "复制不应改动日志缓冲");
