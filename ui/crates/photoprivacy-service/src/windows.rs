@@ -2134,7 +2134,9 @@ mod tests {
         let calls = elevated.calls();
         assert_eq!(calls.len(), 2, "register + rollback: {calls:?}");
         assert!(
-            calls[1].last().is_some_and(|script| script.contains(previous_sid)),
+            calls[1]
+                .last()
+                .is_some_and(|script| script.contains(previous_sid)),
             "rollback must restore the snapshot: {calls:?}"
         );
         cleanup_worker(&worker);
