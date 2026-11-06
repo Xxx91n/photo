@@ -12,8 +12,8 @@ namespace PhotoPrivacy.Worker;
 /// （不另择 %ProgramData% 或 ~/.local/state），只降级为可读记录并保留冲突事实：
 /// stderr 恒写，Serilog 已初始化时再补一路文件日志（服务会话下 stderr 不落盘）。
 /// 残余：留痕本身仍是 best-effort，后台落盘失败由 JsonLineAuditLogger 内部吞掉；
-/// 既有 3 次有界重试只覆盖入队阶段的 IOException，后台 flush 与常驻 Worker 抢
-/// audit-*.jsonl 的共享冲突不可由该重试感知。两条残余均继承 #162 / PR #163，由 #211 承接。
+/// 下方那 3 次 IOException 重试对当前 WriteAsync 实现是死代码（只入队、不碰文件，不抛 IOException），
+/// 删除或改造成能感知落盘失败的重试由 #211 裁定。两条残余均继承 #162 / PR #163，由 #211 承接。
 /// </summary>
 // Design(#82): 配置解析与待机路径不得建目录；冲突留痕只在写路径有界建目录，失败降级为可读记录且不阻断退出，只读安装目录不改写落点（后台 flush 残余见 #211）。
 internal static class InstanceConflictAudit
@@ -23,9 +23,7 @@ internal static class InstanceConflictAudit
     /// 为空只表示「未观察到同步失败」，不等于落盘成功——后台 flush 仍是 best-effort（残余见类注释）。
     /// 生产调用方可丢弃返回值：两路可观测面都在 Degrade 内落地；返回值供测试与后续调用方判读。
     /// </summary>
-    internal sealed record ConflictAuditOutcome(
-        string AuditDirectory,
-        string? DegradationRecord);
+    internal sealed record ConflictAuditOutcome(string? DegradationRecord);
 
     public static Task<ConflictAuditOutcome> TryWriteAsync(string[] args, RuntimeMode requestedMode, string mutexName)
     {
@@ -97,10 +95,11 @@ internal static class InstanceConflictAudit
                 payload[key] = value;
             }
 
-            // 有界重试（#162 引入）：只覆盖本处 WriteAsync 入队阶段的 IOException。
-            // 注意 JsonLineAuditLogger.WriteAsync 只入队、不碰文件，后台 flush 与常驻 Worker
-            // 抢 audit-*.jsonl 的共享冲突不由这里感知——该残余由 #211 承接（见类注释）。
-            // 入队/构造阶段仍失败则由外层降级为可读记录（留痕永不阻断退出）。
+            // 有界重试（#162 引入）：对当前 JsonLineAuditLogger.WriteAsync 实现是死代码——
+            // 它只做 Serialize + Channel.TryWrite（满即 DropOldest），不碰文件、不抛 IOException。
+            // 后台 flush 与常驻 Worker 抢 audit-*.jsonl 的共享冲突同样不由这里感知；
+            // 删除或改造成能感知落盘失败的重试由 #211 裁定（见类注释）。
+            // 构造/入队阶段抛出的其他异常由外层降级为可读记录（留痕永不阻断退出）。
             for (var attempt = 1; ; attempt++)
             {
                 try
@@ -144,7 +143,7 @@ internal static class InstanceConflictAudit
         }
 
         return writeFailure is null
-            ? new ConflictAuditOutcome(auditDirectory, null)
+            ? new ConflictAuditOutcome(null)
             : Degrade(auditDirectory, writeFailure, message, data, "冲突留痕写入失败");
     }
 
@@ -212,7 +211,7 @@ internal static class InstanceConflictAudit
         // 按 #85 口径吞掉 provider 故障，日志不得反过来阻断让位退出。
         SafeLog.Try(() => Log.Warning("conflict audit degraded: {DegradationRecord}", record));
 
-        return new ConflictAuditOutcome(auditDirectory, record);
+        return new ConflictAuditOutcome(record);
     }
 
     internal static AppConfig LoadConfigFromArgs(string[] args)
