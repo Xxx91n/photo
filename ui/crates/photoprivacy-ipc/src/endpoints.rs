@@ -113,7 +113,9 @@ pub fn resolve_endpoint(
         )),
         HostPlatform::Linux => match mode {
             WorkerMode::Background => linux_background_endpoint(current_runtime_dir().as_deref()),
-            WorkerMode::Service => Some(Endpoint::UnixSocket("/run/photoprivacy/worker.sock".into())),
+            WorkerMode::Service => {
+                Some(Endpoint::UnixSocket("/run/photoprivacy/worker.sock".into()))
+            }
         },
         HostPlatform::MacOs => match mode {
             // 后台模式：per-user，UI 拉起的 Worker 与 UI 同用户，随 HOME 走。

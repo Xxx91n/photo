@@ -135,7 +135,8 @@ pub fn start(
                 snapshots.send_modify(|snapshot| {
                     snapshot.state = ConnectionState::Disconnected;
                     snapshot.last_error = Some(
-                        "无法解析 Worker 端点（缺少用户主目录或有效的 XDG_RUNTIME_DIR）".to_string(),
+                        "无法解析 Worker 端点（缺少用户主目录或有效的 XDG_RUNTIME_DIR）"
+                            .to_string(),
                     );
                 });
             }
