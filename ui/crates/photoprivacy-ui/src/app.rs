@@ -2424,6 +2424,11 @@ impl AppView {
             .text_color(theme.text_muted)
             .hover(|element| element.bg(theme.surface_raised).text_color(theme.text))
             .cursor_pointer()
+            // Design(#119): 复制按钮是可交互控件，必须入焦点链（focusable + tab_stop +
+            // 焦点环）；Enter/Space 经 gpui 合成点击与鼠标同效。无底色描边取默认强调色。
+            .focusable()
+            .tab_stop(true)
+            .focus(focus_ring(theme.accent))
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.copy_to_clipboard(&button_id, &copy_text, cx);
             }))
@@ -3371,6 +3376,64 @@ mod tests {
             generation_before, generation_after,
             "Enter 应触发清空按钮的点击处理"
         );
+    }
+
+    /// 往日志页共享状态注入一条 Info 级审计记录并重建可见索引（测试装配，生产走 LogService）。
+    fn inject_log_record(cx: &mut TestAppContext, window: WindowHandle<AppView>) {
+        window
+            .update(cx, |view, _, _| {
+                let record = photoprivacy_logs::parse_line(
+                    r#"{"event_type":"file_detected","level":"INFO","timestamp_utc":"2026-11-06T00:00:00Z","source_path_masked":"C:/p.jpg","message":"复制我"}"#,
+                )
+                .expect("样例审计行应可解析");
+                view.log_state.borrow_mut().logs.push_batch([record]);
+                view.rebuild_visible();
+            })
+            .unwrap();
+    }
+
+    /// Tab 走到日志行复制按钮并按 Enter 复制（#119 AC1/AC2）：
+    /// 清空按钮（第 14 站）之后的下一站即首行复制按钮——焦点次序跟随渲染次序；
+    /// Enter 激活与鼠标点击同效（剪贴板 + 已复制反馈），且不切换页面、不动日志数据（AC4）。
+    #[test]
+    fn tab_reaches_log_copy_button_and_enter_copies() {
+        let (mut cx, window) = setup();
+        let any_window: AnyWindowHandle = window.into();
+        inject_log_record(&mut cx, window);
+
+        // 切到日志页（第 4 个导航项）
+        for _ in 0..4 {
+            press_tab(&mut cx, any_window, true);
+        }
+        press_activation_key(&mut cx, any_window, "enter");
+        draw(&mut cx, any_window);
+
+        // 日志页 tab stop：5 导航 + 3 主题选项 + 5 级别过滤 + 清空按钮 + 首行复制按钮 = 15 个。
+        // 当前焦点停在第 4 个（日志导航），再走 11 跳到第 15 个（首行复制按钮）。
+        for _ in 0..11 {
+            press_tab(&mut cx, any_window, true);
+        }
+        press_activation_key(&mut cx, any_window, "enter");
+        draw(&mut cx, any_window);
+
+        let feedback = window
+            .update(&mut cx, |view, _, _| view.copy_feedback.as_ref().map(|(id, _)| id.clone()))
+            .unwrap();
+        assert_eq!(
+            feedback.as_deref(),
+            Some("copy-log-0"),
+            "Enter 应激活首行复制按钮并触发已复制反馈"
+        );
+        let clipboard = cx.read(|cx| cx.read_from_clipboard().and_then(|item| item.text()));
+        assert!(
+            clipboard.is_some_and(|text| text.contains("复制我")),
+            "剪贴板应包含日志行文本，实际 {clipboard:?}"
+        );
+        let (page, log_len) = window
+            .update(&mut cx, |view, _, _| (view.page, view.log_state.borrow().logs.len()))
+            .unwrap();
+        assert_eq!(page, Page::Logs, "复制按钮的 Enter 不应切换页面");
+        assert_eq!(log_len, 1, "复制不应改动日志缓冲");
     }
 
     /// 输入框的 FocusHandle 接管焦点态，且作为 tab stop 进出不陷获（AC2/AC4）。
