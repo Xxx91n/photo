@@ -299,8 +299,10 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
 
         // Phase 1: Probe metadata via -json
         var probeMarker = $"PROBE_DONE_{id}";
-        var probeTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var probePending = new PendingBlock(probeTcs, PendingCompletion.BlockReady, new System.Text.StringBuilder());
+        var probeTcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var probeOutputBuilder = new System.Text.StringBuilder();
+        var probeOutputLock = new object();
 
         // ExifTool stay_open protocol: -echo1 markers are echoed BEFORE file
         // processing output. So the order is:
@@ -308,17 +310,38 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
         //   2. [{...JSON...}]   (file metadata)
         //   3. {ready}           (task complete)
         // We use {ready} as the end-of-task delimiter.
-        //
-        // 探测不再自带一个局部 ProbeLineHandler：它与擦除块共用 _pending 的 BlockReady 归属
-        // （OnStdoutLine 收行、CompleteBlockJustEchoed 结清、OnProcessExited 收口）。原局部处理器
-        // 用 Contains 认领 marker，而 id 自增使 marker 互为前缀（PROBE_DONE_1 ⊂ PROBE_DONE_10），
-        // 别的文件那块的回显行会被本探测认领，随后那句别块的 {ready} 就把本探测结清在空输出上 →
-        // HasClearableFields 解析不出东西 → Skipped_NoMetadata，文件里的隐私元数据被静默跳过。
-        // 认领与结清改与擦除块（#97 落地的那半边，见本方法下方 OnStdoutLine / CompleteBlockJustEchoed）
-        // 同口径后，本票#111 的「有元数据却报无元数据」静默跳过形态消失。
-        // Design(#39): 探测块的 marker 认领取整行相等、结清取本块 {ready}——与擦除块同口径，回显只当「进入本块」的锚点；判定同样依赖「块按写入顺序整块处理、回显与 {ready} 一一对应」，这一 stdin 顺序假设仍未实测，风险登记在 #39。
-        _pending[probeMarker] = probePending;
+        var markerSeen = false;
+        void ProbeLineHandler(string line)
+        {
+            if (probeTcs.Task.IsCompleted)
+                return;
 
+            // 跳过 marker 行本身，只收集 marker 之后的数据。
+            if (!markerSeen)
+            {
+                if (line.Contains(probeMarker, StringComparison.Ordinal))
+                {
+                    markerSeen = true;
+                }
+                return;
+            }
+
+            // {ready} prompt is ExifTool's end-of-task signal.
+            if (line.StartsWith("{ready", StringComparison.Ordinal))
+            {
+                var result = probeOutputBuilder.ToString();
+                probeTcs.TrySetResult(result);
+                return;
+            }
+
+            // Collect lines between the echo marker and {ready}.
+            lock (probeOutputLock)
+            {
+                probeOutputBuilder.AppendLine(line);
+            }
+        }
+
+        _process.StdoutLine += ProbeLineHandler;
         try
         {
             var probeBlock = ExifToolCommandBuilder.BuildProbeTaskBlock(targetPath, id);
@@ -327,11 +350,11 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
         }
         finally
         {
-            _pending.TryRemove(probeMarker, out _);
+            _process.StdoutLine -= ProbeLineHandler;
         }
 
         // Phase 2: Check probe result
-        var probeOutputResult = probePending.TakeOutput();
+        var probeOutputResult = probeTcs.Task.IsCompleted ? probeTcs.Task.Result : null;
         var hasClearableMetadata = !string.IsNullOrWhiteSpace(probeOutputResult) && HasClearableFields(probeOutputResult, targetPath);
         if (!hasClearableMetadata)
         {
@@ -591,10 +614,7 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
             }
 
             // 本探针自己的 marker 必须先认领——它同样以 VERSION_ 开头。
-            // 整行相等（与 #97 / #111 同口径）：VERSION_{Guid:N} 之间不互为前缀，这里只作一致性收敛——
-            // 别块的 VERSION_ 行会先被 IsProtocolNoiseLine 挡住，Contains 不会误伤，但保持同一条认领规则
-            // 才能让「marker 认领」只有一种写法。
-            if (string.Equals(line.Trim(), marker, StringComparison.Ordinal))
+            if (line.Contains(marker, StringComparison.Ordinal))
             {
                 markerSeen = true;
                 // 如果 version text 已经到达，立即返回结果
@@ -688,24 +708,15 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
     }
 
     /// <summary>
-    /// 命令块边界 marker 行（探测 / 擦除 / 健康 / 版本）——它们标识块的进出，不是任何块的探测数据。
-    /// 只按前缀排除 marker：探测数据本身是 JSON（<c>[</c> / <c>{</c> 开头），不能一并滤掉。
-    /// </summary>
-    private static bool IsBlockMarkerLine(string line)
-    {
-        return line.StartsWith("TASK_DONE_", StringComparison.Ordinal)
-            || line.StartsWith("PROBE_DONE_", StringComparison.Ordinal)
-            || line.StartsWith("HEALTH_", StringComparison.Ordinal)
-            || line.StartsWith("VERSION_", StringComparison.Ordinal);
-    }
-
-    /// <summary>
     /// stay_open 协议噪声行——命令块边界 marker（任务/探测/健康/版本）或 JSON/提示输出，
     /// 它们永远不是版本文本。暖路径重探期间 stdout 与在途擦除任务共享，故须显式排除。
     /// </summary>
     private static bool IsProtocolNoiseLine(string line)
     {
-        return IsBlockMarkerLine(line)
+        return line.StartsWith("TASK_DONE_", StringComparison.Ordinal)
+            || line.StartsWith("PROBE_DONE_", StringComparison.Ordinal)
+            || line.StartsWith("HEALTH_", StringComparison.Ordinal)
+            || line.StartsWith("VERSION_", StringComparison.Ordinal)
             || line.StartsWith("[", StringComparison.Ordinal)
             || line.StartsWith("{", StringComparison.Ordinal);
     }
@@ -791,16 +802,10 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
 
     private sealed class PendingBlock
     {
-        private readonly System.Text.StringBuilder? _output;
-
-        public PendingBlock(
-            TaskCompletionSource<bool> tcs,
-            PendingCompletion completion,
-            System.Text.StringBuilder? output = null)
+        public PendingBlock(TaskCompletionSource<bool> tcs, PendingCompletion completion)
         {
             Tcs = tcs;
             Completion = completion;
-            _output = output;
         }
 
         public TaskCompletionSource<bool> Tcs { get; }
@@ -812,34 +817,6 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
         /// 由 stdout pump 线程置位、其他线程只读；它不是完成信号，只作「已开始、但等不到 {ready}」的判据与诊断锚点。
         /// </summary>
         public long MarkerEchoedAt;
-
-        /// <summary>把一行 stdout 收进本块的输出窗口（非收集块是空操作）。只由 stdout pump 线程调用。</summary>
-        public void AppendOutputLine(string line)
-        {
-            if (_output is null)
-            {
-                return;
-            }
-
-            lock (_output)
-            {
-                _output.AppendLine(line);
-            }
-        }
-
-        /// <summary>取走已收集的输出（非收集块恒为空串）；为空串时探测结论是「真的没有输出」。</summary>
-        public string TakeOutput()
-        {
-            if (_output is null)
-            {
-                return string.Empty;
-            }
-
-            lock (_output)
-            {
-                return _output.ToString();
-            }
-        }
     }
 
     private void OnStdoutLine(string line)
@@ -855,25 +832,16 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
         {
             if (entry.Value.Completion == PendingCompletion.BlockReady)
             {
-                // 整行相等才算命中：擦除 id 之间互为前缀（TASK_DONE_1 与 TASK_DONE_12），探测 id 同理
-                // （PROBE_DONE_1 ⊂ PROBE_DONE_10）；用 Contains 会把别的块的回显记到自己头上，
-                // 「本块的 {ready}」就名不副实（#97 / #111）。
-                if (string.Equals(line.Trim(), entry.Key, StringComparison.Ordinal))
+                // 整行相等才算命中：擦除 id 之间互为前缀（TASK_DONE_1 与 TASK_DONE_12），
+                // 用 Contains 会把别的块的回显记到自己头上，「本块的 {ready}」就名不副实。
+                if (!string.Equals(line.Trim(), entry.Key, StringComparison.Ordinal))
                 {
-                    // 回显只说明「本块已开始处理」，完成判定留给紧跟其后的那句 {ready}（#97）。
-                    Interlocked.CompareExchange(ref entry.Value.MarkerEchoedAt, Environment.TickCount64, 0);
-                    _lastPendingMarkerEchoed = entry.Key;
                     continue;
                 }
 
-                // 本块已开始、还在等自己那句的 {ready}：这一行落在它的输出窗口里（探测块的 -json）。
-                // 别块的 marker 回显不算数据——探测数据本身是 JSON（[ / { 开头），不能一并滤掉；
-                // 而一句并发探针的 HEALTH_/TASK_DONE_ 回显会让 JSON 变得不可解析。
-                if (Volatile.Read(ref entry.Value.MarkerEchoedAt) != 0 && !IsBlockMarkerLine(line))
-                {
-                    entry.Value.AppendOutputLine(line);
-                }
-
+                // 回显只说明「本块已开始处理」，完成判定留给紧跟其后的那句 {ready}（#97）。
+                Interlocked.CompareExchange(ref entry.Value.MarkerEchoedAt, Environment.TickCount64, 0);
+                _lastPendingMarkerEchoed = entry.Key;
                 continue;
             }
 
@@ -884,9 +852,7 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
                 continue;
             }
 
-            // 不写盘的探针不占用「紧挨 {ready} 之前那句回显」的归属位置：那个位置只服务于 BlockReady
-            // 块的结清（CompleteBlockJustEchoed）。否则一次并发健康探针就能顶掉在途探测/擦除块的归属
-            // 位置，让它自己那句 {ready} 到齐了也结不清（#111）。
+            _lastPendingMarkerEchoed = entry.Key;
             if (_pending.TryRemove(entry.Key, out var pending))
             {
                 pending.Tcs.TrySetResult(true);
@@ -895,7 +861,7 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
     }
 
     /// <summary>
-    /// <c>{ready}</c> 只结清「紧挨在它前面那句回显」所属的写盘块（擦除）或输出收集块（探测）。
+    /// <c>{ready}</c> 只结清「紧挨在它前面那句回显」所属的擦除块。
     ///
     /// <c>{ready}</c> 行本身不带块身份，能依据的只有位置，于是归属只能押在「块按顺序整块处理、一块的回显与
     /// 它自己的 <c>{ready}</c> 之间插不进别块的行」这一假设上——它由 #39 登记为未实测。假设破了（插得进）时，
