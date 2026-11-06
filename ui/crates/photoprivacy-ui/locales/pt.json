@@ -141,7 +141,7 @@
       "0": "Operação bem-sucedida",
       "5": "Acesso negado, por favor execute como administrador",
       "1053": "Tempo limite de inicialização do serviço, verifique o caminho do ExifTool e o arquivo de configuração",
-      "1053_single_writer": "Tempo limite de inicialização do serviço: outro worker em segundo plano está usando o mesmo diretório de auditoria, então o worker do serviço foi encerrado para evitar escrita dupla. Feche o aplicativo para parar o worker em segundo plano e inicie o serviço novamente",
+      "1053_single_writer": "Tempo limite de inicialização do serviço: outro worker em segundo plano está usando o mesmo diretório de auditoria, então o worker do serviço foi encerrado para evitar escrita dupla. Pare primeiro esse worker em segundo plano (fechar o aplicativo pode não pará-lo: encerre o processo PhotoPrivacyWorker se ele continuar em execução) e inicie o serviço novamente",
       "1055": "Banco de dados do serviço travado, tente novamente mais tarde",
       "1056": "O serviço já está em execução",
       "1058": "O serviço está desabilitado",

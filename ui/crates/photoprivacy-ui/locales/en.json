@@ -141,7 +141,7 @@
       "0": "Operation succeeded",
       "5": "Access denied, please run as administrator",
       "1053": "Service start timeout, check ExifTool path and config file",
-      "1053_single_writer": "Service start timeout: another background worker is using the same audit directory, so the service worker exited instead of writing twice. Quit the app to stop the background worker, then start the service again",
+      "1053_single_writer": "Service start timeout: another background worker is using the same audit directory, so the service worker exited instead of writing twice. Stop that background worker first (quitting the app may not stop it — end the PhotoPrivacyWorker process if it keeps running), then start the service again",
       "1055": "Service database locked, please retry later",
       "1056": "Service is already running",
       "1058": "Service is disabled",

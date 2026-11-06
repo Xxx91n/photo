@@ -495,11 +495,21 @@ enum StartTimeoutCause {
     TrueTimeout,
 }
 
-/// 1053 归因判据（#202）：UI 当前连着后台 Worker 时，那个 Worker 就是同一份审计目录的
+/// 1053 归因判据（#202）：UI 此刻确实连着后台 Worker 时，那个 Worker 就是同一份审计目录的
 /// 持有者，服务 Worker 必然撞门让位，因此 1053 是确定成因而非猜测；不连后台 Worker
 /// （直连服务/未连接）则保持真超时归因，不让真超时文案回归。
-fn start_timeout_cause(exit_code: i32, worker_mode: Option<WorkerMode>) -> StartTimeoutCause {
-    if exit_code == 1053 && worker_mode == Some(WorkerMode::Background) {
+///
+/// 连接态必须一起判（CodeRabbit 返修）：`worker_mode` 是上一次成功握手留下的残留值，
+/// 连接失败后仍可能是 `Background`；只看它会把真超时误标成单写者让位，威胁 AC3。
+fn start_timeout_cause(
+    exit_code: i32,
+    connection: ConnectionState,
+    worker_mode: Option<WorkerMode>,
+) -> StartTimeoutCause {
+    if exit_code == 1053
+        && connection == ConnectionState::Connected
+        && worker_mode == Some(WorkerMode::Background)
+    {
         StartTimeoutCause::SingleWriterYield
     } else {
         StartTimeoutCause::TrueTimeout
@@ -2617,9 +2627,12 @@ impl AppView {
         };
         // #202：1053 且正连着后台 Worker 时改走让位文案，不再把单写者冲突指向 ExifTool/配置；
         // 其余退出码与真超时（未连后台 Worker）保持原有 service.exitcode.* 映射。
+        let connection = self.snapshot.state;
         let worker_mode = self.snapshot.worker_mode;
         let exit_code_key = exit_code.map(|code| {
-            if start_timeout_cause(code, worker_mode) == StartTimeoutCause::SingleWriterYield {
+            if start_timeout_cause(code, connection, worker_mode)
+                == StartTimeoutCause::SingleWriterYield
+            {
                 k::SERVICE_EXITCODE_1053_SINGLE_WRITER.to_string()
             } else {
                 format!("service.exitcode.{code}")
@@ -2954,26 +2967,44 @@ mod tests {
         WindowHandle, size,
     };
 
-    /// #202 AC1/AC3：1053 只有在连着后台 Worker 时才归因为单写者让位；真超时（直连服务/
-    /// 未连接）与其余退出码必须保持原归因，不让真超时文案回归。
+    /// #202 AC1/AC3：1053 只有在「此刻连着」后台 Worker 时才归因为单写者让位；真超时
+    /// （直连服务/未连接/连接失败后残留的 Background）与其余退出码必须保持原归因，
+    /// 不让真超时文案回归。
     #[test]
     fn start_timeout_cause_distinguishes_yield_from_true_timeout() {
         assert_eq!(
-            start_timeout_cause(1053, Some(WorkerMode::Background)),
+            start_timeout_cause(1053, ConnectionState::Connected, Some(WorkerMode::Background)),
             StartTimeoutCause::SingleWriterYield
         );
         assert_eq!(
-            start_timeout_cause(1053, Some(WorkerMode::Service)),
+            start_timeout_cause(1053, ConnectionState::Connected, Some(WorkerMode::Service)),
             StartTimeoutCause::TrueTimeout
         );
         assert_eq!(
-            start_timeout_cause(1053, None),
+            start_timeout_cause(1053, ConnectionState::Connected, None),
             StartTimeoutCause::TrueTimeout
         );
         assert_eq!(
-            start_timeout_cause(5, Some(WorkerMode::Background)),
+            start_timeout_cause(5, ConnectionState::Connected, Some(WorkerMode::Background)),
             StartTimeoutCause::TrueTimeout
         );
+    }
+
+    /// CodeRabbit 返修：#202 AC3 回归锁——连接失败时快照里的 `worker_mode` 可能仍是上次
+    /// 握手的 `Background`，此时真超时不能被误标成单写者让位。
+    #[test]
+    fn start_timeout_cause_ignores_stale_background_mode_without_connection() {
+        for state in [
+            ConnectionState::Disconnected,
+            ConnectionState::Connecting,
+            ConnectionState::Reconnecting,
+        ] {
+            assert_eq!(
+                start_timeout_cause(1053, state, Some(WorkerMode::Background)),
+                StartTimeoutCause::TrueTimeout,
+                "{state:?} 下残留 Background 不能归因为单写者让位"
+            );
+        }
     }
 
     #[test]

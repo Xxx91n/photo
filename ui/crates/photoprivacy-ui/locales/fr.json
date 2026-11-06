@@ -141,7 +141,7 @@
       "0": "Opération réussie",
       "5": "Accès refusé, veuillez exécuter en tant qu'administrateur",
       "1053": "Délai d'attente du démarrage du service, vérifiez le chemin ExifTool et le fichier de configuration",
-      "1053_single_writer": "Délai d'attente au démarrage du service : un autre worker en arrière-plan utilise le même répertoire d'audit, le worker du service s'est donc arrêté pour éviter une double écriture. Fermez l'application pour arrêter le worker en arrière-plan, puis redémarrez le service",
+      "1053_single_writer": "Délai d'attente au démarrage du service : un autre worker en arrière-plan utilise le même répertoire d'audit, le worker du service s'est donc arrêté pour éviter une double écriture. Arrêtez d'abord ce worker en arrière-plan (fermer l'application ne l'arrête pas forcément : terminez le processus PhotoPrivacyWorker s'il tourne encore), puis redémarrez le service",
       "1055": "Base de données du service verrouillée, réessayez plus tard",
       "1056": "Le service est déjà en cours d'exécution",
       "1058": "Le service est désactivé",
