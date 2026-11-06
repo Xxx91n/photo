@@ -3428,7 +3428,7 @@ mod tests {
         );
         let clipboard = cx.read(|cx| cx.read_from_clipboard().and_then(|item| item.text()));
         assert!(
-            clipboard.is_some_and(|text| text.contains("复制我")),
+            clipboard.as_ref().is_some_and(|text| text.contains("复制我")),
             "剪贴板应包含日志行文本，实际 {clipboard:?}"
         );
         let (page, log_len) = window
