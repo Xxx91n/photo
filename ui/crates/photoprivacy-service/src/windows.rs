@@ -10,10 +10,16 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use windows_sys::Win32::Foundation::{
-    CloseHandle, ERROR_CANCELLED, GetLastError, HANDLE, SetLastError, WAIT_OBJECT_0, WAIT_TIMEOUT,
+    CloseHandle, ERROR_CANCELLED, GetLastError, HANDLE, LocalFree, SetLastError, WAIT_OBJECT_0,
+    WAIT_TIMEOUT,
 };
+use windows_sys::Win32::Security::Authorization::ConvertSidToStringSidW;
 use windows_sys::Win32::Security::{
-    GetTokenInformation, TOKEN_ELEVATION, TOKEN_QUERY, TokenElevation,
+    GetTokenInformation, TOKEN_ELEVATION, TOKEN_QUERY, TOKEN_USER, TokenElevation, TokenUser,
+};
+use windows_sys::Win32::System::Registry::{
+    HKEY, HKEY_LOCAL_MACHINE, KEY_SET_VALUE, REG_MULTI_SZ, REG_OPTION_NON_VOLATILE, REG_SZ,
+    RegCloseKey, RegCreateKeyExW, RegDeleteValueW, RegSetValueExW,
 };
 use windows_sys::Win32::System::SystemInformation::GetSystemDirectoryW;
 use windows_sys::Win32::System::Threading::{
@@ -154,11 +160,257 @@ impl ElevatedRunner for ShellExecuteRunner {
     }
 }
 
+/// 与服务安装脚本同名的注册表落点（`scripts/install-service.ps1`）。
+const ACL_REGISTRY_SUBKEY: &str = "SOFTWARE\\PhotoPrivacy";
+const INSTALLER_SID_VALUE: &str = "ServicePipeInstallerSid";
+const ALLOWED_SIDS_VALUE: &str = "ServicePipeAllowedSids";
+const ADVERTISED_PIPE_VALUE: &str = "ServicePipeName";
+/// 提权脚本用的 PowerShell 注册表路径（与 `ACL_REGISTRY_SUBKEY` 指向同一位置）。
+const ACL_REGISTRY_KEY_PATH: &str = r"HKLM:\SOFTWARE\PhotoPrivacy";
+
+/// UI 安装链的安装者 SID 登记面（#200 落地，决策见 #82 D12）。
+///
+/// Design(#82): 取「发起安装的 UI 进程令牌」的 `TokenUser`，不取提权后子进程令牌。
+/// 依据：`run_sc` 的提权走 runas，OTS（输入不同管理员凭据）时提权进程属于另一账户，而那不是
+/// 安装者本人的桌面会话；UI 进程本身就是发起安装的交互用户，同账户 UAC 提权不改变 SID，
+/// 因此进程令牌 SID 即 #70 语义要求的安装者 SID，也就是 AC1 里「安装者本人的非提权桌面会话」。
+/// SID 解析失败时安装直接中止（#205 ④ 分型），不落「只能提权访问」的半成品服务。
+pub trait InstallerSidRegistry: Send + Sync {
+    /// 解析安装者 SID（`S-1-5-21-...`），失败时给出可展示原因（#205 ④ 失败分型）。
+    fn installer_sid(&self) -> Result<String, String>;
+    /// 登记 InstallerSid 与 AllowedSids（单元素），与脚本不带 `-AuthorizedUsers` 时的格式一致，
+    /// 顺带覆盖上一次安装遗留的陈旧集合值。
+    fn register(&self, sid: &str) -> Result<(), String>;
+    /// 清除 InstallerSid / AllowedSids / ServicePipeName 三项登记。
+    fn clear(&self) -> Result<(), String>;
+}
+
+pub struct WindowsInstallerSidRegistry;
+
+impl InstallerSidRegistry for WindowsInstallerSidRegistry {
+    fn installer_sid(&self) -> Result<String, String> {
+        current_process_user_sid()
+    }
+
+    fn register(&self, sid: &str) -> Result<(), String> {
+        if !is_sid_string(sid) {
+            return Err(format!("refusing to register a malformed SID ({sid})"));
+        }
+
+        let key = open_acl_key()?;
+        let result = set_string_value(key, INSTALLER_SID_VALUE, sid)
+            .and_then(|()| set_multi_string_value(key, ALLOWED_SIDS_VALUE, &[sid]));
+        unsafe { RegCloseKey(key) };
+        result.map_err(describe_registry_error)
+    }
+
+    fn clear(&self) -> Result<(), String> {
+        let key = open_acl_key()?;
+        let result = [INSTALLER_SID_VALUE, ALLOWED_SIDS_VALUE, ADVERTISED_PIPE_VALUE]
+            .iter()
+            .try_for_each(|name| delete_value(key, name));
+        unsafe { RegCloseKey(key) };
+        result.map_err(describe_registry_error)
+    }
+}
+
+/// `S-1-...` 形态校验：DACL 白名单值不接受任意字符串，避免把注入内容写进服务的授权来源。
+fn is_sid_string(sid: &str) -> bool {
+    sid.len() <= 184
+        && sid.starts_with("S-1-")
+        && sid[4..]
+            .split('-')
+            .all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))
+}
+
+fn current_process_user_sid() -> Result<String, String> {
+    unsafe {
+        let mut token: HANDLE = std::ptr::null_mut();
+        if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) == 0 {
+            return Err(format!("OpenProcessToken failed ({})", last_error_code()));
+        }
+
+        let mut size = 0u32;
+        GetTokenInformation(token, TokenUser, std::ptr::null_mut(), 0, &mut size);
+        if size == 0 {
+            let code = last_error_code();
+            CloseHandle(token);
+            return Err(format!("TokenUser size probe failed ({code})"));
+        }
+
+        let mut buffer = vec![0u8; size as usize];
+        let ok = GetTokenInformation(
+            token,
+            TokenUser,
+            buffer.as_mut_ptr() as *mut c_void,
+            size,
+            &mut size,
+        );
+        CloseHandle(token);
+        if ok == 0 {
+            return Err(format!(
+                "GetTokenInformation(TokenUser) failed ({})",
+                last_error_code()
+            ));
+        }
+
+        let user = std::ptr::read_unaligned(buffer.as_ptr() as *const TOKEN_USER);
+        let mut raw: *mut u16 = std::ptr::null_mut();
+        if ConvertSidToStringSidW(user.User.Sid, &mut raw) == 0 {
+            return Err(format!(
+                "ConvertSidToStringSidW failed ({})",
+                last_error_code()
+            ));
+        }
+
+        // SID 字符串上限 184 字符（is_sid_string 同口径），扫描加边界避免越界读。
+        let mut len = 0usize;
+        while len < 184 && *raw.add(len) != 0 {
+            len += 1;
+        }
+        let sid = String::from_utf16_lossy(std::slice::from_raw_parts(raw, len));
+        let _ = LocalFree(raw as *mut c_void);
+
+        if !is_sid_string(&sid) {
+            return Err(format!("resolved SID is malformed ({sid})"));
+        }
+        Ok(sid)
+    }
+}
+
+fn last_error_code() -> u32 {
+    unsafe { GetLastError() }
+}
+
+fn describe_registry_error(code: u32) -> String {
+    match code {
+        5 => "access denied (5)".to_string(),
+        other => format!("Win32 error {other}"),
+    }
+}
+
+fn wide(text: &str) -> Vec<u16> {
+    text.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+fn system32_directory() -> Option<PathBuf> {
+    let mut buffer = [0u16; 260];
+    let len = unsafe { GetSystemDirectoryW(buffer.as_mut_ptr(), buffer.len() as u32) };
+    if len == 0 || len as usize >= buffer.len() {
+        return None;
+    }
+    Some(PathBuf::from(String::from_utf16_lossy(&buffer[..len as usize])))
+}
+
+/// 提权登记走系统自带 Windows PowerShell（#200）：不依赖发布目录里的脚本，也不走 PATH 搜索。
+fn powershell_exe_path() -> Option<PathBuf> {
+    Some(
+        system32_directory()?
+            .join("WindowsPowerShell")
+            .join("v1.0")
+            .join("powershell.exe"),
+    )
+}
+
+/// 与 `scripts/install-service.ps1` 同格式落登记：单值 InstallerSid + 单元素 AllowedSids，
+/// 覆盖上一次安装遗留的陈旧集合值。SID 在写入前已过 `is_sid_string` 校验，不含引号等注入字符。
+fn registration_script(sid: &str) -> String {
+    format!(
+        "$ErrorActionPreference = 'Stop'; \
+         $key = '{ACL_REGISTRY_KEY_PATH}'; \
+         if (-not (Test-Path -LiteralPath $key)) {{ New-Item -Path $key -Force | Out-Null }}; \
+         New-ItemProperty -LiteralPath $key -Name '{INSTALLER_SID_VALUE}' \
+             -Value '{sid}' -PropertyType String -Force | Out-Null; \
+         New-ItemProperty -LiteralPath $key -Name '{ALLOWED_SIDS_VALUE}' \
+             -Value @('{sid}') -PropertyType MultiString -Force | Out-Null"
+    )
+}
+
+fn clear_script() -> String {
+    format!(
+        "$ErrorActionPreference = 'Stop'; \
+         $key = '{ACL_REGISTRY_KEY_PATH}'; \
+         if (Test-Path -LiteralPath $key) {{ \
+             '{INSTALLER_SID_VALUE}','{ALLOWED_SIDS_VALUE}','{ADVERTISED_PIPE_VALUE}' | \
+                 ForEach-Object {{ \
+                     Remove-ItemProperty -LiteralPath $key -Name $_ -ErrorAction SilentlyContinue \
+                 }} \
+         }}"
+    )
+}
+
+fn open_acl_key() -> Result<HKEY, String> {
+    let subkey = wide(ACL_REGISTRY_SUBKEY);
+    let mut key: HKEY = std::ptr::null_mut();
+    let mut disposition = 0u32;
+    let status = unsafe {
+        RegCreateKeyExW(
+            HKEY_LOCAL_MACHINE,
+            subkey.as_ptr(),
+            0,
+            std::ptr::null(),
+            REG_OPTION_NON_VOLATILE,
+            KEY_SET_VALUE,
+            std::ptr::null(),
+            &mut key,
+            &mut disposition,
+        )
+    };
+    if status != 0 {
+        return Err(describe_registry_error(status));
+    }
+    Ok(key)
+}
+
+fn set_value_bytes(key: HKEY, name: &str, kind: u32, data: &[u8]) -> Result<(), u32> {
+    let name = wide(name);
+    let status =
+        unsafe { RegSetValueExW(key, name.as_ptr(), 0, kind, data.as_ptr(), data.len() as u32) };
+    if status == 0 {
+        Ok(())
+    } else {
+        Err(status)
+    }
+}
+
+fn set_string_value(key: HKEY, name: &str, value: &str) -> Result<(), u32> {
+    let bytes: Vec<u8> = value
+        .encode_utf16()
+        .flat_map(|unit| unit.to_le_bytes())
+        .collect();
+    set_value_bytes(key, name, REG_SZ, &bytes)
+}
+
+/// `REG_MULTI_SZ`：每个串以 NUL 结尾，整体再补一个 NUL，与 PowerShell 的 `-Type MultiString` 一致。
+fn set_multi_string_value(key: HKEY, name: &str, values: &[&str]) -> Result<(), u32> {
+    let mut units: Vec<u16> = Vec::new();
+    for value in values {
+        units.extend(value.encode_utf16());
+        units.push(0);
+    }
+    units.push(0);
+
+    let bytes: Vec<u8> = units.iter().flat_map(|unit| unit.to_le_bytes()).collect();
+    set_value_bytes(key, name, REG_MULTI_SZ, &bytes)
+}
+
+fn delete_value(key: HKEY, name: &str) -> Result<(), u32> {
+    let name = wide(name);
+    let status = unsafe { RegDeleteValueW(key, name.as_ptr()) };
+    // ERROR_FILE_NOT_FOUND(2)：值本来就不在，视为已清理。
+    if status == 0 || status == 2 {
+        Ok(())
+    } else {
+        Err(status)
+    }
+}
+
 pub struct WindowsOps {
     runner: Arc<dyn ProcessRunner>,
     elevated: Arc<dyn ElevatedRunner>,
     admin: Arc<dyn AdminChecker>,
     probe: Arc<dyn ServiceProbe>,
+    acl: Arc<dyn InstallerSidRegistry>,
 }
 
 impl WindowsOps {
@@ -167,12 +419,57 @@ impl WindowsOps {
         elevated: Arc<dyn ElevatedRunner>,
         admin: Arc<dyn AdminChecker>,
         probe: Arc<dyn ServiceProbe>,
+        acl: Arc<dyn InstallerSidRegistry>,
     ) -> Self {
         Self {
             runner,
             elevated,
             admin,
             probe,
+            acl,
+        }
+    }
+
+    /// 登记安装者 SID：UI 已提权就直写，否则走提权通道（HKLM 写需要管理员）。
+    fn register_installer_sid(&self, sid: &str) -> Result<(), String> {
+        if !is_sid_string(sid) {
+            return Err(format!("refusing to register a malformed SID ({sid})"));
+        }
+        if self.admin.is_admin() {
+            return self.acl.register(sid);
+        }
+        self.run_elevated_powershell(&registration_script(sid), "service pipe ACL registration")
+    }
+
+    fn clear_installer_sid(&self) -> Result<(), String> {
+        if self.admin.is_admin() {
+            return self.acl.clear();
+        }
+        self.run_elevated_powershell(&clear_script(), "service pipe ACL cleanup")
+    }
+    /// 提权执行一段 PowerShell：`sc.exe` 的 runas 只提升子进程，UI 自身仍非管理员，
+    /// 因此 HKLM 里的登记必须同样经提权通道落盘（#200）。
+    fn run_elevated_powershell(&self, script: &str, what: &str) -> Result<(), String> {
+        let Some(powershell) = powershell_exe_path() else {
+            return Err(format!(
+                "Unable to resolve WindowsPowerShell\\v1.0\\powershell.exe for the {what}"
+            ));
+        };
+        let program = powershell.to_string_lossy().to_string();
+        let args = vec![
+            "-NoProfile".to_string(),
+            "-NonInteractive".to_string(),
+            "-ExecutionPolicy".to_string(),
+            "Bypass".to_string(),
+            "-Command".to_string(),
+            script.to_string(),
+        ];
+
+        match self.elevated.run(&program, &args, COMMAND_TIMEOUT) {
+            ElevatedOutcome::Exited(0) => Ok(()),
+            ElevatedOutcome::Exited(code) => Err(format!("{what} failed (exit {code})")),
+            ElevatedOutcome::Cancelled => Err("elevation was cancelled".to_string()),
+            ElevatedOutcome::Failed(message) => Err(message),
         }
     }
 
@@ -259,6 +556,32 @@ impl ServiceOps for WindowsOps {
             Err(message) => return ServiceCommandResult::failed(message, None),
         };
 
+        // #200 / #205 ④：SID 解析失败一律中止安装，不落一个「只能提权访问」的半成品服务。
+        let installer_sid = match self.acl.installer_sid() {
+            Ok(sid) => sid,
+            Err(reason) => {
+                return ServiceCommandResult::failed(
+                    format!(
+                        "Unable to resolve the installing user SID ({reason}); the service was not \
+                         installed because the desktop session could never be granted pipe access"
+                    ),
+                    None,
+                );
+            }
+        };
+
+        // #200 AC2：与 scripts/install-service.ps1 同格式先落登记，写不进就不装——
+        // 否则服务建好了却只有提权会话能连，用户看到「安装成功」却用不了。
+        if let Err(reason) = self.register_installer_sid(&installer_sid) {
+            return ServiceCommandResult::failed(
+                format!(
+                    "Unable to register the service pipe ACL for the installing user ({reason}); \
+                     the service was not installed"
+                ),
+                None,
+            );
+        }
+
         let precheck = self.ensure_removed_before_install();
         if precheck.status != ServiceCommandStatus::Success {
             return precheck;
@@ -274,7 +597,23 @@ impl ServiceOps for WindowsOps {
             create = self.run_sc(args, true);
         }
 
-        create.with_friendly_message()
+        let created = create.with_friendly_message();
+        if created.status == ServiceCommandStatus::Success {
+            return created;
+        }
+
+        // 服务没建成：回滚刚写下的登记，避免 HKLM 里留下指向不存在服务的授权值。
+        if let Err(reason) = self.clear_installer_sid() {
+            return ServiceCommandResult {
+                message: format!(
+                    "{} The service pipe ACL registration left by this attempt could not be \
+                     rolled back ({reason}).",
+                    created.message
+                ),
+                ..created
+            };
+        }
+        created
     }
 
     fn start(&self, worker: Option<&Path>, config: Option<&Path>) -> ServiceCommandResult {
@@ -332,7 +671,27 @@ impl ServiceOps for WindowsOps {
             }
         }
 
-        self.run_sc(sc_delete(), true).with_friendly_message()
+        let deleted = self.run_sc(sc_delete(), true).with_friendly_message();
+
+        // #200：服务已不在时（1060）也要清掉遗留登记，否则陈旧 SID 会继续被当作管道授权来源；
+        // 提权被取消则保持原样，避免服务仍在运行却把登记清空。
+        let service_gone = matches!(deleted.status, ServiceCommandStatus::Success)
+            || (deleted.status == ServiceCommandStatus::Failed
+                && deleted.exit_code == Some(1060));
+        if !service_gone {
+            return deleted;
+        }
+
+        match self.clear_installer_sid() {
+            Ok(()) => deleted,
+            Err(reason) => ServiceCommandResult {
+                message: format!(
+                    "{} The service pipe ACL registration could not be cleared ({reason}).",
+                    deleted.message
+                ),
+                ..deleted
+            },
+        }
     }
 }
 
@@ -585,6 +944,75 @@ mod tests {
         }
     }
 
+    const TEST_INSTALLER_SID: &str = "S-1-5-21-111111111-222222222-333333333-1001";
+
+    /// 安装者 SID 登记的测试替身：可分别模拟 SID 解析失败、登记失败、清理失败（#200 / #205 ④）。
+    #[derive(Default)]
+    struct FakeAcl {
+        sid: Mutex<Option<Result<String, String>>>,
+        register_error: Mutex<Option<String>>,
+        clear_error: Mutex<Option<String>>,
+        registered: Mutex<Vec<String>>,
+        clear_calls: Mutex<u32>,
+    }
+
+    impl FakeAcl {
+        fn healthy() -> Self {
+            Self::default()
+        }
+
+        fn unresolved(reason: &str) -> Self {
+            let acl = Self::default();
+            *acl.sid.lock().unwrap() = Some(Err(reason.to_string()));
+            acl
+        }
+
+        fn rejecting_registration(reason: &str) -> Self {
+            let acl = Self::default();
+            *acl.register_error.lock().unwrap() = Some(reason.to_string());
+            acl
+        }
+
+        fn rejecting_clear(reason: &str) -> Self {
+            let acl = Self::default();
+            *acl.clear_error.lock().unwrap() = Some(reason.to_string());
+            acl
+        }
+
+        fn registered(&self) -> Vec<String> {
+            self.registered.lock().unwrap().clone()
+        }
+
+        fn clear_calls(&self) -> u32 {
+            *self.clear_calls.lock().unwrap()
+        }
+    }
+
+    impl InstallerSidRegistry for FakeAcl {
+        fn installer_sid(&self) -> Result<String, String> {
+            match self.sid.lock().unwrap().clone() {
+                Some(result) => result,
+                None => Ok(TEST_INSTALLER_SID.to_string()),
+            }
+        }
+
+        fn register(&self, sid: &str) -> Result<(), String> {
+            if let Some(error) = self.register_error.lock().unwrap().clone() {
+                return Err(error);
+            }
+            self.registered.lock().unwrap().push(sid.to_string());
+            Ok(())
+        }
+
+        fn clear(&self) -> Result<(), String> {
+            *self.clear_calls.lock().unwrap() += 1;
+            match self.clear_error.lock().unwrap().clone() {
+                Some(error) => Err(error),
+                None => Ok(()),
+            }
+        }
+    }
+
     fn ok() -> CommandOutput {
         CommandOutput {
             exit_code: Some(0),
@@ -623,15 +1051,34 @@ mod tests {
         admin: bool,
         elevated: RecordingElevated,
     ) -> (WindowsOps, Arc<QueueRunner>, Arc<RecordingElevated>) {
+        let (ops, runner, _, elevated) =
+            ops_with_acl(state, outputs, admin, elevated, FakeAcl::healthy());
+        (ops, runner, elevated)
+    }
+
+    fn ops_with_acl(
+        state: ServiceRuntimeState,
+        outputs: Vec<CommandOutput>,
+        admin: bool,
+        elevated: RecordingElevated,
+        acl: FakeAcl,
+    ) -> (
+        WindowsOps,
+        Arc<QueueRunner>,
+        Arc<FakeAcl>,
+        Arc<RecordingElevated>,
+    ) {
         let runner = Arc::new(QueueRunner::new(outputs));
         let elevated = Arc::new(elevated);
+        let acl = Arc::new(acl);
         let ops = WindowsOps::new(
             runner.clone(),
             elevated.clone(),
             Arc::new(FixedAdmin(admin)),
             Arc::new(FixedProbe(state)),
+            acl.clone(),
         );
-        (ops, runner, elevated)
+        (ops, runner, acl, elevated)
     }
 
     #[test]
@@ -960,5 +1407,267 @@ mod tests {
             quote_windows_arg(r"C:\path with space\"),
             "\"C:\\path with space\\\\\""
         );
+    }
+
+    #[test]
+    fn install_aborts_when_installer_sid_cannot_be_resolved() {
+        // 防：#205 ④ —— SID 解析失败仍把服务装成 current-user-only，安装者桌面会话永远连不上。
+        let (ops, runner, acl, elevated) = ops_with_acl(
+            ServiceRuntimeState::Running,
+            vec![ok(), ok(), ok()],
+            false,
+            RecordingElevated::default(),
+            FakeAcl::unresolved("ConvertSidToStringSidW failed (87)"),
+        );
+
+        let worker = temp_worker();
+        let config = std::path::PathBuf::from(r"C:\cfg\config.json");
+        let result = ops.install(Some(worker.as_path()), Some(config.as_path()));
+
+        assert_eq!(result.status, ServiceCommandStatus::Failed);
+        assert!(result.message.contains("Unable to resolve the installing user SID"));
+        assert!(result.message.contains("ConvertSidToStringSidW failed (87)"));
+        assert!(runner.calls().is_empty(), "abort must not touch sc.exe");
+        assert!(elevated.calls().is_empty(), "abort must not prompt for UAC");
+        assert!(acl.registered().is_empty());
+        cleanup_worker(&worker);
+    }
+
+    #[test]
+    fn install_registers_installer_sid_when_ui_is_elevated() {
+        // 防：#200 —— 安装链不登记安装者 SID，服务管道 DACL 回落 current-user-only。
+        let (ops, runner, acl, _) = ops_with_acl(
+            ServiceRuntimeState::NotInstalled,
+            vec![ok()],
+            true,
+            RecordingElevated::default(),
+            FakeAcl::healthy(),
+        );
+
+        let worker = temp_worker();
+        let config = std::path::PathBuf::from(r"C:\cfg\config.json");
+        let result = ops.install(Some(worker.as_path()), Some(config.as_path()));
+
+        assert_eq!(result.status, ServiceCommandStatus::Success);
+        assert_eq!(result.message, translate_exit_code(Some(0)));
+        assert_eq!(runner.calls().len(), 1);
+        assert_eq!(acl.registered(), vec![TEST_INSTALLER_SID.to_string()]);
+        cleanup_worker(&worker);
+    }
+
+    #[test]
+    fn install_aborts_when_sid_registration_fails() {
+        // #205 ④：登记写不进就不装，不能留一个「安装成功但只有提权会话能连」的半成品。
+        let (ops, runner, acl, _) = ops_with_acl(
+            ServiceRuntimeState::NotInstalled,
+            vec![ok()],
+            true,
+            RecordingElevated::default(),
+            FakeAcl::rejecting_registration("access denied (5)"),
+        );
+
+        let worker = temp_worker();
+        let config = std::path::PathBuf::from(r"C:\cfg\config.json");
+        let result = ops.install(Some(worker.as_path()), Some(config.as_path()));
+
+        assert_eq!(result.status, ServiceCommandStatus::Failed);
+        assert!(result.message.contains("Unable to register the service pipe ACL"));
+        assert!(result.message.contains("access denied (5)"));
+        assert!(result.message.contains("the service was not installed"));
+        assert!(runner.calls().is_empty(), "registration failure must abort before sc.exe");
+        assert!(acl.registered().is_empty());
+        cleanup_worker(&worker);
+    }
+
+    #[test]
+    fn install_registers_sid_through_elevation_when_ui_is_not_admin() {
+        // #200：sc.exe 的 runas 只提升子进程，UI 自身仍非管理员——登记也必须走提权通道，
+        // 否则 HKLM 写入必然 access denied，等于没修。
+        let (ops, runner, acl, elevated) = ops_with_acl(
+            ServiceRuntimeState::NotInstalled,
+            vec![ok()],
+            false,
+            RecordingElevated::new(ElevatedOutcome::Exited(0)),
+            FakeAcl::healthy(),
+        );
+
+        let worker = temp_worker();
+        let config = std::path::PathBuf::from(r"C:\cfg\config.json");
+        let result = ops.install(Some(worker.as_path()), Some(config.as_path()));
+
+        assert_eq!(result.status, ServiceCommandStatus::Success);
+        assert!(
+            acl.registered().is_empty(),
+            "non-elevated UI must not write HKLM from its own token"
+        );
+
+        let programs = elevated.programs();
+        assert_eq!(programs.len(), 2, "registration + create: {programs:?}");
+        assert!(programs[0].ends_with(r"WindowsPowerShell\v1.0\powershell.exe"));
+        assert!(programs[1].ends_with(r"System32\sc.exe"));
+        assert_eq!(runner.calls().len(), 0, "both steps must go through runas");
+
+        let registration_args = &elevated.calls()[0];
+        assert!(registration_args.contains(&"-NoProfile".to_string()));
+        let script = registration_args.last().cloned().unwrap_or_default();
+        assert!(script.contains(INSTALLER_SID_VALUE));
+        assert!(script.contains(ALLOWED_SIDS_VALUE));
+        assert!(script.contains(TEST_INSTALLER_SID));
+        cleanup_worker(&worker);
+    }
+
+    #[test]
+    fn install_aborts_when_elevated_registration_is_cancelled() {
+        // 防：用户取消登记那一次 UAC 后仍继续建服务，得到与 #200 同样的坏形态。
+        let (ops, runner, _, elevated) = ops_with_acl(
+            ServiceRuntimeState::NotInstalled,
+            vec![ok()],
+            false,
+            RecordingElevated::new(ElevatedOutcome::Cancelled),
+            FakeAcl::healthy(),
+        );
+
+        let worker = temp_worker();
+        let config = std::path::PathBuf::from(r"C:\cfg\config.json");
+        let result = ops.install(Some(worker.as_path()), Some(config.as_path()));
+
+        assert_eq!(result.status, ServiceCommandStatus::Failed);
+        assert!(result.message.contains("elevation was cancelled"));
+        assert_eq!(elevated.calls().len(), 1, "must not reach sc.exe create");
+        assert!(runner.calls().is_empty());
+        cleanup_worker(&worker);
+    }
+
+    #[test]
+    fn install_rolls_back_registration_when_create_fails() {
+        // 防：create 失败后留下指向不存在服务的 SID 授权值。
+        let (ops, _, acl, _) = ops_with_acl(
+            ServiceRuntimeState::NotInstalled,
+            vec![code(5)],
+            true,
+            RecordingElevated::default(),
+            FakeAcl::healthy(),
+        );
+
+        let worker = temp_worker();
+        let config = std::path::PathBuf::from(r"C:\cfg\config.json");
+        let result = ops.install(Some(worker.as_path()), Some(config.as_path()));
+
+        assert_eq!(result.status, ServiceCommandStatus::Failed);
+        assert_eq!(acl.registered(), vec![TEST_INSTALLER_SID.to_string()]);
+        assert_eq!(acl.clear_calls(), 1, "failed create must roll the registration back");
+        cleanup_worker(&worker);
+    }
+
+    #[test]
+    fn uninstall_clears_pipe_acl_after_delete() {
+        // 防：#200 ② —— 卸载只删服务不清登记，重装到别的账户后陈旧 SID 仍被当作授权来源。
+        let (ops, runner, acl, _) = ops_with_acl(
+            ServiceRuntimeState::Stopped,
+            vec![ok()],
+            true,
+            RecordingElevated::default(),
+            FakeAcl::healthy(),
+        );
+
+        let result = ops.uninstall();
+
+        assert_eq!(result.status, ServiceCommandStatus::Success);
+        assert_eq!(runner.calls()[0], ["delete", "PhotoPrivacyCleaner"]);
+        assert_eq!(acl.clear_calls(), 1);
+    }
+
+    #[test]
+    fn uninstall_clears_stale_pipe_acl_when_service_is_already_missing() {
+        // #200 ②：服务已不存在（1060）时也要清遗留登记，否则下次换账户安装语义错乱。
+        let (ops, _, acl, _) = ops_with_acl(
+            ServiceRuntimeState::NotInstalled,
+            vec![code(1060)],
+            true,
+            RecordingElevated::default(),
+            FakeAcl::healthy(),
+        );
+
+        let result = ops.uninstall();
+
+        assert_eq!(result.status, ServiceCommandStatus::Failed);
+        assert_eq!(result.exit_code, Some(1060));
+        assert_eq!(acl.clear_calls(), 1);
+    }
+
+    #[test]
+    fn uninstall_keeps_pipe_acl_when_elevation_is_cancelled() {
+        // 防：用户取消卸载的 UAC 后登记被清空，仍在运行的服务重建管道时掉回 current-user-only。
+        let (ops, _, acl, _) = ops_with_acl(
+            ServiceRuntimeState::Running,
+            Vec::new(),
+            false,
+            RecordingElevated::new(ElevatedOutcome::Cancelled),
+            FakeAcl::healthy(),
+        );
+
+        let result = ops.uninstall();
+
+        assert_eq!(result.status, ServiceCommandStatus::ElevationCancelled);
+        assert_eq!(acl.clear_calls(), 0);
+    }
+
+    #[test]
+    fn uninstall_reports_clear_failure_without_hiding_the_delete_result() {
+        // 防：清理失败把成功的卸载改成失败，或反过来把失败的卸载说成成功。
+        let (ops, _, acl, _) = ops_with_acl(
+            ServiceRuntimeState::Stopped,
+            vec![ok()],
+            true,
+            RecordingElevated::default(),
+            FakeAcl::rejecting_clear("access denied (5)"),
+        );
+
+        let result = ops.uninstall();
+
+        assert_eq!(result.status, ServiceCommandStatus::Success);
+        assert!(result.message.contains("could not be cleared"));
+        assert!(result.message.contains("access denied (5)"));
+        assert_eq!(acl.clear_calls(), 1);
+    }
+
+    #[test]
+    fn uninstall_clears_sid_through_elevation_when_ui_is_not_admin() {
+        // #200 AC2：非提权的 UI 也必须能清掉 HKLM 登记（脚本卸载通道同样清），
+        // 否则换账户重装后陈旧 SID 仍在白名单里。
+        let (ops, runner, acl, elevated) = ops_with_acl(
+            ServiceRuntimeState::Stopped,
+            Vec::new(),
+            false,
+            RecordingElevated::new(ElevatedOutcome::Exited(0)),
+            FakeAcl::healthy(),
+        );
+
+        let result = ops.uninstall();
+
+        assert_eq!(result.status, ServiceCommandStatus::Success);
+        assert_eq!(acl.clear_calls(), 0, "non-elevated UI must not clear HKLM directly");
+        assert_eq!(runner.calls().len(), 0);
+
+        let programs = elevated.programs();
+        assert_eq!(programs.len(), 2, "delete + cleanup: {programs:?}");
+        assert!(programs[0].ends_with(r"System32\sc.exe"));
+        assert!(programs[1].ends_with(r"WindowsPowerShell\v1.0\powershell.exe"));
+
+        let cleanup_script = elevated.calls()[1].last().cloned().unwrap_or_default();
+        assert!(cleanup_script.contains(INSTALLER_SID_VALUE));
+        assert!(cleanup_script.contains(ADVERTISED_PIPE_VALUE));
+    }
+
+    #[test]
+    fn sid_string_validation_rejects_malformed_values() {
+        // #200：写进 DACL 白名单值的字符串必须先过 SID 形态校验。
+        assert!(is_sid_string(TEST_INSTALLER_SID));
+        assert!(is_sid_string("S-1-5-18"));
+        assert!(!is_sid_string(""));
+        assert!(!is_sid_string("S-1-"));
+        assert!(!is_sid_string("S-1-5-21-abc"));
+        assert!(!is_sid_string("*"));
+        assert!(!is_sid_string(r"S-1-5-21-1);Remove-Item C:\"));
     }
 }
