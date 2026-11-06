@@ -57,6 +57,44 @@ pub fn current_home() -> Option<PathBuf> {
 /// 权限靠安装脚本建的 0750 目录 + socket 0660 + 服务组边界（#167）。
 pub const MACOS_SERVICE_SOCKET: &str = "/Library/Application Support/photoprivacy/worker.sock";
 
+// ------------------------------------------------------------------
+// #201 Linux 背景端点：迁往 $XDG_RUNTIME_DIR
+// ------------------------------------------------------------------
+
+// 旧契约 /run/photoprivacy/worker-background.sock 对普通用户是死路：该目录只由 systemd
+// RuntimeDirectory 在服务模式创建（0750 服务用户），普通用户拉起的后台 Worker mkdir 吃
+// EACCES，UI 只见 ENOENT——未安装服务时回落不到后台模式（L 组观察 2）。票内拍板走候选 1
+// （$XDG_RUNTIME_DIR）；候选 2（tmpfiles.d 预建）需 root 安装落点，「未安装服务」形态下
+// 无从落地，否决。服务端点 /run/photoprivacy/worker.sock 不动（#167/#180/#188）。
+
+/// Linux 背景模式在运行时目录下的 socket 子目录与文件名（#201）：与 C# 侧
+/// `WorkerIpcEndpointNames.LinuxBackgroundSocketDirectoryName / LinuxBackgroundSocketFileName`
+/// 逐字一致（Rust 无法引用 C# 常量：C# 侧 `IpcAuthClaimReconciliationTests` 读本文件字面量
+/// 对账，下方测试钉解析形态）。
+pub const LINUX_BACKGROUND_SOCKET_DIR: &str = "photoprivacy";
+pub const LINUX_BACKGROUND_SOCKET_FILE: &str = "worker-background.sock";
+
+/// `$XDG_RUNTIME_DIR` 原值（pam_systemd/logind 按用户会话建 `/run/user/<uid>`，0700 属主
+/// 用户）：Linux 背景端点的唯一来源（#201）。不裁剪空白——路径语义不 trim，有效性判定
+/// 交给 `linux_background_endpoint`（与 C# 侧同构）。
+pub fn current_runtime_dir() -> Option<PathBuf> {
+    std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from)
+}
+
+/// Linux 背景端点纯函数解析（#201）：运行时目录缺失/空/非绝对根路径（`has_root`，Windows
+/// CI 腿对 `/run/user/1000` 同判有据）→ None——背景模式不可用，与 macOS 缺 HOME 形态对称；
+/// 不回落 `/run/photoprivacy`（缺陷本体），也不回落 `/tmp`（世界可写目录的可预测路径 =
+/// CWE-377 预蹲面，且跨用户端点相撞）。与 C# 侧
+/// `WorkerIpcEndpointNames.ResolveLinuxBackgroundSocket` 逐字节同构。
+pub fn linux_background_endpoint(runtime_dir: Option<&Path>) -> Option<Endpoint> {
+    let runtime_dir = runtime_dir.filter(|dir| dir.has_root())?;
+    Some(Endpoint::UnixSocket(
+        runtime_dir
+            .join(LINUX_BACKGROUND_SOCKET_DIR)
+            .join(LINUX_BACKGROUND_SOCKET_FILE),
+    ))
+}
+
 // IPC 端点名是协议主缝的一部分：与 `WorkerIpcEndpointNames` 逐字一致，不改协议；旧 C# UI 全程硬编码
 // Windows 管道名（Linux/macOS 实际连不上），新客户端（#54）改按 OS 解析，修的是客户端缺陷而非协议。
 // Design(#49): 端点名冻结为既有契约，禁止为解析方便改名。
@@ -73,10 +111,10 @@ pub fn resolve_endpoint(
             }
             .to_string(),
         )),
-        HostPlatform::Linux => Some(Endpoint::UnixSocket(PathBuf::from(match mode {
-            WorkerMode::Background => "/run/photoprivacy/worker-background.sock",
-            WorkerMode::Service => "/run/photoprivacy/worker.sock",
-        }))),
+        HostPlatform::Linux => match mode {
+            WorkerMode::Background => linux_background_endpoint(current_runtime_dir().as_deref()),
+            WorkerMode::Service => Some(Endpoint::UnixSocket("/run/photoprivacy/worker.sock".into())),
+        },
         HostPlatform::MacOs => match mode {
             // 后台模式：per-user，UI 拉起的 Worker 与 UI 同用户，随 HOME 走。
             WorkerMode::Background => Some(Endpoint::UnixSocket(
@@ -253,14 +291,28 @@ mod tests {
     }
 
     #[test]
-    fn linux_socket_paths_match_dotnet_contract() {
-        // 防：Unix socket 路径与 systemd RuntimeDirectory 下的 Worker 不一致（旧 UI 的既有缺陷，#54）。
+    fn linux_background_socket_follows_xdg_runtime_dir() {
+        // 防（#201）：后台端点回潮到普通用户无法创建的 /run/photoprivacy；与 C# 行为测试对拍。
         assert_eq!(
-            resolve_endpoint(HostPlatform::Linux, WorkerMode::Background, None),
+            linux_background_endpoint(Some(Path::new("/run/user/1000"))),
             Some(Endpoint::UnixSocket(
-                "/run/photoprivacy/worker-background.sock".into()
+                "/run/user/1000/photoprivacy/worker-background.sock".into()
             ))
         );
+    }
+
+    #[test]
+    fn linux_background_socket_unavailable_without_rooted_runtime_dir() {
+        // 防（#201）：缺失运行时目录时静默回落或拼出相对路径，与 Worker 解析分裂。
+        assert_eq!(linux_background_endpoint(None), None);
+        for bad in ["", "   ", "run/user/1000", "relative", " /run/user/1000"] {
+            assert_eq!(linux_background_endpoint(Some(Path::new(bad))), None);
+        }
+    }
+
+    #[test]
+    fn linux_service_socket_matches_dotnet_contract() {
+        // 防（#201）：迁移背景端点误动 systemd 服务端点；服务模式不依赖 XDG_RUNTIME_DIR。
         assert_eq!(
             resolve_endpoint(HostPlatform::Linux, WorkerMode::Service, None),
             Some(Endpoint::UnixSocket("/run/photoprivacy/worker.sock".into()))

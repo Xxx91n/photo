@@ -14,8 +14,9 @@ pub mod verify;
 
 pub use client::{IpcClient, IpcError, is_service_access_denied};
 pub use endpoints::{
-    Endpoint, HostPlatform, WorkerMode, current_home, current_platform, current_service_endpoint,
-    resolve_endpoint, service_pipe_endpoint_with_advertised,
+    Endpoint, HostPlatform, WorkerMode, current_home, current_platform, current_runtime_dir,
+    current_service_endpoint, linux_background_endpoint, resolve_endpoint,
+    service_pipe_endpoint_with_advertised,
 };
 pub use monitor::{
     ConnectFailureCause, ConnectionSnapshot, ConnectionState, HEARTBEAT_INTERVAL,

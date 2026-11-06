@@ -10,6 +10,7 @@ namespace PhotoPrivacy.IntegrationTests.Ipc;
 /// 2) NamedPipeIpcTransport 的 FirstPipeInstance 仅施加于 listen 期首例（#7 拓扑：后台直建/
 ///    服务随机名建例/通告失败回退静态名重绑，恰 3 处；accept 后预建的后续实例不得携带）；
 /// 3) 服务管道通告名登记键的 Rust 读侧与 C# 写侧字面量对账（#7 命名熵的发现通道主缝）。
+/// 4) Linux 背景端点的运行时变量、目录与文件名双端对账（#201）。
 /// 每组守卫都带 negative self-proof：把源码改坏后备守卫必须变红，防止守卫空转。
 /// 原 UiSingleInstance ACL 守卫随旧 Ui 工程退役（#61）；新 UI 单实例管线的 DACL 决策见
 /// ui/crates/photoprivacy-ipc/src/single_instance.rs（Design(#49)），由 cargo test 守护。
@@ -398,5 +399,63 @@ public sealed class IpcAuthClaimReconciliationTests
         }
 
         Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
+    }
+
+    // ---------- 4. Linux 背景端点 Rust/C# 两侧对账（#201） ----------
+
+    internal static List<string> ClassifyLinuxBackgroundEndpointLiterals(
+        string strippedRustSource, string directory, string file, string variable)
+    {
+        var violations = new List<string>();
+        foreach (var needle in new[]
+        {
+            $"LINUX_BACKGROUND_SOCKET_DIR: &str = \"{directory}\"",
+            $"LINUX_BACKGROUND_SOCKET_FILE: &str = \"{file}\"",
+            $"var_os(\"{variable}\")"
+        })
+        {
+            if (!strippedRustSource.Contains(needle, StringComparison.Ordinal))
+            {
+                violations.Add("Rust 缺少 Linux 背景端点契约字面量: " + needle);
+            }
+        }
+        if (strippedRustSource.Contains("\"/run/photoprivacy/worker-background.sock\"", StringComparison.Ordinal))
+        {
+            violations.Add("Rust 背景端点回潮到系统目录");
+        }
+        return violations;
+    }
+
+    private static List<string> ClassifyLinuxBackgroundEndpoint(string source) =>
+        ClassifyLinuxBackgroundEndpointLiterals(
+            source, WorkerIpcEndpointNames.LinuxBackgroundSocketDirectoryName,
+            WorkerIpcEndpointNames.LinuxBackgroundSocketFileName, WorkerIpcEndpointNames.LinuxRuntimeDirectoryVariable);
+
+    [Fact]
+    public void Linux_Background_Endpoint_Literals_Match_Rust_Client()
+    {
+        // 防（#201）：双端重复常量单侧漂移，Worker 与 UI 各自测试绿却永远连不上。
+        var rust = SourceLint.ReadStripped("ui", "crates", "photoprivacy-ipc", "src", "endpoints.rs");
+        Assert.Empty(ClassifyLinuxBackgroundEndpoint(rust));
+    }
+
+    [Fact]
+    public void Linux_Background_Endpoint_Guard_Negative_Self_Proof()
+    {
+        // 防（#201）：对账守卫空转；每种契约漂移都必须被识别，且确认变异确实应用。
+        var green = SourceLint.ReadStripped("ui", "crates", "photoprivacy-ipc", "src", "endpoints.rs");
+        Assert.Empty(ClassifyLinuxBackgroundEndpoint(green));
+        foreach (var (before, after) in new[]
+        {
+            ("LINUX_BACKGROUND_SOCKET_DIR", "CHANGED_DIR"),
+            ("LINUX_BACKGROUND_SOCKET_FILE", "CHANGED_FILE"),
+            ("XDG_RUNTIME_DIR", "CHANGED_RUNTIME_DIR"),
+            ("/run/photoprivacy/worker.sock", "/run/photoprivacy/worker-background.sock")
+        })
+        {
+            var mutated = green.Replace(before, after, StringComparison.Ordinal);
+            Assert.NotEqual(green, mutated);
+            Assert.NotEmpty(ClassifyLinuxBackgroundEndpoint(mutated));
+        }
     }
 }
