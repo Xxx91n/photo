@@ -35,7 +35,7 @@ const SAVE_STATUS_TTL: Duration = Duration::from_secs(3);
 /// 复制反馈显示时长。
 const COPY_FEEDBACK_TTL: Duration = Duration::from_secs(2);
 
-// Design(#119): Tab/Shift+Tab 绑定到焦点遍历动作，动作回调只调 window.focus_next/prev；
+// Design(#219): Tab/Shift+Tab 绑定到焦点遍历动作，动作回调只调 window.focus_next/prev；
 // Enter/Space 激活沿用 gpui 内建的合成点击（focusable + on_click 控件），不再自管按键。
 actions!(photoprivacy_ui, [FocusNext, FocusPrev]);
 
@@ -64,7 +64,7 @@ pub(crate) fn focus_ring(ring: Rgba) -> impl FnOnce(StyleRefinement) -> StyleRef
 }
 
 /// 配置页可聚焦控件登记：稳定句柄（跨渲染身份不变）+ 布局探针（供滚动揭示取坐标）。
-// Design(#119): Tab/Shift+Tab 移焦后必须把聚焦控件滚入 config-scroll 视口，否则焦点环在
+// Design(#219): Tab/Shift+Tab 移焦后必须把聚焦控件滚入 config-scroll 视口，否则焦点环在
 // 视口外不可见、键盘用户失位；探针不设 overflow，滚轮 delta 恒为 0 且不吞事件，
 // 只借 track_scroll 记录控件窗口坐标。
 #[derive(Default)]
@@ -649,7 +649,7 @@ impl AppView {
         let config_registry = Rc::new(RefCell::new(FocusRegistry::default()));
         let mut fields = HashMap::new();
         for id in FieldId::ALL {
-            // Design(#119): 输入框句柄经登记表创建（tab_stop 已置），Tab/Shift+Tab 依序经过全部字段。
+            // Design(#219): 输入框句柄经登记表创建（tab_stop 已置），Tab/Shift+Tab 依序经过全部字段。
             let focus = config_registry
                 .borrow_mut()
                 .focus_handle(id.element_id(), cx);
@@ -747,7 +747,7 @@ impl AppView {
             .map(|(entry, _)| *entry)
     }
 
-    // Design(#119): 虚拟列表只把可见行的复制按钮登记进 tab 链，末个可见行再按 Tab 会在
+    // Design(#219): 虚拟列表只把可见行的复制按钮登记进 tab 链，末个可见行再按 Tab 会在
     // 到达后续行之前回绕——移焦后检测回绕（焦点不再是日志行按钮），其后（前）仍有行就
     // 滚动揭示相邻行并聚焦其复制按钮；已是过滤列表首/末行则不接管，Tab 照常离开列表。
     // 返回 true 表示本次 Tab 已完全处置（列表内步进或边界跟进），调用方不再 focus_next/prev。
@@ -2558,7 +2558,7 @@ impl AppView {
             Some(focus) => button.track_focus(&focus),
             None => button.focusable().tab_stop(true),
         };
-        // Design(#119): 复制按钮是可交互控件，必须入焦点链（track_focus/focusable + tab_stop
+        // Design(#219): 复制按钮是可交互控件，必须入焦点链（track_focus/focusable + tab_stop
         // + 焦点环）；Enter/Space 经 gpui 合成点击与鼠标同效。无底色描边取默认强调色。
         button
             .focus(focus_ring(theme.accent))
