@@ -57,6 +57,17 @@ internal static class InstanceConflictAudit
         string message,
         IReadOnlyDictionary<string, string> data)
     {
+        // 降级记录与审计事件共用同一份 payload：降级时也必须带上 requested_mode 等冲突上下文，
+        // 否则「留痕为什么没落盘」之外连冲突形态都看不出（#127 AC1）。
+        var payload = new Dictionary<string, string>
+        {
+            ["requested_mode"] = requestedMode.ToString().ToLowerInvariant()
+        };
+        foreach (var (key, value) in data)
+        {
+            payload[key] = value;
+        }
+
         AppConfig config;
         try
         {
@@ -66,14 +77,14 @@ internal static class InstanceConflictAudit
         }
         catch (Exception ex)
         {
-            return Degrade("<unresolved>", ex, message, data, "配置解析失败");
+            return Degrade("<unresolved>", ex, message, payload, "配置解析失败");
         }
 
         var auditDirectory = config.Audit.LogDirectory;
         var directoryFailure = TryEnsureWritableAuditDirectory(auditDirectory);
         if (directoryFailure is not null)
         {
-            return Degrade(auditDirectory, directoryFailure, message, data, "审计目录不可写");
+            return Degrade(auditDirectory, directoryFailure, message, payload, "审计目录不可写");
         }
 
         JsonLineAuditLogger? logger = null;
@@ -85,15 +96,6 @@ internal static class InstanceConflictAudit
                 config.Audit.RetainDays,
                 config.Audit.DiagnosticMode,
                 AuditLevelParser.Parse(config.Audit.LogLevel));
-
-            var payload = new Dictionary<string, string>
-            {
-                ["requested_mode"] = requestedMode.ToString().ToLowerInvariant()
-            };
-            foreach (var (key, value) in data)
-            {
-                payload[key] = value;
-            }
 
             // 有界重试（#162 引入）：对当前 JsonLineAuditLogger.WriteAsync 实现是死代码——
             // 它只做 Serialize + Channel.TryWrite（满即 DropOldest），不碰文件、不抛 IOException。
@@ -144,7 +146,7 @@ internal static class InstanceConflictAudit
 
         return writeFailure is null
             ? new ConflictAuditOutcome(null)
-            : Degrade(auditDirectory, writeFailure, message, data, "冲突留痕写入失败");
+            : Degrade(auditDirectory, writeFailure, message, payload, "冲突留痕写入失败");
     }
 
     /// <summary>

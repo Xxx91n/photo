@@ -38,6 +38,8 @@ public sealed class InstanceConflictAuditBoundaryTests
             // 降级阶段必须可辨：只断言「有降级记录」会把「配置解析失败」也算成通过，
             // 掩盖「目录不可建」这条本票要守的分支。
             Assert.Contains("审计目录不可写", record!, StringComparison.Ordinal);
+            // 降级记录必须保留冲突上下文；缺 requested_mode 会让排障时分不清后台/服务形态。
+            Assert.Contains("requested_mode=background", record!, StringComparison.Ordinal);
             Assert.False(Directory.Exists(audit), "降级路径不得建出审计目录");
         }
         finally
@@ -68,6 +70,7 @@ public sealed class InstanceConflictAuditBoundaryTests
             Assert.Contains("single_writer_gate", record!, StringComparison.Ordinal);
             Assert.Contains("检测到另一 Worker", record!, StringComparison.Ordinal);
             Assert.Contains("审计目录不可写", record!, StringComparison.Ordinal);
+            Assert.Contains("requested_mode=service", record!, StringComparison.Ordinal);
             Assert.False(Directory.Exists(audit));
         }
         finally
@@ -119,8 +122,9 @@ public sealed class InstanceConflictAuditBoundaryTests
             var config = InstanceConflictAudit.LoadConfigFromArgs(args);
 
             Assert.Equal(audit, config.Audit.LogDirectory);
-            Assert.False(Directory.Exists(hot), "配置解析仍是纯读，不得建出 hot 子树");
-            Assert.False(Directory.Exists(audit));
+            // 只断言显式传入的 audit 目录：Watch.HotFolder 来自 AppConfig.Default 的
+            // <BaseDirectory>/hot，不是本用例的 root/install/hot，断言后者恒真、没有鉴别力。
+            Assert.False(Directory.Exists(audit), "配置解析仍是纯读，不得建出审计目录");
         }
         finally
         {
