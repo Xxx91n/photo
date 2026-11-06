@@ -30,7 +30,6 @@ public sealed class InstanceConflictAuditBoundaryTests
             var outcome = await InstanceConflictAudit.TryWriteAsync(
                 args, RuntimeMode.Background, "Global\\pp-127-test-mutex");
 
-            Assert.False(outcome.AuditWritten, "不可写目录下不得声称留痕成功");
             var record = outcome.DegradationRecord;
             Assert.NotNull(record);
             Assert.Contains("conflict audit degraded", record!, StringComparison.Ordinal);
@@ -61,7 +60,6 @@ public sealed class InstanceConflictAuditBoundaryTests
             var outcome = await InstanceConflictAudit.TryWriteSingleWriterYieldAsync(
                 args, RuntimeMode.Service, audit);
 
-            Assert.False(outcome.AuditWritten);
             var record = outcome.DegradationRecord;
             Assert.NotNull(record);
             Assert.Contains("single_writer_gate", record!, StringComparison.Ordinal);
@@ -88,7 +86,6 @@ public sealed class InstanceConflictAuditBoundaryTests
             var outcome = await InstanceConflictAudit.TryWriteAsync(
                 args, RuntimeMode.Background, "Global\\pp-127-test-mutex");
 
-            Assert.True(outcome.AuditWritten);
             Assert.Null(outcome.DegradationRecord);
             Assert.True(Directory.Exists(audit), "非待机写路径必须建出审计目录");
 
@@ -124,6 +121,74 @@ public sealed class InstanceConflictAuditBoundaryTests
         finally
         {
             TryDelete(root);
+        }
+    }
+
+    [Fact]
+    public async Task Conflict_Audit_Should_Degrade_When_Existing_Audit_Directory_Is_Not_Writable()
+    {
+        // 防的回潮形态：删掉可写性探针后，「目录已存在但当前账户不可写」不再被识别——
+        // Directory.CreateDirectory 原样返回，JsonLineAuditLogger 构造不抛，后台落盘静默丢行（#127）。
+        // Windows 的目录 ReadOnly 属性不阻止建文件，ACL 改写与 CI 账户耦合，故该分支只在 POSIX 构造
+        // （与 SingleWriterGateTests 的 symlink 用例同口径）；Windows 侧由实机只读目录验收覆盖。
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var root = NewTempRoot();
+        var audit = Path.Combine(root, "install", "hot", "_audit");
+        Directory.CreateDirectory(audit);
+        var originalMode = File.GetUnixFileMode(audit);
+        try
+        {
+            File.SetUnixFileMode(
+                audit,
+                UnixFileMode.UserRead | UnixFileMode.UserExecute |
+                UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
+                UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+
+            // 环境自检：以 root 运行时 0555 仍可写，该形态不可复现，避免假红。
+            if (CanCreateFile(audit))
+            {
+                return;
+            }
+
+            var outcome = await InstanceConflictAudit.TryWriteAsync(
+                BuildArgs(root, audit), RuntimeMode.Background, "Global\\pp-127-test-mutex");
+
+            var record = outcome.DegradationRecord;
+            Assert.NotNull(record);
+            Assert.Contains("conflict audit degraded", record!, StringComparison.Ordinal);
+            Assert.Contains(audit, record!, StringComparison.Ordinal);
+            Assert.Empty(Directory.GetFiles(audit, "audit-*.jsonl"));
+        }
+        finally
+        {
+            File.SetUnixFileMode(audit, originalMode);
+            TryDelete(root);
+        }
+    }
+
+    private static bool CanCreateFile(string directory)
+    {
+        var path = Path.Combine(directory, ".write-check-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            using (File.Create(path))
+            {
+            }
+
+            File.Delete(path);
+            return true;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
         }
     }
 

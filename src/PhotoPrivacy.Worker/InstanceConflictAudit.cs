@@ -8,18 +8,19 @@ namespace PhotoPrivacy.Worker;
 /// 这是「真正写审计」的路径，是「配置加载期零目录副作用」（#124 / #153）的显式例外：
 /// 目录只在这里创建，且创建前有界确认可写；只读 / 不可写安装目录下不改写冲突审计落点
 /// （不另择 %ProgramData% 或 ~/.local/state），只降级为可读的 stderr 记录并保留冲突事实。
-/// 残余：留痕本身仍是 best-effort，后台落盘失败由 JsonLineAuditLogger 内部吞掉，
-/// 这里只对「入队与构造」阶段的失败给出可读记录；该残余登记在 #82。
+/// 残余：留痕本身仍是 best-effort，后台落盘失败由 JsonLineAuditLogger 内部吞掉；
+/// 既有 3 次有界重试只覆盖入队阶段的 IOException，后台 flush 与常驻 Worker 抢
+/// audit-*.jsonl 的共享冲突不可由该重试感知。两条残余均继承 #162 / PR #163，登记在 #82。
 /// </summary>
 // Design(#82): 冲突/让位留痕只在真正写审计时建目录，建目录或写入失败必须有界降级为可读记录；配置解析与待机路径不得创建任何目录，只读安装目录不改写落点（残余登记在 #82）。
 internal static class InstanceConflictAudit
 {
     /// <summary>
-    /// 留痕结果：AuditWritten 表示已成功入队并排空；降级原因须可读且永不阻断退出。
-    /// 生产调用方可丢弃返回值——可读记录由 Degrade 直接写 stderr；返回值供测试与后续调用方判读降级。
+    /// 留痕结果：DegradationRecord 非空即表示降级（可读记录已由 Degrade 写 stderr）；
+    /// 为空只表示「未观察到同步失败」，不等于落盘成功——后台 flush 仍是 best-effort（残余见类注释）。
+    /// 生产调用方可丢弃返回值；它供测试与调用方判读降级，并在服务会话里补一路文件日志。
     /// </summary>
     internal sealed record ConflictAuditOutcome(
-        bool AuditWritten,
         string AuditDirectory,
         string? DegradationRecord);
 
@@ -139,7 +140,7 @@ internal static class InstanceConflictAudit
         }
 
         return writeFailure is null
-            ? new ConflictAuditOutcome(true, auditDirectory, null)
+            ? new ConflictAuditOutcome(auditDirectory, null)
             : Degrade(auditDirectory, writeFailure, message, data, "冲突留痕写入失败");
     }
 
@@ -201,7 +202,7 @@ internal static class InstanceConflictAudit
             // stderr 本身不可写时也不得阻断退出。
         }
 
-        return new ConflictAuditOutcome(false, auditDirectory, record);
+        return new ConflictAuditOutcome(auditDirectory, record);
     }
 
     internal static AppConfig LoadConfigFromArgs(string[] args)
