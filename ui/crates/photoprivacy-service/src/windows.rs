@@ -453,9 +453,20 @@ fn rollback_script(previous: &InstallerRegistration, attempted_sid: &str) -> Str
     )
 }
 
-/// PowerShell 单引号字符串：内部的 `'` 双写成 `''`，保证快照里的任意字符原样传入。
+/// PowerShell 单引号字符串：内部的 `'` 与智能引号（U+2018–U+201B）都双写——PowerShell
+/// 把它们同样当作字符串定界符，只转义 ASCII 单引号会让含智能引号的快照值提前闭合
+/// （PR #217 review）。
 fn ps_quote(value: &str) -> String {
-    format!("'{}'", value.replace('\'', "''"))
+    let mut quoted = String::with_capacity(value.len() + 2);
+    quoted.push('\'');
+    for ch in value.chars() {
+        quoted.push(ch);
+        if matches!(ch, '\'' | '\u{2018}' | '\u{2019}' | '\u{201A}' | '\u{201B}') {
+            quoted.push(ch);
+        }
+    }
+    quoted.push('\'');
+    quoted
 }
 
 fn clear_script() -> String {
@@ -912,8 +923,13 @@ impl ServiceOps for WindowsOps {
             );
             if reason.contains("elevation was cancelled") {
                 aborted.status = ServiceCommandStatus::ElevationCancelled;
+                // 用户拒绝提权时脚本根本没跑，HKLM 不会有本次残留，也不再弹第二次 UAC。
+                return aborted;
             }
-            return aborted;
+            // 登记脚本可能写到一半才失败（InstallerSid 落盘、AllowedSids 或 AdvertisedPipe 失败），
+            // 此时必须撤回已写下的值，否则服务重启用一个不存在用户的 SID 当管道 ACL 来源
+            // （PR #217 review）。
+            return rollback_registration(aborted);
         }
 
         let mut create = self.run_sc(args.clone(), true);
@@ -2090,10 +2106,45 @@ mod tests {
     }
 
     #[test]
+    fn install_restores_registration_when_the_registration_script_fails() {
+        // 返修（PR #217 review）：登记脚本可能写了一半才失败，本次写下的值同样要撤回。
+        let previous_sid = "S-1-5-21-111111111-222222222-333333333-1002";
+        let (ops, _runner, acl, elevated) = ops_with_acl(
+            ServiceRuntimeState::NotInstalled,
+            vec![],
+            false,
+            RecordingElevated::with_outcomes(vec![
+                ElevatedOutcome::Exited(5),
+                ElevatedOutcome::Exited(0),
+            ]),
+            FakeAcl::with_existing_registration(previous_sid),
+        );
+
+        let worker = temp_worker();
+        let config = std::path::PathBuf::from(r"C:\cfg\config.json");
+        let result = ops.install(Some(worker.as_path()), Some(config.as_path()));
+
+        assert_eq!(result.status, ServiceCommandStatus::Failed);
+        assert!(
+            !result.message.contains("could not be rolled back"),
+            "rollback itself must succeed: {}",
+            result.message
+        );
+        assert!(acl.registered().is_empty());
+        let calls = elevated.calls();
+        assert_eq!(calls.len(), 2, "register + rollback: {calls:?}");
+        assert!(
+            calls[1].last().is_some_and(|script| script.contains(previous_sid)),
+            "rollback must restore the snapshot: {calls:?}"
+        );
+        cleanup_worker(&worker);
+    }
+
+    #[test]
     fn rollback_script_quotes_snapshot_values_for_powershell() {
         // 返修（PR #217 review）：快照值来自注册表，可能含引号，必须按 PowerShell 规则转义。
         let previous = InstallerRegistration {
-            installer_sid: Some("S-1-5-21-\u{e9}'x".to_string()),
+            installer_sid: Some("S-1-5-21-\u{e9}'\u{2019}x".to_string()),
             allowed_sids: Some(vec!["S-1-5-21-1".to_string(), "a'b".to_string()]),
         };
         let script = rollback_script(&previous, TEST_INSTALLER_SID);
@@ -2102,8 +2153,8 @@ mod tests {
             "{script}"
         );
         assert!(
-            script.contains("'S-1-5-21-\u{e9}''x'"),
-            "single quotes must be doubled: {script}"
+            script.contains("'S-1-5-21-\u{e9}''\u{2019}\u{2019}x'"),
+            "single quotes and smart quotes must be doubled: {script}"
         );
         assert!(script.contains("'a''b'"), "{script}");
         assert!(script.contains("@('S-1-5-21-1','a''b')"), "{script}");
