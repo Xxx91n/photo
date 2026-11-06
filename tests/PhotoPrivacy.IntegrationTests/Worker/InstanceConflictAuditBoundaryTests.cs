@@ -35,6 +35,9 @@ public sealed class InstanceConflictAuditBoundaryTests
             Assert.Contains("conflict audit degraded", record!, StringComparison.Ordinal);
             Assert.Contains(audit, record!, StringComparison.Ordinal);
             Assert.Contains("检测到重复启动并已拒绝", record!, StringComparison.Ordinal);
+            // 降级阶段必须可辨：只断言「有降级记录」会把「配置解析失败」也算成通过，
+            // 掩盖「目录不可建」这条本票要守的分支。
+            Assert.Contains("审计目录不可写", record!, StringComparison.Ordinal);
             Assert.False(Directory.Exists(audit), "降级路径不得建出审计目录");
         }
         finally
@@ -64,6 +67,7 @@ public sealed class InstanceConflictAuditBoundaryTests
             Assert.NotNull(record);
             Assert.Contains("single_writer_gate", record!, StringComparison.Ordinal);
             Assert.Contains("检测到另一 Worker", record!, StringComparison.Ordinal);
+            Assert.Contains("审计目录不可写", record!, StringComparison.Ordinal);
             Assert.False(Directory.Exists(audit));
         }
         finally
@@ -161,6 +165,7 @@ public sealed class InstanceConflictAuditBoundaryTests
             Assert.NotNull(record);
             Assert.Contains("conflict audit degraded", record!, StringComparison.Ordinal);
             Assert.Contains(audit, record!, StringComparison.Ordinal);
+            Assert.Contains("审计目录不可写", record!, StringComparison.Ordinal);
             Assert.Empty(Directory.GetFiles(audit, "audit-*.jsonl"));
         }
         finally

@@ -15,7 +15,7 @@ namespace PhotoPrivacy.Worker;
 /// 既有 3 次有界重试只覆盖入队阶段的 IOException，后台 flush 与常驻 Worker 抢
 /// audit-*.jsonl 的共享冲突不可由该重试感知。两条残余均继承 #162 / PR #163，由 #211 承接。
 /// </summary>
-// Design(#82): 冲突/让位留痕只在真正写审计时建目录，建目录或写入失败必须有界降级为可读记录；配置解析与待机路径不得创建任何目录，只读安装目录不改写落点（后台 flush 残余见 #211）。
+// Design(#82): 配置解析与待机路径不得建目录；冲突留痕只在写路径有界建目录，失败降级为可读记录且不阻断退出，只读安装目录不改写落点（后台 flush 残余见 #211）。
 internal static class InstanceConflictAudit
 {
     /// <summary>
@@ -196,7 +196,7 @@ internal static class InstanceConflictAudit
         var record =
             $"[PhotoPrivacyWorker] conflict audit degraded / 冲突审计留痕降级（{stage}）：" +
             $"{failure.GetType().Name}: {failure.Message}；" +
-            $"audit_directory={auditDirectory}；conflict={message}；{details}。" +
+            $"configured_audit_directory={auditDirectory}；conflict={message}；{details}。" +
             " 冲突事实以本行 conflict= 字段为准；留痕失败不阻断退出（#127）。";
 
         try
