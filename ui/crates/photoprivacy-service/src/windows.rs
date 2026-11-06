@@ -1189,10 +1189,12 @@ mod tests {
         );
         let _ = ops_elevated.uninstall();
         assert!(runner.programs().is_empty(), "非管理员时卸装应走提权路径");
-        assert!(elevated
-            .programs()
-            .iter()
-            .all(|program| is_system32_program(program)));
+        assert!(
+            elevated
+                .programs()
+                .iter()
+                .all(|program| is_system32_program(program))
+        );
 
         let (ops_direct, runner, _) = ops(
             ServiceRuntimeState::Running,
@@ -1201,10 +1203,12 @@ mod tests {
             RecordingElevated::default(),
         );
         let _ = ops_direct.uninstall();
-        assert!(runner
-            .programs()
-            .iter()
-            .all(|program| is_system32_program(program)));
+        assert!(
+            runner
+                .programs()
+                .iter()
+                .all(|program| is_system32_program(program))
+        );
     }
 
     #[test]
