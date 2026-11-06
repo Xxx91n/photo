@@ -13,9 +13,9 @@ namespace PhotoPrivacy.Worker;
 /// stderr 恒写，Serilog 已初始化时再补一路文件日志（服务会话下 stderr 不落盘）。
 /// 残余：留痕本身仍是 best-effort，后台落盘失败由 JsonLineAuditLogger 内部吞掉；
 /// 既有 3 次有界重试只覆盖入队阶段的 IOException，后台 flush 与常驻 Worker 抢
-/// audit-*.jsonl 的共享冲突不可由该重试感知。两条残余均继承 #162 / PR #163，登记在 #82。
+/// audit-*.jsonl 的共享冲突不可由该重试感知。两条残余均继承 #162 / PR #163，由 #211 承接。
 /// </summary>
-// Design(#82): 冲突/让位留痕只在真正写审计时建目录，建目录或写入失败必须有界降级为可读记录；配置解析与待机路径不得创建任何目录，只读安装目录不改写落点（残余登记在 #82）。
+// Design(#82): 冲突/让位留痕只在真正写审计时建目录，建目录或写入失败必须有界降级为可读记录；配置解析与待机路径不得创建任何目录，只读安装目录不改写落点（后台 flush 残余见 #211）。
 internal static class InstanceConflictAudit
 {
     /// <summary>
@@ -99,7 +99,7 @@ internal static class InstanceConflictAudit
 
             // 有界重试（#162 引入）：只覆盖本处 WriteAsync 入队阶段的 IOException。
             // 注意 JsonLineAuditLogger.WriteAsync 只入队、不碰文件，后台 flush 与常驻 Worker
-            // 抢 audit-*.jsonl 的共享冲突不由这里感知——该残余登记在类注释与 #82。
+            // 抢 audit-*.jsonl 的共享冲突不由这里感知——该残余由 #211 承接（见类注释）。
             // 入队/构造阶段仍失败则由外层降级为可读记录（留痕永不阻断退出）。
             for (var attempt = 1; ; attempt++)
             {
