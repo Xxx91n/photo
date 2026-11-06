@@ -190,11 +190,8 @@ pub trait InstallerSidRegistry: Send + Sync {
     ///
     /// 只有登记项仍是本尝试写入的 `attempted_sid` 时才恢复——若并发安装者已经改成自己的
     /// SID，就保留对方的值，避免拿本次的旧快照覆盖别人的新登记。
-    fn rollback(
-        &self,
-        previous: &InstallerRegistration,
-        attempted_sid: &str,
-    ) -> Result<(), String>;
+    fn rollback(&self, previous: &InstallerRegistration, attempted_sid: &str)
+    -> Result<(), String>;
 }
 
 /// 安装前的登记快照：`None` 表示该项本来不存在，恢复时应当删除而不是写成空串。
@@ -1903,7 +1900,10 @@ mod tests {
         let result = ops.install(Some(worker.as_path()), Some(config.as_path()));
 
         assert_eq!(result.status, ServiceCommandStatus::Failed);
-        assert_eq!(acl.registration().installer_sid.as_deref(), Some(previous_sid));
+        assert_eq!(
+            acl.registration().installer_sid.as_deref(),
+            Some(previous_sid)
+        );
         assert_eq!(
             acl.registration().allowed_sids.as_deref(),
             Some(&[previous_sid.to_string()][..])
