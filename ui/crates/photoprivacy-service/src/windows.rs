@@ -402,6 +402,58 @@ fn registration_script(sid: &str) -> String {
     )
 }
 
+/// 提权通道里的登记回滚脚本：只有当前 `InstallerSid` 仍是本次写下的值时才恢复旧快照——
+/// 并发安装者已经把值改成自己的 SID 时就什么都不动。快照值来自注册表，可能是外部写入的
+/// 任意字符串，因此一律按 PowerShell 单引号规则转义，不依赖 SID 校验。
+fn rollback_script(previous: &InstallerRegistration, attempted_sid: &str) -> String {
+    let mut restore: Vec<String> = Vec::new();
+    match previous.installer_sid.as_deref() {
+        Some(sid) => restore.push(format!(
+            "New-ItemProperty -LiteralPath $key -Name '{INSTALLER_SID_VALUE}' -Value {} \
+             -PropertyType String -Force | Out-Null;",
+            ps_quote(sid)
+        )),
+        None => restore.push(
+            "if ($null -ne (Get-ItemProperty -LiteralPath $key -Name '{INSTALLER_SID_VALUE}' \
+             -ErrorAction SilentlyContinue)) { Remove-ItemProperty -LiteralPath $key \
+             -Name '{INSTALLER_SID_VALUE}' -ErrorAction Stop };"
+                .replace("{INSTALLER_SID_VALUE}", INSTALLER_SID_VALUE),
+        ),
+    }
+    match previous.allowed_sids.as_deref() {
+        Some(sids) => {
+            let values = sids.iter().map(|sid| ps_quote(sid)).collect::<Vec<_>>().join(",");
+            restore.push(format!(
+                "New-ItemProperty -LiteralPath $key -Name '{ALLOWED_SIDS_VALUE}' -Value @({values}) \
+                 -PropertyType MultiString -Force | Out-Null;"
+            ));
+        }
+        None => restore.push(
+            "if ($null -ne (Get-ItemProperty -LiteralPath $key -Name '{ALLOWED_SIDS_VALUE}' \
+             -ErrorAction SilentlyContinue)) { Remove-ItemProperty -LiteralPath $key \
+             -Name '{ALLOWED_SIDS_VALUE}' -ErrorAction Stop };"
+                .replace("{ALLOWED_SIDS_VALUE}", ALLOWED_SIDS_VALUE),
+        ),
+    }
+
+    format!(
+        "$ErrorActionPreference = 'Stop'; \
+         $key = '{ACL_REGISTRY_KEY_PATH}'; \
+         if (Test-Path -LiteralPath $key) {{ \
+             $current = (Get-ItemProperty -LiteralPath $key -Name '{INSTALLER_SID_VALUE}' \
+                 -ErrorAction SilentlyContinue).{INSTALLER_SID_VALUE}; \
+             if ($null -ne $current -and $current -eq {attempted}) {{ {restore} }} \
+         }}",
+        attempted = ps_quote(attempted_sid),
+        restore = restore.join(" ")
+    )
+}
+
+/// PowerShell 单引号字符串：内部的 `'` 双写成 `''`，保证快照里的任意字符原样传入。
+fn ps_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
+}
+
 fn clear_script() -> String {
     format!(
         "$ErrorActionPreference = 'Stop'; \
@@ -679,6 +731,23 @@ impl WindowsOps {
         }
         self.run_elevated_powershell(&clear_script(), "service pipe ACL cleanup")
     }
+
+    /// 撤回本次安装写下的登记：UI 已提权就直写，否则走提权通道——必须与 `register` 同一
+    /// 权限来源：非管理员 UI 的登记是提权写进去的，回滚若用自身令牌写 HKLM 必然 access
+    /// denied，结果是在 HKLM 留下指向不存在服务的授权值（PR #217 review）。
+    fn rollback_installer_registration(
+        &self,
+        previous: &InstallerRegistration,
+        attempted_sid: &str,
+    ) -> Result<(), String> {
+        if self.admin.is_admin() {
+            return self.acl.rollback(previous, attempted_sid);
+        }
+        self.run_elevated_powershell(
+            &rollback_script(previous, attempted_sid),
+            "service pipe ACL rollback",
+        )
+    }
     /// 提权执行一段 PowerShell：`sc.exe` 的 runas 只提升子进程，UI 自身仍非管理员，
     /// 因此 HKLM 里的登记必须同样经提权通道落盘（#200）。
     fn run_elevated_powershell(&self, script: &str, what: &str) -> Result<(), String> {
@@ -813,7 +882,7 @@ impl ServiceOps for WindowsOps {
         // 而不是给 HKLM 留下指向不存在服务的授权值。读不到快照时退回「清掉本次登记」的旧语义。
         let previous_registration = self.acl.snapshot().unwrap_or_default();
         let rollback_registration = |status: ServiceCommandResult| -> ServiceCommandResult {
-            match self.acl.rollback(&previous_registration, &installer_sid) {
+            match self.rollback_installer_registration(&previous_registration, &installer_sid) {
                 Ok(()) => status,
                 Err(reason) => ServiceCommandResult {
                     message: format!(
@@ -1156,6 +1225,8 @@ mod tests {
     struct RecordingElevated {
         calls: Mutex<Vec<Vec<String>>>,
         programs: Mutex<Vec<String>>,
+        /// 按序消费的脚本结果；耗尽后回落到 `outcome`。
+        outcomes: Mutex<VecDeque<ElevatedOutcome>>,
         outcome: Mutex<Option<ElevatedOutcome>>,
     }
 
@@ -1164,7 +1235,18 @@ mod tests {
             Self {
                 calls: Mutex::new(Vec::new()),
                 programs: Mutex::new(Vec::new()),
+                outcomes: Mutex::new(VecDeque::new()),
                 outcome: Mutex::new(Some(outcome)),
+            }
+        }
+
+        /// 同一段流程里各次提权结果不同时使用（登记成功 → create 失败 → 回滚）。
+        fn with_outcomes(outcomes: Vec<ElevatedOutcome>) -> Self {
+            Self {
+                calls: Mutex::new(Vec::new()),
+                programs: Mutex::new(Vec::new()),
+                outcomes: Mutex::new(outcomes.into()),
+                outcome: Mutex::new(None),
             }
         }
 
@@ -1181,10 +1263,9 @@ mod tests {
         fn run(&self, program: &str, args: &[String], _: Duration) -> ElevatedOutcome {
             self.programs.lock().unwrap().push(program.to_string());
             self.calls.lock().unwrap().push(args.to_vec());
-            self.outcome
-                .lock()
-                .unwrap()
-                .clone()
+            let scripted = self.outcomes.lock().unwrap().pop_front();
+            scripted
+                .or_else(|| self.outcome.lock().unwrap().clone())
                 .unwrap_or_else(|| ElevatedOutcome::Failed("no scripted outcome".to_string()))
         }
     }
@@ -1949,6 +2030,90 @@ mod tests {
 
         assert_eq!(acl.registration().installer_sid.as_deref(), Some(other_sid));
         assert_eq!(acl.clear_calls(), 0, "must not touch another install's SID");
+    }
+
+    #[test]
+    fn install_restores_registration_through_elevation_when_ui_is_not_admin() {
+        // 返修（PR #217 review）：非管理员 UI 的登记是提权写进去的，create 失败后的回滚
+        // 也必须走提权通道，否则回滚会被 access denied 挡回，在 HKLM 留下本次写下的授权值。
+        let previous_sid = "S-1-5-21-111111111-222222222-333333333-1002";
+        let (ops, runner, acl, elevated) = ops_with_acl(
+            ServiceRuntimeState::NotInstalled,
+            vec![],
+            false,
+            RecordingElevated::with_outcomes(vec![
+                ElevatedOutcome::Exited(0),
+                ElevatedOutcome::Exited(5),
+                ElevatedOutcome::Exited(0),
+            ]),
+            FakeAcl::with_existing_registration(previous_sid),
+        );
+
+        let worker = temp_worker();
+        let config = std::path::PathBuf::from(r"C:\cfg\config.json");
+        let result = ops.install(Some(worker.as_path()), Some(config.as_path()));
+
+        assert_eq!(result.status, ServiceCommandStatus::Failed);
+        assert!(
+            acl.registered().is_empty(),
+            "non-elevated UI must not write HKLM from its own token"
+        );
+        assert_eq!(
+            acl.clear_calls(),
+            0,
+            "rollback must not be attempted with the UI token"
+        );
+        assert_eq!(runner.calls().len(), 0, "every step goes through runas");
+
+        let calls = elevated.calls();
+        assert_eq!(calls.len(), 3, "register + create + rollback: {calls:?}");
+        let rollback = calls[2].last().cloned().unwrap_or_default();
+        assert!(
+            rollback.contains("Test-Path"),
+            "rollback must leave a missing key alone: {rollback}"
+        );
+        assert!(
+            rollback.contains(TEST_INSTALLER_SID),
+            "rollback must guard on the attempted SID: {rollback}"
+        );
+        assert!(rollback.contains(INSTALLER_SID_VALUE));
+        assert!(rollback.contains(ALLOWED_SIDS_VALUE));
+        assert!(
+            rollback.contains(previous_sid),
+            "rollback must restore the snapshot values: {rollback}"
+        );
+        cleanup_worker(&worker);
+    }
+
+    #[test]
+    fn rollback_script_quotes_snapshot_values_for_powershell() {
+        // 返修（PR #217 review）：快照值来自注册表，可能含引号，必须按 PowerShell 规则转义。
+        let previous = InstallerRegistration {
+            installer_sid: Some("S-1-5-21-\u{e9}'x".to_string()),
+            allowed_sids: Some(vec!["S-1-5-21-1".to_string(), "a'b".to_string()]),
+        };
+        let script = rollback_script(&previous, TEST_INSTALLER_SID);
+        assert!(
+            script.contains("$current -eq 'S-1-5-21-111111111-222222222-333333333-1001'"),
+            "{script}"
+        );
+        assert!(
+            script.contains("'S-1-5-21-\u{e9}''x'"),
+            "single quotes must be doubled: {script}"
+        );
+        assert!(script.contains("'a''b'"), "{script}");
+        assert!(script.contains("@('S-1-5-21-1','a''b')"), "{script}");
+    }
+
+    #[test]
+    fn rollback_script_deletes_values_absent_from_the_snapshot() {
+        // 快照里本来没有该项：回滚应当删除，而不是写空串（与账面上的 None 语义一致）。
+        let script = rollback_script(&InstallerRegistration::default(), TEST_INSTALLER_SID);
+        assert!(script.contains("Remove-ItemProperty"), "{script}");
+        assert!(
+            !script.contains("New-ItemProperty -LiteralPath $key -Name"),
+            "must not resurrect values that never existed: {script}"
+        );
     }
 
     #[test]
