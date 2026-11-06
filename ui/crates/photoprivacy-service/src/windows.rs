@@ -422,7 +422,11 @@ fn rollback_script(previous: &InstallerRegistration, attempted_sid: &str) -> Str
     }
     match previous.allowed_sids.as_deref() {
         Some(sids) => {
-            let values = sids.iter().map(|sid| ps_quote(sid)).collect::<Vec<_>>().join(",");
+            let values = sids
+                .iter()
+                .map(|sid| ps_quote(sid))
+                .collect::<Vec<_>>()
+                .join(",");
             restore.push(format!(
                 "New-ItemProperty -LiteralPath $key -Name '{ALLOWED_SIDS_VALUE}' -Value @({values}) \
                  -PropertyType MultiString -Force | Out-Null;"
