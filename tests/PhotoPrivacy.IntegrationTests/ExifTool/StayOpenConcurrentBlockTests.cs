@@ -5,7 +5,7 @@ using PhotoPrivacy.Core.ExifTool;
 namespace PhotoPrivacy.IntegrationTests.ExifTool;
 
 /// <summary>
-/// #39 实测：stay_open 协议「块按写入顺序整块处理、回显与 <c>{ready}</c> 一一对应」假设，
+/// #226 实测（原登记 #39）：stay_open 协议「块按写入顺序整块处理、回显与 <c>{ready}</c> 一一对应」假设，
 /// 在真实 ExifTool 进程上以多并发写验证（CI job <c>exiftool-stayopen</c>：ubuntu + windows
 /// 双腿、钉扎 13.61 真跑；产品主平台是 Windows 管道，双腿都要过）。
 ///
@@ -13,14 +13,14 @@ namespace PhotoPrivacy.IntegrationTests.ExifTool;
 /// <see cref="ExifToolBridge.WriteBlockAsync"/> 的块级串行化）都押在这条假设上。本用例覆盖的
 /// 失败形态：
 /// ① 并发块的行互相插入 → 探测 JSON 被别块 marker/输出污染 → 有元数据文件被判
-///    Skipped_NoMetadata / Cleaned_NoOp 静默跳过（#111/#39 登记的静默失败形态）；
+///    Skipped_NoMetadata / Cleaned_NoOp 静默跳过（#111 登记的静默失败形态，决策基线 #226）；
 /// ② 外块 <c>{ready}</c> 提前结清本块 → Cleaned_Modified 报早 → 每轮后用一次性 exiftool
 ///    独立复核 EXIF 确实已清（不复用桥自己的结论）；
 /// ③ 大输出窗口：模板带 ~120 KB XMP，把探测 JSON 输出推过管道缓冲量级——长窗口下窗口
 ///    归属仍不得被并发块污染（写侧整块性由 <c>_stdinGate</c> 闸内「写+flush」保证，本用例
 ///    验的是它下游的整块处理与归属）。
 ///
-/// 边界与残余（诚实口径，Design(#39) 注释引用此处）：
+/// 边界与残余（诚实口径，Design(#226) 注释引用此处）：
 /// - 证伪力 = 真进程并发路径未撞红：ExifTool stay_open 是单线程读循环，黑盒用例没有交错
 ///   观测手段；抓得住一切跨块插入/错配的下游表现，抓不住 exiftool 内部结构性的处理顺序。
 /// - 产品同桥并发写还有 IPC 状态查询驱动的版本探针：版本只解析一次（EnsureVersionAsync 对
@@ -75,7 +75,7 @@ public sealed class StayOpenConcurrentBlockTests : IntegrationTestBase
 
                 Assert.All(results, (result, i) => Assert.True(
                     result == WipeResult.Cleaned_Modified,
-                    $"#39 实测撞红：第 {round} 轮 {Path.GetFileName(files[i])} -> {result}"
+                    $"#226 实测撞红：第 {round} 轮 {Path.GetFileName(files[i])} -> {result}"
                     + "（有元数据文件未被 Cleaned_Modified，疑并发块跨块污染/错配）"));
 
                 // ②外块 {ready} 提前结清会让 Cleaned_Modified 报早——不复用桥的结论，
@@ -118,7 +118,7 @@ public sealed class StayOpenConcurrentBlockTests : IntegrationTestBase
         var probe = await RunExifToolOneShotAsync(candidate, new[] { "-ver" });
         if (probe.ExitCode != 0 || string.IsNullOrWhiteSpace(probe.Stdout))
         {
-            Assert.Fail($"#39 ExifTool 探活失败（exit={probe.ExitCode}）：{Truncate(probe.Stderr)}");
+            Assert.Fail($"#226 ExifTool 探活失败（exit={probe.ExitCode}）：{Truncate(probe.Stderr)}");
         }
 
         return candidate;
@@ -163,7 +163,7 @@ public sealed class StayOpenConcurrentBlockTests : IntegrationTestBase
         if (write.ExitCode != 0)
         {
             TryDelete(workDir);
-            Assert.Fail($"#39 夹具生成失败（exiftool 写 EXIF exit={write.ExitCode}）：{Truncate(write.Stderr)}");
+            Assert.Fail($"#226 夹具生成失败（exiftool 写 EXIF exit={write.ExitCode}）：{Truncate(write.Stderr)}");
         }
 
         var check = await RunExifToolOneShotAsync(exe, new[] { "-s3", "-EXIF:Make", template });
@@ -171,7 +171,7 @@ public sealed class StayOpenConcurrentBlockTests : IntegrationTestBase
         {
             TryDelete(workDir);
             Assert.Fail(
-                $"#39 夹具回读校验失败（exit={check.ExitCode}, stdout={Truncate(check.Stdout)}）"
+                $"#226 夹具回读校验失败（exit={check.ExitCode}, stdout={Truncate(check.Stdout)}）"
                 + "：无法证实模板带 EXIF，后续判定失去基准。");
         }
 
@@ -283,7 +283,7 @@ public sealed class StayOpenConcurrentBlockTests : IntegrationTestBase
             var check = await RunExifToolOneShotAsync(_exe, new[] { "-s3", "-EXIF:Make", file });
             Assert.True(
                 check.ExitCode == 0 && string.IsNullOrWhiteSpace(check.Stdout),
-                $"#39 实测撞红：{Path.GetFileName(file)} 报 Cleaned_Modified 但 EXIF:Make 仍在"
+                $"#226 实测撞红：{Path.GetFileName(file)} 报 Cleaned_Modified 但 EXIF:Make 仍在"
                 + $"（疑外块 {{ready}} 提前结清本块）：exit={check.ExitCode}, stdout={check.Stdout.Trim()}");
         }
 

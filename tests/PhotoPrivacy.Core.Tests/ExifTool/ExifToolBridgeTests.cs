@@ -186,7 +186,7 @@ public sealed class ExifToolBridgeTests
         // 整数、marker 之间互为前缀（PROBE_DONE_1 ⊂ PROBE_DONE_10）。于是别的文件（id=10）那块的回显行
         // 会被 id=1 的探测认领，紧跟其后的那句别块的 {ready} 就把 id=1 的探测结清在空输出上 →
         // HasClearableFields 解析不出东西 → Skipped_NoMetadata：文件里的隐私元数据被静默跳过（不擦除、不告警）。
-        // 协议级假件把「一块的回显到 {ready} 之间插不进别块的行」当回放前提（#39 已由真进程并发实测覆盖的假设，见 StayOpenConcurrentBlockTests），
+        // 协议级假件把「一块的回显到 {ready} 之间插不进别块的行」当回放前提（#226，原登记 #39；见 StayOpenConcurrentBlockTests），
         // 故本用例改用块产出可延后的假件，把「别块的回显与它的 {ready} 插进本块窗口」这一时序钉死。
         var process = new DeferredBlockFakeExifToolProcess();
         var bridge = new ExifToolBridge(process, Config);
