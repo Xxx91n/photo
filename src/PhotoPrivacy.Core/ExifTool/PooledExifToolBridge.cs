@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using PhotoPrivacy.Core.Audit;
 using PhotoPrivacy.Core.Configuration;
 
@@ -117,7 +118,11 @@ public sealed class PooledExifToolBridge : IExifToolBridge, IDisposable
 
 public static class PooledExifToolBridgeFactory
 {
-    public static IExifToolBridge BuildFromConfig(AppConfig config, IAuditLogger audit, IReadOnlyDictionary<string, bool>? wipeRules = null)
+    /// <param name="processLogger">
+    /// 透传给每个 <see cref="ProcessExifToolProcess"/> 的日志器（#37）：停机期 stdin 管道已断的
+    /// 预期异常降 Debug、非预期失败留 Warning 痕——该类自身不持有审计/生命周期缝，只能走日志。
+    /// </param>
+    public static IExifToolBridge BuildFromConfig(AppConfig config, IAuditLogger audit, IReadOnlyDictionary<string, bool>? wipeRules = null, ILogger? processLogger = null)
     {
         if (config.ExifTool.DryRun)
         {
@@ -127,22 +132,22 @@ public static class PooledExifToolBridgeFactory
         var poolSize = Math.Max(1, config.ExifTool.StayOpenPoolSize);
         if (poolSize == 1)
         {
-            return BuildSingle(config, audit, wipeRules);
+            return BuildSingle(config, audit, wipeRules, processLogger);
         }
 
         var bridges = new List<IExifToolBridge>(poolSize);
         for (var i = 0; i < poolSize; i++)
         {
-            bridges.Add(BuildSingle(config, audit, wipeRules));
+            bridges.Add(BuildSingle(config, audit, wipeRules, processLogger));
         }
 
         return new PooledExifToolBridge(bridges, config.ExifTool.MaxParallelDrain);
     }
 
-    private static IExifToolBridge BuildSingle(AppConfig config, IAuditLogger audit, IReadOnlyDictionary<string, bool>? wipeRules)
+    private static IExifToolBridge BuildSingle(AppConfig config, IAuditLogger audit, IReadOnlyDictionary<string, bool>? wipeRules, ILogger? processLogger)
     {
         return new ExifToolBridge(
-            process: new ProcessExifToolProcess(),
+            process: new ProcessExifToolProcess(logger: processLogger),
             config: config,
             wipeRules: wipeRules,
             logger: null,

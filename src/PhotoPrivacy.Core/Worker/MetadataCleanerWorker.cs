@@ -709,7 +709,9 @@ public sealed class MetadataCleanerWorker : BackgroundService
         // 擦除引擎由 rules.json 驱动（单一真相源），与 UI 规则面板同一 FormatRulesStore 存储；
         // 规则快照在 bridge 构建时载入（初启与 ApplyConfig 重建时刷新），缺文件时 Load 返回默认规则。
         var rulesStore = new FormatRulesStore(Path.Combine(AppContext.BaseDirectory, "config"));
-        return PooledExifToolBridgeFactory.BuildFromConfig(config, audit, rulesStore.Load());
+        // #37：把 worker 日志器透传给进程壳——停机期 stdin 管道已断（Pipe is broken）等预期异常
+        // 在该层降 Debug，非预期失败留 Warning 痕，不再落成 StopBridgeAsync 的 Warning 噪声。
+        return PooledExifToolBridgeFactory.BuildFromConfig(config, audit, rulesStore.Load(), processLogger: _logger);
     }
 
     /// <summary>

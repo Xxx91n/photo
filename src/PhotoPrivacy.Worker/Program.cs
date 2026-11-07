@@ -173,8 +173,11 @@ static string? ResolveAuditLogDirectory(string configPath, string? cliOverride)
             : config.Audit.LogDirectory;
         return string.IsNullOrWhiteSpace(dir) ? null : dir;
     }
-    catch
+    catch (Exception ex)
     {
+        // 语义保留（返回 null，调用方走回退口径），但不再静默（#37）：配置坏/读不了的原因必须留痕，
+        // 否则「审计目录解析失败」与「配置本来就空」在下游无法区分。此时 Serilog 静态 Log 已可用。
+        Log.Error(ex, "audit log directory could not be resolved from {ConfigPath}; the accessor returns null and callers fall back (#37)", configPath);
         return null;
     }
 }
@@ -217,14 +220,35 @@ posixHooks = PosixSignalHooks.Register(
         }
     });
 // UnhandledException + UnobservedTaskException → Serilog (also in UI Program.cs)
+// 日志兜底本身失败时走 stderr 留痕（#37）：Log 已不可用是终局故障，静默会让致命异常只留
+// 退出码一个信号；stderr 是此刻唯一确定的去处（服务进程无控制台时写入静默成功，不抛）。
 AppDomain.CurrentDomain.UnhandledException += (_, e) =>
 {
-    try { Log.Fatal((Exception)e.ExceptionObject, "AppDomain.UnhandledException"); } catch { }
-    try { Log.CloseAndFlush(); } catch { }
+    // ExceptionObject 是 object：非 Exception 载荷时不强转（否则 InvalidCastException 本身
+    // 又成了 logEx，原始异常两丢），as 保留原始引用供兜底输出（同 UnobservedTaskException 口径）。
+    // Log.Fatal 只有 Exception/string 首参重载（object 首参 CS1503）：Exception 走异常重载，
+    // 非 Exception 载荷走消息模板属性重载，载荷本身也留进日志。
+    var fatalOriginal = e.ExceptionObject as Exception;
+    try
+    {
+        if (fatalOriginal is not null)
+        {
+            Log.Fatal(fatalOriginal, "AppDomain.UnhandledException");
+        }
+        else
+        {
+            Log.Fatal("AppDomain.UnhandledException with non-Exception payload {ExceptionObject}", e.ExceptionObject);
+        }
+    }
+    catch (Exception logEx) { TraceToStderr(logEx, "fatal log after unhandled exception", original: fatalOriginal); }
+    try { Log.CloseAndFlush(); }
+    catch (Exception logEx) { TraceToStderr(logEx, "log close/flush after unhandled exception"); }
 };
 TaskScheduler.UnobservedTaskException += (_, e) =>
 {
-    try { Log.Error(e.Exception, "TaskScheduler.UnobservedTaskException"); } catch { }
+    try { Log.Error(e.Exception, "TaskScheduler.UnobservedTaskException"); }
+    // 兜底输出保留原始任务异常（CodeRabbit #228）：SetObserved 之后再无他处记录，只留 logEx 会丢故障本体。
+    catch (Exception logEx) { TraceToStderr(logEx, "unobserved task exception log", original: e.Exception); }
     e.SetObserved();
 };
 
@@ -295,9 +319,31 @@ static bool TryPrepareWritableDirectory(string directory)
             FileOptions.DeleteOnClose);
         return true;
     }
+    catch (Exception ex)
+    {
+        // 语义保留（返回 false，调用方回落安装目录），但留痕（#37）：本函数在日志器配置之前运行，
+        // Log 不可用，stderr 是唯一去处——「日志目录不可写」回落这条线索排查服务日志缺失时必需。
+        TraceToStderr(ex, $"log directory {directory} is not writable, falling back to the install directory");
+        return false;
+    }
+}
+
+// 日志兜底的兜底（#37）：Log 自身不可用时唯一确定的留痕去处。stderr 写入失败再无去处，
+// 静默丢弃——这是登记过的「接受静默」终点，不是可再降级的路径。original 是被兜底操作
+// 掩盖的原始异常（如 SetObserved 前的 UnobservedTaskException），一并留痕防丢失。
+static void TraceToStderr(Exception failure, string context, Exception? original = null)
+{
+    try
+    {
+        Console.Error.WriteLine(
+            $"[PhotoPrivacyWorker] {context}: {failure.GetType().Name}: {failure.Message}"
+            + (original is null
+                ? string.Empty
+                : $" | original: {original.GetType().Name}: {original.Message}"));
+    }
     catch
     {
-        return false;
+        // nothing left to lose here
     }
 }
 

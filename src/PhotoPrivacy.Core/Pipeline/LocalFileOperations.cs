@@ -74,6 +74,13 @@ public sealed class LocalFileOperations : IFileOperations
         }
     }
 
+    // 崩溃一致性（#229，原登记 #37）取舍：只做用户态 FlushAsync 时，掉电窗口内 File.Replace 会把
+    // 半截/空文件换上位，而原件随后被清洗，备份这条唯一安全副本的损失不可逆；fsync 相对整文件
+    // 复制成本可忽略。AtomicCopyAsync（备份槽/分卷边车唯一写入方）在 CopyAsync 返回后才做原子
+    // 替换，故落盘约束由本方法收口。处理记录（FileProcessedRecordStore）与审计日志
+    // （JsonLineAuditLogger）登记不做：丢失后果是幂等重扫/可容忍的审计缺口，逐条 fsync 与热目录
+    // 吞吐不成比例，取舍本体登记在 #229。
+    // Design(#229): 本备份写入路径必须在返回前 Flush(flushToDisk: true) 落盘，禁退回用户态 flush。
     public async Task CopyAsync(string source, string destination, bool overwrite, CancellationToken cancellationToken)
     {
         EnsureDirectory(Path.GetDirectoryName(destination) ?? string.Empty);
@@ -82,6 +89,7 @@ public sealed class LocalFileOperations : IFileOperations
         using var dst = new FileStream(destination, overwrite ? FileMode.Create : FileMode.CreateNew, FileAccess.Write, FileShare.None, bufferSize, FileOptions.Asynchronous);
         await src.CopyToAsync(dst, bufferSize, cancellationToken).ConfigureAwait(false);
         await dst.FlushAsync(cancellationToken).ConfigureAwait(false);
+        dst.Flush(flushToDisk: true);
     }
 
     public async Task AtomicCopyAsync(string source, string destination, bool overwrite, CancellationToken cancellationToken)
