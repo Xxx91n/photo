@@ -137,6 +137,11 @@ public sealed class StayOpenConcurrentBlockTests : IntegrationTestBase
         var template = Path.Combine(workDir, "template.jpg");
         await File.WriteAllBytesAsync(template, Convert.FromBase64String(MinimalJpegBase64));
 
+        // 超大 tag 值经 -TAG<=文件 传入：Windows CreateProcess 命令行上限 32K，
+        // 直接把 120KB 值放进参数会在起进程时就炸（Win32Exception）。
+        var payloadPath = Path.Combine(workDir, "oversize.txt");
+        await File.WriteAllTextAsync(payloadPath, new string('x', OversizePayloadLength));
+
         var write = await RunExifToolOneShotAsync(exe, new[]
         {
             "-overwrite_original", "-q", "-q",
@@ -145,7 +150,7 @@ public sealed class StayOpenConcurrentBlockTests : IntegrationTestBase
             "-EXIF:GPSLatitude=37.5",
             "-EXIF:GPSLongitude=-122.1",
             "-EXIF:DateTimeOriginal=2026:01:01 00:00:00",
-            $"-XMP:Description={new string('x', OversizePayloadLength)}",
+            $"-XMP:Description<={payloadPath}",
             template
         });
         if (write.ExitCode != 0)
