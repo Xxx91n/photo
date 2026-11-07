@@ -316,7 +316,7 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
         // HasClearableFields 解析不出东西 → Skipped_NoMetadata，文件里的隐私元数据被静默跳过。
         // 认领与结清改与擦除块（#97 落地的那半边，见本方法下方 OnStdoutLine / CompleteBlockJustEchoed）
         // 同口径后，本票#111 的「有元数据却报无元数据」静默跳过形态消失。
-        // Design(#39): 探测块的 marker 认领取整行相等、结清取本块 {ready}——与擦除块同口径，回显只当「进入本块」的锚点；判定同样依赖「块按写入顺序整块处理、回显与 {ready} 一一对应」，这一 stdin 顺序假设已由真进程多并发写实测覆盖（StayOpenConcurrentBlockTests；证伪力=并发路径未撞红，残余见该类注释），风险登记在 #39。
+        // Design(#226): 探测块的 marker 认领取整行相等、结清取本块 {ready}——与擦除块同口径，回显只当「进入本块」的锚点；判定同样依赖「块按写入顺序整块处理、回显与 {ready} 一一对应」，这一 stdin 顺序假设已由真进程多并发写实测覆盖（StayOpenConcurrentBlockTests；证伪力=并发路径未撞红，残余见该类注释），决策本体与残余登记在 #226（原登记 #39）。
         _pending[probeMarker] = probePending;
 
         try
@@ -363,7 +363,7 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
 
         var wipeMarker = $"TASK_DONE_{id}";
         var wipeTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        // Design(#39): 擦除块的完成判定取本块的 {ready}（块结束），-echo1 回显只当「进入该块」的锚点、不作完成信号；判定依赖「块按写入顺序整块处理、回显与 {ready} 一一对应」，这一 stdin 顺序假设已由真进程多并发写实测覆盖（StayOpenConcurrentBlockTests；证伪力=并发路径未撞红，残余见该类注释），风险登记在 #39。
+        // Design(#226): 擦除块的完成判定取本块的 {ready}（块结束），-echo1 回显只当「进入该块」的锚点、不作完成信号；判定依赖「块按写入顺序整块处理、回显与 {ready} 一一对应」，这一 stdin 顺序假设已由真进程多并发写实测覆盖（StayOpenConcurrentBlockTests；证伪力=并发路径未撞红，残余见该类注释），决策本体与残余登记在 #226（原登记 #39）。
         _pending[wipeMarker] = new PendingBlock(wipeTcs, PendingCompletion.BlockReady);
 
         FileInfo? beforeInfo = null;
@@ -907,7 +907,7 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
     /// <c>{ready}</c> 只结清「紧挨在它前面那句回显」所属的写盘块（擦除）或输出收集块（探测）。
     ///
     /// <c>{ready}</c> 行本身不带块身份，能依据的只有位置，于是归属只能押在「块按顺序整块处理、一块的回显与
-    /// 它自己的 <c>{ready}</c> 之间插不进别块的行」这一假设上——它已由真进程多并发写实测覆盖（#39，StayOpenConcurrentBlockTests；证伪力=并发路径未撞红，残余见该类注释）。假设破了（插得进）时，
+    /// 它自己的 <c>{ready}</c> 之间插不进别块的行」这一假设上——它已由真进程多并发写实测覆盖（#226，原登记 #39，StayOpenConcurrentBlockTests；证伪力=并发路径未撞红，残余见该类注释）。假设破了（插得进）时，
     /// 那句 <c>{ready}</c> 属于别的块：让擦除等待继续等自己那块、或由进程退出判失败，也不把它结清成已清理。
     /// </summary>
     private void CompleteBlockJustEchoed()
