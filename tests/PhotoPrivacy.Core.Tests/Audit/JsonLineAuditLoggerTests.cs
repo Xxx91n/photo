@@ -25,6 +25,15 @@ public sealed class JsonLineAuditLoggerTests
         fs.SetLength(MaxFileSizeBytes + 1);
     }
 
+    private static string CreateAuditFile(string dir, DateTime creationTimeUtc)
+    {
+        // 文件名按创建日期派生即可读；判龄与计数只认 CreationTimeUtc（#41/#208），名字不影响行为。
+        var path = Path.Combine(dir, $"audit-{creationTimeUtc:yyyy-MM-dd}.jsonl");
+        File.WriteAllText(path, "{}" + Environment.NewLine);
+        File.SetCreationTimeUtc(path, creationTimeUtc);
+        return path;
+    }
+
     [Fact]
     public async Task WriteAsync_Should_Write_One_Json_Line_With_Utc_Timestamp_And_Masked_Path()
     {
@@ -138,6 +147,180 @@ public sealed class JsonLineAuditLoggerTests
             }
             Assert.Equal(2, File.ReadLines(Path.Combine(dir, ShardFileName(2))).Count());
             Assert.False(File.Exists(Path.Combine(dir, ShardFileName(3))));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void CleanupExpired_Should_Delete_Files_Older_Than_RetainDays_And_Keep_Recent()
+    {
+        // #41 清理双闸之一：按创建时间判龄删除（#208 判据不变）。超龄删，保留窗口内不删。
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+
+        try
+        {
+            var anchor = DateTime.UtcNow.Date;
+            var expired = CreateAuditFile(dir, anchor.AddDays(-31));
+            var recent = CreateAuditFile(dir, anchor.AddDays(-1));
+
+            using (var logger = new JsonLineAuditLogger(dir, retainDays: 30, diagnosticMode: false))
+            {
+                logger.CleanupExpired();
+            }
+
+            Assert.False(File.Exists(expired));
+            Assert.True(File.Exists(recent));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void CleanupExpired_Should_Evict_Oldest_First_When_Count_Exceeds_Limit()
+    {
+        // #41 清理双闸之二：31 文件计数上限（分卷计入 audit-*.jsonl glob）是磁盘保护兜底，
+        // 到上限最旧创建时间先删。判龄窗口放大到 365 天，让本用例只测计数闸。
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+
+        try
+        {
+            var anchor = DateTime.UtcNow.Date;
+            var paths = new List<string>();
+            for (var offset = 0; offset < 33; offset++)
+            {
+                paths.Add(CreateAuditFile(dir, anchor.AddDays(-offset)));
+            }
+
+            using (var logger = new JsonLineAuditLogger(dir, retainDays: 365, diagnosticMode: false))
+            {
+                logger.CleanupExpired();
+            }
+
+            Assert.Equal(31, Directory.GetFiles(dir, "audit-*.jsonl").Length);
+            // 淘汰的必须是最旧两个（offset 32、31），其余全部保留
+            Assert.False(File.Exists(paths[32]));
+            Assert.False(File.Exists(paths[31]));
+            for (var offset = 0; offset <= 30; offset++)
+            {
+                Assert.True(File.Exists(paths[offset]), $"offset {offset} should be retained");
+            }
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-5)]
+    public void CleanupExpired_Should_Skip_Age_Cleanup_When_RetainDays_Is_Not_Positive(int retainDays)
+    {
+        // #41 防退化配置清空审计面：retain_days<=0 视为「不做年龄清理」（fail-safe，
+        // 对齐 BackupRetentionService.DeleteExpiredTtl 的 <=0 兜底），旧审计文件不因配置退化被全删。
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+
+        try
+        {
+            var anchor = DateTime.UtcNow.Date;
+            var files = new[]
+            {
+                CreateAuditFile(dir, anchor.AddDays(-100)),
+                CreateAuditFile(dir, anchor.AddDays(-60)),
+                CreateAuditFile(dir, anchor.AddDays(-1))
+            };
+
+            using (var logger = new JsonLineAuditLogger(dir, retainDays, diagnosticMode: false))
+            {
+                logger.CleanupExpired();
+            }
+
+            foreach (var file in files)
+            {
+                Assert.True(File.Exists(file), $"{Path.GetFileName(file)} should be retained");
+            }
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void CleanupExpired_Should_Still_Enforce_Count_Limit_When_RetainDays_Is_Not_Positive()
+    {
+        // #41 清理双闸各自独立：retain_days<=0 只关年龄闸，31 文件计数上限（磁盘保护兜底）仍生效。
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+
+        try
+        {
+            var anchor = DateTime.UtcNow.Date;
+            var paths = new List<string>();
+            for (var offset = 0; offset < 33; offset++)
+            {
+                paths.Add(CreateAuditFile(dir, anchor.AddDays(-offset)));
+            }
+
+            using (var logger = new JsonLineAuditLogger(dir, retainDays: 0, diagnosticMode: false))
+            {
+                logger.CleanupExpired();
+            }
+
+            Assert.Equal(31, Directory.GetFiles(dir, "audit-*.jsonl").Length);
+            Assert.False(File.Exists(paths[32]));
+            Assert.False(File.Exists(paths[31]));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void CleanupExpired_Should_Skip_Locked_File_And_Leave_Trace_On_Windows()
+    {
+        // #41 钉删除失败分支：单文件删除失败（Windows sharing violation；POSIX unlink 对
+        // 打开文件成功，故 Windows 专属早退）不炸穿清理链——其余超龄文件照删、失败文件保留，
+        // 且以 audit_cleanup_delete_failed 审计事件留痕（不变量④）。
+        if (!OperatingSystem.IsWindows()) return;
+
+        var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+
+        try
+        {
+            var anchor = DateTime.UtcNow.Date;
+            var locked = CreateAuditFile(dir, anchor.AddDays(-40));
+            var other = CreateAuditFile(dir, anchor.AddDays(-35));
+
+            using (var lockStream = new FileStream(locked, FileMode.Open, FileAccess.Read, FileShare.None))
+            {
+                var logger = new JsonLineAuditLogger(dir, retainDays: 30, diagnosticMode: false);
+                try
+                {
+                    logger.CleanupExpired();
+                }
+                finally
+                {
+                    logger.Dispose();
+                }
+            }
+
+            Assert.True(File.Exists(locked), "locked file should survive this cycle");
+            Assert.False(File.Exists(other), "other expired file should still be deleted");
+
+            // 留痕事件经 Dispose 排干通道落进活动文件（命名走 #129 唯一入口，不手拼）
+            var active = Path.Combine(dir, AuditLogFileNames.BaseName(DateTime.Now) + ".jsonl");
+            Assert.Contains("audit_cleanup_delete_failed", File.ReadAllText(active));
         }
         finally
         {

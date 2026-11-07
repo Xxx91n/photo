@@ -17,8 +17,8 @@
 
 ## 业务
 
-**Audit Log**：业务审计日志（JSONL，路径脱敏+哈希），记录 wipe、backup、config 事件。文件名按本地「今天」分卷（`audit-<yyyy-MM-dd>.jsonl`），写入端、IPC 回填、UI tail 三处同口径（#129），UTC 只保留在行内 `timestamp_utc`。
-**Shard（分卷）**：单日审计 JSONL 触及 100MB 上限后按 `_N` 序号续写的文件族；`GetRecentLogs`（IPC Log Pull）与 UI tail 只认基础名 `audit-<date>.jsonl`，分卷行不经日志页返回——记录在案的接受行为（#135，生命周期归 #41），非缺陷。写入侧 rollover 现状与设计不符，见 #144。
+**Audit Log**：业务审计日志（JSONL，路径脱敏+哈希），记录 wipe、backup、config 事件。文件名按本地「今天」分卷（`audit-<yyyy-MM-dd>.jsonl`），写入端、IPC 回填、UI tail 三处同口径（#129），UTC 只保留在行内 `timestamp_utc`。rotation 与清理策略（#231）：按本地日分卷 + 单文件 100MB 分卷续写；清理双闸 = `retain_days` 按文件创建时间判龄删除 + 31 文件计数上限（`audit-*.jsonl` glob，分卷计入），到上限最旧先删，属磁盘占用保护兜底；`retain_days<=0` 视为不做年龄清理，绝不因退化配置清空审计面（对齐备份保留的 `<=0` 兜底）。
+**Shard（分卷）**：单日审计 JSONL 触及 100MB 上限后按 `_N` 序号续写的文件族（#144 已收口：未满分卷续写复用，不再按批次碎裂）；`GetRecentLogs`（IPC Log Pull）与 UI tail 只认基础名 `audit-<date>.jsonl`，分卷行不经日志页返回——记录在案的接受行为（#135，生命周期归 #231），非缺陷。
 **Diagnostic Log**：运行诊断日志（启动/配置/ExifTool 交互/异常），统一走 Serilog。
 **Backup**：源文件清理前的原始副本；镜像相对路径布局，同内容跳过、分歧内容写时间戳旁路版本，绝不静默覆盖。
 **Quarantine**：处理失败或可疑文件的隔离目录。
