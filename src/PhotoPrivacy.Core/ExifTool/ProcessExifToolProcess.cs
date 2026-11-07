@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
+using PhotoPrivacy.Core.Runtime;
 
 namespace PhotoPrivacy.Core.ExifTool;
 
@@ -296,17 +297,21 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
     /// <summary>
     /// 停机期 stdin 收尾异常分级（#37）：管道已断/对象已释放是预期形态，降 Debug 不进停机日志；
     /// 其余异常留 Warning 痕——分级去重共用一个出口，不再无痕吞掉。
+    /// 留痕自身走 SafeLog.Try：日志器记录时抛错不得中断停机拆卸（CodeRabbit #228）。
     /// </summary>
     private void LogStdinTeardownFailure(Exception ex, string stage)
     {
-        if (ex is IOException or ObjectDisposedException)
+        SafeLog.Try(() =>
         {
-            _logger?.LogDebug(ex, "stdin already unavailable while {Stage} (expected during shutdown).", stage);
-        }
-        else
-        {
-            _logger?.LogWarning(ex, "Unexpected failure while {Stage}; continuing teardown.", stage);
-        }
+            if (ex is IOException or ObjectDisposedException)
+            {
+                _logger?.LogDebug(ex, "stdin already unavailable while {Stage} (expected during shutdown).", stage);
+            }
+            else
+            {
+                _logger?.LogWarning(ex, "Unexpected failure while {Stage}; continuing teardown.", stage);
+            }
+        });
     }
 
     /// <summary>

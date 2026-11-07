@@ -232,7 +232,8 @@ AppDomain.CurrentDomain.UnhandledException += (_, e) =>
 TaskScheduler.UnobservedTaskException += (_, e) =>
 {
     try { Log.Error(e.Exception, "TaskScheduler.UnobservedTaskException"); }
-    catch (Exception logEx) { TraceToStderr(logEx, "unobserved task exception log"); }
+    // 兜底输出保留原始任务异常（CodeRabbit #228）：SetObserved 之后再无他处记录，只留 logEx 会丢故障本体。
+    catch (Exception logEx) { TraceToStderr(logEx, "unobserved task exception log", original: e.Exception); }
     e.SetObserved();
 };
 
@@ -313,12 +314,17 @@ static bool TryPrepareWritableDirectory(string directory)
 }
 
 // 日志兜底的兜底（#37）：Log 自身不可用时唯一确定的留痕去处。stderr 写入失败再无去处，
-// 静默丢弃——这是登记过的「接受静默」终点，不是可再降级的路径。
-static void TraceToStderr(Exception failure, string context)
+// 静默丢弃——这是登记过的「接受静默」终点，不是可再降级的路径。original 是被兜底操作
+// 掩盖的原始异常（如 SetObserved 前的 UnobservedTaskException），一并留痕防丢失。
+static void TraceToStderr(Exception failure, string context, Exception? original = null)
 {
     try
     {
-        Console.Error.WriteLine($"[PhotoPrivacyWorker] {context}: {failure.GetType().Name}: {failure.Message}");
+        Console.Error.WriteLine(
+            $"[PhotoPrivacyWorker] {context}: {failure.GetType().Name}: {failure.Message}"
+            + (original is null
+                ? string.Empty
+                : $" | original: {original.GetType().Name}: {original.Message}"));
     }
     catch
     {
