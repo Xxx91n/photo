@@ -10,7 +10,8 @@
 #   1) 官方行在  → 与钉死值逐字比对，不一致即 fail（唯一由上游签发的权威值，保留硬对账）；
 #   2) 官方行缺  → 降级为 warn，改对归档 URL 实算 SHA256 与钉死值比对：归档仍在且内容未被
 #                  替换就以实算自证，不依赖 mutable 文本；归档被替换/半截照样 fail；
-#   3) 兜底未判定 → 下载不通或无 sha256 工具时记「未判定」并计入结论，绝不冒充「已验证通过」。
+#   3) 兜底未判定 → 下载不通或无 sha256 工具时，按 fail-closed 判失败（#223 审查意见），
+#                  绝不把「没验成」冒充成「已验证通过」。
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -147,7 +148,7 @@ recalc_by_archive() {
     fail "${label} 归档实算 SHA256 与钉死值不符（重取后仍不符）：pinned=${pinned} actual=${last_actual}（归档可能被替换或半截）"
   fi
   undetermined=$((undetermined + 1))
-  warn "${label} 归档两次下载均失败，实算未判定（软兜底，不参与硬判定）：${url}"
+  warn "${label} 归档两次下载均失败，实算未判定（fail-closed：无法自证即判失败，不冒充通过）：${url}"
 }
 
 echo "=== 2. 归档实算 SHA256（官方行缺失时兜底，#222）==="
@@ -193,16 +194,19 @@ if [[ "$url_total" -eq 0 ]]; then
 fi
 
 # 结论只宣称已真正验证的部分：#222 之后「官方行缺失」不再等于失败，但也绝不等于通过——
-# 必须实算命中钉死值才算自证；未判定的项逐条报出，由人决定是否追查。
-if [[ "$undetermined" -eq 0 && "$url_unconfirmed" -eq 0 ]]; then
+# 必须实算命中钉死值才算自证。实算未能完成（下载不通 / 无 sha256 工具）属「没验成」，
+# 按 fail-closed 判失败（#223 审查意见）：宁可红，也不让未验证的钉死值算通过。
+if [[ "$undetermined" -gt 0 ]]; then
+  echo "FAIL: ExifTool ${VERSION} 无法自证——官方行缺失且归档实算未能完成（fail-closed，未判定不等于通过）" >&2
+  echo "      - 归档实算未判定 ${undetermined}/${recalc_total} 项（下载不通或无 sha256 工具）" >&2
+  if [[ "$url_unconfirmed" -gt 0 ]]; then
+    echo "      - 下载 URL 可达性未确认 ${url_unconfirmed}/${url_total} 项" >&2
+  fi
+  exit 1
+elif [[ "$url_unconfirmed" -eq 0 ]]; then
   echo "PASS: ExifTool ${VERSION} 钉死值已确认——官方 checksums.txt 对账与归档实算均一致"
 else
-  echo "PASS(部分未判定): ExifTool ${VERSION} 钉死值未发现漂移，但下列校验源未判定，不构成「已验证通过」"
-  if [[ "$undetermined" -gt 0 ]]; then
-    echo "      - 归档实算未判定 ${undetermined}/${recalc_total} 项（官方行缺失且下载或 sha256 工具不可用）"
-  fi
-  if [[ "$url_unconfirmed" -gt 0 ]]; then
-    echo "      - 下载 URL 可达性未确认 ${url_unconfirmed}/${url_total} 项（软检查，不参与本脚本判定）"
-  fi
+  echo "PASS(部分未判定): ExifTool ${VERSION} 钉死值未发现漂移，但下载 URL 可达性软检查有未确认项（不影响钉死值自证）"
+  echo "      - 下载 URL 可达性未确认 ${url_unconfirmed}/${url_total} 项（软检查，不参与本脚本判定）"
   echo "      发布链以「取回归档后 SHA256 校验不过就重取」为硬判定（见 #164）。"
 fi
