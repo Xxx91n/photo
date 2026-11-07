@@ -7,7 +7,7 @@ namespace PhotoPrivacy.Core.Tests.ExifTool;
 /// 但**带文件参数的块**（探测 / 擦除）写入后不立刻产出，等用例逐块、逐段放行。
 ///
 /// 为什么不复用 <see cref="ProtocolLevelFakeExifToolProcess"/>：它把「一块的回显到 <c>{ready}</c> 之间
-/// 插不进别块的行」当作回放前提（单线程块处理队列），那正是 #39 登记为未实测的假设。要锁死
+/// 插不进别块的行」当作回放前提（单线程块处理队列），那正是 #39 已真进程实测钉住的假设（StayOpenConcurrentBlockTests）。要锁死
 /// 「marker 互为前缀时归属不串块」（#111），必须能注入该假设<b>之外</b>的时序，故本假件把块产出时机交给用例。
 ///
 /// 交给用例的只有时序，语义仍是协议的：回显文本取自命令块里的 <c>-echo1</c>（不认识任何 marker 名字、
