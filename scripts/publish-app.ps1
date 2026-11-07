@@ -4,7 +4,7 @@
   [string]$Framework = "",
   [string]$SelfContained = "true",
   [string]$Zip = "true",
-  [string]$ExifToolVersion = "13.60",
+  [string]$ExifToolVersion = "13.61",
   [string]$ExifToolZip = "",
   # #33: ExifToolPathOverride——已安装的 ExifTool 目录（含 exiftool.exe + exiftool_files/），
   # 直接打包跳过下载，对齐 ExifToolGUI 的 ETOverrideDir（自带 ExifTool、不下载）。
@@ -133,6 +133,7 @@ Copy-Item (Join-Path $repoRoot "README.md") (Join-Path $targetDir "README.md") -
 # 优先命中这里（DefaultPaths.ExifToolPath 与 UI 的 resolve_default_exiftool_path 同口径）。
 # 版本必须显式钉扎校验值：未登记的版本直接失败，避免把被替换或半截的归档打进发布包。
 $exifToolSha256 = @{
+  "13.61" = "ab75b37515385a753aa60a58f68ffffe1ff81e43b319df9540978fb19e0580e5"
   "13.60" = "548b1f4e0b713cd2a26824b34080c35db4e2d2edd166468eb38b1d55ada90c2e"
 }
 

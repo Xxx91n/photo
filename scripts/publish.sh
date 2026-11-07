@@ -5,7 +5,7 @@ VERSION="0.1.0-preview"
 FRAMEWORK="net10.0"
 SELF_CONTAINED="true"
 ZIP="true"
-EXIFTOOL_VERSION="13.60"
+EXIFTOOL_VERSION="13.61"
 EXIFTOOL_ARCHIVE=""
 # #33: ExifToolPathOverride——指向已安装的 ExifTool 目录，直接打包、跳过下载，
 # 对齐 ExifToolGUI 的 ETOverrideDir（自带 ExifTool、不下载）。空 = 走默认下载通道。
@@ -16,6 +16,7 @@ EXIFTOOL_PATH_OVERRIDE=""
 # 用 case 而不是关联数组：macOS runner 默认 bash 3.2 不支持 declare -A。
 exiftool_sha256() {
   case "$1" in
+    13.61) echo "df7f42c14b4f58a60bec39feae0ee9593000ee27e44920d2b0a21c6627de0baa" ;;
     13.60) echo "c8e3c42576f46d862e4cd9c192989776e7363931e890c95056bcd6293e83ea36" ;;
     *) return 1 ;;
   esac
