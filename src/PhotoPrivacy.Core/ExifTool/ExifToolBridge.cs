@@ -955,10 +955,18 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
         }
     }
 
+    /// <summary>
+    /// 实例的终态由 <see cref="StopAsync"/>（<c>_retired</c>）保证；Dispose 不再释放两个信号量。
+    ///
+    /// #126（D12 范围增补）：在途写块（<see cref="WriteBlockAsync"/> 的 finally Release）与启动
+    /// 路径（<see cref="EnsureStartedAsync"/> 等的 finally Release）可能跨过停机/重载对旧桥的
+    /// Dispose——先 Dispose 会命中 Release 抛 ObjectDisposedException，或把还挂在
+    /// WaitAsync 上的等待者永久吊住（.NET 10 的 Dispose 只清空等待队列、不完成等待者）。
+    /// 信号量无非托管资源，实例退役后随 GC 回收，留待进程退出收尾即可。
+    /// </summary>
     public void Dispose()
     {
-        _startLock.Dispose();
-        _stdinGate.Dispose();
+        // 有意空实现：见上注释（#126）。保留方法以兑现 IDisposable 契约，调用方无需分叉。
     }
 
 }

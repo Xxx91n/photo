@@ -1140,6 +1140,135 @@ public sealed class WorkerReloadConfigRegressionTests
         }
     }
 
+    [Fact]
+    public async Task Stop_During_Reload_Teardown_Should_Reject_Rebuild_And_Not_Throw_On_Disposed_Gates()
+    {
+        // #126：停机-重载生命周期竞态。形态：重载在拆卸窗口（ApplyConfigAsync 全程持 drain 闸）中
+        // 停机开始——旧实现的 StopAsync 对 drain 闸 4 s 有界等待超时后照旧释放共享实例并 Dispose
+        // _reloadGate/_standbySignal；放行后的重载会在停机清理之后重建 bridge/watcher/store（之后
+        // 落地的文件仍被处理），并对已释放的信号量 Release 抛 ObjectDisposedException。
+        // 修复后：停机起点置 _stopping，重载在建运行时前被拒绝；停机不 Dispose _reloadGate。
+        var root = Path.Combine(Path.GetTempPath(), "pp-126-race-" + Guid.NewGuid().ToString("N"));
+        var hot = Path.Combine(root, "hot");
+        var audit = Path.Combine(hot, "_audit");
+        var configPath = Path.Combine(root, "config.json");
+        Directory.CreateDirectory(hot);
+        await File.WriteAllTextAsync(configPath, BuildConfigJson(hot, audit));
+        AssertViableFixtureConfig(configPath);
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["config"] = configPath })
+            .Build();
+        var worker = new MetadataCleanerWorker(
+            configuration,
+            NullLogger<MetadataCleanerWorker>.Instance,
+            new NullApplicationLifetime(),
+            new RuntimeControl());
+
+        // 撑长拆卸窗口：钩子一直等到放行。重载全程持 drain 闸，停机的 4 s drain 等待必然超时，
+        // 正是「停机清理与重载重建互踩」的确定性时序（生产无钩子，不受影响）。
+        var teardownEntered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var teardownRelease = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        worker.TeardownWindowHookAsync = async () =>
+        {
+            teardownEntered.TrySetResult(true);
+            await teardownRelease.Task;
+        };
+
+        await File.WriteAllTextAsync(Path.Combine(hot, "pre-existing.jpg"), "pre-existing");
+        await worker.StartAsync(CancellationToken.None);
+        try
+        {
+            var processedPath = Path.Combine(audit, "processed.ndjson");
+            Assert.True(
+                await WaitForProcessedRecordForAsync(processedPath, "pre-existing.jpg", TimeSpan.FromSeconds(30)),
+                "启动首扫未处理既有文件：用例前提不成立");
+
+            var reloadTask = worker.ReloadConfigAsync();
+            Assert.True(
+                await teardownEntered.Task.WaitAsync(TimeSpan.FromSeconds(30)),
+                "重载未进入拆卸窗口：钩子未执行，用例前提不成立");
+
+            using var stopCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            var stopTask = worker.StopAsync(stopCts.Token);
+
+            // 等过停机 drain 等待的 4 s 预算再放行：旧实现此刻已完成共享实例与两个 gate 的 Dispose，
+            // 放行后的重建正是「清理后重建」；新实现在建运行时前被 _stopping 拒绝。
+            await Task.Delay(TimeSpan.FromSeconds(5));
+            teardownRelease.TrySetResult(true);
+
+            // AC2：停机必须有界收敛，不被在途重载吊死。
+            await stopTask.WaitAsync(TimeSpan.FromSeconds(30));
+            Assert.True(worker.ExecuteTask.IsCompleted, "停机后 ExecuteAsync 必须已完成");
+
+            // AC2：重载可预期结束，且不因闸/信号量已被停机释放而抛 ObjectDisposedException。
+            var reloadEx = await Record.ExceptionAsync(() => reloadTask.WaitAsync(TimeSpan.FromSeconds(30)));
+            Assert.NotNull(reloadEx);
+            Assert.IsNotType<ObjectDisposedException>(reloadEx);
+            Assert.Contains("reload_rejected", reloadEx!.Message, StringComparison.Ordinal);
+
+            // AC1 直接观测面：停机收口后 _bridge 不得被重建。dry-run 桥的版本文本是 "dry-run"，
+            // 与无桥时的 unknown 哨兵可区分——旧实现放行后的重载会把桥建回来，这里必红。
+            Assert.Equal(ExifToolVersionText.Unknown, worker.CurrentExifToolVersion);
+
+            // AC1 行为面兜底：即便出现某种仍带活处理循环的重建变体，停机收口之后落地的文件也
+            // 不得被处理——记录停留在启动首扫那 1 条。
+            await File.WriteAllTextAsync(Path.Combine(hot, "post-stop.jpg"), "post-stop");
+            await Task.Delay(TimeSpan.FromSeconds(4));
+            Assert.Equal(1, CountProcessedRecords(processedPath));
+        }
+        finally
+        {
+            await worker.StopAsync(CancellationToken.None);
+            TryDelete(root);
+        }
+    }
+
+    [Fact]
+    public async Task Reload_After_Stop_Completed_Should_Be_Rejected_Immediately_Without_Touching_Gates()
+    {
+        // #126：停机收口后再来的重载必须立刻拒绝。旧实现没有这道检查：重载会真的再走一遍
+        // 拆卸/重建（停机清理之后重建运行时，AC1 违例），最后对已 Dispose 的 _standbySignal
+        // Release 抛 ObjectDisposedException。修复后在入口按 _stopping 拒绝，可预期回
+        // reload_failed（IPC 侧映射不变，D7）。
+        var root = Path.Combine(Path.GetTempPath(), "pp-126-after-stop-" + Guid.NewGuid().ToString("N"));
+        var hot = Path.Combine(root, "hot");
+        var audit = Path.Combine(hot, "_audit");
+        var configPath = Path.Combine(root, "config.json");
+        Directory.CreateDirectory(hot);
+        await File.WriteAllTextAsync(configPath, BuildConfigJson(hot, audit));
+        AssertViableFixtureConfig(configPath);
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["config"] = configPath })
+            .Build();
+        var worker = new MetadataCleanerWorker(
+            configuration,
+            NullLogger<MetadataCleanerWorker>.Instance,
+            new NullApplicationLifetime(),
+            new RuntimeControl());
+
+        await worker.StartAsync(CancellationToken.None);
+        try
+        {
+            var processedPath = Path.Combine(audit, "processed.ndjson");
+            Assert.True(
+                await WaitForFileAsync(processedPath, TimeSpan.FromSeconds(30)),
+                "启动期未创建 processed.ndjson：worker 可能未完成初始化");
+
+            using var stopCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            await worker.StopAsync(stopCts.Token);
+            Assert.True(worker.ExecuteTask.IsCompleted, "停机后 ExecuteAsync 必须已完成");
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => worker.ReloadConfigAsync());
+            Assert.Contains("reload_rejected", ex.Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            TryDelete(root);
+        }
+    }
+
     /// <summary>
     /// 待机态不得产生目录副作用（#124 AC1）：空 <c>hot_folder</c> 时 worker 只加载配置并待命，
     /// 不得在磁盘上建出配置里的 audit/quarantine 目录（发版包默认路径落在安装目录下的

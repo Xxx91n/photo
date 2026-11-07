@@ -790,6 +790,48 @@ public sealed class ExifToolBridgeTests
     }
 
     [Fact]
+    public async Task Dispose_During_In_Flight_Write_Should_Not_Turn_The_Write_Release_Into_ObjectDisposedException()
+    {
+        // #126（D12 范围增补）：停机/重载对旧桥的 Dispose 不等待在途写块——WriteBlockAsync 的
+        // finally Release 若跨过 Dispose，就命中 ObjectDisposedException（旧实现在 Dispose 里
+        // 释放 _stdinGate/_startLock）。形态：探测块写入在途（持 stdin 闸）→ 桥 Stop + Dispose
+        //（与 StopRuntimeAsync 的时序一致）→ 放行写入。修复后 Dispose 不再释放信号量，
+        // 写入路径可预期收场（OCE/协议失败皆可），唯独不得是 ObjectDisposedException。
+        var process = new ProtocolLevelFakeExifToolProcess();
+        var bridge = new ExifToolBridge(process, Config);
+
+        await bridge.EnsureStartedAsync(CancellationToken.None);
+        Assert.Equal("13.20", bridge.VersionText);
+
+        var release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        process.BlockWrites = release;
+
+        using var wipeCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var wipe = Task.Run(() => bridge.WipeMetadataAsync(
+            Path.Combine(Path.GetTempPath(), "pp-bridge", "dispose-race.jpg"),
+            wipeCts.Token));
+
+        // 等探测块写入真的落在 stdin 闸上（冷启动已有 1 次版本探针写入），避免固定等待赌时序。
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (process.Writes.Count < 2 && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(10);
+        }
+
+        Assert.True(process.Writes.Count >= 2, "探测块写入未取得 stdin 闸：用例前提不成立");
+
+        await bridge.StopAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
+        bridge.Dispose();
+
+        // 放行在途写入：它的 finally Release 不得因闸已被 Dispose 而抛 ObjectDisposedException。
+        release.TrySetResult(true);
+
+        var ex = await Record.ExceptionAsync(() => wipe.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.NotNull(ex);
+        Assert.IsNotType<ObjectDisposedException>(ex);
+    }
+
+    [Fact]
     public async Task EnsureVersionAsync_Should_Start_Process_When_Not_Started()
     {
         // 状态查询驱动的版本解析：桥还没启动时不得只返回 unknown，必须冷启动并拿到真实版本。
