@@ -16,7 +16,7 @@ namespace PhotoPrivacy.Core.Tests.ExifTool;
 /// 3) 因此命令块里没有 TASK_DONE_ 时，fake 就不会产 TASK_DONE_——等待它的桥会真挂死，
 ///    行为测试才能抓住挂死链（见 UnsupportedFormatPipelineTests）。
 /// 4) 只有带延迟的块走单线程处理队列（回显→数据→{ready} 原子）；零延迟的块仍由写入线程当场整块产出。
-///    要测「某块的回显与它的 {ready} 之间插进了别块的行」这种按 #39 实测结论（StayOpenConcurrentBlockTests）真进程不会出现的时序，
+///    要测「某块的回显与它的 {ready} 之间插进了别块的行」这种按 #39 实测结论（StayOpenConcurrentBlockTests，并发路径未撞红）真进程不会出现的时序，
 ///    必须给相关块加延迟，否则同步产出的块可能插进迟到 {ready} 的窗口里。
 /// </summary>
 internal sealed class ProtocolLevelFakeExifToolProcess : IExifToolProcess
@@ -204,7 +204,7 @@ internal sealed class ProtocolLevelFakeExifToolProcess : IExifToolProcess
         }
 
         // 有延迟的块走单线程处理队列：按「一次只处理一块，一块的回显→数据→{ready} 中间插不进别块的行」
-        // 回放——这条顺序已由 #39 真进程实测钉住（StayOpenConcurrentBlockTests）。迟到用例需要的就是这个形状：若各块并发产出，探针块的
+        // 回放——这条顺序已由 #39 真进程实测覆盖（StayOpenConcurrentBlockTests，并发路径未撞红）。迟到用例需要的就是这个形状：若各块并发产出，探针块的
         // {ready} 会插进擦除块的回显与其 {ready} 之间，那是真进程按该假设不该出现的时序。
         _ = Task.Run(async () =>
         {
