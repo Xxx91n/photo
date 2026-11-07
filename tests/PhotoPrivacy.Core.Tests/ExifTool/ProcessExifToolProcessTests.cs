@@ -84,7 +84,7 @@ public sealed class ProcessExifToolProcessTests
         var exception = await Record.ExceptionAsync(() => Task.WhenAll(first, second));
 
         Assert.Null(exception);
-        Assert.True(job.Disposed);
+        Assert.Equal(1, job.DisposeCount);
         Assert.False(process.IsRunning);
     }
 
@@ -115,7 +115,9 @@ public sealed class ProcessExifToolProcessTests
 
     private sealed class SpyJobObject : IProcessJobObject
     {
-        public bool Disposed { get; private set; }
+        public bool Disposed => DisposeCount > 0;
+
+        public int DisposeCount { get; private set; }
 
         public void Assign(System.Diagnostics.Process process)
         {
@@ -123,7 +125,7 @@ public sealed class ProcessExifToolProcessTests
 
         public void Dispose()
         {
-            Disposed = true;
+            DisposeCount++;
         }
     }
 
