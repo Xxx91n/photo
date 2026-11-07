@@ -183,7 +183,13 @@ probe_url() {
 [[ "$recalc_tar" -eq 1 ]] || probe_url "$TAR_URL"
 [[ "$recalc_zip" -eq 1 ]] || probe_url "$ZIP_URL"
 if [[ "$url_total" -eq 0 ]]; then
-  pass "两条归档均已由第 2 步实算下载确认可达，跳过 HEAD 探测"
+  # 两条都走了兜底实算，第 3 步没有可探测项。只有实算确实下载成功（undetermined=0）
+  # 才算「已由第 2 步确认可达」；否则如实报未判定，不能把下载失败说成可达（#223 审查意见）。
+  if [[ "$undetermined" -eq 0 ]]; then
+    pass "两条归档均已由第 2 步实算下载确认可达，跳过 HEAD 探测"
+  else
+    warn "第 2 步实算未能下载全部归档，未做 HEAD 探测（未判定项见结论，不重复探测）"
+  fi
 fi
 
 # 结论只宣称已真正验证的部分：#222 之后「官方行缺失」不再等于失败，但也绝不等于通过——
