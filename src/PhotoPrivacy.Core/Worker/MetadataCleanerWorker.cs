@@ -513,21 +513,17 @@ public sealed class MetadataCleanerWorker : BackgroundService
     /// </summary>
     private async Task StopRuntimeAsync()
     {
-        _cleanupTimer?.Dispose();
-        _cleanupTimer = null;
-        _watcher?.Stop();
-        _watcher = null;
+        // 原子摘取（#126 / CodeRabbit）：「读字段 → 置 null」的间隙被调度器抢占时，重载发布段
+        // 恰好插入的实例会被这里的 null 写覆盖而漏停——两遍拆卸都再也看不见它。交换是一步完成的：
+        // 重载在交换之后发布的实例，后一遍拆卸必然摘得到。
+        Interlocked.Exchange(ref _cleanupTimer, null)?.Dispose();
+        Interlocked.Exchange(ref _watcher, null)?.Stop();
 
-        // 先摘引用再做有界停止：第二遍拆卸因此不会重复停同一个实例；若重载恰在发布段重建了
-        // 新实例，这里摘引用前读到的仍是当时的最新值。
-        var bridge = _bridge;
-        if (bridge is null)
+        var bridge = Interlocked.Exchange(ref _bridge, null);
+        if (bridge is not null)
         {
-            return;
+            await StopBridgeAsync(bridge);
         }
-
-        _bridge = null;
-        await StopBridgeAsync(bridge);
     }
 
     /// <summary>
