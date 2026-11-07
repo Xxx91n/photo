@@ -194,12 +194,16 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
             }
 
             // 1. Ask ExifTool to exit gracefully.
+            // 写入/flush 受同一 3 s 预算约束（CodeRabbit #228 二轮）：无令牌的 WriteAsync(string)
+            // 在对端不读且缓冲写满时会把停机吊死在强杀逻辑之前；先建 exitCts 再写，
+            // 写入、等待退出、强杀共享同一预算，被超时打断时 OCE 进分级留痕（Warning，真故障信号）。
+            using var exitCts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
             try
             {
                 if (_stdin is not null)
                 {
-                    await _stdin.WriteAsync("-stay_open\nFalse\n-execute\n");
-                    await _stdin.FlushAsync(CancellationToken.None);
+                    await _stdin.WriteAsync("-stay_open\nFalse\n-execute\n".AsMemory(), exitCts.Token);
+                    await _stdin.FlushAsync(exitCts.Token);
                 }
             }
             catch (Exception ex)
@@ -212,7 +216,6 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
 
             // 2. Wait up to 3 s asynchronously, then force-kill.
             //    Use a linked token so either the caller's timeout or our own fires first.
-            using var exitCts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(exitCts.Token, cancellationToken);
             try
             {
