@@ -71,10 +71,12 @@ jobs:
             curl -fsSL --retry 3 --max-time 300 -o "$RUNNER_TEMP/exiftool39/et.zip" \
               "https://master.dl.sourceforge.net/project/exiftool/exiftool-13.61_64.zip?viasf=1"
             echo "ab75b37515385a753aa60a58f68ffffe1ff81e43b319df9540978fb19e0580e5  $RUNNER_TEMP/exiftool39/et.zip" | sha256sum -c -
+            # git-bash 的 GNU tar 不认 zip、也把盘符路径当远程主机：解压用系统自带 bsdtar + 相对路径
             mkdir -p "$RUNNER_TEMP/exiftool39/unz"
-            tar -xf "$RUNNER_TEMP/exiftool39/et.zip" -C "$RUNNER_TEMP/exiftool39/unz"
-            mv "$RUNNER_TEMP/exiftool39/unz/exiftool-13.61_64/exiftool(-k).exe" "$RUNNER_TEMP/exiftool39/exiftool.exe"
-            mv "$RUNNER_TEMP/exiftool39/unz/exiftool-13.61_64/exiftool_files" "$RUNNER_TEMP/exiftool39/exiftool_files"
+            cd "$RUNNER_TEMP/exiftool39"
+            /c/Windows/System32/tar.exe -xf et.zip -C unz
+            mv "unz/exiftool-13.61_64/exiftool(-k).exe" exiftool.exe
+            mv "unz/exiftool-13.61_64/exiftool_files" exiftool_files
             echo "$RUNNER_TEMP/exiftool39" >> "$GITHUB_PATH"
           else
             curl -fsSL --retry 3 --max-time 300 -o "$RUNNER_TEMP/exiftool39/Image-ExifTool-13.61.tar.gz" \
