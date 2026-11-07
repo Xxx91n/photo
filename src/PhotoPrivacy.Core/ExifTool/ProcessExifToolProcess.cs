@@ -285,8 +285,9 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
         }
         catch
         {
-            // 拆卸中途失败：复位闸让重试成为可能（否则后续 StopAsync 被闸挡成空转，
-            // 进程/job 句柄再无人回收），异常原样上抛由停机路径既有 catch 留痕。
+            // 拆卸中途失败：复位闸避免后续 StopAsync 被闸挡成静默空转；部分拆卸的对象态
+            // （已 Dispose 的 process/job、字段未清）不可完全恢复，重试可能仍失败——但每次
+            // 都带痕上抛由停机路径既有 catch 留 Warning，进程随 job object/进程退出收尾。
             Volatile.Write(ref _stopGate, 0);
             throw;
         }

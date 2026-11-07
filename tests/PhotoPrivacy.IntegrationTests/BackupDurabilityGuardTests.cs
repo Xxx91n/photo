@@ -6,26 +6,68 @@ namespace PhotoPrivacy.IntegrationTests;
 /// </summary>
 public sealed class BackupDurabilityGuardTests
 {
-    // 防的具体回潮形态：LocalFileOperations.CopyAsync 的 Flush(flushToDisk: true)（#37 fsync 取舍——
-    // 备份是原件清洗前的唯一安全副本，只做用户态 flush 时掉电窗口内 File.Replace 会把半截/空文件
-    // 换上位而原件已被清洗，损失不可逆）被当作「多余的同步等待」删掉，或 AtomicCopyAsync 不再经
-    // CopyAsync 写备份副本而绕开落盘步——两种回潮都让崩溃一致性静默失效。关联 issue #37。
     [Fact]
     public void Backup_CopyAsync_Should_Flush_To_Disk_Before_Atomic_Replace()
     {
-        var source = SourceLint.ReadStrippedPreservingLines(
+        // 防的具体回潮形态：LocalFileOperations.CopyAsync 的 Flush(flushToDisk: true)（#37 fsync 取舍——
+        // 备份是原件清洗前的唯一安全副本，只做用户态 flush 时掉电窗口内 File.Replace 会把半截/空文件
+        // 换上位而原件已被清洗，损失不可逆）被当作「多余的同步等待」删掉，或 AtomicCopyAsync 不再经
+        // CopyAsync 写备份副本而绕开落盘步——两种回潮都让崩溃一致性静默失效。关联 issue #37。
+        Assert.Empty(ClassifyBackupDurabilityViolations(ReadStrippedLocalFileOperations()));
+    }
+
+    [Fact]
+    public void Backup_Durability_Guard_Negative_Self_Proof()
+    {
+        // 失效即红自证：绿态零违规；① 删掉 CopyAsync 的 Flush(flushToDisk: true) 落盘行、
+        // ② AtomicCopyAsync 不再经 CopyAsync 写临时副本（内联复制绕开落盘步），两种回潮形态
+        // 都必须报红——防「落盘步被删而守卫仍绿」的恒绿事故。关联 issue #37。
+        var green = ReadStrippedLocalFileOperations();
+        Assert.Empty(ClassifyBackupDurabilityViolations(green));
+
+        var withoutFlush = string.Join(
+            "\n",
+            green.Split('\n').Where(line => !line.Contains("dst.Flush(flushToDisk: true)", StringComparison.Ordinal)));
+        Assert.NotEmpty(ClassifyBackupDurabilityViolations(withoutFlush));
+
+        var bypassingCopyAsync = green.Replace(
+            "await CopyAsync(source, tempPath, overwrite: true, cancellationToken).ConfigureAwait(false);",
+            "var __bypassed = source;",
+            StringComparison.Ordinal);
+        Assert.NotEmpty(ClassifyBackupDurabilityViolations(bypassingCopyAsync));
+    }
+
+    /// <summary>
+    /// 守卫样本：走 <see cref="SourceLint.ReadStrippedPreservingLines"/>（共享读取 + 剥注释，
+    /// 保留行结构）——行级增删变异样本需要换行，<c>ReadStripped</c> 不含换行无法支撑。
+    /// </summary>
+    private static string ReadStrippedLocalFileOperations()
+        => SourceLint.ReadStrippedPreservingLines(
             "src", "PhotoPrivacy.Core", "Pipeline", "LocalFileOperations.cs");
+
+    /// <summary>零违规 = 绿态：CopyAsync → AtomicCopyAsync 方法序在、落盘步在 CopyAsync 体内、临时副本经 CopyAsync 写。</summary>
+    private static List<string> ClassifyBackupDurabilityViolations(string source)
+    {
+        var violations = new List<string>();
 
         var copyStart = source.IndexOf("async Task CopyAsync(", StringComparison.Ordinal);
         var atomicStart = source.IndexOf("async Task AtomicCopyAsync(", StringComparison.Ordinal);
-        Assert.True(copyStart >= 0 && atomicStart > copyStart,
-            "LocalFileOperations 失去了 CopyAsync → AtomicCopyAsync 的方法序，守卫切片失效，需先修守卫再改实现");
+        if (copyStart < 0 || atomicStart <= copyStart)
+        {
+            violations.Add("LocalFileOperations 失去了 CopyAsync → AtomicCopyAsync 的方法序，守卫切片失效，需先修守卫再改实现");
+            return violations;
+        }
 
-        var body = source[copyStart..atomicStart];
-        Assert.True(body.Contains("dst.Flush(flushToDisk: true)", StringComparison.Ordinal),
-            "CopyAsync 的 Flush(flushToDisk: true) 落盘步被删除——#37 fsync 取舍回退（见该方法上方 Design(#37) 标记与取舍说明）");
+        if (!source[copyStart..atomicStart].Contains("dst.Flush(flushToDisk: true)", StringComparison.Ordinal))
+        {
+            violations.Add("CopyAsync 的 Flush(flushToDisk: true) 落盘步被删除——#37 fsync 取舍回退（见该方法上方 Design(#37) 标记与取舍说明）");
+        }
 
-        Assert.True(source.Contains("await CopyAsync(source, tempPath,", StringComparison.Ordinal),
-            "AtomicCopyAsync 不再经 CopyAsync 写临时副本——落盘步被绕开，#37 fsync 取舍回退");
+        if (!source.Contains("await CopyAsync(source, tempPath,", StringComparison.Ordinal))
+        {
+            violations.Add("AtomicCopyAsync 不再经 CopyAsync 写临时副本——落盘步被绕开，#37 fsync 取舍回退");
+        }
+
+        return violations;
     }
 }
