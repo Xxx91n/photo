@@ -1192,9 +1192,13 @@ public sealed class WorkerReloadConfigRegressionTests
             using var stopCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             var stopTask = worker.StopAsync(stopCts.Token);
 
-            // 等过停机 drain 等待的 4 s 预算再放行：旧实现此刻已完成共享实例与两个 gate 的 Dispose，
-            // 放行后的重建正是「清理后重建」；新实现在建运行时前被 _stopping 拒绝。
-            await Task.Delay(TimeSpan.FromSeconds(5));
+            // 确定性屏障（不靠 sleep 猜 4 s drain 预算，#114 口径）：等 ExecuteTask 收敛再放行。
+            // base.StopAsync 取消处理循环的等待不依赖 drain 闸（重载正持闸），收敛即停机的有界
+            // 清理已走完——旧实现此刻共享实例与 _reloadGate/_standbySignal 均已 Dispose，放行后的
+            // 重建正是「清理后重建」；新实现在建运行时前被 _stopping 拒绝。
+            Assert.True(
+                await WaitForPresenceAsync(() => worker.ExecuteTask.IsCompleted, TimeSpan.FromSeconds(30)),
+                "停机未在预算内收敛 ExecuteTask：用例前提不成立");
             teardownRelease.TrySetResult(true);
 
             // AC2：停机必须有界收敛，不被在途重载吊死。

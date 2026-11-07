@@ -39,6 +39,8 @@ public sealed class MetadataCleanerWorker : BackgroundService
     /// 不再创建任何运行时（bridge/watcher/store/audit/timer），也不再触碰共享实例。
     /// volatile：重载路径在多个检查点读它，停机线程写它；检查点之后到发布字段为止保持纯同步。
     /// </summary>
+    // Design(#82): 停机开始后重载不再创建运行时，按契约回 reload_failed（#126，D7 协议不变）；
+    // 本标记挂在总开关上——该决策由重载路径的四处检查点共同执行。
     private volatile bool _stopping;
 
     /// <summary>
@@ -413,7 +415,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
         // hanging until the host forces a timeout. Use independent tokens instead.
 
         // 第一遍运行时拆卸：回收停机开始那一刻在册的实例。
-        await StopRuntimeAsync("stop-entry");
+        await StopRuntimeAsync();
 
         if (_audit is not null)
         {
@@ -437,25 +439,21 @@ public sealed class MetadataCleanerWorker : BackgroundService
             }
         }
 
-        // 与 ApplyConfigAsync 同一口径（#85）：等当前一轮 drain 结束再释放，避免在途 HandleAsync 用到
-        // 已释放实例。停机路径用有界等待（4 s）；#126 起拿不到闸不再「降级继续强拆」——共享实例
-        // （store/audit）只允许在持 drain 闸时释放，在途处理或重载重建还持闸时动手 Dispose 正是
-        // 本票「清理与重建互踩」的原始形态，改为留给进程退出收尾。
+        // 与 ApplyConfigAsync 同一口径（#85）：等当前一轮 drain 结束，共享实例（store/audit）只在
+        // 持 drain 闸时释放——在途处理或重载重建还持闸时动手 Dispose 正是本票「清理与重建互踩」
+        // 的原始形态；#126 起拿不到闸不再强拆，留给进程退出收尾。
         var drainIdle = await _drainGate.WaitAsync(TimeSpan.FromSeconds(4));
-        if (!drainIdle)
-        {
-            _logger.LogWarning(
-                "Shutdown did not acquire the drain gate within 4 s; shared instances are left to process exit (#126).");
-        }
-        else
+
+        // #126：第二遍运行时拆卸，无论是否拿到 drain 闸都执行——重载的同步发布段（含首扫枚举，
+        // 大目录可拖秒级）可能吃满 4 s 预算，拿不到闸就跳过会把已发布的 bridge/watcher/timer 留到
+        // 进程退出。无闸回收是安全的：watcher/timer/bridge 不被在途 drain 与重载发布段再引用
+        // （发布段用局部变量建、末尾发布），与入口第一遍同语义（停桥本就发生在闸外）。
+        await StopRuntimeAsync();
+
+        if (drainIdle)
         {
             try
             {
-                // #126：第二遍运行时拆卸。重载可能在停机开始后（第一遍拆卸之后）重建过
-                // bridge/watcher/timer；此刻已持 drain 闸，说明重建要么已被 _stopping 拒绝、
-                // 要么已完成发布——这里把发布出去的实例收回来，不留越过停机清理的运行时资源。
-                await StopRuntimeAsync("post-drain");
-
                 _audit?.Dispose();
                 _audit = null;
                 _pipeline = null;
@@ -466,6 +464,11 @@ public sealed class MetadataCleanerWorker : BackgroundService
             {
                 _drainGate.Release();
             }
+        }
+        else
+        {
+            _logger.LogWarning(
+                "Shutdown did not acquire the drain gate within 4 s; shared instances are left to process exit (#126).");
         }
 
         // #126：_reloadGate 不 Dispose。停机后仍可能有重载在它上面等待（_reloadStopCts 负责收敛）
@@ -504,19 +507,19 @@ public sealed class MetadataCleanerWorker : BackgroundService
     /// <summary>
     /// 停机路径的运行时拆卸（timer/watcher/bridge），停机会调用两遍（#126）：
     /// 第一遍在 <see cref="StopAsyncCore"/> 入口，回收停机开始时刻在册的实例；
-    /// 第二遍在 drain 闸内，回收重载在停机开始后、到停机取得闸为止这段时间重建并发布的实例
-    /// （「清理后不重建」的镜像面：重建了也要能被收回来）。重载被 <c>_stopping</c> 拒绝后
+    /// 第二遍在 drain 闸等待之后，回收重载在停机开始后、到停机收尾为止这段时间重建并发布的
+    /// 实例（「清理后不重建」的镜像面：重建了也要能被收回来）。重载被 <c>_stopping</c> 拒绝后
     /// 不会重建，第二遍对已收走的字段是空操作。
     /// </summary>
-    private async Task StopRuntimeAsync(string phase)
+    private async Task StopRuntimeAsync()
     {
         _cleanupTimer?.Dispose();
         _cleanupTimer = null;
         _watcher?.Stop();
         _watcher = null;
 
-        // 先摘引用再做有界停止：第二遍拆卸因此不会重复停同一个实例；若重载恰在等待闸期间
-        // 重建了新实例，这里摘引用前读到的仍是当时的最新值。
+        // 先摘引用再做有界停止：第二遍拆卸因此不会重复停同一个实例；若重载恰在发布段重建了
+        // 新实例，这里摘引用前读到的仍是当时的最新值。
         var bridge = _bridge;
         if (bridge is null)
         {
@@ -524,7 +527,15 @@ public sealed class MetadataCleanerWorker : BackgroundService
         }
 
         _bridge = null;
+        await StopBridgeAsync(bridge);
+    }
 
+    /// <summary>
+    /// 有界停桥并释放：重载拆卸与停机拆卸共用同一形态（4 s CTS → StopAsync → Dispose），
+    /// 拆卸失败只记日志不阻断调用方（停机继续收尾、重载按失败结果呈现）。
+    /// </summary>
+    private async Task StopBridgeAsync(IExifToolBridge bridge)
+    {
         using var bridgeCts = new CancellationTokenSource(TimeSpan.FromSeconds(4));
         try
         {
@@ -532,11 +543,11 @@ public sealed class MetadataCleanerWorker : BackgroundService
         }
         catch (OperationCanceledException)
         {
-            _logger.LogWarning("Bridge stop timed out after 4 s ({Phase}), continuing shutdown.", phase);
+            _logger.LogWarning("Bridge stop timed out after 4 s, continuing.");
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Bridge stop threw unexpectedly ({Phase}), continuing shutdown.", phase);
+            _logger.LogWarning(ex, "Bridge stop threw unexpectedly, continuing.");
         }
 
         (bridge as IDisposable)?.Dispose();
@@ -1014,17 +1025,9 @@ public sealed class MetadataCleanerWorker : BackgroundService
 
         if (_bridge is not null)
         {
-            using var bridgeCts = new CancellationTokenSource(TimeSpan.FromSeconds(4));
-            try
-            {
-                await _bridge.StopAsync(bridgeCts.Token);
-            }
-            catch
-            {
-                // best-effort
-            }
-            (_bridge as IDisposable)?.Dispose();
+            var retiredBridge = _bridge;
             _bridge = null;
+            await StopBridgeAsync(retiredBridge);
        }
 
         // 重建前先摘空引用并释放旧实例的常驻句柄：FileProcessedRecordStore 以 FileShare.Read
@@ -1042,10 +1045,9 @@ public sealed class MetadataCleanerWorker : BackgroundService
         DisposeQuietly(retiredAudit);
 
         // 建运行时前的最后一道复检（#126）：拆卸段有 await（桥停止有界 4 s 等），停机可能在拆卸
-        // 期间开始——在创建任何新运行时之前放弃。此处之后到发布字段为止是纯同步代码，且全程
-        // 持 drain 闸（停机的共享实例清理同样持闸），「停机清理完成后又重建 bridge/watcher/store」
-        // 的资源由此不可能出现；停机的第二遍拆卸会收走在此之前已发布的实例。
-        // Design(#82): 停机开始后重载不再创建运行时，按契约回 reload_failed（#126，D7 协议不变）。
+        // 期间开始——在创建任何新运行时之前放弃。此处之后到发布字段为止是纯同步代码，且全程持
+        // drain 闸，停机不持闸收不走它们——但停机的第二遍拆卸在闸等待之后**必定执行**，会把
+        // 已发布的实例收走，不留越过停机的运行时资源。
         if (_stopping)
         {
             throw new InvalidOperationException(StoppingReloadRejection);
@@ -1076,7 +1078,10 @@ public sealed class MetadataCleanerWorker : BackgroundService
         // EnsureStartedAsync internally, so ExifTool only spawns when first file arrives.
         // This was originally `await _bridge.StartAsync(token);`, which blocked startup; startup now avoids that.
 
-        _watcher = new FswFolderWatcher(
+        // 用局部变量建、再发布到字段（#126）：停机的第一遍拆卸不持 drain 闸，会清空 _watcher——
+        // 若发布段直接写字段再解引用，「赋值 → Start()」之间被清空即 NRE。局部变量保证发布段的
+        // 自身引用不依赖字段；发布出去的实例由停机第二遍拆卸收走。
+        var watcher = new FswFolderWatcher(
             config,
             new DirectoryRecoveryScanner(config),
             auditLogger,
@@ -1087,11 +1092,12 @@ public sealed class MetadataCleanerWorker : BackgroundService
             },
             logger: _logger);
 
-        _autoExcludedSubdirectories = _watcher.GetAutoExcludedSubdirectories();
+        _autoExcludedSubdirectories = watcher.GetAutoExcludedSubdirectories();
+        _watcher = watcher;
 
         // 先起 watcher 再扫描：扫描期间新建的文件若没被 FSW 盯住，会落进轮询兜底的初始快照，从此永不上报。
         // Design(#82): 重载首扫之前必须先起 watcher（#100）。
-        _watcher.Start();
+        watcher.Start();
 
         // 其余重载不整目录补扫：审计目录一改，新的去重记录表是空的，把既有文件全排一遍就会重处理，
         // fixed_directory 产物可被覆盖。例外是回滚（rebuildDebounceState）：失败尝试从拆卸到抛错之间
