@@ -1223,7 +1223,15 @@ public sealed class WorkerReloadConfigRegressionTests
         }
         finally
         {
-            await worker.StopAsync(CancellationToken.None);
+            try
+            {
+                await worker.StopAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(30));
+            }
+            catch
+            {
+                // 停机自身的缺陷由上方断言暴露；finally 不得反噬掩盖原始失败。
+            }
+
             TryDelete(root);
         }
     }
@@ -1280,9 +1288,9 @@ public sealed class WorkerReloadConfigRegressionTests
             var stopTask = worker.StopAsync(stopCts.Token);
 
             // 停机起点取消 _reloadStopCts：排队者立刻收敛（OCE），不等闸、不吊死。
-            var secondEx = await Record.ExceptionAsync(() => second.WaitAsync(TimeSpan.FromSeconds(10)));
-            Assert.NotNull(secondEx);
-            Assert.IsNotType<ObjectDisposedException>(secondEx);
+            // 断言必须是 OCE 本身：只判「结束且非 ODE」会让旧实现（挂死 → TimeoutException）Vacuous 通过。
+            var secondEx = await Record.ExceptionAsync(() => second.WaitAsync(TimeSpan.FromSeconds(2)));
+            Assert.IsAssignableFrom<OperationCanceledException>(secondEx);
 
             await stopTask.WaitAsync(TimeSpan.FromSeconds(30));
 
@@ -1295,7 +1303,15 @@ public sealed class WorkerReloadConfigRegressionTests
         }
         finally
         {
-            await worker.StopAsync(CancellationToken.None);
+            try
+            {
+                await worker.StopAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(30));
+            }
+            catch
+            {
+                // 停机自身的缺陷由上方断言暴露；finally 不得反噬掩盖原始失败。
+            }
+
             TryDelete(root);
         }
     }
@@ -1341,6 +1357,15 @@ public sealed class WorkerReloadConfigRegressionTests
         }
         finally
         {
+            // 前置断言失败时 worker 可能尚未停机：有界收尾，失败不反噬掩盖原始断言。
+            try
+            {
+                await worker.StopAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(30));
+            }
+            catch
+            {
+            }
+
             TryDelete(root);
         }
     }
