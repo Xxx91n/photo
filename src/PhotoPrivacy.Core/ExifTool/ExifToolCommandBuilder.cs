@@ -5,7 +5,7 @@ namespace PhotoPrivacy.Core.ExifTool;
 
 public static class ExifToolCommandBuilder
 {
-    // Design(#39): ExifTool 以 -stay_open True 长驻复用单进程，禁每文件 spawn；stdin 多并发写的缓冲语义仍是未实测假设，风险登记在 #39。
+    // Design(#39): ExifTool 以 -stay_open True 长驻复用单进程，禁每文件 spawn；stdin 多并发写的缓冲语义已由真进程并发实测覆盖（StayOpenConcurrentBlockTests，CI exiftool-stayopen job 双平台真跑；证伪力=并发路径未撞红，残余见该类注释），风险登记在 #39。
     public static string[] BuildStartArguments(AppConfig config)
     {
         var args = new List<string>
