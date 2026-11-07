@@ -173,8 +173,11 @@ static string? ResolveAuditLogDirectory(string configPath, string? cliOverride)
             : config.Audit.LogDirectory;
         return string.IsNullOrWhiteSpace(dir) ? null : dir;
     }
-    catch
+    catch (Exception ex)
     {
+        // 语义保留（返回 null，调用方走回退口径），但不再静默（#37）：配置坏/读不了的原因必须留痕，
+        // 否则「审计目录解析失败」与「配置本来就空」在下游无法区分。此时 Serilog 静态 Log 已可用。
+        Log.Error(ex, "audit log directory could not be resolved from {ConfigPath}; the accessor returns null and callers fall back (#37)", configPath);
         return null;
     }
 }
@@ -217,14 +220,19 @@ posixHooks = PosixSignalHooks.Register(
         }
     });
 // UnhandledException + UnobservedTaskException → Serilog (also in UI Program.cs)
+// 日志兜底本身失败时走 stderr 留痕（#37）：Log 已不可用是终局故障，静默会让致命异常只留
+// 退出码一个信号；stderr 是此刻唯一确定的去处（服务进程无控制台时写入静默成功，不抛）。
 AppDomain.CurrentDomain.UnhandledException += (_, e) =>
 {
-    try { Log.Fatal((Exception)e.ExceptionObject, "AppDomain.UnhandledException"); } catch { }
-    try { Log.CloseAndFlush(); } catch { }
+    try { Log.Fatal((Exception)e.ExceptionObject, "AppDomain.UnhandledException"); }
+    catch (Exception logEx) { TraceToStderr(logEx, "fatal log after unhandled exception"); }
+    try { Log.CloseAndFlush(); }
+    catch (Exception logEx) { TraceToStderr(logEx, "log close/flush after unhandled exception"); }
 };
 TaskScheduler.UnobservedTaskException += (_, e) =>
 {
-    try { Log.Error(e.Exception, "TaskScheduler.UnobservedTaskException"); } catch { }
+    try { Log.Error(e.Exception, "TaskScheduler.UnobservedTaskException"); }
+    catch (Exception logEx) { TraceToStderr(logEx, "unobserved task exception log"); }
     e.SetObserved();
 };
 
@@ -295,9 +303,26 @@ static bool TryPrepareWritableDirectory(string directory)
             FileOptions.DeleteOnClose);
         return true;
     }
+    catch (Exception ex)
+    {
+        // 语义保留（返回 false，调用方回落安装目录），但留痕（#37）：本函数在日志器配置之前运行，
+        // Log 不可用，stderr 是唯一去处——「日志目录不可写」回落这条线索排查服务日志缺失时必需。
+        TraceToStderr(ex, $"log directory {directory} is not writable, falling back to the install directory");
+        return false;
+    }
+}
+
+// 日志兜底的兜底（#37）：Log 自身不可用时唯一确定的留痕去处。stderr 写入失败再无去处，
+// 静默丢弃——这是登记过的「接受静默」终点，不是可再降级的路径。
+static void TraceToStderr(Exception failure, string context)
+{
+    try
+    {
+        Console.Error.WriteLine($"[PhotoPrivacyWorker] {context}: {failure.GetType().Name}: {failure.Message}");
+    }
     catch
     {
-        return false;
+        // nothing left to lose here
     }
 }
 

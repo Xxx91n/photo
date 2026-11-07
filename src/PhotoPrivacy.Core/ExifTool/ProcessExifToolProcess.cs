@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Microsoft.Extensions.Logging;
 
 namespace PhotoPrivacy.Core.ExifTool;
 
@@ -13,14 +14,35 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
     private string? _lastStderrLine;
     private int _exitSignaled;
 
+    /// <summary>
+    /// 停机拆卸闸（#37，同族 <c>ExifToolBridge._stdinGate</c> 的 Dispose 竞态，gate 所有权归 #126）：
+    /// StopAsync 串行化——并发/重复进入只放第一遍做完整拆卸，后续立即返回。
+    /// 没有这道闸，两遍拆卸同时读到非 null 的 <c>_process</c> 会各自 Dispose 同一对象，
+    /// 第二遍抛 ObjectDisposedException 逃到停机路径变成 Warning 噪声。StartAsync 重置为 0。
+    /// </summary>
+    private int _stopGate;
+
+    private readonly ILogger? _logger;
+
     public ProcessExifToolProcess()
-        : this(CreateDefaultProcessJobObject())
+        : this(CreateDefaultProcessJobObject(), logger: null)
     {
     }
 
     public ProcessExifToolProcess(IProcessJobObject jobObject)
+        : this(jobObject, logger: null)
+    {
+    }
+
+    public ProcessExifToolProcess(ILogger? logger)
+        : this(CreateDefaultProcessJobObject(), logger)
+    {
+    }
+
+    public ProcessExifToolProcess(IProcessJobObject jobObject, ILogger? logger)
     {
         _jobObject = jobObject;
+        _logger = logger;
     }
 
     public static IProcessJobObject CreateDefaultProcessJobObject()
@@ -71,6 +93,8 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
         }
 
         Volatile.Write(ref _exitSignaled, 0);
+        // 重启复用同一实例（StopAsync → StartAsync）：重置停机闸，见 _stopGate 注释。
+        Volatile.Write(ref _stopGate, 0);
         _process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
         _process.Start();
         _jobObject.Assign(_process);
@@ -153,11 +177,19 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
+        // 停机闸（#37）：并发/重复 StopAsync 只放第一遍做完整拆卸，后续立即返回。
+        // 拆卸是终态收尾（字段清 null、job object 释放），第二遍除了撞已 Dispose 的对象无事可做。
+        if (Interlocked.Exchange(ref _stopGate, 1) != 0)
+        {
+            return;
+        }
+
         var stopped = Volatile.Read(ref _process);
         if (stopped is null)
         {
             _jobObject?.Dispose();
             _jobObject = null;
+            Volatile.Write(ref _stopGate, 0);
             return;
         }
 
@@ -170,9 +202,19 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
                 await _stdin.FlushAsync(CancellationToken.None);
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // ignore — process may already be dead
+            // 停机期 best-effort 写尾（#37）：进程已死/管道已断（Pipe is broken）是预期形态，
+            // 降 Debug 不进停机日志；其余异常同样不上抛（停机收尾语义不变）但留 Warning 痕，
+            // 不再无痕吞掉。
+            if (ex is IOException or ObjectDisposedException)
+            {
+                _logger?.LogDebug(ex, "stdin already unavailable while asking ExifTool to exit (expected during shutdown).");
+            }
+            else
+            {
+                _logger?.LogWarning(ex, "Unexpected failure while asking ExifTool to exit; continuing teardown.");
+            }
         }
 
         // 2. Wait up to 3 s asynchronously, then force-kill.
@@ -227,7 +269,24 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
         _jobObject = null;
 
         // 5. Clean up remaining resources.
-        _stdin?.Dispose();
+        // stdin StreamWriter.Dispose 在进程已死时会抛 IOException: Pipe is broken（#37，ui-smoke.md
+        // L 组 L9 段）——停机预期形态，降 Debug 不进停机日志；其余异常留 Warning 痕后继续拆卸。
+        try
+        {
+            _stdin?.Dispose();
+        }
+        catch (Exception ex)
+        {
+            if (ex is IOException or ObjectDisposedException)
+            {
+                _logger?.LogDebug(ex, "stdin pipe already broken while disposing (expected during shutdown).");
+            }
+            else
+            {
+                _logger?.LogWarning(ex, "Unexpected failure while disposing ExifTool stdin; continuing teardown.");
+            }
+        }
+
         _pumpCts?.Dispose();
         stopped.Dispose();
 
