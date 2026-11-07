@@ -63,7 +63,11 @@ public sealed class BackupDurabilityGuardTests
             violations.Add("CopyAsync 的 Flush(flushToDisk: true) 落盘步被删除——#37 fsync 取舍回退（见该方法上方 Design(#37) 标记与取舍说明）");
         }
 
-        if (!source.Contains("await CopyAsync(source, tempPath,", StringComparison.Ordinal))
+        // 「经 CopyAsync 写副本」判定限 AtomicCopyAsync 方法体切片（到 MoveAsync 声明为止），
+        // 不用整文件 Contains——别处出现同名字符串时不应误判为通过。
+        var moveStart = source.IndexOf("Task MoveAsync(", StringComparison.Ordinal);
+        var atomicBody = moveStart > atomicStart ? source[atomicStart..moveStart] : source[atomicStart..];
+        if (!atomicBody.Contains("await CopyAsync(source, tempPath,", StringComparison.Ordinal))
         {
             violations.Add("AtomicCopyAsync 不再经 CopyAsync 写临时副本——落盘步被绕开，#37 fsync 取舍回退");
         }
