@@ -100,13 +100,18 @@ public sealed class PooledExifToolBridge : IExifToolBridge, IDisposable
         }
     }
 
+    /// <summary>
+    /// 逐个释放子桥；<c>_parallelGate</c> 有意不 Dispose（#126，与 <see cref="ExifToolBridge.Dispose"/>
+    /// 同一族）：在途 <see cref="WipeMetadataAsync"/> 的 finally Release 可能跨过停机/重载对旧池的
+    /// Dispose，先 Dispose 会命中 Release 抛 ObjectDisposedException，或把挂在 WaitAsync 上的
+    /// 等待者永久吊住。信号量无非托管资源，随 GC 与进程退出收尾。
+    /// </summary>
     public void Dispose()
     {
         foreach (var bridge in _bridges)
         {
             (bridge as IDisposable)?.Dispose();
         }
-        _parallelGate.Dispose();
     }
 }
 
