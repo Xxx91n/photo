@@ -38,9 +38,9 @@ public sealed class MetadataCleanerWorker : BackgroundService
     /// 停机-重载生命周期竞态（#126）的总开关：StopAsyncCore 第一句置位，此后重载一律拒绝——
     /// 不再创建任何运行时（bridge/watcher/store/audit/timer），也不再触碰共享实例。
     /// volatile：重载路径在多个检查点读它，停机线程写它；检查点之后到发布字段为止保持纯同步。
+    /// 决策由重载路径的四处检查点共同执行，标记因此挂在总开关上。
     /// </summary>
-    // Design(#82): 停机开始后重载不再创建运行时，按契约回 reload_failed（#126，D7 协议不变）；
-    // 本标记挂在总开关上——该决策由重载路径的四处检查点共同执行。
+    // Design(#82): 停机开始后重载不再创建运行时，按契约回 reload_failed（#126，D7 协议不变）。
     private volatile bool _stopping;
 
     /// <summary>

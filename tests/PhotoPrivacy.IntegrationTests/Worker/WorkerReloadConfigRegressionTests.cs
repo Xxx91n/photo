@@ -1229,6 +1229,78 @@ public sealed class WorkerReloadConfigRegressionTests
     }
 
     [Fact]
+    public async Task Reload_Queued_On_Gate_Should_Terminate_When_Shutdown_Starts()
+    {
+        // #126 AC2 的另一半：重载已排队在 _reloadGate 上（前一个重载还在拆卸窗口里），此时停机
+        // 开始——排队者的 WaitAsync 必须被 _reloadStopCts 立刻收敛（回 OCE → reload_failed），
+        // 不得吊死、不得等进程退出。旧实现的 WaitAsync() 不带令牌，停机 Dispose _reloadGate
+        // 只清空等待队列、不完成等待者（.NET 10），排队者永久挂起——本用例对旧实现必红。
+        var root = Path.Combine(Path.GetTempPath(), "pp-126-queued-" + Guid.NewGuid().ToString("N"));
+        var hot = Path.Combine(root, "hot");
+        var audit = Path.Combine(hot, "_audit");
+        var configPath = Path.Combine(root, "config.json");
+        Directory.CreateDirectory(hot);
+        await File.WriteAllTextAsync(configPath, BuildConfigJson(hot, audit));
+        AssertViableFixtureConfig(configPath);
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["config"] = configPath })
+            .Build();
+        var worker = new MetadataCleanerWorker(
+            configuration,
+            NullLogger<MetadataCleanerWorker>.Instance,
+            new NullApplicationLifetime(),
+            new RuntimeControl());
+
+        var teardownEntered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var teardownRelease = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        worker.TeardownWindowHookAsync = async () =>
+        {
+            teardownEntered.TrySetResult(true);
+            await teardownRelease.Task;
+        };
+
+        await worker.StartAsync(CancellationToken.None);
+        try
+        {
+            Assert.True(
+                await WaitForFileAsync(Path.Combine(audit, "processed.ndjson"), TimeSpan.FromSeconds(30)),
+                "启动期未创建 processed.ndjson：worker 可能未完成初始化");
+
+            var first = worker.ReloadConfigAsync();
+            Assert.True(
+                await teardownEntered.Task.WaitAsync(TimeSpan.FromSeconds(30)),
+                "重载未进入拆卸窗口：钩子未执行，用例前提不成立");
+
+            // 第二个重载同步注册到 _reloadGate 等待队列（闸被第一个重载持有）。
+            var second = worker.ReloadConfigAsync();
+            Assert.False(second.IsCompleted, "第二个重载应排队在闸上而非同步完成");
+
+            using var stopCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            var stopTask = worker.StopAsync(stopCts.Token);
+
+            // 停机起点取消 _reloadStopCts：排队者立刻收敛（OCE），不等闸、不吊死。
+            var secondEx = await Record.ExceptionAsync(() => second.WaitAsync(TimeSpan.FromSeconds(10)));
+            Assert.NotNull(secondEx);
+            Assert.IsNotType<ObjectDisposedException>(secondEx);
+
+            await stopTask.WaitAsync(TimeSpan.FromSeconds(30));
+
+            // 放行第一个重载：停机已开始，它必须被拒绝而不是继续重建。
+            teardownRelease.TrySetResult(true);
+            var firstEx = await Record.ExceptionAsync(() => first.WaitAsync(TimeSpan.FromSeconds(30)));
+            Assert.NotNull(firstEx);
+            Assert.IsNotType<ObjectDisposedException>(firstEx);
+            Assert.Contains("reload_rejected", firstEx!.Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            await worker.StopAsync(CancellationToken.None);
+            TryDelete(root);
+        }
+    }
+
+    [Fact]
     public async Task Reload_After_Stop_Completed_Should_Be_Rejected_Immediately_Without_Touching_Gates()
     {
         // #126：停机收口后再来的重载必须立刻拒绝。旧实现没有这道检查：重载会真的再走一遍
