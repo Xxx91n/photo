@@ -172,7 +172,7 @@ jobs:
           test -d release/linux-x64/ExifTool/lib
           test -f release/PhotoPrivacy-0.1.0-ci-linux-x64.tar.gz
           # 内置 ExifTool 必须可执行且为钉扎版本（#164 同类下载链回归在此兜底）
-          [ "$(release/linux-x64/ExifTool/exiftool -ver)" = "13.60" ]
+          [ "$(release/linux-x64/ExifTool/exiftool -ver)" = "13.61" ]
 
   markers:
     runs-on: ubuntu-latest
