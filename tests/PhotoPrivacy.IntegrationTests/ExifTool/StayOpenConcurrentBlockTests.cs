@@ -102,9 +102,10 @@ public sealed class StayOpenConcurrentBlockTests : IntegrationTestBase
         };
 
     /// <summary>
-    /// 定位并验证真 ExifTool：一次 spawn <c>-ver</c> 探活。文件不存在或探活失败都返回
-    /// null（环境早退口径，同 RealExifToolProbeTest）；CI 门禁由 exiftool-stayopen job 的
-    /// ver 步先行验证可用性，这条早退不会发生在门禁里，不会静默假绿。
+    /// 定位并验证真 ExifTool：一次 spawn <c>-ver</c> 探活。文件不存在 → 返回 null（环境未提供，
+    /// 早退口径同 RealExifToolProbeTest）；文件存在但探活失败 → Assert.Fail（环境损坏，
+    /// 静默早退违背 #82「不得静默 skip」）。CI 门禁由 exiftool-stayopen job 的 ver 步先行
+    /// 验证可用性，两种情形都不会发生在门禁里。
     /// </summary>
     private static async Task<string?> TryLocateRealExifToolAsync()
     {
@@ -115,7 +116,12 @@ public sealed class StayOpenConcurrentBlockTests : IntegrationTestBase
         }
 
         var probe = await RunExifToolOneShotAsync(candidate, new[] { "-ver" });
-        return probe.ExitCode == 0 && !string.IsNullOrWhiteSpace(probe.Stdout) ? candidate : null;
+        if (probe.ExitCode != 0 || string.IsNullOrWhiteSpace(probe.Stdout))
+        {
+            Assert.Fail($"#39 ExifTool 探活失败（exit={probe.ExitCode}）：{Truncate(probe.Stderr)}");
+        }
+
+        return candidate;
     }
 
     /// <summary>
