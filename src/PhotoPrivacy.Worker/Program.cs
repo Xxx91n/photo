@@ -226,7 +226,7 @@ AppDomain.CurrentDomain.UnhandledException += (_, e) =>
 {
     // ExceptionObject 是 object：非 Exception 载荷时不强转（否则 InvalidCastException 本身
     // 又成了 logEx，原始异常两丢），as 保留原始引用供兜底输出（同 UnobservedTaskException 口径）。
-    // Log.Fatal 只有 Exception/string 首参重载（object 首参 CS1503）：Exception 赽异常重载，
+    // Log.Fatal 只有 Exception/string 首参重载（object 首参 CS1503）：Exception 走异常重载，
     // 非 Exception 载荷走消息模板属性重载，载荷本身也留进日志。
     var fatalOriginal = e.ExceptionObject as Exception;
     try
