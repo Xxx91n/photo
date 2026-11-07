@@ -102,8 +102,9 @@ public sealed class StayOpenConcurrentBlockTests : IntegrationTestBase
         };
 
     /// <summary>
-    /// 定位并验证真 ExifTool：一次 spawn <c>-ver</c> 探活，失败返回 null（环境早退，
-    /// CI 门禁由 exiftool-stayopen job 的 ver 步兜底，不会静默假绿）。
+    /// 定位并验证真 ExifTool：一次 spawn <c>-ver</c> 探活。文件不存在或探活失败都返回
+    /// null（环境早退口径，同 RealExifToolProbeTest）；CI 门禁由 exiftool-stayopen job 的
+    /// ver 步先行验证可用性，这条早退不会发生在门禁里，不会静默假绿。
     /// </summary>
     private static async Task<string?> TryLocateRealExifToolAsync()
     {
