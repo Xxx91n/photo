@@ -98,7 +98,11 @@ if ($LASTEXITCODE -ne 0) {
 # Copy install scripts to release/<rid>/scripts/
 $scriptsDir = Join-Path $targetDir "scripts"
 New-Item -ItemType Directory -Force -Path $scriptsDir | Out-Null
-Copy-Item (Join-Path $repoRoot "scripts" | Join-Path -ChildPath "install-service.ps1") $scriptsDir -Force
+# install-service.ps1 会 dot-source 同目录的 service-worker-match.ps1（worker 归属匹配），
+# 两个文件必须一起随包发布，否则卸载时的孤儿进程清理会因缺函数而失败。
+foreach ($scriptName in @("install-service.ps1", "service-worker-match.ps1")) {
+  Copy-Item (Join-Path $repoRoot "scripts" | Join-Path -ChildPath $scriptName) $scriptsDir -Force
+}
 
 $appExeName = "PhotoPrivacy.exe"
 $workerExeName = "PhotoPrivacyWorker.exe"
