@@ -224,8 +224,11 @@ posixHooks = PosixSignalHooks.Register(
 // 退出码一个信号；stderr 是此刻唯一确定的去处（服务进程无控制台时写入静默成功，不抛）。
 AppDomain.CurrentDomain.UnhandledException += (_, e) =>
 {
-    try { Log.Fatal((Exception)e.ExceptionObject, "AppDomain.UnhandledException"); }
-    catch (Exception logEx) { TraceToStderr(logEx, "fatal log after unhandled exception"); }
+    // ExceptionObject 是 object：非 Exception 载荷时不强转（否则 InvalidCastException 本身
+    // 又成了 logEx，原始异常两丢），as 保留原始引用供兜底输出（同 UnobservedTaskException 口径）。
+    var fatalOriginal = e.ExceptionObject as Exception;
+    try { Log.Fatal(fatalOriginal ?? e.ExceptionObject, "AppDomain.UnhandledException"); }
+    catch (Exception logEx) { TraceToStderr(logEx, "fatal log after unhandled exception", original: fatalOriginal); }
     try { Log.CloseAndFlush(); }
     catch (Exception logEx) { TraceToStderr(logEx, "log close/flush after unhandled exception"); }
 };
