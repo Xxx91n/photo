@@ -109,6 +109,13 @@ UI 侧并发探测（#59）：新 UI 另起短连接预算客户端（连接 250
 `GetExifToolVersion`，避免与心跳的单飞锁互相拖慢。服务端单飞契约不变；客户端侧多个
 `IpcClient` 各自串行，争用同一管道实例时仍靠 `ERROR_PIPE_BUSY` 重试兜底。
 
+**请求行必须 UTF-8 且不带 BOM**（#218 根因归档）：服务端按行读到首字符即交给
+`JsonSerializer`，`EF BB BF` 会让它抛 `JsonException`，连接循环随即回
+`{ok:false,message:"invalid_request",v}`（`id` 为 null）。踩坑点集中在 PowerShell：`[Text.Encoding]::UTF8`
+是**带 BOM** 的实例，`StreamWriter` 会先写三字节前缀，表现为「管道连上了、DACL 也放行，却只拿到
+`invalid_request`」。脚本侧必须用 `[Text.UTF8Encoding]::new($false)`；`verify-windows-service.ps1`
+的 Ping 帧同理只用 `{v,id,method}` 三字段，不加 `params`。
+
 ## 方法
 
 `Ping`、`GetStatus`、`Pause`、`Resume`、`GetExifToolVersion`、`Shutdown`、`ReloadConfig`、`GetRecentLogs`。
@@ -149,6 +156,15 @@ store/audit）建回来，再按上述契约回 `ok:false`（重建失败带 `re
 当 `watch.hot_folder` 为空时，Worker 仍建立 IPC 并保持待机；`GetStatus.data.watchDirectory` 为空，UI 应引导用户到配置页选择监控目录。保存有效目录后通过 `ReloadConfig` 启动监控，无需重启 Worker（#100）。
 
 连接全部失败时，UI 按最近一次真实失败原因三态分类呈现（#169，编排顺序与轮询预算不变）：服务端点连接被管道 DACL 拒（`ERROR_ACCESS_DENIED`，端点存在的证明）→「未被授权使用服务模式」，行动指引**按平台分键**——Windows 指向安装脚本的 `-AuthorizedUsers` 集合，Unix 指向服务 socket 的 0660+共享组边界（`install-systemd-service.sh --gui-user` / launchd 同构）；UI 拉起的后台 Worker 未就绪（spawn 失败 / 已退出——含 #163 单写者准入门让位退出码 1 / 5s 超时）→ Worker 缺失语义并附退出细节；未找到可拉起的 Worker 可执行文件 → 引导安装。分类经 `ConnectionSnapshot.connect_failure` 广播，心跳连上即清空；心跳掉线不清（授权拒绝是编排期事实）。
+
+服务启动超时的 1053 归因（#202 / #218）：SCM 等不到 RUNNING 只能回 1053，成因既可能是服务 Worker
+撞上单写者准入门让位，也可能是 ExifTool/配置/提权类真超时。UI 只有在**三个条件同时成立**时才把它
+归因为单写者让位并换让位文案——① 退出码 1053；② 此刻真的连着后台 Worker（`ConnectionState::Connected`
++ `worker_mode == Some(Background)`，不认连接失败后残留的握手值）；③ **两边审计目录相同**：后台 Worker 用
+UI 内存里那份 `config.audit.log_directory`，服务用安装时落盘的 `config.json`（`--config` 指向的那份），
+归一化（去尾分隔符、Windows 下忽略大小写）后逐字相同。目录不同说明两个 Worker 并不争同一份目录，
+1053 只能按真超时处理，否则用户照着让位文案关掉后台 Worker 也修不好；配置读不到同样按真超时保守处理。
+判据实现见 `ui/crates/photoprivacy-ui/src/app.rs` 的 `start_timeout_cause` / `connected_audit_dirs_match`。
 
 ## 认证边界与已知缺陷
 

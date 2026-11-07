@@ -23,7 +23,7 @@ use photoprivacy_rules::RulesEditor;
 use photoprivacy_service::{ServiceRuntimeState, button_state};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, watch};
@@ -74,6 +74,7 @@ pub(crate) struct FocusRegistry {
 }
 
 impl FocusRegistry {
+    /// 取指定 id 的焦点句柄；不存在时按 tab 停靠创建并登记。
     fn focus_handle(&mut self, id: &str, cx: &mut App) -> FocusHandle {
         self.handles
             .entry(id.to_string())
@@ -81,6 +82,7 @@ impl FocusRegistry {
             .clone()
     }
 
+    /// 取（或登记）指定探针句柄，用于回读控件最近一次布局坐标。
     fn probe(&mut self, id: &str) -> ScrollHandle {
         self.probes.entry(id.to_string()).or_default().clone()
     }
@@ -149,6 +151,7 @@ pub struct ConfigUiState {
 }
 
 impl ConfigUiState {
+    /// 用初始配置建立配置页状态：保存态空闲、无状态提示、编辑代际归零。
     pub fn new(initial: Option<AppConfig>) -> Self {
         Self {
             config: initial.unwrap_or_default(),
@@ -214,6 +217,7 @@ impl ConfigUiState {
         }
     }
 
+    /// 替换当前配置并重算派生状态（脏标记与字段文本同步）。
     fn set_config(&mut self, mut config: AppConfig, auto_detect_exiftool: bool) -> ThemeMode {
         config.ui.theme_variant = normalize_theme_variant(&config.ui.theme_variant).to_string();
         // 旧 UI 的 ResolveExifToolPath：首次加载时当前路径不存在则探测并显示提示；
@@ -320,63 +324,78 @@ impl FieldId {
         FieldId::AuditLogDirectory,
     ];
 
+    /// 该字段的静态规格（元素 id、值访问器、是否文件型）。
     fn spec(self) -> &'static FieldSpec {
         &FIELD_SPECS[self as usize]
     }
 
+    /// 该字段输入框的稳定元素 id。
     fn element_id(self) -> &'static str {
         self.spec().element_id
     }
 
+    /// 该字段「浏览」按钮的稳定元素 id。
     fn browse_id(self) -> &'static str {
         self.spec().browse_id
     }
 
+    /// 该字段占位文案的 i18n key。
     fn placeholder_key(self) -> &'static str {
         self.spec().placeholder_key
     }
 
+    /// 该字段是否以文件路径方式配置（决定是否出现浏览按钮）。
     fn files(self) -> bool {
         self.spec().files
     }
 }
 
+/// 读取 ExifTool 可执行路径。
 fn exiftool_path(config: &AppConfig) -> &str {
     &config.exiftool.path
 }
 
+/// 以可写方式拿到 ExifTool 可执行路径。
 fn exiftool_path_mut(config: &mut AppConfig) -> &mut String {
     &mut config.exiftool.path
 }
 
+/// 读取监控目录。
 fn hot_folder(config: &AppConfig) -> &str {
     &config.watch.hot_folder
 }
 
+/// 以可写方式拿到监控目录。
 fn hot_folder_mut(config: &mut AppConfig) -> &mut String {
     &mut config.watch.hot_folder
 }
 
+/// 读取备份目录。
 fn backup_directory(config: &AppConfig) -> &str {
     &config.backup.directory
 }
 
+/// 以可写方式拿到备份目录。
 fn backup_directory_mut(config: &mut AppConfig) -> &mut String {
     &mut config.backup.directory
 }
 
+/// 读取隔离目录。
 fn quarantine_directory(config: &AppConfig) -> &str {
     &config.quarantine.directory
 }
 
+/// 以可写方式拿到隔离目录。
 fn quarantine_directory_mut(config: &mut AppConfig) -> &mut String {
     &mut config.quarantine.directory
 }
 
+/// 读取审计日志目录。
 fn audit_log_directory(config: &AppConfig) -> &str {
     &config.audit.log_directory
 }
 
+/// 以可写方式拿到审计日志目录。
 fn audit_log_directory_mut(config: &mut AppConfig) -> &mut String {
     &mut config.audit.log_directory
 }
@@ -415,6 +434,7 @@ impl Page {
         }
     }
 
+    /// 该取值的 i18n 文案 key。
     fn key(self) -> &'static str {
         match self {
             Self::Overview => k::NAV_OVERVIEW,
@@ -437,6 +457,7 @@ impl Page {
         }
     }
 
+    /// 枚举的全部取值（渲染筛选/下拉时遍历用）。
     fn all() -> [Self; 5] {
         [
             Self::Overview,
@@ -471,6 +492,7 @@ pub struct AppDeps {
 /// gpui 0.3.10 没有 `flex_direction` 通用设置器，只有 row/row_reverse 便捷方法，
 /// 用扩展 trait 保持调用方的链式写法。
 pub(crate) trait MirrorRow: Styled + Sized {
+    /// 按 RTL 需求翻转行方向。
     fn mirror_row(self, rtl: bool) -> Self {
         if rtl { self.flex_row_reverse() } else { self }
     }
@@ -495,25 +517,128 @@ enum StartTimeoutCause {
     TrueTimeout,
 }
 
-/// 1053 归因判据（#202）：UI 此刻确实连着后台 Worker 时，那个 Worker 就是同一份审计目录的
-/// 持有者，服务 Worker 必然撞门让位，因此 1053 是确定成因而非猜测；不连后台 Worker
-/// （直连服务/未连接）则保持真超时归因，不让真超时文案回归。
+/// 1053 归因判据（#202 / #218）：UI 此刻确实连着后台 Worker，且两边的审计目录相同，
+/// 才能断定服务 Worker 是撞上同一份目录的准入门而让位，1053 是确定成因而非猜测；
+/// 不连后台 Worker 或目录不同都保持真超时归因。
 ///
 /// 连接态必须一起判（CodeRabbit 返修）：`worker_mode` 是上一次成功握手留下的残留值，
 /// 连接失败后仍可能是 `Background`；只看它会把真超时误标成单写者让位，威胁 AC3。
+///
+/// 目录也必须一起判（#218）：服务进程读的是安装那一刻的 `config.json`，UI 这边可能已经
+/// 换成另一份审计目录；此时两个 Worker 并不争同一份目录，服务端 ExifTool/配置类真超时
+/// 会被硬贴上让位文案，用户照文案去关后台 Worker 也修不好。
 fn start_timeout_cause(
     exit_code: i32,
     connection: ConnectionState,
     worker_mode: Option<WorkerMode>,
+    audit_dirs_match: bool,
 ) -> StartTimeoutCause {
     if exit_code == 1053
         && connection == ConnectionState::Connected
         && worker_mode == Some(WorkerMode::Background)
+        && audit_dirs_match
     {
         StartTimeoutCause::SingleWriterYield
     } else {
         StartTimeoutCause::TrueTimeout
     }
+}
+
+/// 审计目录等值判定（#218）：同一目录可能被写成 `C:\a\_audit`、`C:\a\_audit\` 两种形态，
+/// Windows 下还大小写不敏感、`/` 与 `\` 等价（文件夹选择器给 `\`，手改 `config.json` 可能写
+/// `/`）；不做归一化会把"其实同目录"误判成真超时，让文案回归（CodeRabbit 返修）。
+fn audit_directory_key(directory: &str) -> String {
+    let trimmed = directory.trim();
+    if cfg!(windows) {
+        let normalized = trimmed.replace('/', "\\").to_lowercase();
+        // 盘根（`C:\`）的尾分隔符属于根本身：剥掉就变成盘相对路径 `C:`，两者含义不同
+        // （CodeRabbit 返修）。只对盘根保留尾分隔符，其余目录照旧剥掉。
+        // 判定内联而不抽成独立函数：非 Windows 目标下没有调用点，抽出去会被 clippy
+        // 的 `-D warnings` 判成 dead_code。
+        let bytes = normalized.as_bytes();
+        let is_drive_root = bytes.len() == 3
+            && bytes[0].is_ascii_alphabetic()
+            && bytes[1] == b':'
+            && bytes[2] == b'\\';
+        if is_drive_root {
+            return normalized;
+        }
+        normalized.trim_end_matches('\\').to_string()
+    } else {
+        trimmed.trim_end_matches('/').to_string()
+    }
+}
+
+/// 服务侧审计目录（#218）：服务进程启动时读的是安装那一刻的 `config.json`。
+/// 读不到（文件被移走/解析失败）返回 `None`——调用方按"无法证明目录相同"处理，
+/// 宁可归真超时也不误标成单写者让位。
+fn service_audit_directory(config_path: &Path) -> Option<String> {
+    if !config_path.is_file() {
+        return None;
+    }
+    crate::config_file::ConfigFile::new(config_path)
+        .load_or_default()
+        .ok()
+        .map(|config| config.audit.log_directory)
+}
+
+/// 1053 归因判据的三态结论（CodeRabbit 返修）：`Unknown` 表示服务侧配置读不到/解析失败，
+/// 无法证明两个目录是否相同。它与"确定不同"必须分开——读盘失败若被当成 `Mismatched`
+/// 缓存下来，配置事后修好也不会重算，1053 会被长期误判成真超时。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AuditDirsMatch {
+    Matched,
+    Mismatched,
+    Unknown,
+}
+
+impl AuditDirsMatch {
+    /// 判据消费方只关心"能否确定目录相同"（`Unknown` 一律保守当不成立）。
+    fn is_matched(self) -> bool {
+        matches!(self, Self::Matched)
+    }
+
+    /// 只有确定结论才值得缓存；读盘/解析失败是暂态，不缓存以免钉死成 `false`。
+    fn is_cacheable(self) -> bool {
+        !matches!(self, Self::Unknown)
+    }
+}
+
+/// 1053 归因所需的"两边审计目录是否相同"事实来源（#218）：后台 Worker 用的是 UI 内存
+/// 里这份 `config`，服务用的是磁盘上安装时留下的那份，二者的 `audit.log_directory`
+/// 归一化后比对。
+fn audit_dirs_match_verdict(config: &AppConfig, config_path: &Path) -> AuditDirsMatch {
+    let worker_key = audit_directory_key(&config.audit.log_directory);
+    if worker_key.is_empty() {
+        // 两边都没写目录时各自落到自己的默认目录，不能凭"都是空"就当成同一份。
+        return AuditDirsMatch::Mismatched;
+    }
+    match service_audit_directory(config_path) {
+        None => AuditDirsMatch::Unknown,
+        Some(service_dir) => {
+            if audit_directory_key(&service_dir) == worker_key {
+                AuditDirsMatch::Matched
+            } else {
+                AuditDirsMatch::Mismatched
+            }
+        }
+    }
+}
+
+/// 布尔视图（`Unknown` 按"不成立"处理）——供不关心三态区分的调用方与回归断言使用。
+fn connected_audit_dirs_match(config: &AppConfig, config_path: &Path) -> bool {
+    audit_dirs_match_verdict(config, config_path).is_matched()
+}
+
+/// 1053 归因判据的缓存键（CodeRabbit 返修）：反馈身份 + UI 侧配置 + 配置路径。任一变化
+/// 都需要重算——反馈换了就是新的 1053 事件，配置目录或配置路径换了则服务侧读的目录可能
+/// 已经不是同一个。
+#[derive(Clone, PartialEq, Eq)]
+struct AuditDirsMatchKey {
+    exit_code: Option<i32>,
+    message: String,
+    config_path: PathBuf,
+    worker_audit_directory: String,
 }
 
 /// 连接失败三态 → 分类文案（#169）：授权拒绝给行动指引——指引按平台分键（CodeRabbit 返修）：
@@ -613,6 +738,10 @@ pub struct AppView {
     i18n: Rc<Catalog>,
     /// 复制反馈：记录触发反馈的按钮 ID 与截止时间，仅该按钮显示"已复制"。
     copy_feedback: Option<(String, Instant)>,
+    /// 1053 归因判据缓存（CodeRabbit 返修）：`feedback_banner` 处在渲染路径上，若每帧都调
+    /// `connected_audit_dirs_match` 就会每帧 `is_file()` + 读 `config.json`，慢盘/网络配置文件
+    /// 会把渲染拖住。这里按"反馈身份 + UI 侧配置 + 配置路径"缓存结果，只在键变化时重算一次。
+    audit_dirs_match_cache: RefCell<Option<(AuditDirsMatchKey, bool)>>,
     _appearance_subscription: Subscription,
 }
 
@@ -691,6 +820,7 @@ impl AppView {
             rules,
             i18n,
             copy_feedback: None,
+            audit_dirs_match_cache: RefCell::new(None),
             _appearance_subscription: appearance_subscription,
         };
         view.spawn_updates(window, cx);
@@ -751,6 +881,7 @@ impl AppView {
     // 到达后续行之前回绕——移焦后检测回绕（焦点不再是日志行按钮），其后（前）仍有行就
     // 滚动揭示相邻行并聚焦其复制按钮；已是过滤列表首/末行则不接管，Tab 照常离开列表。
     // 返回 true 表示本次 Tab 已完全处置（列表内步进或边界跟进），调用方不再 focus_next/prev。
+    /// 日志页 Tab 键在可复制文本之间前后移动焦点，成功返回 true。
     fn step_log_copy_focus(
         &self,
         forward: bool,
@@ -856,6 +987,9 @@ impl AppView {
                         }
                         if this.service_snapshots.has_changed().unwrap_or(false) {
                             this.service = this.service_snapshots.borrow_and_update().clone();
+                            // 1053 判据缓存跟随快照换新（CodeRabbit 返修）：新 feedback 是新的
+                            // 1053 事件，可能对应期间被外部改过的配置，不能复用上一条反馈的结论。
+                            *this.audit_dirs_match_cache.borrow_mut() = None;
                             changed = true;
                         }
                         // 配置事件由 app 级事件泵写入共享状态；这里同步镜像供渲染与编辑使用。
@@ -863,6 +997,9 @@ impl AppView {
                             let shared = this.config_state.borrow();
                             if shared.config != this.config {
                                 this.config = shared.config.clone();
+                                // 配置变更同样作废 1053 判据缓存（CodeRabbit 返修）：
+                                // 服务侧读的目录可能已被改写，旧结论不再可信。
+                                *this.audit_dirs_match_cache.borrow_mut() = None;
                                 let lengths: Vec<(FieldId, usize)> = FieldId::ALL
                                     .iter()
                                     .map(|id| (*id, field_value(&this.config, *id).len()))
@@ -940,6 +1077,7 @@ impl AppView {
         self.log_service.clear(generation);
     }
 
+    /// 连接状态对应的状态色。
     fn state_color(state: ConnectionState, theme: &Theme) -> Rgba {
         match state {
             ConnectionState::Connected => theme.success,
@@ -949,6 +1087,7 @@ impl AppView {
         }
     }
 
+    /// 事件基调（成功/中性/弱化/信息/警告）对应的文字色。
     fn tone_color(tone: EventTone, theme: &Theme) -> Rgba {
         match tone {
             EventTone::Success => theme.success,
@@ -975,6 +1114,7 @@ impl AppView {
             .map(|_| self.t(k::TOAST_COPIED))
     }
 
+    /// 标记配置已改动，驱动脏提示与保存按钮状态。
     fn mark_dirty(&mut self, cx: &mut Context<Self>) {
         // 旧 UI 的日志级别下拉会联动 LogEnabled；ConfigEditor 再由 LogLevel 推导 diagnostic_mode，
         // 未知级别保留原值（ResolveDiagnosticMode 的 fallback）。
@@ -1001,6 +1141,7 @@ impl AppView {
         cx.notify();
     }
 
+    /// 切换主题模式并落盘用户选择。
     fn set_theme_mode(&mut self, mode: ThemeMode, cx: &mut Context<Self>) {
         if self.theme_mode.get() == mode {
             return;
@@ -1010,6 +1151,7 @@ impl AppView {
         self.mark_dirty(cx);
     }
 
+    /// 上次保存/校验结果的展示文案。
     fn save_state_text(&self, theme: &Theme) -> (String, Rgba) {
         match &self.save_state {
             SaveState::Idle => (String::new(), theme.text_faint),
@@ -1029,6 +1171,7 @@ impl AppView {
         }
     }
 
+    /// 统一字段编辑入口：执行编辑动作后收尾（脏标记、光标夹取）。
     fn edit_field(&mut self, id: FieldId, event: &KeyDownEvent, cx: &mut Context<Self>) {
         let modifiers = &event.keystroke.modifiers;
         if (modifiers.control && !modifiers.alt) || modifiers.platform {
@@ -1081,6 +1224,7 @@ impl AppView {
         }
     }
 
+    /// 在光标处插入文本，并按字符边界维护光标。
     fn insert_field_text(&mut self, id: FieldId, text: &str, cx: &mut Context<Self>) {
         let cursor = self.field_cursor(id);
         let new_cursor = {
@@ -1093,6 +1237,7 @@ impl AppView {
         self.mark_dirty(cx);
     }
 
+    /// 删除光标前一个字符。
     fn backspace_field(&mut self, id: FieldId, cx: &mut Context<Self>) {
         let cursor = self.field_cursor(id);
         let (new_cursor, changed) = {
@@ -1112,6 +1257,7 @@ impl AppView {
         }
     }
 
+    /// 删除光标所在位置的字符。
     fn delete_field(&mut self, id: FieldId, cx: &mut Context<Self>) {
         let cursor = self.field_cursor(id);
         let (new_cursor, changed) = {
@@ -1131,6 +1277,7 @@ impl AppView {
         }
     }
 
+    /// 按方向把光标移动一个字符。
     fn move_cursor(&mut self, id: FieldId, forward: bool, cx: &mut Context<Self>) {
         let cursor = self.field_cursor(id);
         let value = field_value(&self.config, id);
@@ -1143,6 +1290,7 @@ impl AppView {
         self.set_cursor(id, next, cx);
     }
 
+    /// 读取字段当前光标位置。
     fn field_cursor(&self, id: FieldId) -> usize {
         self.fields
             .get(&id)
@@ -1150,6 +1298,7 @@ impl AppView {
             .unwrap_or_default()
     }
 
+    /// 写入字段光标位置，夹到合法字符边界。
     fn set_cursor(&mut self, id: FieldId, cursor: usize, cx: &mut Context<Self>) {
         if let Some(state) = self.fields.get_mut(&id) {
             state.cursor = cursor;
@@ -1157,6 +1306,7 @@ impl AppView {
         cx.notify();
     }
 
+    /// 渲染字段输入框（含光标、占位与禁用态样式）。
     fn field_view(&self, id: FieldId, window: &Window) -> FieldView {
         let state = self
             .fields
@@ -1201,6 +1351,7 @@ impl AppView {
         .detach();
     }
 
+    /// 打开系统文件/目录选择器并把结果写回字段。
     fn pick_path(&mut self, id: FieldId, window: &mut Window, cx: &mut Context<Self>) {
         let prompt = if id.files() {
             self.t(k::DIALOG_SELECT_EXIFTOOL)
@@ -1215,6 +1366,7 @@ impl AppView {
         });
     }
 
+    /// 把新的排除目录追加进规则列表。
     fn add_excluded_directory(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let prompt = self.t(k::DIALOG_SELECT_EXCLUDED_DIR);
         self.prompt_single_path(false, prompt, window, cx, |this, text, cx| {
@@ -1223,6 +1375,7 @@ impl AppView {
         });
     }
 
+    /// 渲染主题模式切换控件。
     fn theme_switch(&self, mode: ThemeMode, theme: &Theme, cx: &mut Context<Self>) -> Div {
         let i18n = self.i18n.clone();
         let locale = self.config.ui.locale.clone();
@@ -1263,6 +1416,7 @@ impl AppView {
             }))
     }
 
+    /// 设置行基础布局：两端对齐、纵向居中。
     fn row_base(
         &self,
         label: String,
@@ -1297,6 +1451,7 @@ impl AppView {
             .child(div().flex_shrink_0().child(control))
     }
 
+    /// 设置项行：左侧标题与说明，右侧控件。
     fn settings_row(
         &self,
         label: String,
@@ -1308,6 +1463,7 @@ impl AppView {
             .into_any_element()
     }
 
+    /// 开关型设置行。
     #[allow(clippy::too_many_arguments)] // 与 config_service 同款：行渲染的固有形状参数。
     fn toggle_row(
         &self,
@@ -1330,6 +1486,7 @@ impl AppView {
             .into_any_element()
     }
 
+    /// 渲染开关控件。
     fn toggle_switch(on: bool, theme: Theme) -> AnyElement {
         div()
             .flex()
@@ -1345,6 +1502,7 @@ impl AppView {
             .into_any_element()
     }
 
+    /// 渲染可选项胶囊（单选/多选共用）。
     fn choice_chip(
         &self,
         id: String,
@@ -1387,6 +1545,7 @@ impl AppView {
             .into_any_element()
     }
 
+    /// 渲染通用单行输入框。
     fn text_field(
         &self,
         id: FieldId,
@@ -1468,6 +1627,7 @@ impl AppView {
             .into_any_element()
     }
 
+    /// 渲染「浏览…」按钮。
     fn browse_button(&self, id: FieldId, theme: Theme, cx: &mut Context<Self>) -> AnyElement {
         let (focus, probe) = self.config_focus(id.browse_id(), cx);
         div()
@@ -1491,6 +1651,7 @@ impl AppView {
             .into_any_element()
     }
 
+    /// 渲染路径字段（输入框 + 浏览按钮）。
     fn path_control(
         &self,
         id: FieldId,
@@ -1508,6 +1669,7 @@ impl AppView {
             .into_any_element()
     }
 
+    /// 渲染设置分组容器（分组标题 + 卡片）。
     fn group(&self, title: String, rows: Vec<AnyElement>, theme: Theme) -> AnyElement {
         div()
             .flex()
@@ -1534,6 +1696,7 @@ impl AppView {
             .into_any_element()
     }
 
+    /// 渲染列表行容器。
     fn list_row(
         &self,
         label: String,
@@ -1566,6 +1729,7 @@ impl AppView {
             .into_any_element()
     }
 
+    /// 渲染配置页整体布局。
     fn config_page(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         let theme = Theme::resolve(self.theme_mode.get(), theme::is_dark(window.appearance()));
         let (status_text, status_color) = self.save_state_text(&theme);
@@ -1962,6 +2126,7 @@ impl AppView {
             .into_any_element()
     }
 
+    /// 渲染左侧导航标签。
     fn nav_tab(
         page: Page,
         current: Page,
@@ -1995,6 +2160,7 @@ impl AppView {
             .child(label)
     }
 
+    /// 渲染日志级别筛选按钮组。
     fn level_filter_group(
         &self,
         current_level: LevelFilter,
@@ -2041,6 +2207,7 @@ impl AppView {
             }))
     }
 
+    /// 渲染详情面板的键值行。
     fn detail_row(&self, label: String, value: String, theme: &Theme) -> Div {
         div()
             .flex()
@@ -2409,6 +2576,7 @@ impl AppView {
             .into_any_element()
     }
 
+    /// 渲染单条日志卡片。
     fn log_card(theme: &Theme, content: impl IntoElement) -> Div {
         div()
             .flex_1()
@@ -2422,6 +2590,7 @@ impl AppView {
             .child(content)
     }
 
+    /// 渲染日志页头部（级别筛选与操作按钮）。
     fn log_header(&self, theme: &Theme) -> Div {
         div()
             .h(px(32.))
@@ -2452,6 +2621,7 @@ impl AppView {
             .child(div().flex_1().child(self.t(k::LOG_COL_MESSAGE)))
     }
 
+    /// 渲染日志列表行。
     fn log_row(
         &self,
         entry_index: usize,
@@ -2568,6 +2738,7 @@ impl AppView {
             .child(feedback.unwrap_or_else(|| self.t(label_key)))
     }
 
+    /// 渲染空列表占位。
     fn empty_state(&self, title: String, description: String, theme: &Theme) -> Div {
         div()
             .flex_1()
@@ -2592,6 +2763,7 @@ impl AppView {
             )
     }
 
+    /// 服务状态对应的状态色。
     fn service_state_color(state: ServiceRuntimeState, theme: &Theme) -> Rgba {
         match state {
             ServiceRuntimeState::Running => theme.success,
@@ -2607,6 +2779,7 @@ impl AppView {
         }
     }
 
+    /// 渲染服务页的键值行。
     fn service_row(
         &self,
         label: String,
@@ -2637,6 +2810,7 @@ impl AppView {
             .child(action)
     }
 
+    /// 渲染服务页操作按钮（启动/停止/安装/卸载）。
     #[allow(clippy::too_many_arguments)] // 与 config_service 同款：按钮渲染的固有形状参数。
     fn action_button(
         &self,
@@ -2698,10 +2872,41 @@ impl AppView {
         }
     }
 
+    /// 渲染水平分隔线。
     fn divider(theme: &Theme) -> Div {
         div().h(px(1.)).bg(theme.border)
     }
 
+    /// 1053 归因判据（带缓存）：`feedback_banner` 每帧渲染都会问一次"两边审计目录是否相同"，
+    /// 直接调 `connected_audit_dirs_match` 等于每帧 `is_file()` + 读 `config.json`（CodeRabbit
+    /// 返修：UI 线程同步读盘会拖住渲染）。缓存键变化才重算，命中缓存时零磁盘 IO。
+    ///
+    /// 两处例外（CodeRabbit 返修）：① 服务快照变更（含新 feedback 到达）时缓存被清空，
+    /// 新反馈绝不复用上一条反馈的结论；② 服务侧配置读不到/解析失败（`Unknown`）时不写缓存，
+    /// 避免把暂态读失败钉成 `false`，配置修好后仍不复核。
+    fn audit_dirs_match(&self, feedback: &ServiceFeedback) -> bool {
+        let key = AuditDirsMatchKey {
+            exit_code: feedback.exit_code,
+            message: feedback.message.clone(),
+            config_path: self.config_path.clone(),
+            worker_audit_directory: self.config.audit.log_directory.clone(),
+        };
+        if let Some((cached_key, cached)) = self.audit_dirs_match_cache.borrow().as_ref() {
+            if *cached_key == key {
+                return *cached;
+            }
+        }
+        let verdict = audit_dirs_match_verdict(&self.config, &self.config_path);
+        let mut cache = self.audit_dirs_match_cache.borrow_mut();
+        *cache = if verdict.is_cacheable() {
+            Some((key, verdict.is_matched()))
+        } else {
+            None
+        };
+        verdict.is_matched()
+    }
+
+    /// 渲染操作结果反馈条（成功/失败/进行中）。
     fn feedback_banner(&self, feedback: &ServiceFeedback, theme: &Theme) -> Div {
         let (color, label) = match feedback.status {
             photoprivacy_service::ServiceCommandStatus::Success => {
@@ -2736,8 +2941,14 @@ impl AppView {
         // 其余退出码与真超时（未连后台 Worker）保持原有 service.exitcode.* 映射。
         let connection = self.snapshot.state;
         let worker_mode = self.snapshot.worker_mode;
+        // #218：连后台 Worker 还不够，两边审计目录相同才成立——服务读的是安装时的
+        // config.json，UI 这份可能已被改成别的目录，此时 1053 只能算真超时。
+        // 只有 1053 才会用到这个判据：先短路掉 exit_code 判断，渲染路径上不做无谓的读盘；
+        // 1053 这一支走 `audit_dirs_match` 的缓存，同一份反馈重复渲染不再碰磁盘
+        // （CodeRabbit 返修：UI 线程每帧读盘会阻塞渲染）。
+        let audit_dirs_match = exit_code == Some(1053) && self.audit_dirs_match(feedback);
         let exit_code_key = exit_code.map(|code| {
-            if start_timeout_cause(code, connection, worker_mode)
+            if start_timeout_cause(code, connection, worker_mode, audit_dirs_match)
                 == StartTimeoutCause::SingleWriterYield
             {
                 k::SERVICE_EXITCODE_1053_SINGLE_WRITER.to_string()
@@ -2774,6 +2985,7 @@ impl AppView {
             )
     }
 
+    /// 渲染服务页整体布局。
     fn service_page(&self, theme: &Theme, cx: &mut Context<Self>) -> Div {
         let service = self.service.clone();
         let commands = self.service_commands.clone();
@@ -2923,14 +3135,17 @@ impl AppView {
     }
 }
 
+/// 按字段规格读取配置中的值。
 fn field_value(config: &AppConfig, id: FieldId) -> &str {
     (id.spec().value)(config)
 }
 
+/// 按字段规格取得配置值的可写引用。
 fn field_value_mut(config: &mut AppConfig, id: FieldId) -> &mut String {
     (id.spec().value_mut)(config)
 }
 
+/// 把字节下标回退到最近的合法 UTF-8 字符边界。
 fn floor_char_boundary(text: &str, mut index: usize) -> usize {
     index = index.min(text.len());
     while index > 0 && !text.is_char_boundary(index) {
@@ -2939,6 +3154,7 @@ fn floor_char_boundary(text: &str, mut index: usize) -> usize {
     index
 }
 
+/// 光标左侧相邻字符的边界位置。
 fn prev_char_boundary(text: &str, cursor: usize) -> usize {
     text[..cursor]
         .char_indices()
@@ -2947,6 +3163,7 @@ fn prev_char_boundary(text: &str, cursor: usize) -> usize {
         .unwrap_or(0)
 }
 
+/// 光标右侧相邻字符的边界位置。
 fn next_char_boundary(text: &str, cursor: usize) -> usize {
     text[cursor..]
         .char_indices()
@@ -2955,6 +3172,7 @@ fn next_char_boundary(text: &str, cursor: usize) -> usize {
         .unwrap_or(text.len())
 }
 
+/// 空值统一展示为破折号。
 fn or_dash(value: Option<String>) -> String {
     value
         .filter(|value| !value.is_empty())
@@ -2962,6 +3180,7 @@ fn or_dash(value: Option<String>) -> String {
 }
 
 impl Render for AppView {
+    /// AppView 渲染入口：按当前页面分发。
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = Theme::resolve(self.theme_mode.get(), theme::is_dark(window.appearance()));
         let rtl = self.rtl();
@@ -3069,36 +3288,159 @@ impl Render for AppView {
 mod tests {
     use super::*;
 
+    use crate::config::AuditConfig;
+
     use gpui::{
         AnyWindowHandle, AppContext, InputEvent, KeyUpEvent, Keystroke, TestAppContext,
         WindowHandle, size,
     };
 
-    /// #202 AC1/AC3：1053 只有在「此刻连着」后台 Worker 时才归因为单写者让位；真超时
-    /// （直连服务/未连接/连接失败后残留的 Background）与其余退出码必须保持原归因，
-    /// 不让真超时文案回归。
+    /// #202 AC1/AC3：1053 只有在「此刻连着」后台 Worker 且两边审计目录相同时才归因为
+    /// 单写者让位；真超时（直连服务/未连接/连接失败后残留的 Background）与其余退出码
+    /// 必须保持原归因，不让真超时文案回归。
     #[test]
     fn start_timeout_cause_distinguishes_yield_from_true_timeout() {
         assert_eq!(
             start_timeout_cause(
                 1053,
                 ConnectionState::Connected,
-                Some(WorkerMode::Background)
+                Some(WorkerMode::Background),
+                true
             ),
             StartTimeoutCause::SingleWriterYield
         );
         assert_eq!(
-            start_timeout_cause(1053, ConnectionState::Connected, Some(WorkerMode::Service)),
+            start_timeout_cause(
+                1053,
+                ConnectionState::Connected,
+                Some(WorkerMode::Service),
+                true
+            ),
             StartTimeoutCause::TrueTimeout
         );
         assert_eq!(
-            start_timeout_cause(1053, ConnectionState::Connected, None),
+            start_timeout_cause(1053, ConnectionState::Connected, None, true),
             StartTimeoutCause::TrueTimeout
         );
         assert_eq!(
-            start_timeout_cause(5, ConnectionState::Connected, Some(WorkerMode::Background)),
+            start_timeout_cause(
+                5,
+                ConnectionState::Connected,
+                Some(WorkerMode::Background),
+                true
+            ),
             StartTimeoutCause::TrueTimeout
         );
+    }
+
+    /// #218 AC2 回归锁：连后台 Worker 但审计目录不同时，1053 只能是真超时——
+    /// 两个 Worker 没争同一份目录，贴让位文案会让用户照着关后台 Worker 却修不好。
+    #[test]
+    fn start_timeout_cause_requires_matching_audit_directories() {
+        assert_eq!(
+            start_timeout_cause(
+                1053,
+                ConnectionState::Connected,
+                Some(WorkerMode::Background),
+                false
+            ),
+            StartTimeoutCause::TrueTimeout,
+            "目录不同时必须回落真超时归因"
+        );
+    }
+
+    /// #218：同一目录的 `C:\a\_audit` 与 `C:\a\_audit\` 不能算两个目录，否则让位文案会被
+    /// 归一化差异吃掉。
+    #[test]
+    fn audit_directory_key_ignores_trailing_separators_and_blank() {
+        assert_eq!(
+            audit_directory_key("  /data/_audit/  "),
+            audit_directory_key("/data/_audit")
+        );
+        assert_ne!(
+            audit_directory_key("/data/_audit"),
+            audit_directory_key("/data/_audit2")
+        );
+    }
+
+    /// Windows 路径大小写不敏感，只有该平台才做 lower 归一（Linux CI 上保留原样）。
+    #[cfg(windows)]
+    #[test]
+    fn audit_directory_key_is_case_insensitive_on_windows() {
+        assert_eq!(
+            audit_directory_key("C:\\Photos\\_audit"),
+            audit_directory_key("c:\\photos\\_AUDIT")
+        );
+    }
+
+    /// Windows 上 `/` 与 `\` 是等价分隔符：文件夹选择器给 `\`，手改 config.json 可能写 `/`，
+    /// 只做大小写归一仍会把同一目录算成两个（CodeRabbit 返修）。
+    #[cfg(windows)]
+    #[test]
+    fn audit_directory_key_normalizes_separators_on_windows() {
+        assert_eq!(
+            audit_directory_key("C:/Photos/_audit"),
+            audit_directory_key("c:\\photos\\_audit\\")
+        );
+    }
+
+    /// 盘根（`C:\`）的尾分隔符属于根本身：剥掉会变成盘相对路径 `C:`，两者是不同位置，
+    /// 归一化不得压成同一个键（CodeRabbit 返修）。
+    #[cfg(windows)]
+    #[test]
+    fn audit_directory_key_keeps_drive_root_separator() {
+        assert_eq!(audit_directory_key("C:\\"), "c:\\");
+        assert_eq!(audit_directory_key("C:/"), "c:\\");
+        assert_eq!(audit_directory_key("C:"), "c:");
+        assert_ne!(audit_directory_key("C:\\"), audit_directory_key("C:"));
+    }
+
+    /// #218：服务侧目录取自磁盘上安装时的 config.json；文件缺失/被移走时不得假定
+    /// "目录相同"，否则真超时又会被标成让位。
+    #[test]
+    fn connected_audit_dirs_match_reads_service_config_from_disk() {
+        let mut dir = std::env::temp_dir();
+        dir.push(format!("photoprivacy-218-audit-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let config_path = dir.join("config.json");
+
+        let worker_audit = dir.join("worker_audit").display().to_string();
+        let service_audit = dir.join("service_audit").display().to_string();
+        let config = AppConfig {
+            audit: AuditConfig {
+                log_directory: worker_audit.clone(),
+                ..AuditConfig::default()
+            },
+            ..AppConfig::default()
+        };
+
+        assert!(
+            !connected_audit_dirs_match(&config, &config_path),
+            "配置缺失时必须按目录不同处理"
+        );
+
+        let write_service_audit = |path: &str| {
+            let service_config = AppConfig {
+                audit: AuditConfig {
+                    log_directory: path.to_string(),
+                    ..AuditConfig::default()
+                },
+                ..config.clone()
+            };
+            std::fs::write(&config_path, service_config.to_json()).unwrap();
+        };
+
+        write_service_audit(&worker_audit);
+        assert!(connected_audit_dirs_match(&config, &config_path));
+
+        write_service_audit(&service_audit);
+        assert!(
+            !connected_audit_dirs_match(&config, &config_path),
+            "服务改用另一份审计目录后不得再判为同一目录"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// CodeRabbit 返修：#202 AC3 回归锁——连接失败时快照里的 `worker_mode` 可能仍是上次
@@ -3111,13 +3453,14 @@ mod tests {
             ConnectionState::Reconnecting,
         ] {
             assert_eq!(
-                start_timeout_cause(1053, state, Some(WorkerMode::Background)),
+                start_timeout_cause(1053, state, Some(WorkerMode::Background), true),
                 StartTimeoutCause::TrueTimeout,
                 "{state:?} 下残留 Background 不能归因为单写者让位"
             );
         }
     }
 
+    /// 测试：字段枚举与规格表的数量、id 必须一一对齐。
     #[test]
     fn field_ids_and_specs_stay_aligned() {
         // 防：FieldId 判别式与 FIELD_SPECS 顺序错位，编辑一个字段却写到另一个字段（#55）。
@@ -3304,6 +3647,7 @@ mod tests {
         }
     }
 
+    /// 测试环境：建单窗口 AppView 并完成首帧绘制。
     fn setup() -> (TestAppContext, WindowHandle<AppView>) {
         let mut cx = TestAppContext::single();
         cx.update(bind_focus_keys);
@@ -3359,6 +3703,7 @@ mod tests {
             .unwrap()
     }
 
+    /// 测试辅助：在给定上下文里推进一帧绘制。
     fn draw(cx: &mut TestAppContext, window: AnyWindowHandle) {
         cx.update_window(window, |_, window, cx| {
             window.draw(cx).clear(cx);
@@ -3366,6 +3711,7 @@ mod tests {
         .unwrap();
     }
 
+    /// 测试辅助：取窗口当前焦点句柄。
     fn focused(cx: &mut TestAppContext, window: AnyWindowHandle) -> Option<FocusHandle> {
         cx.update_window(window, |_, window, cx| window.focused(cx))
             .unwrap()

@@ -10,6 +10,7 @@ on:
   pull_request:
     paths:
       - "scripts/install-service.ps1"
+      - "scripts/service-worker-match.ps1"
       - "scripts/verify-windows-service.ps1"
       - "scripts/publish-app.ps1"
       - "config/config.sample.json"
