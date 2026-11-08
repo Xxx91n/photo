@@ -14,6 +14,10 @@ namespace PhotoPrivacy.IntegrationTests;
 /// （目标框架降级、GC 模式回退、Serilog 版本浮动），会在用户侧（#34 用户侧
 /// 复测）暴露兼容性问题。本守卫在 CI 静态锁定这些配置，防「升级后配置回潮」。
 ///
+/// #12 裁决：PublishReadyToRun=true 维持 props 中心化——与 AGENTS「发布属性只经脚本
+/// 传入」的冲突按改口径收口（其余发布属性只经发布脚本传入，ReadyToRun 是唯一例外，
+/// AGENTS.md 发布条目已同步拆分），本守卫的单一来源断言继续锁定该中心化。
+///
 /// 返修记录（PR #186 CodeRabbit 首轮 3 条 finding，逐项判定成立）：
 /// - Major（props 文本匹配不查冲突定义与工程级覆盖）：改为 XML 解析取活跃元素，
 ///   重复定义即红（MSBuild 后定义者胜）；新增工程级文件（csproj / 子目录 props）

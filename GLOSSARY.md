@@ -79,7 +79,7 @@
 **RID**：.NET 运行时标识符；本项目 7 个。
 **Shell（发布壳）**：编译产物不含 ExifTool 二进制，用户自配路径。
 **Release Directory**：`release/<rid>/` 平铺输出，UI 与 Worker 可执行文件同目录。
-**Publish Profile**：发布属性经发布脚本 `/p:` 传入，不写入 csproj。
+**Publish Profile**：SelfContained 等四个发布属性经发布脚本传入（`/p:` 与 `--self-contained` 开关），不写入 csproj / 工程级 props；`PublishReadyToRun=true` 例外中心化在 `Directory.Build.props`（#12 裁决）。
 **Manual Dispatch**：release.yml 仅手动触发；ci.yml 在 push/PR 自动跑测试。
 **Deb Package**：Linux .deb 包，打包可执行文件与运行时依赖。
 **App Bundle**：macOS .app 目录结构。
