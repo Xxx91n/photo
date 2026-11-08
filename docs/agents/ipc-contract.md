@@ -120,7 +120,7 @@ UI 侧并发探测（#59）：新 UI 另起短连接预算客户端（连接 250
 
 `Ping`、`GetStatus`、`Pause`、`Resume`、`GetExifToolVersion`、`Shutdown`、`ReloadConfig`、`GetRecentLogs`。
 `Shutdown` 仅 CLI 模式可用（服务/后台模式返回 `ok:false`，退出不要依赖它）。协议版本 `v` 当前为 1，
-唯一出处是 `WorkerIpcProtocol.Version`（`src/PhotoPrivacy.Ipc/WorkerIpcContracts.cs`）。
+唯一出处是 `WorkerIpcProtocol.Version`（`src/PhotoPrivacy.Ipc/WorkerIpcContracts.cs`）。 会话/启动顺序边界的版本协商语义见本文件「版本协商（#42）」。
 `ReloadConfig` 在服务模式与后台（托盘）模式下走同一方法、同一客户端实现，差异只是调用方当前连上的端点。
 重载失败（校验失败、重建失败）回 `ok:false` 并带 `message`；只有真正生效才回 `ok:true`
 ——失败不得再被吞成成功（#85）。处理链任何异常都必须仍回包（`ok:false`），响应写入不得依赖日志 provider 健康；
@@ -279,6 +279,15 @@ UI 内存里那份 `config.audit.log_directory`，服务用安装时落盘的 `c
 
 - Mutex：`Global\PhotoPrivacyUi_Instance`（POSIX 为 `$TMPDIR/photoprivacy-Global-PhotoPrivacyUi_Instance.lock`）。
 - 唤起管道：`PhotoPrivacyUi_ShowWindow`，消息 `SHOW_WINDOW\n`，500 ms 超时；属主只写打开兼容旧 UI 的 `PipeDirection.In`。
+
+## 版本协商（会话/启动顺序边界，#42）
+
+UI 可能先于 Worker 启动，双方通过请求/响应的 `v` 字段交换协议版本，协商本次会话实际使用的版本：
+
+- 客户端每条请求携带自身版本 `v`（默认 1，`PROTOCOL_VERSION`）；服务端每条响应携带自身版本 `V`（`WorkerIpcProtocol.Version`）。
+- 会话版本取 `min(客户端, 服务端)`：客户端在首次成功往返后观察服务端 `V`，与自身版本不等时按较低版本对齐后续请求，并在 stderr 记一次告警（如「协议版本不一致：客户端 v1，服务端 v2，本次会话已按 v1 运行」），不重复告警。
+- 服务端按不变量①（fail-closed）处理：客户端申报的 `v` 高于服务端所能说话的版本时，**不执行方法**，回 `ok:false` 并带 `message: "protocol_version_mismatch"`，响应仍回带 `V` 字段（服务端版本），供客户端据此下调。客户端收到此拒绝且响应携带更低的 `V` 时，立即用 `min` 版本重新建连并重试一次。
+- 当前协议版本为 1，双端均为 v1 时与既有行为完全一致：不告警、不额外往返、语义不变。此规则只为未来版本号变动时的窗口期定行为，不引入新 method，也不改既有字段语义。
 
 ## 改动规则
 

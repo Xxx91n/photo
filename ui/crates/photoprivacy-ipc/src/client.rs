@@ -1,10 +1,12 @@
 use crate::endpoints::Endpoint;
-use crate::protocol::{self, MAX_RESPONSE_BYTES, Request, Response, Status, methods};
+use crate::protocol::{
+    self, MAX_RESPONSE_BYTES, PROTOCOL_VERSION, Request, Response, Status, methods,
+};
 use crate::verify::{ServerGuard, ServerPeer, UnverifiablePolicy, VerifyOutcome};
 use std::fmt;
 use std::io;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU64, Ordering};
 use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 use tokio::time::{Instant, timeout};
@@ -104,6 +106,12 @@ pub struct IpcClient {
     next_id: AtomicU64,
     /// 服务端身份核验作用域（#7 残余①）：仅后台端点的连接被核验，服务端点不叠加（D3）。
     server_guard: Option<Arc<ServerGuard>>,
+    /// 服务端申报的协议版本（首次成功往返后观察），-1 表示尚未观察（#42：会话/启动顺序
+    /// 边界的版本协商）。会话版本取 min(客户端自身版本, 服务端版本)，与之不等时下调
+    /// 后续请求，而不上调——不会把客户端带到服务端不会说的版本。
+    observed: AtomicI32,
+    /// 版本不一致的告警是否已经记过，避免每条心跳都刷一次 stderr。
+    warned: AtomicBool,
 }
 
 impl Default for IpcClient {
@@ -120,6 +128,8 @@ impl IpcClient {
             gate: tokio::sync::Mutex::new(()),
             next_id: AtomicU64::new(1),
             server_guard: None,
+            observed: AtomicI32::new(-1),
+            warned: AtomicBool::new(false),
         }
     }
 
@@ -137,6 +147,34 @@ impl IpcClient {
     pub fn with_server_guard(mut self, guard: Arc<ServerGuard>) -> Self {
         self.server_guard = Some(guard);
         self
+    }
+
+    // Design(#42): 会话/启动顺序边界——UI 可能先于 Worker 启动；首次成功往返后观察服务端 V，
+    // 会话版本取 min(自身, 服务端)，与之不等时下调并记一次告警；收到 protocol_version_mismatch
+    // 拒收且响应携带更低 V 时，用对齐后版本重新建连重试一次，不让新旧版本混杂的窗口期
+    // 把 UI 永远拒在 Worker 之外。
+    /// 本次会话该用的协议版本。首次成功往返前按自身版本发送；观察到服务端 V 后，会话
+    /// 版本取 min(自身, 服务端)，与之不等时下调（#42：会话/启动顺序边界，UI 可能先于
+    /// Worker 启动，双方首次建连必须对齐到都会说的版本，不能按各自版本各走各的）。
+    fn negotiated_version(&self) -> i32 {
+        let observed = self.observed.load(Ordering::Relaxed);
+        if observed < 0 {
+            PROTOCOL_VERSION
+        } else {
+            observed.min(PROTOCOL_VERSION)
+        }
+    }
+
+    /// 记录服务端申报的协议版本；与自身版本不等时记一次下调告警，后续请求按 min 对齐。
+    /// 只记一次告警，避免每条心跳都刷 stderr。
+    fn observe_server_version(&self, server_version: i32) {
+        self.observed.store(server_version, Ordering::Relaxed);
+        if server_version != PROTOCOL_VERSION && !self.warned.swap(true, Ordering::Relaxed) {
+            let negotiated = self.negotiated_version();
+            eprintln!(
+                "[photoprivacy-ipc] 协议版本不一致：客户端 v{PROTOCOL_VERSION}，服务端 v{server_version}，本次会话已按 v{negotiated} 运行"
+            );
+        }
     }
 
     pub async fn status(&self, endpoint: &Endpoint) -> Result<(Status, Option<i32>), IpcError> {
@@ -200,38 +238,58 @@ impl IpcClient {
         let _gate = self.gate.lock().await;
         let id = format!("ui-{}", self.next_id.fetch_add(1, Ordering::Relaxed));
 
-        let mut stream = self.connect(endpoint).await?;
-        let mut payload = serde_json::to_vec(&Request::new(method, Some(id.as_str())))
-            .expect("请求序列化不应失败");
-        payload.push(b'\n');
+        // 最多两轮：首轮按自身版本发送；若被服务端按 fail-closed 拒收（协议版本不一致）且
+        // 响应里携带了更低的服务端版本，就下调到 min(自身, 服务端)、重新建连、重试一次
+        //（#42 会话/启动顺序边界：版本协商不能让新旧版本混杂的窗口期里 UI 永远连不上 Worker）。
+        let mut retried = false;
+        loop {
+            let version = self.negotiated_version();
 
-        let line = timeout(request_timeout, async {
-            stream.write_all(&payload).await?;
-            stream.flush().await?;
-            protocol::read_bounded_line(&mut stream, MAX_RESPONSE_BYTES).await
-        })
-        .await
-        .map_err(|_| IpcError::Timeout)?
-        .map_err(IpcError::Io)?;
+            let mut stream = self.connect(endpoint).await?;
+            let request = Request::with_version(method, Some(id.as_str()), version);
+            let mut payload = serde_json::to_vec(&request).expect("请求序列化不应失败");
+            payload.push(b'\n');
 
-        let line = match line {
-            Some(line) if !line.is_empty() => line,
-            Some(_) => {
-                return Err(IpcError::Io(io::Error::new(
-                    io::ErrorKind::UnexpectedEof,
-                    "Worker 关闭连接但没有响应",
-                )));
+            let line = timeout(request_timeout, async {
+                stream.write_all(&payload).await?;
+                stream.flush().await?;
+                protocol::read_bounded_line(&mut stream, MAX_RESPONSE_BYTES).await
+            })
+            .await
+            .map_err(|_| IpcError::Timeout)?
+            .map_err(IpcError::Io)?;
+
+            let line = match line {
+                Some(line) if !line.is_empty() => line,
+                Some(_) => {
+                    return Err(IpcError::Io(io::Error::new(
+                        io::ErrorKind::UnexpectedEof,
+                        "Worker 关闭连接但没有响应",
+                    )));
+                }
+                None => return Err(IpcError::Oversize),
+            };
+
+            let response: Response = serde_json::from_str(&line).map_err(IpcError::Protocol)?;
+            if let Some(server_version) = response.v {
+                self.observe_server_version(server_version);
             }
-            None => return Err(IpcError::Oversize),
-        };
+            if response.ok {
+                return Ok(response);
+            }
 
-        let response: Response = serde_json::from_str(&line).map_err(IpcError::Protocol)?;
-        if !response.ok {
+            if !retried
+                && response.message.as_deref() == Some("protocol_version_mismatch")
+                && response.v.is_some()
+            {
+                retried = true;
+                continue;
+            }
+
             return Err(IpcError::Rejected(
                 response.message.clone().unwrap_or_default(),
             ));
         }
-        Ok(response)
     }
 
     async fn connect(&self, endpoint: &Endpoint) -> Result<Stream, IpcError> {
@@ -607,6 +665,89 @@ mod tests {
         assert!(
             attempts >= 2,
             "应在连接预算内重试，实际接受 {attempts} 次连接"
+        );
+    }
+
+    #[test]
+    fn negotiated_version_starts_at_own_and_only_shifts_down() {
+        // #42：首次往返前按自身版本发；观察到服务端 V 后，会话版本取 min——服务端更高时
+        // 会话留在客户端版本，服务端更低时才下调，绝不把客户端带到服务端不会说的版本。
+        let client = IpcClient::new();
+        assert_eq!(client.negotiated_version(), PROTOCOL_VERSION);
+
+        client.observe_server_version(2);
+        assert_eq!(client.negotiated_version(), PROTOCOL_VERSION);
+
+        client.observe_server_version(0);
+        assert_eq!(client.negotiated_version(), 0);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn version_mismatch_is_downshifted_with_one_retry() {
+        // #42：客户端 v1 与服务端 v0 不一致时，首轮被 fail-closed 拒收且响应携带服务端
+        // V:0；客户端下调到 v0、重新建连、重试一次，会话最终可用；两轮请求版本应为 [1, 0]。
+        use std::sync::Mutex;
+        use tokio::io::AsyncReadExt;
+
+        let dir = std::env::temp_dir().join(format!("pp-t42-negotiate-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("创建临时目录");
+        let path = dir.join("worker.sock");
+        let listener = tokio::net::UnixListener::bind(&path).expect("绑定测试 socket");
+
+        let received = Arc::new(Mutex::new(Vec::<i32>::new()));
+        let received_for_serve = received.clone();
+
+        let serve = tokio::spawn(async move {
+            for _ in 0..2 {
+                let (mut stream, _) = match listener.accept().await {
+                    Ok(pair) => pair,
+                    Err(_) => return,
+                };
+                let mut buf = [0u8; 1024];
+                let n = match stream.read(&mut buf).await {
+                    Ok(n) => n,
+                    Err(_) => return,
+                };
+                let parsed: Option<serde_json::Value> = serde_json::from_str::<serde_json::Value>(
+                    String::from_utf8_lossy(&buf[..n]).trim(),
+                )
+                .ok();
+                let Some(v) = parsed
+                    .as_ref()
+                    .and_then(|val| val.get("v"))
+                    .and_then(|v| v.as_i64())
+                    .map(|v| v as i32)
+                else {
+                    return;
+                };
+                received_for_serve.lock().expect("锁").push(v);
+
+                let reply = if v == 1 {
+                    // 服务端 v0 按 fail-closed 拒收客户端申报的 v1，回带自身版本 v0
+                    r#"{"ok":false,"message":"protocol_version_mismatch","id":"ui-1","v":0}"#
+                } else {
+                    r#"{"ok":true,"id":"ui-2","v":0}"#
+                };
+                let _ = stream.write_all(reply.as_bytes()).await;
+                drop(stream);
+            }
+        });
+
+        let endpoint = Endpoint::UnixSocket(path.clone());
+        let client = IpcClient::new();
+        let ok = client.is_alive(&endpoint).await;
+
+        // 客户端返回后，停止等待后续连接，避免测试因首轮异常而挂起
+        serve.abort();
+        let _ = serve.await;
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert!(ok, "版本协商下调重试后，会话应恢复可用");
+        assert_eq!(
+            *received.lock().expect("锁"),
+            vec![1, 0],
+            "首轮按自身版本发送，被拒收后按 min 对齐版本重新建连重试"
         );
     }
 }
