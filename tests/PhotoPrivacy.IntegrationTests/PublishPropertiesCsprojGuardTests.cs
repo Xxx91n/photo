@@ -2,9 +2,13 @@ namespace PhotoPrivacy.IntegrationTests;
 
 /// <summary>
 /// （correctness-round 顺带发现收口；#61 切换日对账）：
-/// 发布属性单一来源守卫——生产 csproj 不得直接持有 SelfContained / PublishSingleFile /
-/// IncludeNativeLibrariesForSelfExtract / PublishTrimmed；publish-app.ps1 与 publish.sh 的
-/// Worker 一条 dotnet publish 调用必须带齐三枚 /p: 标志。
+/// 发布属性单一来源守卫——生产工程文件（csproj 与 props）不得直接持有 SelfContained /
+/// PublishSingleFile / IncludeNativeLibrariesForSelfExtract / PublishTrimmed；publish-app.ps1
+/// 与 publish.sh 的 Worker 一条 dotnet publish 调用必须带齐三枚 /p: 标志和 --self-contained。
+/// #12 收口：脚本段补 --self-contained 断言（原先只查三枚 /p:，self-contained 主张无断言），
+/// 扫描面补 props 文件（原先只扫 src 的 csproj，Directory.Build.props 回潮看不见）；
+/// PublishReadyToRun 不在本守卫四个属性之列——#12 裁决其中心化在 Directory.Build.props，
+/// 单一来源由 Net10CompatibilityGuardTests 锁定。
 /// 旧 Ui 工程退役（#61）后 UI 侧 dotnet publish 消失：GUI 入口改为 cargo 构建的
 /// photoprivacy-ui（Windows 走 windows-gnu target + windres，见 ui/crates/photoprivacy-ui/build.rs），
 /// 复制为 PhotoPrivacy(.exe) 作为发布入口——本守卫同时钉住这条接法不被回退。
@@ -24,6 +28,8 @@ public sealed class PublishPropertiesCsprojGuardTests
         "/p:PublishSingleFile=true",
         "/p:IncludeNativeLibrariesForSelfExtract=true",
         "/p:PublishTrimmed=false",
+        // self-contained 经 --self-contained 开关传（值由脚本参数推导），不走 /p:，故 token 只锚开关名。
+        "--self-contained",
     ];
 
     internal static List<string> ClassifyCsprojPublishProperties(string csprojContent, string label)
@@ -33,8 +39,8 @@ public sealed class PublishPropertiesCsprojGuardTests
         {
             if (csprojContent.Contains("<" + prop + ">", StringComparison.Ordinal))
             {
-                violations.Add(label + ": csproj 直接持有发布属性 <" + prop +
-                               ">（发布属性只在发布脚本 /p: 传递）");
+                violations.Add(label + ": 工程文件直接持有发布属性 <" + prop +
+                               ">（发布属性只在发布脚本传递；PublishReadyToRun 例外中心化于 Directory.Build.props，#12）");
             }
         }
 
@@ -43,7 +49,7 @@ public sealed class PublishPropertiesCsprojGuardTests
 
     internal static List<string> ClassifyPublishScript(string script, string label)
     {
-        // Worker 的 dotnet publish 调用段必须带齐三枚 /p: 标志；UI 侧走 cargo（见 ClassifyCargoUiEntry）。
+        // Worker 的 dotnet publish 调用段必须带齐三枚 /p: 标志和 --self-contained；UI 侧走 cargo（见 ClassifyCargoUiEntry）。
         // 先剥脚本注释（PowerShell/shell 的 # 行注释）：注释里残留的 token 不得让守卫骗绿（#61）。
         script = StripHashComments(script);
         var violations = new List<string>();
@@ -146,6 +152,26 @@ public sealed class PublishPropertiesCsprojGuardTests
     }
 
     [Fact]
+    public void Production_Props_Files_Should_Not_Hold_Script_Passed_Publish_Properties()
+    {
+        // #12 守卫缺口收口：四个脚本传入的发布属性若回潮进根 Directory.Build.props 或 src 的
+        // props 文件，csproj 扫描面看不见（Directory.Build.props 全工程导入，回潮面更大）。
+        // PublishReadyToRun 例外：#12 裁决中心化于此，不在本守卫四属性之列（由
+        // Net10CompatibilityGuardTests 锁单一来源），此处合法存在不得报红。
+        var repoRoot = SourceLint.RepoRoot;
+        var violations = new List<string>();
+        var propsFiles = Directory.GetFiles(Path.Combine(repoRoot, "src"), "*.props", SearchOption.AllDirectories)
+            .Append(Path.Combine(repoRoot, "Directory.Build.props"));
+        foreach (var file in propsFiles)
+        {
+            violations.AddRange(ClassifyCsprojPublishProperties(
+                File.ReadAllText(file), file[(repoRoot.Length + 1)..]));
+        }
+
+        Assert.True(violations.Count == 0, string.Join(Environment.NewLine, violations));
+    }
+
+    [Fact]
     public void Publish_Scripts_Should_Pass_SingleFile_Flags_And_Wire_Cargo_Ui_Entry()
     {
         var violations = new List<string>();
@@ -159,7 +185,7 @@ public sealed class PublishPropertiesCsprojGuardTests
     [Fact]
     public void Publish_Properties_Guard_Negative_Self_Proof()
     {
-        // 失效即红自证：csproj 回潮 / 脚本掉标志 / 入口接法回退三类篡改必须报红，基线必须绿。
+        // 失效即红自证：工程文件回潮（csproj / props）/ 脚本掉标志 / 入口接法回退各类篡改必须报红，基线必须绿。
         var failures = new List<string>();
 
         const string cleanCsproj = "<Project><PropertyGroup><OutputType>Exe</OutputType></PropertyGroup></Project>";
@@ -174,6 +200,22 @@ public sealed class PublishPropertiesCsprojGuardTests
         if (ClassifyCsprojPublishProperties(driftCsproj, "x.csproj").Count == 0)
         {
             failures.Add("MISSED: csproj 回潮 <PublishSingleFile> 未红");
+        }
+
+        // #12：props 扫描面的红/绿自证——基线 Directory.Build.props 只含中心化的
+        // PublishReadyToRun，必须绿；回潮进脚本传入四属性之一必须红。
+        var greenProps = SourceLint.Read("Directory.Build.props");
+        if (ClassifyCsprojPublishProperties(greenProps, "Directory.Build.props").Count != 0)
+        {
+            failures.Add("baseline Directory.Build.props 误报（PublishReadyToRun 为 #12 裁决的中心化例外）");
+        }
+
+        var driftProps = greenProps.Replace(
+            "</PropertyGroup>", "<PublishTrimmed>true</PublishTrimmed></PropertyGroup>",
+            StringComparison.Ordinal);
+        if (ClassifyCsprojPublishProperties(driftProps, "Directory.Build.props").Count == 0)
+        {
+            failures.Add("MISSED: props 回潮 <PublishTrimmed> 未红");
         }
 
         var greenScript = SourceLint.Read("scripts", "publish-app.ps1");
@@ -193,6 +235,21 @@ public sealed class PublishPropertiesCsprojGuardTests
             if (ClassifyPublishScript(tampered, "publish-app.ps1").Count == 0)
             {
                 failures.Add("MISSED: Worker publish 调用掉标志未红");
+            }
+        }
+
+        // #12：self-contained 断言的失效自证——调用段掉 --self-contained 必须红。
+        var scIdx = greenScript.IndexOf("--self-contained", StringComparison.Ordinal);
+        if (scIdx < 0)
+        {
+            failures.Add("MUTATION DID NOT APPLY: publish-app.ps1 无 --self-contained");
+        }
+        else
+        {
+            var scTampered = greenScript[..scIdx] + greenScript[(scIdx + "--self-contained".Length)..];
+            if (ClassifyPublishScript(scTampered, "publish-app.ps1").Count == 0)
+            {
+                failures.Add("MISSED: Worker publish 调用掉 --self-contained 未红");
             }
         }
 
