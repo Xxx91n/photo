@@ -13,7 +13,7 @@
 
 ## `exiftool.path` 指向安装目录（#33）
 
-除填可执行文件的完整路径外，也可以填一个**目录**（对齐 ExifToolGUI 的 `ETOverrideDir` 做法）：Worker 加载配置时会解析出该目录内的 `exiftool.exe`（Windows）或 `exiftool`（Linux/macOS），再按同一套规则校验伴随的 `exiftool_files/` 或 `lib/`。因此「自带一份官方版 ExifTool」不需要把路径写到文件级，指向解压后的目录即可；目录内缺可执行文件或缺运行时目录时，启用监控会按原口径拒绝，不会延迟到 `stay_open` 桥接启动期才失败。
+除填可执行文件的完整路径外，也可以填一个**目录**（对齐 ExifToolGUI 的 `ETOverrideDir` 做法）：Worker 加载配置时会解析出该目录内的 `exiftool.exe`（Windows）或 `exiftool`（Linux/macOS），再按同一套规则校验伴随的 `exiftool_files/` 或 `lib/`。因此「自带一份官方版 ExifTool」不需要把路径写到文件级，指向解压后的目录即可；目录内缺可执行文件或缺运行时目录时，启用监控会按同一套校验直接拒绝，不会延迟到 `stay_open` 桥接启动期才失败。
 
 UI 配置页保存时仍原样保留你填的目录（不改写为绝对路径），解析只在 Worker 加载时发生——发布包换目录解压后不会残留旧机器的绝对路径。
 
@@ -21,7 +21,7 @@ UI 配置页保存时仍原样保留你填的目录（不改写为绝对路径�
 
 **覆盖模式的信任边界**：该目录被视为完全可信——只校验「可执行文件 + 伴随目录（`exiftool_files/` 或 `lib/`）」的布局，不校验归档来源、签名或内容完整性；跳过 SHA256 钉扎是刻意的（用户自带版本未必是发布包钉死的那个）。`exiftool -ver` 探针失败或缺 `perl` 的构建主机只告警、不阻断打包。默认下载通道不受影响，仍强制按钉死 SHA256 校验。
 
-默认下载通道的 SHA256 钉死值由 `scripts/verify-exiftool-download.sh` 与官方 `https://exiftool.org/checksums.txt` 对账（CI 在发布脚本变更时触发，另做周常巡检）；该脚本的硬判定是校验值一致，下载 URL 可达性只作软检查并如实标注。
+默认下载通道的 SHA256 钉死值由 `scripts/verify-exiftool-download.sh` 与官方 `https://exiftool.org/checksums.txt` 核对（CI 在发布脚本变更时触发，另做周常巡检）；该脚本的硬判定是校验值一致，下载 URL 可达性只作软检查并如实标注。
 
 ## 校验分层
 

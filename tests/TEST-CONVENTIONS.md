@@ -2,7 +2,7 @@
 
 > 定位：本文件是 `tests/` 的**测试约定区**——写测试（尤其 source-lint 类文本断言）前必读，撞红时按本文件处置。
 > 立策：ui-craft 轮（2026-09-12），依据「守卫哲学 = C（atomcode 调研版，撞红即治理）」。
-> 关联：docs/design/ui-visual-standard.md（旧栈历史视觉规范存档，现役视觉见 #49 T4 六锚与 docs/agents/ui-smoke.md）。
+> 关联：现役视觉标准看 #49 T4 的六个参照点与 docs/agents/ui-smoke.md。
 
 ## 0. 适用范围
 
@@ -56,7 +56,7 @@ public void Theme_Swatch_Count_Must_Be_Five() { ... }   // 无注释：不知道
 1. 三档分类的结论必须写进当期报告（声明→证据→结论对照表），并**逐项记录三档分类数**（度量要求）。
 2. 文本断言占比如期**自然收敛**，不设一次性清理目标、不立专项（atomcode 已否决「全量三档分类专修」：巨型无行为 diff、无触发信号）。
 3. 所有防回潮机制必须有「**失效即红**」自检——防恒绿（tokenlint 式假绿事故教训）。
-4. 视觉一致性验收**永不交给纯文本断言单独背锅**：行为机制 + 人工目检分工（现役口径见 docs/agents/ui-smoke.md，历史对照流程见 ui-visual-standard.md §7）。
+4. 视觉一致性验收**永不交给纯文本断言单独背锅**：行为机制 + 人工目检分工（现役做法见 docs/agents/ui-smoke.md）。
 
 ## R3. 命名与分类（Category trait）统一口径 —— 测试类怎么叫、怎么归类
 

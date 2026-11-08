@@ -1,8 +1,8 @@
 # 发布 Runbook：手动打包链路（发布顺序 + 校验步骤）
 
-> 本票载体：#26（迁移自治理清理前的 backlog 载体，原文件已删除，issue #26 是唯一存续记录）。
+> 本票载体：#26（迁移自更早的 backlog 清理记录，原文件已删除，issue #26 是现在唯一的记录）。
 > 发版动作只在发版机上由人执行，agent 不主动触发。事实源是三个脚本本身：
-> `scripts/release-readiness.ps1`（门禁）、`scripts/publish-app.ps1`（Windows）、`scripts/publish.sh`（Unix）。
+> `scripts/release-readiness.ps1`（发版前检查）、`scripts/publish-app.ps1`（Windows）、`scripts/publish.sh`（Unix）。
 > 脚本改了，本文同步改。
 
 ## 0. 前置条件
@@ -26,13 +26,13 @@
 git status   # 工作区干净，HEAD 即要发的提交
 ```
 
-### 第 2 步：确认质量门
+### 第 2 步：跑发版前检查
 
-门禁脚本 `scripts/release-readiness.ps1`（内含 dotnet test → smoke dry-run → publish-app）**只覆盖 Windows**。发 Unix 包前没有现成门禁，先确认 CI 全绿（或本机补跑 `dotnet test PhotoPrivacy.sln`），再打包。
+检查脚本 `scripts/release-readiness.ps1`（内含 dotnet test → smoke dry-run → publish-app）**只覆盖 Windows**。发 Unix 包前没有现成检查脚本，先确认 CI 全绿（或本机补跑 `dotnet test PhotoPrivacy.sln`），再打包。
 
 ### 第 3 步：打包（平台二选一）
 
-**Windows**（`scripts/publish-app.ps1`；发版机可直接用门禁一步到位，见下）：
+**Windows**（`scripts/publish-app.ps1`；发版机可直接用检查脚本一步到位，见下）：
 
 ```powershell
 # 最简（把 1.2.3 换成要发的版本号）：
@@ -50,7 +50,7 @@ powershell -ExecutionPolicy Bypass -File scripts/publish-app.ps1 -Version 1.2.3 
 
 `-ExifToolZip` 与 `-ExifToolPathOverride` 互斥，同时给会报错（防止一个被静默忽略）。
 
-Windows 一键门禁（测试 + 冒烟 + 打包连跑，任何一步失败即停并打印输出尾部）：
+Windows 一键检查（测试 + 冒烟 + 打包连跑，任何一步失败即停并打印输出尾部）：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/release-readiness.ps1 -Version <版本>
@@ -88,8 +88,8 @@ RID 由构建主机自动推导（linux-x64 / linux-arm64 / osx-x64 / osx-arm64�
    - 覆盖模式（两平台）：无校验值输出。在具备运行条件的同平台机器上运行包内 ExifTool 的 `-ver`，确认退出码 0 且输出版本号才算过；不过就修覆盖目录、重新打包复验，不要放行。
 3. **包内布局齐全**（对照 §3 清单，缺一项就是打包脚本断了，停下来查，不要手补）。
 4. **入口能起**：包根直接运行 `PhotoPrivacy(.exe)`，确认新 UI 起得来、能连上 Worker（Windows 重点是应用清单生效——gpui 依赖 comctl32 v6，缺清单启动即失败）。
-5. **视觉冒烟**（Windows 可选但建议）：按 `docs/agents/ui-smoke.md` 的口径过一遍。
-6. **强杀门禁**（Windows）：⚠️ **当前不可用**——`verify-force-kill-cleanup.ps1` 取包路径是 `publish\`，而打包产物落在 `release\`，直接跑必报 `Package not found`（脚本历史遗留 bug，修复前跳过这步）。
+5. **视觉冒烟**（Windows 可选但建议）：照 `docs/agents/ui-smoke.md` 的步骤过一遍。
+6. **强杀检查**（Windows）：⚠️ **当前不可用**——`verify-force-kill-cleanup.ps1` 取包路径是 `publish\`，而打包产物落在 `release\`，直接跑必报 `Package not found`（脚本历史遗留 bug，修复前跳过这步）。
 
 ### 第 5 步：安装（目标机）
 
