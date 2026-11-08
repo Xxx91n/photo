@@ -1,5 +1,7 @@
 use crate::endpoints::Endpoint;
-use crate::protocol::{self, MAX_RESPONSE_BYTES, Request, Response, Status, methods};
+use crate::protocol::{
+    self, MAX_RESPONSE_BYTES, PROTOCOL_VERSION, Request, Response, Status, methods,
+};
 use crate::verify::{ServerGuard, ServerPeer, UnverifiablePolicy, VerifyOutcome};
 use std::fmt;
 use std::io;
@@ -680,11 +682,13 @@ mod tests {
         assert_eq!(client.negotiated_version(), 0);
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn version_mismatch_is_downshifted_with_one_retry() {
         // #42：客户端 v1 与服务端 v0 不一致时，首轮被 fail-closed 拒收且响应携带服务端
         // V:0；客户端下调到 v0、重新建连、重试一次，会话最终可用；两轮请求版本应为 [1, 0]。
         use std::sync::Mutex;
+        use tokio::io::AsyncReadExt;
 
         let dir = std::env::temp_dir().join(format!("pp-t42-negotiate-{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("创建临时目录");

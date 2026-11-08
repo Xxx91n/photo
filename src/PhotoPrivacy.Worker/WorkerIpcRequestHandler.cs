@@ -57,11 +57,12 @@ public sealed class WorkerIpcRequestHandler
             return (new WorkerIpcResponse(false, Message: "invalid request", V: ProtocolVersion), false);
         }
 
-        // Design(#42): 会话/启动顺序边界——UI 可能先于 Worker 启动，双方通过请求/响应的 v 字段
+        // 会话/启动顺序边界——UI 可能先于 Worker 启动，双方通过请求/响应的 v 字段
         // 交换协议版本。客户端申报的版本高于服务端所能说话的版本时，按不变量①（fail-closed）
         // 不执行该方法，回 protocol_version_mismatch 并把服务端 V 带回，供客户端下调重试；
         // 申报小于等于服务端版本（或干脆不申报 v）时正常处理，响应照常回带服务端 V。
         // 会话版本由客户端取 min(客户端版本, 服务端版本)，与既有 v1 双端完全兼容。
+        // Design(#42): 会话/启动顺序边界——客户端与服务端通过 v 字段协商版本，不一致时下调对齐。
         var clientVersion = request.V;
         if (clientVersion is { } v && v > WorkerIpcProtocol.Version)
         {
@@ -222,7 +223,7 @@ public sealed class WorkerIpcRequestHandler
     /// Read the tail N lines of today audit JSONL file.
     /// Returns empty array if the log directory or file is missing.
     /// </summary>
-    // Design(#41): 读取只认基础名 audit-<date>.jsonl，分卷 audit-<date>_N.jsonl 的行不返回——记录在案的接受行为，非缺陷；分卷与清理生命周期归 #41。
+    // Design(#231): 读取只认基础名 audit-<date>.jsonl，分卷 audit-<date>_N.jsonl 的行不返回——记录在案的接受行为，非缺陷；分卷与清理生命周期归 #231（原登记 #41 已关闭）。
     private string[] ReadRecentAuditLogs(int maxLines)
     {
         try
