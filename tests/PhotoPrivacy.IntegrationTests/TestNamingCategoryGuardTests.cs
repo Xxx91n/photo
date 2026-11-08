@@ -25,9 +25,12 @@ public sealed class TestNamingCategoryGuardTests
         new("\\[" + @"\s*(?:Xunit\.)?(?:Fact|Theory)(?:Attribute)?\b",
             RegexOptions.Compiled, TimeSpan.FromSeconds(5));
 
-    /// <summary>Category trait 声明。分片拼接是刻意的：本文件源码不得出现连续的 [Trait( 字面量，否则守卫自己踩线。</summary>
+    /// <summary>
+    /// Category trait 声明：覆盖命名空间限定与 Attribute 后缀形态（CodeRabbit #233 第三轮审查补漏）。
+    /// 分片拼接是刻意的：本文件源码不得出现连续的 [Trait( 字面量，否则守卫自己踩线。
+    /// </summary>
     private static readonly Regex CategoryTraitPattern =
-        new("\\[" + "Trait" + @"\(\s*""Category""\s*,\s*""([^""]*)""\s*\)",
+        new("\\[" + @"\s*(?:Xunit\.)?" + "Trait" + @"(?:Attribute)?\s*\(\s*""Category""\s*,\s*""([^""]*)""\s*\)",
             RegexOptions.Compiled, TimeSpan.FromSeconds(5));
 
     // 同上：口径字面量不在本文件连续出现——目录对齐检查复用 CategoryTraitPattern 的抓取结果。
