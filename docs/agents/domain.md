@@ -1,16 +1,18 @@
-# Domain Docs
+# 领域文档
 
-How the engineering skills should consume this repo's domain documentation when exploring the codebase.
+这里说明改这个仓库时，怎么用它的领域文档。
 
-## Before exploring, read these
+## 开工前先读这份
 
-- **`GLOSSARY.md`** at the repo root.
+- 仓库根目录的 **`GLOSSARY.md`**。
 
-If the file doesn't exist, **proceed silently**. Don't flag its absence; don't suggest creating it upfront. The `/domain-modeling` skill (reached via `/grill-with-docs` and `/improve-codebase-architecture`) creates it lazily when terms actually get resolved.
+词表就是这套领域说法的唯一来源：表里怎么写的，文档、issue、注释、测试名就怎么说。
+表里没有的词，别自己造，直接用一句人话把事情说清楚。
+确实缺了一个反复要用的概念，就记下来，下次整理词表时补进去。
 
-## File structure
+## 仓库结构
 
-Single-context repo:
+单一代码库，词表在根目录：
 
 ```
 /
@@ -18,12 +20,13 @@ Single-context repo:
 └── src/
 ```
 
-## Use the glossary's vocabulary
+## 说话跟着词表走
 
-When your output names a domain concept (in an issue title, a refactor proposal, a hypothesis, a test name), use the term as defined in `GLOSSARY.md`. Don't drift to synonyms the glossary explicitly avoids.
+写 issue 标题、重构方案、假设、测试名这些落到纸面的东西时，涉及领域概念的词
+按 `GLOSSARY.md` 里的写法来，不要换成表里明确不用的近义词
+（哪些不用，见词表里“以后别用的说法”那张对照表）。
 
-If the concept you need isn't in the glossary yet, that's a signal: either you're inventing language the project doesn't use (reconsider) or there's a real gap (note it for `/domain-modeling`).
+## 决策写在代码旁边
 
-## Decisions
-
-Architectural decisions that cannot be inferred from the code are written as a self-contained comment at the point they constrain. There is no separate ADR directory; when a decision matters, the comment above the code carries it.
+代码里看不出来的架构决策，直接写成一句说明，放在它约束的那行代码旁边。
+没有单独的决策记录目录；重要的决定就写在它约束的那行注释里。
