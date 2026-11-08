@@ -2,7 +2,7 @@
 
 > 这份文件说的是 `tests/` 里写测试的规矩——尤其是那些把源码、配置、文档当文本检查的测试。动手写之前先读一遍；测试失败时按这里的办法处置。
 > 由来：ui-craft 轮（2026-09-12），依据当时的调研结论——测试失败要先判断该删、该改还是该留，不许为了让它通过就顺手改断言。
-> 关联：docs/design/ui-visual-standard.md（旧界面框架的历史视觉规范存档；现在的视觉标准看 #49 T4 的六个参照点和 docs/agents/ui-smoke.md）。
+> 关联：现在的视觉标准看 #49 T4 的六个参照点与 docs/agents/ui-smoke.md（旧界面框架的视觉规范存档已随 #254 删除，git 历史可查）。
 
 ## 0. 适用范围
 
@@ -58,7 +58,7 @@ public void Theme_Swatch_Count_Must_Be_Five() { ... }   // 没注释：不知道
 1. 三类的结论要写进当期报告（声明→证据→结论对照表），并**逐类记数**（删了几条、改了几条、留了几条）。
 2. 文本断言的占比顺其**自然下降**，不定一次性清理目标、不立专项（当初已否决「全量分类大扫除」：diff 巨大、没有触发信号）。
 3. 所有防老毛病的机制都要有「**自己坏了会测试失败**」的自检——防止检查本身坏掉还一直显示通过（tokenlint 式假通过的事故教训）。
-4. 视觉一致性**永远不要只靠文本断言单独背锅**：行为机制和人工目检分工（现在的做法见 docs/agents/ui-smoke.md，历史对照流程见 ui-visual-standard.md §7）。
+4. 视觉一致性**永远不要只靠文本断言单独背锅**：行为机制和人工目检分工（现在的做法见 docs/agents/ui-smoke.md）。
 
 ## R3. 测试类怎么命名、怎么分类（Category trait）——统一规则
 
@@ -90,3 +90,4 @@ public void Theme_Swatch_Count_Must_Be_Five() { ... }   // 没注释：不知道
 | 2026-11-08 | #12 | §3 剥注释补 XML 工程文件豁免：解析器判注释、读取走 `SourceLint.Read` |
 | 2026-11-08 | #14 | 新增 R3 命名与分类规则 + `TestNamingCategoryGuardTests` 三条硬性要求；存量对齐（`RealExifToolProbeTest` → `RealExifToolProbeTests` 并搬进 `ExifTool\`、`ReleaseReadinessFullCaptureGuardTests` 搬出 `Smoke\`） |
 | 2026-11-09 | #253 | 去掉对两个已删测试的引用，R1 示例换成现役的 `PublishPropertiesCsprojGuardTests`；正文按 GLOSSARY 新词表全部改成人话 |
+| 2026-11-09 | #254 | 关联行不再指向已删的旧 UI 视觉规范存档文档（随本票删除，git 历史可查） |

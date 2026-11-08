@@ -265,9 +265,9 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
             _jobObject = null;
 
             // 5. Clean up remaining resources.
-            // stdin StreamWriter.Dispose 在进程已死时会抛 IOException: Pipe is broken（#37，
-            // ui-smoke.md L 组 L9 段）——停机预期形态，降 Debug 不进停机日志；
-            // 其余异常留 Warning 痕后继续拆卸（停机收尾不阻断，与 StopBridgeAsync 口径一致）。
+            // stdin StreamWriter.Dispose 在进程已死时会抛 IOException: Pipe is broken（#37；
+            // #31 轮 2026-11-04 实机观察，原记录已随 #254 移入 git 历史）——停机预期形态，降 Debug 不进停机日志；
+            // 其余异常留 Warning 后继续拆卸（停机收尾不阻断，与 StopBridgeAsync 同一处理方式）。
             try
             {
                 _stdin?.Dispose();

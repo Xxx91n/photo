@@ -15,13 +15,13 @@ public static class WorkerIpcEndpointNames
     // 旧落点 /run/photoprivacy/worker-background.sock 对普通用户是死路：该目录只由 systemd
     // RuntimeDirectory 在服务模式创建（0750 服务用户），普通用户拉起的后台 Worker 在 /run 下
     // mkdir 吃 EACCES，UI 连接编排只见 ENOENT——未安装服务时回落不到后台模式
-    // （docs/agents/ui-smoke.md L 组新观察 2）。迁往 per-user 会话运行时目录
+    // （#31 轮 2026-11-04 实机观察，原记录已随 #254 移入 git 历史）。迁往 per-user 会话运行时目录
     // （pam_systemd/logind 按会话建 /run/user/<uid>，0700 属主用户），与 macOS 背景端点
     // per-user（HOME）、Windows 背景管道 CurrentUserOnly 的平台语义同构。
     // XDG_RUNTIME_DIR 缺失/空/非绝对根路径 → 解析为 null（背景端点不可用），与 macOS 缺 HOME
     // 形态对称；不回落 /run/photoprivacy（缺陷本体），也不回落 /tmp（世界可写目录的可预测
     // 路径 = CWE-377 预蹲面，且跨用户端点相撞）。与 Rust 侧 endpoints.rs 的
-    // linux_background_endpoint 逐字同构（对账守卫：IpcAuthClaimReconciliationTests 的 #201
+    // linux_background_endpoint 逐字同构（对照检查：IpcAuthClaimReconciliationTests 的 #201
     // 对；双端行为测试钉同一路径形态）。
     public const string LinuxRuntimeDirectoryVariable = "XDG_RUNTIME_DIR";
     public const string LinuxBackgroundSocketDirectoryName = "photoprivacy";

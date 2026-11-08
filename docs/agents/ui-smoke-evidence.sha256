@@ -65,13 +65,16 @@ e24888abe032523320c4873e737e3531d36944111ff4654fb623ba62610f9cb2  K154-04-overvi
 
 # ─── S267 组实机证据 SHA256 清单 — #58 S2/S6/S7（2026-11-05，Windows 实机：服务页 UI 安装/停止/卸载）───
 #
+# （2026-11-09 #254：该轮的说明性记录已随 ui-smoke.md 历史清理移入 git 历史，本段上下文
+#  与哈希条目保留原样，逐项现象描述可从 #254 之前的 ui-smoke.md 版本取回。）
+#
 # 产物：Release run 41882966311 / ref main / head 9acb72f / version 0.1.0-verify58s /
 # create_release=false 的 release-win-x64（head = #58 窗口记录的起始基准，本地零编译）。
 # 二进制实测（S0-artifact.txt）：PhotoPrivacy f10ef2bb… / PhotoPrivacyWorker 742b4e04…；
 # config.json 与 sample 逐字节相同（出厂空串，全程未动）。
 # 实机 = Windows 桌面（用户 Administrator，EnableLUA=0）；取证通道 = agent 桌面截图 +
 # SetCursorPos/mouse_event（#125/#88 先例），工具 photo-smoke-58\tools\winshot.ps1
-# （PowerShell/.NET 实现；「位置重设+点击+等待+截屏」单进程原子轮，见 ui-smoke.md 产物记录）。
+# （PowerShell/.NET 实现；「位置重设+点击+等待+截屏」单进程原子轮，做法见 ui-smoke.md「留证据的方法」）。
 # 图片与文本取证不入库，只存于取证机目录 C:\Users\Administrator\photo-smoke-58\evidence\（22 个文件）。
 #
 # 校验（在取证机的 **WSL bash** 里跑，同 K154 组口径——cmd/PowerShell 没有 grep/sha256sum，
