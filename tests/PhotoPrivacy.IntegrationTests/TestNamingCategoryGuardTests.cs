@@ -17,20 +17,28 @@ public sealed class TestNamingCategoryGuardTests
 
     /// <summary>
     /// 测试特性声明：括号组感知——无参/带参（[Fact(Skip=…)]）、命名空间限定（[Xunit.Fact]）、
-    /// Attribute 后缀（[FactAttribute]）、同组混写（[Theory, Trait(…)]）均命中
-    /// （CodeRabbit #233 二至四轮审查补漏的收口形态）。分片拼接防本文件自匹配。
+    /// Attribute 后缀（[FactAttribute]）、同组混写（[Theory, Trait(…)]）、字符串参数含方括号均命中
+    /// （CodeRabbit #233 二至五轮审查补漏的收口形态）。残余盲区同 <see cref="CategoryTraitPattern"/> 注释。
+    /// 分片拼接防本文件自匹配。
     /// </summary>
     private static readonly Regex TestAttributePattern =
-        new("\\[" + @"[^\[\]]*" + @"\b(?:Xunit\.)?(?:Fact|Theory)(?:Attribute)?\b",
+        new("\\[" + AttrGroupSpan + @"\b(?:Xunit\.)?(?:Fact|Theory)(?:Attribute)?\b",
             RegexOptions.Compiled, TimeSpan.FromSeconds(5));
 
     /// <summary>
+    /// 特性括号组扫描区间：组内除方括号外任意字符均可，带引号的字符串参数（可能含方括号，
+    /// 如 [Fact(Skip = "[manual]"), Trait(…)]）整体跳过不截断（CodeRabbit #233 五审补漏）。
+    /// </summary>
+    private const string AttrGroupSpan = "(?:[^\"\\[\\]]|\"(?:[^\"\\\\]|\\\\.)*\")*";
+
+    /// <summary>
     /// Category trait 声明：括号组感知——`[Trait(…)]`、`[Xunit.TraitAttribute(…)]`、
-    /// `[Fact, Trait("Category", …)]` 同组混写等 C# 合法形态一并覆盖（CodeRabbit #233 二至四轮审查补漏的收口形态）。
-    /// 分片拼接是刻意的：本文件源码不得出现连续的 [Trait( 字面量，否则守卫自己踩线。
+    /// `[Fact, Trait("Category", …)]` 同组混写等 C# 合法形态一并覆盖（CodeRabbit #233 二至五轮审查补漏的收口形态）。
+    /// 按 R2 明示豁免的残余盲区：raw string（"""…"""）与 verbatim 串内嵌引号等更冷僻形态——仓内无先例，
+    /// 回潮时目录检查误红即暴露，届时按 R2 三档处置。分片拼接是刻意的：本文件源码不得出现连续的 [Trait( 字面量。
     /// </summary>
     private static readonly Regex CategoryTraitPattern =
-        new("\\[" + @"[^\[\]]*" + "Trait" + @"(?:Attribute)?\s*\(\s*""Category""\s*,\s*""([^""]*)""\s*\)",
+        new("\\[" + AttrGroupSpan + "Trait" + @"(?:Attribute)?\s*\(\s*""Category""\s*,\s*""([^""]*)""\s*\)",
             RegexOptions.Compiled, TimeSpan.FromSeconds(5));
 
     // 同上：口径字面量不在本文件连续出现——目录对齐检查复用 CategoryTraitPattern 的抓取结果。
