@@ -15,9 +15,14 @@ public sealed class TestNamingCategoryGuardTests
         new(@"public\s+(?:sealed\s+|static\s+|abstract\s+|partial\s+)*class\s+(\w+)",
             RegexOptions.Compiled, TimeSpan.FromSeconds(5));
 
-    /// <summary>测试特性声明（含带参形态 [Fact(Skip=…)]，CodeRabbit #233 审查补漏）。分片拼接防本文件自匹配。</summary>
+    /// <summary>
+    /// 测试特性声明：覆盖无参/带参（[Fact(Skip=…)]）、命名空间限定（[Xunit.Fact]）与
+    /// Attribute 后缀（[FactAttribute]）等 C# 合法写法（CodeRabbit #233 两轮审查补漏）。
+    /// 仍不覆盖 global:: 全限定等更冷僻形态——仓内从未出现，回潮即撞守卫注释可见。
+    /// 分片拼接防本文件自匹配。
+    /// </summary>
     private static readonly Regex TestAttributePattern =
-        new("\\[" + @"\s*(?:Fact|Theory)\b",
+        new("\\[" + @"\s*(?:Xunit\.)?(?:Fact|Theory)(?:Attribute)?\b",
             RegexOptions.Compiled, TimeSpan.FromSeconds(5));
 
     /// <summary>Category trait 声明。分片拼接是刻意的：本文件源码不得出现连续的 [Trait( 字面量，否则守卫自己踩线。</summary>
