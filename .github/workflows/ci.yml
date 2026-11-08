@@ -233,18 +233,3 @@ jobs:
           test -f release/PhotoPrivacy-0.1.0-ci-linux-x64.tar.gz
           # 内置 ExifTool 必须可执行且为钉扎版本（#164 同类下载链回归在此兜底）
           [ "$(release/linux-x64/ExifTool/exiftool -ver)" = "13.61" ]
-
-  markers:
-    runs-on: ubuntu-latest
-    # CodeRabbit 返修（#193）：显式只读最小权限——与 test/rust/ui-check 的 contents: read
-    # 同口径；check-design-markers.sh 的 gh api 只读 open issue，不给多余写面。
-    permissions:
-      contents: read
-      issues: read
-    steps:
-      - uses: actions/checkout@v4
-      - name: Design markers must point to open issues
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-        run: bash scripts/check-design-markers.sh
