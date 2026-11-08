@@ -167,12 +167,10 @@ impl IpcClient {
     /// 只记一次告警，避免每条心跳都刷 stderr。
     fn observe_server_version(&self, server_version: i32) {
         self.observed.store(server_version, Ordering::Relaxed);
-        if server_version != PROTOCOL_VERSION
-            && !self.warned.swap(true, Ordering::Relaxed)
-        {
+        if server_version != PROTOCOL_VERSION && !self.warned.swap(true, Ordering::Relaxed) {
+            let negotiated = self.negotiated_version();
             eprintln!(
-                "[photoprivacy-ipc] 协议版本不一致：客户端 v{PROTOCOL_VERSION}，服务端 v{server_version}，本次会话已按 v{} 运行",
-                self.negotiated_version()
+                "[photoprivacy-ipc] 协议版本不一致：客户端 v{PROTOCOL_VERSION}，服务端 v{server_version}，本次会话已按 v{negotiated} 运行"
             );
         }
     }
@@ -712,10 +710,12 @@ mod tests {
                     String::from_utf8_lossy(&buf[..n]).trim(),
                 )
                 .ok();
-                let v: Option<i32> = parsed
-                    .and_then(|value| value.get("v"))
-                    .and_then(|v| v.as_i64())
-                    .map(|v| v as i32);
+                let mut v: Option<i32> = None;
+                if let Some(value) = &parsed {
+                    if let Some(ver) = value.get("v").and_then(|v| v.as_i64()) {
+                        v = Some(ver as i32);
+                    }
+                }
                 let Some(v) = v else {
                     return;
                 };
