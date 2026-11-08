@@ -85,7 +85,7 @@ RID 由构建主机自动推导（linux-x64 / linux-arm64 / osx-x64 / osx-arm64�
    - Windows 下载通道：`ExifTool archive verified on attempt N/N`；3 次取满仍不符会抛 `ExifTool archive download failed after 3 attempts (expected sha256 ...)`，这是下载通道被污染/拦截面（见 §2），不要放宽判定，重跑即可。
    - Windows 本地 `-ExifToolZip`：校验失败报 `ExifTool archive SHA256 mismatch`——查归档来源，不是网络问题。
    - Unix：成功打印 `Bundled ExifTool <版本>`；下载失败报 `ExifTool download failed`，校验失败报 `ExifTool archive SHA256 mismatch`（Unix 没有镜像轮换，先查网络和归档来源再重跑）。
-   - 覆盖模式（两平台）：无校验值输出，只有 `-ver` 版本探针行或 WARNING。
+   - 覆盖模式（两平台）：无校验值输出。在具备运行条件的同平台机器上运行包内 ExifTool 的 `-ver`，确认退出码 0 且输出版本号才算过；不过就修覆盖目录、重新打包复验，不要放行。
 3. **包内布局齐全**（对照 §3 清单，缺一项就是打包脚本断了，停下来查，不要手补）。
 4. **入口能起**：包根直接运行 `PhotoPrivacy(.exe)`，确认新 UI 起得来、能连上 Worker（Windows 重点是应用清单生效——gpui 依赖 comctl32 v6，缺清单启动即失败）。
 5. **视觉冒烟**（Windows 可选但建议）：按 `docs/agents/ui-smoke.md` 的口径过一遍。
@@ -95,7 +95,7 @@ RID 由构建主机自动推导（linux-x64 / linux-arm64 / osx-x64 / osx-arm64�
 
 随包 `scripts/` 里的安装脚本按平台选：
 
-- Windows：`install-service.ps1`（必须与同目录 `service-worker-match.ps1` 一起在，卸载时的孤儿进程清理依赖它，包内已自动带上；按脚本位置自动推断包根）
+- Windows：`install-service.ps1`（必须与同目录 `service-worker-match.ps1` 一起在，卸载时的孤儿进程清理依赖它，包内已自动带上；按脚本位置自动推断包根）。注意服务管道授权默认登记安装者账户的 SID：日常跑 GUI 的账户和安装账户不同时，安装时要传 `-AuthorizedUsers <日常账户>` 追加（或 `-InstallerSid` 直接指定），否则 GUI 连不上服务。
 - Linux：`install-systemd-service.sh`
 - macOS：`install-launchd-service.sh`
 
