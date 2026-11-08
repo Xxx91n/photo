@@ -57,6 +57,23 @@ public sealed class WorkerIpcRequestHandler
             return (new WorkerIpcResponse(false, Message: "invalid request", V: ProtocolVersion), false);
         }
 
+        // Design(#42): 会话/启动顺序边界——UI 可能先于 Worker 启动，双方通过请求/响应的 v 字段
+        // 交换协议版本。客户端申报的版本高于服务端所能说话的版本时，按不变量①（fail-closed）
+        // 不执行该方法，回 protocol_version_mismatch 并把服务端 V 带回，供客户端下调重试；
+        // 申报小于等于服务端版本（或干脆不申报 v）时正常处理，响应照常回带服务端 V。
+        // 会话版本由客户端取 min(客户端版本, 服务端版本)，与既有 v1 双端完全兼容。
+        var clientVersion = request.V;
+        if (clientVersion is { } v && v > WorkerIpcProtocol.Version)
+        {
+            SafeLog.Try(() => _logger.LogWarning(
+                "worker ipc 协议版本不一致：客户端申报 v{ClientVersion}，服务端 v{ServerVersion}，方法 {Method} 不被执行，已回 protocol_version_mismatch",
+                v, WorkerIpcProtocol.Version, request.Method));
+            return (new WorkerIpcResponse(false,
+                Message: "protocol_version_mismatch",
+                Id: request.Id,
+                V: WorkerIpcProtocol.Version), false);
+        }
+
         switch (request.Method)
         {
             case WorkerIpcMethods.Ping:

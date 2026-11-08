@@ -34,6 +34,16 @@ impl<'a> Request<'a> {
             v: Some(PROTOCOL_VERSION),
         }
     }
+
+    /// 指定协议版本发送请求：版本协商下调后的重试会用它（#42：会话/启动顺序边界，
+    /// UI 可能先于 Worker 启动，双方必须对齐到都会说的版本）。
+    pub fn with_version(method: &'a str, id: Option<&'a str>, version: i32) -> Self {
+        Self {
+            method,
+            id,
+            v: Some(version),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
