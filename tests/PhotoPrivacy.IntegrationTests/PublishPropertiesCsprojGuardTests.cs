@@ -1,13 +1,19 @@
+using System.Xml;
+using System.Xml.Linq;
+
 namespace PhotoPrivacy.IntegrationTests;
 
 /// <summary>
-/// （correctness-round 顺带发现收口；#61 切换日对账）：
-/// 发布属性单一来源守卫——生产工程文件（csproj 与 props）不得直接持有 SelfContained /
+/// （correctness-round 顺带发现收口；#61 切换日对账；#12 守卫缺口收口）：
+/// 发布属性单一来源守卫——生产工程文件（csproj / props / targets）不得活跃定义 SelfContained /
 /// PublishSingleFile / IncludeNativeLibrariesForSelfExtract / PublishTrimmed；publish-app.ps1
-/// 与 publish.sh 的 Worker 一条 dotnet publish 调用必须带齐三枚 /p: 标志和 --self-contained。
-/// #12 收口：脚本段补 --self-contained 断言（原先只查三枚 /p:，self-contained 主张无断言），
-/// 扫描面补 props 文件（原先只扫 src 的 csproj，Directory.Build.props 回潮看不见）；
-/// PublishReadyToRun 不在本守卫四个属性之列——#12 裁决其中心化在 Directory.Build.props，
+/// 与 publish.sh 的 Worker 一条 dotnet publish 调用必须带齐三枚 /p: 标志和 --self-contained，
+/// 且脚本默认 self-contained=true。
+/// #12 收口：脚本段补 --self-contained 断言（原先只查三枚 /p:，self-contained 主张无断言）；
+/// 扫描面补 props / targets（原先只扫 src 的 csproj，Directory.Build.props 回潮看不见）；
+/// 工程文件判定升级为 XML 解析（子串匹配会被 XML 注释残留喂红、被 Condition=false 绕过）；
+/// 补脚本默认值断言（默认被改掉时 publish-e2e 不显式传开关，产物静默变 framework-dependent）。
+/// PublishReadyToRun 不在本守卫四属性之列——#12 裁决其中心化在 Directory.Build.props，
 /// 单一来源由 Net10CompatibilityGuardTests 锁定。
 /// 旧 Ui 工程退役（#61）后 UI 侧 dotnet publish 消失：GUI 入口改为 cargo 构建的
 /// photoprivacy-ui（Windows 走 windows-gnu target + windres，见 ui/crates/photoprivacy-ui/build.rs），
@@ -32,16 +38,47 @@ public sealed class PublishPropertiesCsprojGuardTests
         "--self-contained",
     ];
 
-    internal static List<string> ClassifyCsprojPublishProperties(string csprojContent, string label)
+    internal static List<string> ClassifyProjectFilePublishProperties(string content, string label)
     {
+        // 防的具体回潮形态（#12）：脚本传入的四发布属性回潮进生产工程文件——csproj 直接持有、
+        // 根 props/targets 自动导入、src 子目录 props 覆盖。此前为子串匹配：XML 注释里的
+        // 示例残留会喂红，<Prop Condition="…"> 的禁用定义反而绕过判定。
+        // 处置：XML 解析只认活跃元素。关联 issue #12。
+        XDocument doc;
+        try
+        {
+            doc = XDocument.Parse(content);
+        }
+        catch (XmlException)
+        {
+            return [label + ": 非合法 XML（工程文件损坏，MSBuild 同样无法求值）"];
+        }
+
         var violations = new List<string>();
         foreach (var prop in PublishProperties)
         {
-            if (csprojContent.Contains("<" + prop + ">", StringComparison.Ordinal))
+            if (doc.Descendants().Any(e => e.Name.LocalName == prop))
             {
-                violations.Add(label + ": 工程文件直接持有发布属性 <" + prop +
+                violations.Add(label + ": 工程文件活跃定义发布属性 <" + prop +
                                ">（发布属性只在发布脚本传递；PublishReadyToRun 例外中心化于 Directory.Build.props，#12）");
             }
+        }
+
+        return violations;
+    }
+
+    internal static List<string> ClassifyScriptSelfContainedDefault(string script, string label)
+    {
+        // 防的具体回潮形态（#12）：发布脚本 self-contained 默认值被改掉或摘除——publish-e2e
+        // 与发版链都不显式传 --self-contained，走的就是这个默认；默认一变，产物静默变
+        // framework-dependent，self-contained 主张失效。默认声明形态两平台各一
+        // （publish-app.ps1 的参数默认值 / publish.sh 的 SELF_CONTAINED 变量），有其一即绿。
+        // 关联 issue #12。
+        var violations = new List<string>();
+        if (!script.Contains("$SelfContained = \"true\"", StringComparison.Ordinal) &&
+            !script.Contains("SELF_CONTAINED=\"true\"", StringComparison.Ordinal))
+        {
+            violations.Add(label + " 的 self-contained 默认值不是 true（脚本默认须 self-contained，#12）");
         }
 
         return violations;
@@ -87,6 +124,7 @@ public sealed class PublishPropertiesCsprojGuardTests
         }
 
         violations.AddRange(ClassifyCargoUiEntry(script, label));
+        violations.AddRange(ClassifyScriptSelfContainedDefault(script, label));
         return violations;
     }
 
@@ -137,35 +175,33 @@ public sealed class PublishPropertiesCsprojGuardTests
         return count;
     }
 
+    // 防的具体回潮形态（#12）：SelfContained / PublishSingleFile / IncludeNativeLibrariesForSelfExtract /
+    // PublishTrimmed 回潮进生产工程文件——csproj 直接持有、根 Directory.Build.props /
+    // Directory.Build.targets 自动导入（全工程生效）、src 子目录 props 覆盖；发布属性只在发布脚本传递。
+    // PublishReadyToRun 例外：#12 裁决中心化于根 Directory.Build.props，不在本守卫四属性之列
+    // （单一来源由 Net10CompatibilityGuardTests 锁定），此处合法存在不得报红。
+    // 读取走 SourceLint.Read 单一实现；XML 注释由解析器天然无视，不走 ReadStripped
+    // （剥 // 会破坏 XML 内 URL 字面量）。关联 issue #12。
     [Fact]
-    public void Production_Csproj_Should_Not_Hold_Publish_Properties()
+    public void Production_Project_Files_Should_Not_Hold_Publish_Properties()
     {
-        var srcDir = Path.Combine(SourceLint.RepoRoot, "src");
         var violations = new List<string>();
-        foreach (var file in Directory.GetFiles(srcDir, "*.csproj", SearchOption.AllDirectories))
+        foreach (var file in SourceLint.EnumerateSourceFiles("src", "*.csproj")
+                     .Concat(SourceLint.EnumerateSourceFiles("src", "*.props")))
         {
-            violations.AddRange(ClassifyCsprojPublishProperties(
-                File.ReadAllText(file), file[(srcDir.Length + 1)..]));
+            var relative = Path.GetRelativePath(SourceLint.RepoRoot, file);
+            violations.AddRange(ClassifyProjectFilePublishProperties(
+                SourceLint.Read(relative), relative));
         }
 
-        Assert.True(violations.Count == 0, string.Join(Environment.NewLine, violations));
-    }
-
-    [Fact]
-    public void Production_Props_Files_Should_Not_Hold_Script_Passed_Publish_Properties()
-    {
-        // #12 守卫缺口收口：四个脚本传入的发布属性若回潮进根 Directory.Build.props 或 src 的
-        // props 文件，csproj 扫描面看不见（Directory.Build.props 全工程导入，回潮面更大）。
-        // PublishReadyToRun 例外：#12 裁决中心化于此，不在本守卫四属性之列（由
-        // Net10CompatibilityGuardTests 锁单一来源），此处合法存在不得报红。
-        var repoRoot = SourceLint.RepoRoot;
-        var violations = new List<string>();
-        var propsFiles = Directory.GetFiles(Path.Combine(repoRoot, "src"), "*.props", SearchOption.AllDirectories)
-            .Append(Path.Combine(repoRoot, "Directory.Build.props"));
-        foreach (var file in propsFiles)
+        foreach (var rootImport in new[] { "Directory.Build.props", "Directory.Build.targets" })
         {
-            violations.AddRange(ClassifyCsprojPublishProperties(
-                File.ReadAllText(file), file[(repoRoot.Length + 1)..]));
+            var path = Path.Combine(SourceLint.RepoRoot, rootImport);
+            if (File.Exists(path))
+            {
+                violations.AddRange(ClassifyProjectFilePublishProperties(
+                    SourceLint.Read(rootImport), rootImport));
+            }
         }
 
         Assert.True(violations.Count == 0, string.Join(Environment.NewLine, violations));
@@ -185,11 +221,11 @@ public sealed class PublishPropertiesCsprojGuardTests
     [Fact]
     public void Publish_Properties_Guard_Negative_Self_Proof()
     {
-        // 失效即红自证：工程文件回潮（csproj / props）/ 脚本掉标志 / 入口接法回退各类篡改必须报红，基线必须绿。
+        // 失效即红自证：工程文件回潮（csproj / props）/ 脚本掉标志 / 默认值漂移 / 入口接法回退各类篡改必须报红，基线必须绿。
         var failures = new List<string>();
 
         const string cleanCsproj = "<Project><PropertyGroup><OutputType>Exe</OutputType></PropertyGroup></Project>";
-        if (ClassifyCsprojPublishProperties(cleanCsproj, "x.csproj").Count != 0)
+        if (ClassifyProjectFilePublishProperties(cleanCsproj, "x.csproj").Count != 0)
         {
             failures.Add("baseline csproj 误报");
         }
@@ -197,7 +233,7 @@ public sealed class PublishPropertiesCsprojGuardTests
         var driftCsproj = cleanCsproj.Replace(
             "</PropertyGroup>", "<PublishSingleFile>true</PublishSingleFile></PropertyGroup>",
             StringComparison.Ordinal);
-        if (ClassifyCsprojPublishProperties(driftCsproj, "x.csproj").Count == 0)
+        if (ClassifyProjectFilePublishProperties(driftCsproj, "x.csproj").Count == 0)
         {
             failures.Add("MISSED: csproj 回潮 <PublishSingleFile> 未红");
         }
@@ -205,7 +241,7 @@ public sealed class PublishPropertiesCsprojGuardTests
         // #12：props 扫描面的红/绿自证——基线 Directory.Build.props 只含中心化的
         // PublishReadyToRun，必须绿；回潮进脚本传入四属性之一必须红。
         var greenProps = SourceLint.Read("Directory.Build.props");
-        if (ClassifyCsprojPublishProperties(greenProps, "Directory.Build.props").Count != 0)
+        if (ClassifyProjectFilePublishProperties(greenProps, "Directory.Build.props").Count != 0)
         {
             failures.Add("baseline Directory.Build.props 误报（PublishReadyToRun 为 #12 裁决的中心化例外）");
         }
@@ -213,15 +249,36 @@ public sealed class PublishPropertiesCsprojGuardTests
         var driftProps = greenProps.Replace(
             "</PropertyGroup>", "<PublishTrimmed>true</PublishTrimmed></PropertyGroup>",
             StringComparison.Ordinal);
-        if (ClassifyCsprojPublishProperties(driftProps, "Directory.Build.props").Count == 0)
+        if (ClassifyProjectFilePublishProperties(driftProps, "Directory.Build.props").Count == 0)
         {
             failures.Add("MISSED: props 回潮 <PublishTrimmed> 未红");
+        }
+
+        // #12：XML 注释残留与 Condition=false 禁用定义不得喂红（活跃元素判定）。
+        const string commentDrift = "<Project><PropertyGroup><OutputType>Exe</OutputType>" +
+                                    "<!-- <PublishTrimmed>true</PublishTrimmed> --></PropertyGroup></Project>";
+        if (ClassifyProjectFilePublishProperties(commentDrift, "x.csproj").Count != 0)
+        {
+            failures.Add("baseline csproj XML 注释残留误报");
+        }
+
+        const string conditionDrift = "<Project><PropertyGroup><OutputType>Exe</OutputType>" +
+                                      "<PublishTrimmed Condition=\"'$(Never)' == 'true'\">true</PublishTrimmed></PropertyGroup></Project>";
+        if (ClassifyProjectFilePublishProperties(conditionDrift, "x.csproj").Count == 0)
+        {
+            failures.Add("MISSED: 带条件的活跃 <PublishTrimmed> 定义未红");
         }
 
         var greenScript = SourceLint.Read("scripts", "publish-app.ps1");
         if (ClassifyPublishScript(greenScript, "publish-app.ps1").Count != 0)
         {
             failures.Add("baseline publish-app.ps1 未绿");
+        }
+
+        var greenSh = SourceLint.Read("scripts", "publish.sh");
+        if (ClassifyPublishScript(greenSh, "publish.sh").Count != 0)
+        {
+            failures.Add("baseline publish.sh 未绿");
         }
 
         var idx = greenScript.IndexOf("/p:PublishSingleFile=true", StringComparison.Ordinal);
@@ -238,11 +295,14 @@ public sealed class PublishPropertiesCsprojGuardTests
             }
         }
 
-        // #12：self-contained 断言的失效自证——调用段掉 --self-contained 必须红。
-        var scIdx = greenScript.IndexOf("--self-contained", StringComparison.Ordinal);
+        // #12：self-contained 断言的失效自证——两个脚本调用段掉 --self-contained、
+        // 默认值改 false / 摘除，均必须红。调用段定位从 dotnet publish 之后起查，
+        // 避开 publish.sh usage 文案里的 --self-contained。
+        var pubIdx = greenScript.IndexOf("dotnet publish", StringComparison.Ordinal);
+        var scIdx = pubIdx >= 0 ? greenScript.IndexOf("--self-contained", pubIdx, StringComparison.Ordinal) : -1;
         if (scIdx < 0)
         {
-            failures.Add("MUTATION DID NOT APPLY: publish-app.ps1 无 --self-contained");
+            failures.Add("MUTATION DID NOT APPLY: publish-app.ps1 调用段无 --self-contained");
         }
         else
         {
@@ -251,6 +311,42 @@ public sealed class PublishPropertiesCsprojGuardTests
             {
                 failures.Add("MISSED: Worker publish 调用掉 --self-contained 未红");
             }
+        }
+
+        var shPubIdx = greenSh.IndexOf("dotnet publish", StringComparison.Ordinal);
+        var shScIdx = shPubIdx >= 0 ? greenSh.IndexOf("--self-contained", shPubIdx, StringComparison.Ordinal) : -1;
+        if (shScIdx < 0)
+        {
+            failures.Add("MUTATION DID NOT APPLY: publish.sh 调用段无 --self-contained");
+        }
+        else
+        {
+            var shTampered = greenSh[..shScIdx] + greenSh[(shScIdx + "--self-contained".Length)..];
+            if (ClassifyPublishScript(shTampered, "publish.sh").Count == 0)
+            {
+                failures.Add("MISSED: publish.sh Worker publish 调用掉 --self-contained 未红");
+            }
+        }
+
+        var defaultFlipped = greenScript.Replace(
+            "$SelfContained = \"true\"", "$SelfContained = \"false\"", StringComparison.Ordinal);
+        if (defaultFlipped == greenScript)
+        {
+            failures.Add("MUTATION DID NOT APPLY: publish-app.ps1 无 $SelfContained = \"true\"");
+        }
+        else if (ClassifyPublishScript(defaultFlipped, "publish-app.ps1").Count == 0)
+        {
+            failures.Add("MISSED: publish-app.ps1 self-contained 默认值改 false 未红");
+        }
+
+        var shDefaultRemoved = greenSh.Replace("SELF_CONTAINED=\"true\"", "", StringComparison.Ordinal);
+        if (shDefaultRemoved == greenSh)
+        {
+            failures.Add("MUTATION DID NOT APPLY: publish.sh 无 SELF_CONTAINED=\"true\"");
+        }
+        else if (ClassifyPublishScript(shDefaultRemoved, "publish.sh").Count == 0)
+        {
+            failures.Add("MISSED: publish.sh self-contained 默认值摘除未红");
         }
 
         var entryDrift = greenScript.Replace("photoprivacy-ui", "old-ui", StringComparison.Ordinal);

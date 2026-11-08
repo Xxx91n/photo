@@ -188,7 +188,7 @@ jobs:
   # 触发条件（#12 成本评估）：ci.yml 是 on: push + on: pull_request 双事件叠加，PR 内每推
   # 一提交，这条重活（cargo release + dotnet publish R2R + 11MB ExifTool 下载）会跑两遍。
   # 收紧为 PR 事件或 main 分支 push 才跑：PR 迭代省一半开销，main 合入后仍全链路兜底；
-  # feature 分支直推不跑——按仓库约定 feature 不作为合入通道，发布链由 PR 与 main 覆盖。
+  # feature 分支直推不跑——合入走 PR（main 分支），发布链由 PR 与 main 两处覆盖。
   publish-e2e:
     if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
