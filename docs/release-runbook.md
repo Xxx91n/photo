@@ -16,7 +16,7 @@
 
 - Windows 只发 `win-x64`。gpui 不支持 win-x86 / win-arm64，也不支持交叉编译——Linux/macOS 必须在对应平台上跑 `publish.sh`，RID 由构建主机推导，`--runtime` 与主机不符直接退出。
 - Framework 固定 `net10.0`。
-- 发布属性只经脚本 `/p:` 传入，禁写回 csproj。
+- 发布属性归属（#12 裁决）：SelfContained / PublishSingleFile / IncludeNativeLibrariesForSelfExtract / PublishTrimmed 只经脚本 `/p:`（self-contained 经 `--self-contained` 开关）传入，禁写回 csproj / 工程级 props；`PublishReadyToRun=true` 是唯一例外，中心化在 `Directory.Build.props`（单一来源由 `Net10CompatibilityGuardTests` 锁定），同样勿写回 csproj。
 
 ## 1. 发布顺序
 
