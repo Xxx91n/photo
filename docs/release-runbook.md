@@ -9,7 +9,7 @@
 
 | 平台 | 工具链 | 说明 |
 | --- | --- | --- |
-| Windows（发 win-x64） | .NET 10 SDK、Rust（`rustup target add x86_64-pc-windows-gnu`）、MinGW `windres` | `windres` 须在 PATH 或 `WINDRES` 指定；脚本会自动探测 `C:\msys64\mingw64\bin` 与 `C:\ProgramData\mingw64\mingw64\bin`，都找不到直接失败（windows-gnu 清单嵌入必需） |
+| Windows（发 win-x64） | .NET 10 SDK、Rust（`rustup target add x86_64-pc-windows-gnu`）、MinGW `windres` | `windres` 须在 PATH 中，或位于脚本自动探测的 `C:\msys64\mingw64\bin` / `C:\ProgramData\mingw64\mingw64\bin`；两处都没有直接失败（windows-gnu 清单嵌入必需）。注意脚本预检不读 `WINDRES` 变量，只设它没用 |
 | Linux / macOS | .NET 10 SDK、Rust（宿主默认 target）、perl | 构建主机没有 perl 只警告不失败，但目标机必须有 perl 才能跑内置 ExifTool |
 
 硬约束（脚本内置，违反即报错）：
@@ -35,8 +35,9 @@ git status   # 工作区干净，HEAD 即要发的提交
 **Windows**（`scripts/publish-app.ps1`；发版机可直接用门禁一步到位，见下）：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/publish-app.ps1 -Version <版本> -Runtime win-x64 `
-  [-ExifToolVersion 13.61] [-ExifToolZip <本地 zip 路径>] [-ExifToolPathOverride <已安装 ExifTool 目录>]
+# 最简（把 1.2.3 换成要发的版本号）：
+powershell -ExecutionPolicy Bypass -File scripts/publish-app.ps1 -Version 1.2.3 -Runtime win-x64
+# 可选参数按需追加：-ExifToolVersion 13.61、-ExifToolZip <本地 zip 路径>、-ExifToolPathOverride <已安装 ExifTool 目录>
 ```
 
 | 参数 | 默认 | 说明 |
@@ -58,9 +59,10 @@ powershell -ExecutionPolicy Bypass -File scripts/release-readiness.ps1 -Version 
 **Linux / macOS**（`scripts/publish.sh`）：
 
 ```bash
-scripts/publish.sh [--version <版本>] \
-  [--exiftool-version 13.61] \
-  [--exiftool-archive <本地 tar.gz> | --exiftool-path-override <目录>]
+# 最简（把 1.2.3 换成要发的版本号）：
+scripts/publish.sh --version 1.2.3
+# 可选参数按需追加：--exiftool-version 13.61、--exiftool-archive <本地 tar.gz>、--exiftool-path-override <目录>
+# （--exiftool-archive 与 --exiftool-path-override 互斥）
 ```
 
 RID 由构建主机自动推导（linux-x64 / linux-arm64 / osx-x64 / osx-arm64）。`--version` 写进包名和 Worker 程序集元数据（Rust UI 产物不带版本元数据）。`--exiftool-archive` 与 `--exiftool-path-override` 互斥；`--exiftool-archive` 要与匹配的 `--exiftool-version` 搭配（钉扎值按版本号查）。
@@ -97,7 +99,7 @@ RID 由构建主机自动推导（linux-x64 / linux-arm64 / osx-x64 / osx-arm64�
 - Linux：`install-systemd-service.sh`
 - macOS：`install-launchd-service.sh`
 
-Unix 的安装脚本默认找 `/opt/photoprivacy/PhotoPrivacyWorker`：解压到该安装目录，或按脚本说明传安装目录参数，否则报 `Missing executable`。
+Unix 的安装脚本默认找 `/opt/photoprivacy/PhotoPrivacyWorker`：解压到该安装目录，或按脚本说明传安装目录参数，否则报 `Missing executable`。注意 `--install-dir` 不会跟着改 config 路径（默认仍指 `/opt/photoprivacy/config/config.json`），自定义安装目录时要同时传 `--config <安装目录>/config/config.json`。
 
 ## 2. ExifTool 钉扎校验值（发版前必须核对）
 
@@ -145,7 +147,7 @@ scripts/install-systemd-service.sh   （osx-* 则为 install-launchd-service.sh�
 
 ## 4. 常见坑速查
 
-- `windres not found` → 装 MinGW 或设 `WINDRES`（§0）。
+- `windres not found` → 把 windres 所在目录加进 PATH，或装到自动探测目录（§0）；只设 `WINDRES` 变量没用，脚本预检不读它。
 - `Invalid Runtime 'win-x86'` → gpui 不支持，换 x64 机器发。
 - Unix 上 `Runtime linux-x64 requires a Linux x86_64 build host` → 不支持交叉编译，到对应平台发。
 - `No pinned SHA256 for ExifTool x.y` → 先登记两处钉扎表（§2）再发版。
