@@ -38,7 +38,7 @@ public sealed class TestNamingCategoryGuardTests
     /// 回潮时目录检查误红即暴露，届时按 R2 三档处置。分片拼接是刻意的：本文件源码不得出现连续的 [Trait( 字面量。
     /// </summary>
     private static readonly Regex CategoryTraitPattern =
-        new("\\[" + AttrGroupSpan + "Trait" + @"(?:Attribute)?\s*\(\s*""Category""\s*,\s*""([^""]*)""\s*\)",
+        new("\\[" + AttrGroupSpan + @"(?<![A-Za-z0-9_])Trait" + @"(?:Attribute)?\s*\(\s*""Category""\s*,\s*""([^""]*)""\s*\)",
             RegexOptions.Compiled, TimeSpan.FromSeconds(5));
 
     // 同上：口径字面量不在本文件连续出现——目录对齐检查复用 CategoryTraitPattern 的抓取结果。
