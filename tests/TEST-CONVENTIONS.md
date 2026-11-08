@@ -58,6 +58,21 @@ public void Theme_Swatch_Count_Must_Be_Five() { ... }   // 无注释：不知道
 3. 所有防回潮机制必须有「**失效即红**」自检——防恒绿（tokenlint 式假绿事故教训）。
 4. 视觉一致性验收**永不交给纯文本断言单独背锅**：行为机制 + 人工目检分工（现役口径见 docs/agents/ui-smoke.md，历史对照流程见 ui-visual-standard.md §7）。
 
+## R3. 命名与分类（Category trait）统一口径 —— 测试类怎么叫、怎么归类
+
+**规则文本**（守卫：`TestNamingCategoryGuardTests`，三条红线失效即红）：
+
+> 1. **命名**：`tests/` 下含 `[Fact]`/`[Theory]` 的文件，其 `public` 测试类必须以 `Tests` 结尾。辅助类（fake / stub / fixture / 基类 / 静态 helper）用 `internal` 或嵌套形态，不受此约束——xUnit 只发现 `public` 类，这是判别测试类与辅助类的唯一可靠分界。
+> 2. **取值域**：`[Trait("Category", …)]` 只允许 `Smoke`、`ExifTool` 两个值，与 ci.yml / release.yml 的 `--filter "Category!=Smoke&Category!=ExifTool"` 契约一一对齐；**缺省 trait = 默认 CI job 跑的常规测试**（单元测试与全部 source-lint 守卫的缺省形态），不许自造第三个值。
+> 3. **目录双向对齐**（限 `PhotoPrivacy.IntegrationTests`）：`Smoke\` 目录 ⇔ `Category=Smoke`，`ExifTool\` 目录 ⇔ `Category=ExifTool`；目录 ⇒ 必带对应 trait，trait ⇒ 必住在对应目录。
+
+**配套要求**：
+
+1. 测试**方法**命名沿用 `Method_Scenario_Expected` 约定，**不设 lint 守卫**（与措辞耦合属 R2 杀档形态，只作评审口径）。
+2. 守卫自身防自匹配：trait 匹配正则与口径字面量在守卫源码内分片拼接，不出现连续 `[Trait(` 字面量。
+
+**依据**：#14 工程债——存量 `RealExifToolProbeTest`（单数命名、`Category=ExifTool` 却住 `Smoke\` 目录）与 `ReleaseReadinessFullCaptureGuardTests`（source-lint 守卫无 trait 却住 `Smoke\`）两处漂移，口径无文本、回潮无守卫。
+
 ## 3. 继承口径（既有先例，不因本文件改变）
 
 - **剥注释口径**：source-lint 读取源码一律走 `SourceLint.ReadStripped` 剥注释后再断言（教训——不剥会把注释里的示例字面量误判为违规）。XML 工程文件（csproj / props / targets）例外：不走 `ReadStripped`（剥 `//` 会破坏 XML 内 URL 字面量），XML 注释由解析器天然无视，读取走 `SourceLint.Read`（#12）。
@@ -71,3 +86,4 @@ public void Theme_Swatch_Count_Must_Be_Five() { ... }   // 无注释：不知道
 | 2026-09-12 | ui-craft | 立区；写入 R1（新断言必写防什么 + issue 号）与 R2（撞红三档分类 + 语义化优先级 + characterization 定性 + 复审期） |
 | 2026-10-29 | 治理（#87） | 清理已退役旧栈口径（AXAML、Avalonia.Headless、XAML Thickness）并将视觉规范标记为历史 |
 | 2026-11-08 | #12 | §3 剥注释口径补 XML 工程文件豁免：解析器判注释、读取走 `SourceLint.Read` |
+| 2026-11-08 | 治理（#14） | 新增 R3 命名与分类口径 + `TestNamingCategoryGuardTests` 三条红线守卫；存量对齐（`RealExifToolProbeTest` → `RealExifToolProbeTests` 并迁入 `ExifTool\`、`ReleaseReadinessFullCaptureGuardTests` 迁出 `Smoke\`） |

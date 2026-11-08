@@ -3,10 +3,10 @@ using Microsoft.Extensions.Logging;
 using PhotoPrivacy.Core.Configuration;
 using PhotoPrivacy.Core.ExifTool;
 
-namespace PhotoPrivacy.IntegrationTests.Smoke;
+namespace PhotoPrivacy.IntegrationTests.ExifTool;
 
 [Trait("Category", "ExifTool")]
-public sealed class RealExifToolProbeTest : IntegrationTestBase
+public sealed class RealExifToolProbeTests : IntegrationTestBase
 {
     [Fact]
     public async Task WipeMetadataAsync_WithRealExifTool_ShouldNotReturnSkipped_NoMetadata()
