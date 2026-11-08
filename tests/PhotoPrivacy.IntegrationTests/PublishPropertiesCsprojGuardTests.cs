@@ -5,7 +5,7 @@ namespace PhotoPrivacy.IntegrationTests;
 
 /// <summary>
 /// （correctness-round 顺带发现收口；#61 切换日对账；#12 守卫缺口收口）：
-/// 发布属性单一来源守卫——生产工程文件（csproj / props / targets）不得活跃定义 SelfContained /
+/// 发布属性单一来源守卫——生产工程文件（csproj / props / targets）不得定义 SelfContained /
 /// PublishSingleFile / IncludeNativeLibrariesForSelfExtract / PublishTrimmed；publish-app.ps1
 /// 与 publish.sh 的 Worker 一条 dotnet publish 调用必须带齐三枚 /p: 标志和 --self-contained，
 /// 且脚本默认 self-contained=true。
@@ -73,14 +73,15 @@ public sealed class PublishPropertiesCsprojGuardTests
     {
         // 防的具体回潮形态（#12）：发布脚本 self-contained 默认值被改掉或摘除——publish-e2e
         // 与发版链都不显式传 --self-contained，走的就是这个默认；默认一变，产物静默变
-        // framework-dependent，self-contained 主张失效。默认声明形态两平台各一
-        // （publish-app.ps1 的参数默认值 / publish.sh 的 SELF_CONTAINED 变量），有其一即绿
-        // （两形态互斥，OR 不弱化判定）。字面钉扎按 R2「保留」档做 characterization：
-        // 这是变更探测器——默认声明等价重排（空格/引号）会误红，撞红时先按 R2 复核三档。
-        // 关联 issue #12。
+        // framework-dependent，self-contained 主张失效。期望形态按脚本绑定（ps1 参数默认值 /
+        // sh 的 SELF_CONTAINED 变量），不做跨形态 OR——任一脚本出现另一平台的字样不算绿。
+        // 字面钉扎按 R2「保留」档做 characterization：这是变更探测器——默认声明等价重排
+        // （空格/引号）会误红，撞红时先按 R2 复核三档。关联 issue #12。
+        var expectedDefault = label.Contains("publish.sh", StringComparison.Ordinal)
+            ? "SELF_CONTAINED=\"true\""
+            : "$SelfContained = \"true\"";
         var violations = new List<string>();
-        if (!script.Contains("$SelfContained = \"true\"", StringComparison.Ordinal) &&
-            !script.Contains("SELF_CONTAINED=\"true\"", StringComparison.Ordinal))
+        if (!script.Contains(expectedDefault, StringComparison.Ordinal))
         {
             violations.Add(label + " 的 self-contained 默认值不是 true（脚本默认须 self-contained，#12）");
         }
@@ -92,6 +93,9 @@ public sealed class PublishPropertiesCsprojGuardTests
     {
         // Worker 的 dotnet publish 调用段必须带齐三枚 /p: 标志和 --self-contained；UI 侧走 cargo（见 ClassifyCargoUiEntry）。
         // 先剥脚本注释（PowerShell/shell 的 # 行注释）：注释里残留的 token 不得让守卫骗绿（#61）。
+        // 残余（#12 登记）：调用段是「本条 dotnet publish 起至下一条或脚本尾」，且
+        // --self-contained 只锚开关名不校验取值绑定——调用行被摘而后续非注释行残留该串时
+        // 会代绿。脚本尾部无该串的现实下不构成漏洞，遇具体回潮再收口。
         script = StripHashComments(script);
         var violations = new List<string>();
         var indices = new List<int>();
