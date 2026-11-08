@@ -1,4 +1,4 @@
-namespace PhotoPrivacy.IntegrationTests.Smoke;
+namespace PhotoPrivacy.IntegrationTests;
 
 /// <summary>
 /// release-readiness.ps1 四步全链路捕获扩展回归锁定：

@@ -103,7 +103,7 @@ public sealed class StayOpenConcurrentBlockTests : IntegrationTestBase
 
     /// <summary>
     /// 定位并验证真 ExifTool：一次 spawn <c>-ver</c> 探活。文件不存在 → 返回 null（环境未提供，
-    /// 早退口径同 RealExifToolProbeTest）；文件存在但探活失败 → Assert.Fail（环境损坏，
+    /// 早退口径同 RealExifToolProbeTests）；文件存在但探活失败 → Assert.Fail（环境损坏，
     /// 静默早退违背 #82「不得静默 skip」）。CI 门禁由 exiftool-stayopen job 的 ver 步先行
     /// 验证可用性，两种情形都不会发生在门禁里。
     /// </summary>
