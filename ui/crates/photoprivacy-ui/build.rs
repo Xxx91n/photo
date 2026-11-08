@@ -18,7 +18,7 @@ fn main() {
     }
     if std::env::var("CARGO_CFG_TARGET_ENV").as_deref() != Ok("gnu") {
         // MSVC 目标不嵌清单（gpui 依赖 TaskDialogIndirect，缺清单会在加载期失败）。
-        // Design(#49): Windows 发布链固定走 windows-gnu 并在此嵌入清单；MSVC 目标不具备生产可用性。
+        // Design(#245): Windows 发布链固定走 windows-gnu 并在此嵌入清单；MSVC 目标不具备生产可用性。
         println!(
             "cargo:warning=未为 {target} 嵌入应用清单：gpui 依赖 comctl32 v6，缺清单的产物启动即失败",
             target = std::env::var("TARGET").unwrap_or_default()

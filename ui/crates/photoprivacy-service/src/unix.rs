@@ -168,7 +168,7 @@ mod macos {
     }
 
     impl ServiceProbe for MacProbe {
-        // Design(#49): 状态探测只认显式系统域查询 `launchctl print system/<label>`；禁回落
+        // Design(#245): 状态探测只认显式系统域查询 `launchctl print system/<label>`；禁回落
         // legacy `launchctl list <label>`——后者按调用者 bootstrap 域查找，GUI 用户查不到系统
         // LaunchDaemon（误报已停止，#172 修复）。PID>0 才算运行中，判据在 parse_launchctl_print。
         fn state(&self) -> ServiceRuntimeState {

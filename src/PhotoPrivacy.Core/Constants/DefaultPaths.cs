@@ -49,7 +49,7 @@ public static class DefaultPaths
     /// 决策本体随 #33 关闭已实现（ExifTool 下载链验证走通）；#33 关闭后标记改指仍存续的治理票 #82（死指针清理），
     /// 决策的原始来历保留在上述 <c>#33</c> 引用里，不做删改。
     /// </remarks>
-    // Design(#82): exiftool.path 支持目录式覆盖，目录内解析出 exiftool/exiftool.exe。
+    // Design(#239): exiftool.path 支持目录式覆盖，目录内解析出 exiftool/exiftool.exe。
     internal static string ResolveExifToolExecutable(string configuredPath)
     {
         if (string.IsNullOrWhiteSpace(configuredPath))
@@ -82,7 +82,7 @@ public static class DefaultPaths
 
         // 只装在 PATH 里的 ExifTool 也算可用——与 UI 的 resolve_exiftool_from_path 同口径，
         // 否则 UI 显示「已自动检测到」而 Worker 把监控配置拒掉，同一台机器给出两处矛盾的结论。
-        // Design(#82): 固定候选全落空后按 PATH 解析 exiftool，与 UI 的探测规则一致。
+        // Design(#239): 固定候选全落空后按 PATH 解析 exiftool，与 UI 的探测规则一致。
         var fromPath = FindExifToolOnPathVariable();
         if (fromPath is not null) return fromPath;
 

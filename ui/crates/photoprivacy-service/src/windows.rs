@@ -171,7 +171,7 @@ const ACL_REGISTRY_KEY_PATH: &str = r"HKLM:\SOFTWARE\PhotoPrivacy";
 
 /// UI 安装链的安装者 SID 登记面（#200 落地，决策见 #82 D12）。
 ///
-/// Design(#82): 取「发起安装的 UI 进程令牌」的 `TokenUser`，不取提权后子进程令牌。
+/// Design(#238): 取「发起安装的 UI 进程令牌」的 `TokenUser`，不取提权后子进程令牌。
 /// 依据：`run_sc` 的提权走 runas，OTS（输入不同管理员凭据）时提权进程属于另一账户，而那不是
 /// 安装者本人的桌面会话；UI 进程本身就是发起安装的交互用户，同账户 UAC 提权不改变 SID，
 /// 因此进程令牌 SID 即 #70 语义要求的安装者 SID，也就是 AC1 里「安装者本人的非提权桌面会话」。
