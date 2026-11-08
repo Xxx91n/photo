@@ -56,7 +56,7 @@ public static class AppConfigLoader
             Backup: new BackupOptions(
                 Enabled: dto.Backup.Enabled,
                 Directory: dto.Backup.Directory,
-                // 写侧已统一为空时写 Default；读侧再补一次空白是双层保险，
+                // 写侧已统一处理：为空时写 Default；读侧对空白再补一次默认是双层保险，
                 // 防止旧磁盘文件或手工编辑时漏值导致空串污染下游路径拼接。
                 Suffix: string.IsNullOrWhiteSpace(dto.Backup.Suffix) ? AppConfig.Default.Backup.Suffix : dto.Backup.Suffix,
                 MaxSizeMb: dto.Backup.MaxSizeMb,
@@ -240,7 +240,7 @@ public static class AppConfigLoader
         [JsonPropertyName("directory")]
         public string Directory { get; init; } = AppConfig.Default.Backup.Directory;
 
-        // 写侧已统一为空时写 Default；Dto 默认值也同步到 AppConfig.Default，
+        // 写侧已统一处理：为空时写 Default；Dto 默认值也同步到 AppConfig.Default，
         // 让 JsonSerializer 不会产出意外的空串。运行时 AppConfig 构造还会再 blanket 一次。
         [JsonPropertyName("suffix")]
         public string Suffix { get; init; } = AppConfig.Default.Backup.Suffix;
