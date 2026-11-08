@@ -246,12 +246,9 @@ impl IpcClient {
             let version = self.negotiated_version();
 
             let mut stream = self.connect(endpoint).await?;
-            let mut payload = serde_json::to_vec(&Request::with_version(
-                method,
-                Some(id.as_str()),
-                version,
-            ))
-            .expect("请求序列化不应失败");
+            let request = Request::with_version(method, Some(id.as_str()), version);
+            let mut payload = serde_json::to_vec(&request)
+                .expect("请求序列化不应失败");
             payload.push(b'\n');
 
             let line = timeout(request_timeout, async {
@@ -711,11 +708,14 @@ mod tests {
                     Ok(n) => n,
                     Err(_) => return,
                 };
-                let v: Option<i32> = serde_json::from_str::<serde_json::Value>(
+                let parsed: Option<serde_json::Value> = serde_json::from_str::<serde_json::Value>(
                     String::from_utf8_lossy(&buf[..n]).trim(),
                 )
-                .ok()
-                .and_then(|value| value.get("v").and_then(|v| v.as_i64()).map(|v| v as i32));
+                .ok();
+                let v: Option<i32> = parsed
+                    .and_then(|value| value.get("v"))
+                    .and_then(|v| v.as_i64())
+                    .map(|v| v as i32);
                 let Some(v) = v else {
                     return;
                 };
