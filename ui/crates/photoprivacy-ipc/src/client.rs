@@ -1,5 +1,7 @@
 use crate::endpoints::Endpoint;
-use crate::protocol::{self, MAX_RESPONSE_BYTES, Request, Response, Status, methods};
+use crate::protocol::{
+    self, MAX_RESPONSE_BYTES, PROTOCOL_VERSION, Request, Response, Status, methods,
+};
 use crate::verify::{ServerGuard, ServerPeer, UnverifiablePolicy, VerifyOutcome};
 use std::fmt;
 use std::io;
@@ -245,8 +247,7 @@ impl IpcClient {
 
             let mut stream = self.connect(endpoint).await?;
             let request = Request::with_version(method, Some(id.as_str()), version);
-            let mut payload = serde_json::to_vec(&request)
-                .expect("请求序列化不应失败");
+            let mut payload = serde_json::to_vec(&request).expect("请求序列化不应失败");
             payload.push(b'\n');
 
             let line = timeout(request_timeout, async {
@@ -681,11 +682,13 @@ mod tests {
         assert_eq!(client.negotiated_version(), 0);
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn version_mismatch_is_downshifted_with_one_retry() {
         // #42：客户端 v1 与服务端 v0 不一致时，首轮被 fail-closed 拒收且响应携带服务端
         // V:0；客户端下调到 v0、重新建连、重试一次，会话最终可用；两轮请求版本应为 [1, 0]。
         use std::sync::Mutex;
+        use tokio::io::AsyncReadExt;
 
         let dir = std::env::temp_dir().join(format!("pp-t42-negotiate-{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("创建临时目录");
@@ -710,13 +713,12 @@ mod tests {
                     String::from_utf8_lossy(&buf[..n]).trim(),
                 )
                 .ok();
-                let mut v: Option<i32> = None;
-                if let Some(value) = &parsed {
-                    if let Some(ver) = value.get("v").and_then(|v| v.as_i64()) {
-                        v = Some(ver as i32);
-                    }
-                }
-                let Some(v) = v else {
+                let Some(v) = parsed
+                    .as_ref()
+                    .and_then(|val| val.get("v"))
+                    .and_then(|v| v.as_i64())
+                    .map(|v| v as i32)
+                else {
                     return;
                 };
                 received_for_serve.lock().expect("锁").push(v);
@@ -736,7 +738,8 @@ mod tests {
         let client = IpcClient::new();
         let ok = client.is_alive(&endpoint).await;
 
-        // is_alive 只在两轮往返结束后返回，此时服务端两轮均已处理完
+        // 客户端返回后，停止等待后续连接，避免测试因首轮异常而挂起
+        serve.abort();
         let _ = serve.await;
         let _ = std::fs::remove_dir_all(&dir);
 
