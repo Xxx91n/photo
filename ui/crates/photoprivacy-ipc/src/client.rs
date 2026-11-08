@@ -713,13 +713,12 @@ mod tests {
                     String::from_utf8_lossy(&buf[..n]).trim(),
                 )
                 .ok();
-                let mut v: Option<i32> = None;
-                if let Some(value) = &parsed {
-                    if let Some(ver) = value.get("v").and_then(|v| v.as_i64()) {
-                        v = Some(ver as i32);
-                    }
-                }
-                let Some(v) = v else {
+                let Some(v) = parsed
+                    .as_ref()
+                    .and_then(|val| val.get("v"))
+                    .and_then(|v| v.as_i64())
+                    .map(|v| v as i32)
+                else {
                     return;
                 };
                 received_for_serve.lock().expect("锁").push(v);
