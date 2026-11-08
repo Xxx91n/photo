@@ -10,9 +10,14 @@ namespace PhotoPrivacy.IntegrationTests;
 /// </summary>
 public sealed class TestNamingCategoryGuardTests
 {
-    /// <summary>public 测试类声明（xUnit 可发现形态）；internal 辅助类不匹配。</summary>
+    /// <summary>public 测试类声明（xUnit 可发现形态）；internal 辅助类不匹配。partial 一并纳入（CodeRabbit #233 审查补漏）。</summary>
     private static readonly Regex PublicClassPattern =
-        new(@"public\s+(?:sealed\s+|static\s+|abstract\s+)*class\s+(\w+)",
+        new(@"public\s+(?:sealed\s+|static\s+|abstract\s+|partial\s+)*class\s+(\w+)",
+            RegexOptions.Compiled, TimeSpan.FromSeconds(5));
+
+    /// <summary>测试特性声明（含带参形态 [Fact(Skip=…)]，CodeRabbit #233 审查补漏）。分片拼接防本文件自匹配。</summary>
+    private static readonly Regex TestAttributePattern =
+        new("\\[" + @"\s*(?:Fact|Theory)\b",
             RegexOptions.Compiled, TimeSpan.FromSeconds(5));
 
     /// <summary>Category trait 声明。分片拼接是刻意的：本文件源码不得出现连续的 [Trait( 字面量，否则守卫自己踩线。</summary>
@@ -31,7 +36,7 @@ public sealed class TestNamingCategoryGuardTests
         var violations = new List<string>();
         foreach (var (relPath, content) in EnumerateTestSources())
         {
-            if (!content.Contains("[Fact]") && !content.Contains("[Theory]"))
+            if (!TestAttributePattern.IsMatch(content))
             {
                 continue;
             }
