@@ -21,7 +21,7 @@
 改成 `yes` 之后，PR 走和票一样的标签和状态，用 `gh pr` 的对应命令：
 
 - **读 PR**：`gh pr view <number> --comments`，diff 用 `gh pr diff <number>`。
-- **列出待分诊的外部 PR**：`gh api --paginate 'repos/{owner}/{repo}/pulls?state=open' --jq '.[] | select(.author_association | IN("OWNER","MEMBER","COLLABORATOR") | not) | {number, title, author: .user.login, author_association, labels: [.labels[].name]}'`。
+- **列出还没归类的外部 PR**：`gh api --paginate 'repos/{owner}/{repo}/pulls?state=open' --jq '.[] | select(.author_association | IN("OWNER","MEMBER","COLLABORATOR") | not) | {number, title, author: .user.login, author_association, labels: [.labels[].name]}'`。
 - **评论 / 标签 / 关闭**：`gh pr comment`、`gh pr edit --add-label`/`--remove-label`、`gh pr close`。
 
 GitHub 的 issue 和 PR 共用一个编号空间，所以光写 `#42` 分不清是票还是 PR：先 `gh pr view 42`，查不到再 `gh issue view 42`。
@@ -39,7 +39,7 @@ GitHub 的 issue 和 PR 共用一个编号空间，所以光写 `#42` 分不清�
 
 按上面的 **读票** 来读。
 
-## /wayfinder 的操作
+## Wayfinding operations（/wayfinder 的操作）
 
 `/wayfinder` 用的 **map** 是一张总票，**child** 票就是挂在上面的各张工单。
 
