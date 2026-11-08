@@ -1,98 +1,144 @@
-# PhotoPrivacy Glossary
+# PhotoPrivacy 词表
 
-批量清理照片/视频/文档隐私元数据的跨平台桌面工具。GUI 入口为 Rust gpui 新 UI（`ui/`），后台与服务为 C#/.NET 10 Worker。本文件定义领域与治理术语；机制与取舍见代码注释与 `docs/`。
+这一页只干一件事：把项目里反复出现的说法，用一句人话讲清楚。
+看代码、看配置、看界面碰到不认识的词，来这里查。
 
-## 治理
+## 这个程序到底干什么
 
-**Design Marker（决策标记）**：源码里可检索的架构决策锚 `// Design(#<issue>): <决策>`，紧贴受约束声明；issue 号 = 决策存续出处。取舍判据见 `docs/agents/design-markers.md`，形态由 `DesignMarkerSourceTests` 守。
-**不变量①–⑤（运行不变量表）**：correctness-round（2026-09）拍的五条系统级正确性不变量，源码/测试以「不变量N」编号引用（含「不变量①④」连写与同句间隔两种形态）。原表体住 D 系决策账本 D-002（未入仓，fa360d6 拆治理层后散佚），本词条为对账重建：存续出处定 GLOSSARY、编号引用不折算不退役（#63）；引用与表体的对账由 `InvariantReferenceReconciliationTests` 守。
-- **不变量①（fail-closed）**：不可读、不识别、异常路径一律显式拒绝或可见告警，绝不静默放行、不静默降级。
-- **不变量②（数据零意外丢失）**：用户数据零意外丢失——备份镜像布局结构性消歧、restart 与停机窗口不丢在途任务。
-- **不变量③（最小攻击面，全档执行不降档）**：攻击面保持最小且任何执行档位不降档豁免；IPC 认证只信内核身份边界、不信用户态可伪造信号（PID/进程路径）是它在 IPC 面的具体应用，非定义全体。考古恢复：现行仓内无 ③ 引用点，取义自 correctness-round 票 04 报告（原表述「最小攻击面，全档执行不降档」），非新提。
-- **不变量④（驻守可观测）**：不允许「看起来在跑实际没在跑」——常驻收益（stay_open）不被摧毁、探针轻量不误杀、降级必留痕。
-- **不变量⑤（宣称-实现一致）**：宣称的承诺由机器断言兑现——对账守卫随 CI 硬失败，宣称数字由测试产出。
+用户选一个文件夹，程序盯着它。里面新进来或者改动过的照片、视频、PDF，
+程序先备份原文件，再让 ExifTool 把里面的隐私信息删掉（拍摄地点、相机型号、
+拍摄时间、软件名这些），最后写一条日志。不认识的格式直接跳过，不碰。
 
-**Stack Migration（换栈）**：UI 框架栈层面的整体更换，与栈内重构相对。
-**In-Stack Refactor（栈内重构）**：不换 UI 框架，只改栈内的结构与呈现模式。
+三种跑法：
 
-## 业务
+- 界面 `PhotoPrivacy.exe`：用户点着用的窗口，有设置页、日志页、服务页、规则页。
+- 后台 Worker：没有窗口，缩在托盘里盯着文件夹。
+- 服务 Worker：装成 Windows 服务或者 Linux systemd，开机就跑。
 
-**Audit Log**：业务审计日志（JSONL，路径脱敏+哈希），记录 wipe、backup、config 事件。文件名按本地「今天」分卷（`audit-<yyyy-MM-dd>.jsonl`），写入端、IPC 回填、UI tail 三处同口径（#129），UTC 只保留在行内 `timestamp_utc`。rotation 与清理策略（#231）：按本地日分卷 + 单文件 100MB 分卷续写；清理双闸 = `retain_days` 按文件创建时间判龄删除 + 31 文件计数上限（`audit-*.jsonl` glob，分卷计入），到上限最旧先删，属磁盘占用保护兜底；`retain_days<=0` 视为不做年龄清理，绝不因退化配置清空审计面（对齐备份保留的 `<=0` 兜底）。
-**Shard（分卷）**：单日审计 JSONL 触及 100MB 上限后按 `_N` 序号续写的文件族（#144 已收口：未满分卷续写复用，不再按批次碎裂）；`GetRecentLogs`（IPC Log Pull）与 UI tail 只认基础名 `audit-<date>.jsonl`，分卷行不经日志页返回——记录在案的接受行为（#135，生命周期归 #231），非缺陷。
-**Diagnostic Log**：运行诊断日志（启动/配置/ExifTool 交互/异常），统一走 Serilog。
-**Backup**：源文件清理前的原始副本；镜像相对路径布局，同内容跳过、分歧内容写时间戳旁路版本，绝不静默覆盖。
-**Quarantine**：处理失败或可疑文件的隔离目录。
-**Processed Record**：已处理文件的 NDJSON 追加记录，崩溃恢复后据此幂等跳过。去重键为规范化路径（#133 路线 2 起，粗粒度命中：同一路径已有记录即视为已处理，不再携带长度/时间戳指纹；记录带 v=2 格式标记，无标记的历史指纹格式记录恢复时归一化为纯路径；路径比较 Windows 忽略大小写、Unix 类按 Ordinal 区分，大小写不敏感卷只会多处理不漏处理，升级首轮补扫不重处理）。
-**Hot Folder**：Worker 监听并自动处理新文件的热目录。
-**Atomic Write**：写临时文件后原子替换，防止崩溃留下半写文件。
-**Compaction**：NDJSON 日志按过期时间重写收敛大小。
-**Temp File Route**：原地清除需备份时先复制到临时文件，清完原子回填。
+## 配置里的词
 
-## 配置与清理
+- `hot_folder`（监控文件夹）：要盯的那个文件夹。空着就是没选，Worker 连上界面后待着不动。
+- `include_subdirectories`（管不管子文件夹）：`true` 就是子文件夹也管。所有扫描只认这一个开关。
+- `allowed_extensions`（认哪些扩展名）：现在 34 个。不在名单里的格式直接跳过，记一条“跳过不认识的格式”。
+- `rules.json`（每个格式删什么）：5 类格式 × 6 个开关，一共 30 个 true/false。
+  六项是：全删、留 ICC 色彩、删 EXIF、删 XMP、删 IPTC、删时间。
+- `exiftool.path`（ExifTool 在哪）：空着就自动找，发布包自带的目录优先，其次系统安装位置；
+  也可以直接填一个安装目录。
+- `stay_open_pool_size`（同时开几个 ExifTool）：默认 1。
+- `dry_run`（只演练不真删）：好了就完整走流程，但不碰文件。
+- `retain_days`（旧东西留几天）：日志和备份各自按这个天数删。
+- `backup` / `quarantine`（备份 / 隔离区）：备份是删之前的原件；隔离区是清理失败的文件放的地方。
+- `ui.theme_variant`：`system` / `light` / `dark`。
+- `ui.locale`：十种语言之一。
 
-**Schema Version**：配置 schema 版本（当前 1），缺失字段用 DTO 默认值兜底，不主动回写。
-**Config Reload Validation**：重载配置前校验 schema 与 ExifTool 路径，失败保留旧配置。
-**Format Rules Store**：自定义清理规则持久化到 `config/rules.json`。
-**Hot Folder Guard**：非 dry-run 模式下 hot_folder 为空不再阻断启动，Worker 改入 Standby（待机）；例外是启用 `once=true`——不限运行模式，都必须拿到有效目录，否则以退出码 1 结束。
-**Standby（待机）**：hot_folder 为空时 Worker 的常驻就绪态——IPC 已连通但不监控任何目录；配置页保存有效目录后经 `ReloadConfig` 启用监控，无需重启 Worker。
-**Expert Mode Gate**：危险元数据组的专家模式开关与确认。
-**Wipe Strategy Resolver**：按扩展名格式族选择清理策略，未知格式拒绝处理。
-**Safe Color-Space Tags Wipe**：全量清除后回填 ICC 色彩标签，避免色偏。
+## 程序内部的说法
 
-## IPC 与服务
+这些名字在代码、日志、文档里会出现，说的都是同一个事：
 
-**IPC Transport**：Named Pipe（Windows）与 Unix Domain Socket（Linux/macOS）双后端抽象。
-**Unix Domain Socket**：按模式分为 `worker.sock` 与 `worker-background.sock`。
-**Service State Probe**：三平台服务状态探测，统一为枚举。
-**Service Command Executor**：三平台服务操作，经提权辅助进程调用安装脚本。
-**Flock Single Instance**：Unix 用锁文件实现单实例；Windows 用命名 Mutex。
-**Heartbeat Service**：UI 后台心跳通过 `GetStatus` 探测 Worker，指数退避至 60s。
-**Stale Socket Cleanup**：bind 前删除残留 socket。
-**Endpoint Ownership**：仅端点属主在释放时删除 socket，客户端不删共享端点。
-**SIGHUP Reload**：SIGHUP 触发配置热载，异常只记日志、不阻塞信号线程。
-**Zombie Reap**：ExifTool 子进程经 Exited→WaitForExit 回收，防 Unix 僵尸。
-**Shared Group Model**：服务与 GUI 用户共享组和 setgid 目录。
-**Service Pipe ACL**：Windows 服务管道显式 DACL（#70/#1/#7）——授权 SID 集合（安装者保底，`-AuthorizedUsers` opt-in 扩展）由 install-service.ps1 登记为单值 + MULTI_SZ 集合，服务端建例时逐 SID 授予读写**去位掩码**（#7 拆位：剥除 FILE_CREATE_PIPE_INSTANCE 0x4，建例权仅授服务身份）；集合缺失回退安装者单值，全缺失 fail-closed 回退 CurrentUserOnly。
-**Service Pipe Name Advertisement**：服务管道通告名（#7 命名熵）——服务每次监听生成 crypto-random 后缀（基名.32hex），先建首例再写入 `HKLM\SOFTWARE\PhotoPrivacy\ServicePipeName`；UI 动态解析服务端点优先读它，缺失/非法回退静态名。随机名防预蹲，HKLM 管理员可写防指针伪造；通告失败服务回退静态名（fail-safe）。
-**IPC Client Access Mask**：IPC 客户端细粒度请求掩码（#7/CWE-732）——FILE_GENERIC_READ|WRITE 剥除 0x4 后的 0x12019B，与服务端拆位 DACL 同值；C# 走 PipeAccessRights 构造重载，Rust 原生 CreateFileW（SQOS 三件套 SECURITY_SQOS_PRESENT|SECURITY_IDENTIFICATION|FILE_FLAG_OVERLAPPED，漏 PRESENT 位则 Identification 不生效），双端冒充级别 Identification。
-**IPC Protocol Version**：消息可选 `v` 字段（默认 1），新功能以方法名扩展。
-**Mode-Scoped Shutdown**：仅 CLI 模式可经 IPC 触发 Shutdown。
-**Post-Action Probe Retry**：服务操作后指数退避重试探测。
-**Elevation Verb**：提权入口统称 runas/pkexec/osascript。
-**PS5.1 Compat**：Windows 脚本兼容 PowerShell 5.1。
-**IPC Log Pull**：`GetRecentLogs` 从 Worker 拉审计尾部，补 FSW 盲区。
-**Channel&lt;T&gt; File Pipeline**：BoundedChannel 背压的生产-消费文件管线。
-**IpcClient**：UI↔Worker IPC 客户端（Rust 实现 `ui/crates/photoprivacy-ipc`）。
-**Connect Failure Cause**：连接编排失败的三态分类（#169）——服务端点被 DACL 拒 / 后台 Worker 启动未就绪（含单写者让位）/ 未找到 Worker 程序；经 `ConnectionSnapshot.connect_failure` 广播，心跳连上即清、掉线不清，UI 呈现优先于 `last_error`，不再统一归 os error 2。授权拒绝的行动指引按平台分键：Windows 指 `-AuthorizedUsers`，Unix 指服务授权组（0660+共享组边界）。
+- **审计日志（Audit Log）**：程序干过的事，一行一条 JSON，存在 `_audit/audit-今天日期.jsonl`。
+  一天一个文件，超过 100MB 就接着编号往下写；最多留 31 个文件，超过就删最旧的。
+- **诊断日志（Diagnostic Log）**：程序自己的运行日志（启动、读配置、和 ExifTool 对话、报错），走 Serilog。
+- **备份（Backup）**：删之前先复制一份。备份目录按原文件夹的层级摆，
+  所以不同子文件夹里的同名照片不会互相盖掉。要盖的位置已经有文件：内容一样就跳过；
+  内容不一样就另存成“名字.时间.扩展名”，绝不悄悄盖掉。
+- **隔离区（Quarantine）**：清理失败的文件复制到这里，同时记一条日志。
+- **处理记录（Processed Record）**：记着哪些文件已经处理过，存在 `_audit/processed.ndjson`。
+  程序重启后靠它跳过老文件，不重复干。记的是文件路径，Windows 下不分大小写。
+- **临时文件路线（Temp File Route）**：不开备份时，先把原文件复制成临时文件，
+  清理完再整份换回去，避免写到一半坏掉。
+- **整份替换（Atomic Write）**：先写临时文件，写完再改名盖过去。中途崩了不会留下半个文件。
+- **清理旧记录（Compaction）**：处理记录放久了会变大，定期重写一遍，只留还有用的。
+- **待机（Standby）**：没选监控文件夹时，Worker 已经和界面连上，但什么都不盯。
+  设置页选好文件夹并保存后，不用重启就会开始盯。
+- **启动先扫一遍（首扫）**：Worker 启动或者重载配置时，先把文件夹里现有的文件过一遍。
+  扫之前必须先开好文件监听，免得中间新进来的文件被漏掉。
+- **补漏扫（补扫）**：文件监听偶尔会漏事件。开了轮询（`polling_interval_seconds > 0`）
+  就定期对比一遍补上。
+- **专家模式（Expert Mode）**：危险项（比如把 MakerNotes 一起删）要用户明确打开并确认。
+- **按格式选删法（Wipe Strategy）**：JPEG、RAW、视频、PDF、EPS 五类各有各的删法；不认识的格式不处理。
+- **留 ICC 防变色（Safe Color-Space）**：全删之后把 ICC 色彩配置写回去，不然照片会偏色。
 
-## 本地化
+## 界面和连接
 
-**Locale Path Resolver**：三层 locale 路径解析的唯一入口。
-**Three-Layer Locale**：嵌入资源→exe 同目录→用户配置目录三层覆盖。
-**RTL**：阿拉伯语从右到左，渲染层按页镜像（`flex_row_reverse` 左右镜像）。
-**i18n Full Coverage**：文案全部走 locale JSON，状态判断用 enum/布尔。
-**Nested Locale JSON**：locale key 按功能分组嵌套。
-**10-Language Expansion**：支持 10 种语言，key 与 `en.json` 对齐。
+- **IPC**：界面和 Worker 说话的方式。Windows 用命名管道，Linux/macOS 用 Unix socket。
+- **服务管道随机名**：Windows 服务每次启动在管道名后面加一段随机字符，
+  写完事登记到注册表，界面去那里读。防别人提前占坑。
+- **服务管道权限**：只让安装时登记过的账号连；名单缺失就退回只有安装者能连。
+- **连不上的三种原因**：没权限（服务管道拒了）/ 后台 Worker 还没起来 / 找不到 Worker 程序。
+  界面上分开提示，不再统一说“os error 2”。
+- **心跳**：界面每隔一会儿问一次 Worker 在不在，问不到就拉长间隔，最长 60 秒。
+- **单实例**：同一时间只许开一个。Unix 用锁文件，Windows 用命名互斥。
+- **只许命令行关**：只有 CLI 模式能通过 IPC 让 Worker 退出，界面不能。
+- **提权**：装服务要管理员。Windows 用 runas，Linux 用 pkexec，macOS 用 osascript。
+- **语言文件三层**：程序里带的 → exe 旁边的 → 用户配置目录里的。后面的盖前面的。
+  十种语言，缺的词条退回中文。
 
-## 发布
+## 发版
 
-**RID**：.NET 运行时标识符；本项目 7 个。
-**Shell（发布壳）**：编译产物不含 ExifTool 二进制，用户自配路径。
-**Release Directory**：`release/<rid>/` 平铺输出，UI 与 Worker 可执行文件同目录。
-**Publish Profile**：SelfContained 等四个发布属性经发布脚本传入（`/p:` 与 `--self-contained` 开关），不写入 csproj / 工程级 props；`PublishReadyToRun=true` 例外中心化在 `Directory.Build.props`（#12 裁决）。
-**Manual Dispatch**：release.yml 仅手动触发；ci.yml 在 push/PR 自动跑测试。
-**Deb Package**：Linux .deb 包，打包可执行文件与运行时依赖。
-**App Bundle**：macOS .app 目录结构。
-**LaunchDaemon**：macOS 系统服务管理器（plist + launchctl）。
+- **RID**：.NET 的运行时标识，比如 `win-x64`、`linux-x64`。本项目 7 个。
+- `release/<rid>/`：发版产物平铺在这里，界面和 Worker 的可执行文件放同一个目录。
+- **发布包带不带 ExifTool**：带。Windows 是 `exiftool.exe` + `exiftool_files/`；
+  Linux/macOS 是 `exiftool` + `lib/`，目标机要有 perl。
+- **发布参数**（SelfContained 这些）：只从发布脚本传，不写进 csproj。
+- `release.yml` 只能手动点；`ci.yml` 每次 push/PR 自动跑。
 
-## UI
+## 以后别用的说法
 
-**Aesthetic Anchor**：新 UI 的观感“像不像”标尺；六锚清单与取舍见 #49 T4 与 `docs/agents/ui-smoke.md`。
-**Nav Capsule Language**：nav 三态 idle 透明 / hover 中性半透明胶囊 / active 主色实心胶囊。
-**Nav Group Split**：主导航顶组 + utility 底组。
-**Native Tray Menu**：原生菜单不可样式化，不做过渡。
-**Visual Baseline**：4 页×关键态截图基线，人工目检见 `docs/agents/ui-smoke.md`，不上 CI 像素 diff。
-**Source-lint Test**：编译期源码文本断言，约定见 `tests/TEST-CONVENTIONS.md`。
-**CI Gate**：push/PR 自动跑过滤后的测试，是云端验收闸。
+| 以前这么说 | 改成这么说 |
+| --- | --- |
+| 治理 | 整理 / 清理 |
+| 收口 | 做完 / 定下来 |
+| 对账 | 核对 |
+| 存续 / 存续出处 | 还在用 / 现在记在哪 |
+| 悬空 | 找不到对应 |
+| 守卫 | 检查 / 测试 |
+| 红线 | 硬性要求 |
+| 恒绿 | 永远通过（其实是假通过） |
+| 撞红 | 测试失败 |
+| 落痕 | 留下记录 |
+| 口径 | 说法 / 规则 / 标准 |
+| 兜底 | 退路 / 保底 |
+| 判据 | 判断标准 |
+| 首扫 / 补扫 | 启动先扫一遍 / 补漏扫 |
+| 旁路版本 | 另存一份 |
+| 定形 | 定下来 |
+| 取证 | 留下证据 / 截图 |
+| 核销 | 逐项确认做完 |
+| 锚点 | 参照点 |
+| 载具 | 放在哪 |
+| 账本 | 记录 |
+| 散佚 | 丢了 |
+| 回潮 | 又犯老毛病 |
+| 走形 | 变样 |
+| 击穿 | 打破 |
+| 裸改 | 直接改 |
+| 自证 | 自己证明自己 |
+| 失明 | 看不见 |
+| 硬失败 | 直接报错 |
+| 绿灯 / 红灯 | 通过 / 失败 |
+| 不变量①–⑤ | 直接说那条规矩，不编号 |
+| Design 标记 / 决策基线票 | 代码旁边的一句说明 |
+| 换栈 / 栈内重构 | 换 UI 框架 / 不换框架改结构 |
+| Aesthetic Anchor | 观感参照 |
+| Nav Capsule | 导航选中样式 |
+| Visual Baseline | 截图基准 |
+| Source-lint | 把源码当文本检查 |
+| CI Gate | CI 检查 |
 
-> AI生成
+## 几条一直要守住的规矩
+
+原来叫“不变量①–⑤”，现在不编号了，直接说事。代码里碰到就照这个意思写。
+
+- 读不懂、不认识、出错，一律明确拒绝或者给出看得见的警告。不许悄悄放过，不许悄悄降级。
+- 用户文件不许意外丢。备份要能分清是哪个子文件夹的哪个文件；重启和停机时手上的活不能丢。
+- 能攻击的面越小越好，哪种运行方式都不放松。判断“谁在连”只认操作系统给的身份，
+  不认进程号、进程路径这种能伪造的东西。
+- 不许“看着在跑、其实没跑”。ExifTool 常驻不能被弄坏；检查它活着要轻，不能误杀；
+  降级必须留记录。
+- 说了什么，机器就得真的做到什么。文档里写的数字，测试要能证明；对不上就让 CI 失败。
+
+## 怎么用这份表
+
+- 写代码、写文档、写票，先来这里找词。表里有的，按表里的说法；表里没有的，别自己造，
+  直接用人话把事情说清楚。
+- “以后别用的说法”那一列，谁再写出来，就在 review 里打回去。
