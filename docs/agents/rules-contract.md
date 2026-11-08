@@ -1,7 +1,7 @@
 # rules.json 契约（新 UI 与 Worker 共用）
 
 > 定位：规则页读写的 `rules.json` 速查，供新 UI（`ui/`）与任何规则存储改动前查阅。
-> 事实源：`src/PhotoPrivacy.Core/Configuration/FormatRulesStore.cs`（键名与编码默认值）、
+> 实际行为以列出的代码为准：`src/PhotoPrivacy.Core/Configuration/FormatRulesStore.cs`（键名与编码默认值）、
 > `src/PhotoPrivacy.Core/Rules/WipeRuleEngine.cs`（Worker 消费侧缺键回退）、
 > `ui/crates/photoprivacy-rules/src/lib.rs`（新 UI 侧契约实现）。本文件是契约速查缓存。
 > 注：旧 Avalonia UI 已随 #61 退役，历史对照仅作背景；现役实现为新 UI 与 Worker。
@@ -14,7 +14,7 @@ UI 与 Worker 都按各自 `AppContext.BaseDirectory` / 可执行文件目录解
 ## Schema
 
 - JSON 对象，键 `{family}_{group}`，值为布尔；共 5 族 × 6 组 = 30 个键。
-- 族前缀**不含斜杠**：`jpeg`、`raw`、`video`、`pdf`、`eps`（历史 `eps/ps` 键属错配，禁止回潮）。
+- 族前缀**不含斜杠**：`jpeg`、`raw`、`video`、`pdf`、`eps`（历史 `eps/ps` 键属错配，不许又犯老毛病）。
 - 组名：`strip_all`、`preserve_icc`、`strip_exif`、`strip_xmp`、`strip_iptc`、`strip_time`。
 - 字典键按字面匹配：`JsonSerializerDefaults.Web` 只改属性名策略，不改 `Dictionary<string,bool>` 的键，
   `jpegStripAll` 之类读不到。
@@ -48,4 +48,4 @@ C# `WipeRuleEngine.FamilyFallback`（缺键回退默认值）、Rust `ui/crates/
 .NET 互读测试 `tests/PhotoPrivacy.Core.Tests/Configuration/FormatRulesStoreTests.cs`。
 旧 Avalonia UI 已退役（#61），schema 变更只在现役新 UI（Rust）与 Worker（.NET）
 侧落地，互读测试只保证既有 30 键。
-规则不走 IPC，不新增 method（`Design(#49)`：IPC 协议只以 method 名扩展，且规则本就属文件契约）。
+规则不走 IPC，不新增 method（#49 定下：IPC 协议只以 method 名扩展，且规则本就属文件契约）。
