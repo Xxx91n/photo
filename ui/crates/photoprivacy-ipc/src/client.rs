@@ -246,8 +246,12 @@ impl IpcClient {
             let version = self.negotiated_version();
 
             let mut stream = self.connect(endpoint).await?;
-            let mut payload = serde_json::to_vec(&Request::with_version(method, Some(id.as_str()), version))
-                .expect("请求序列化不应失败");
+            let mut payload = serde_json::to_vec(&Request::with_version(
+                method,
+                Some(id.as_str()),
+                version,
+            ))
+            .expect("请求序列化不应失败");
             payload.push(b'\n');
 
             let line = timeout(request_timeout, async {
