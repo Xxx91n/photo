@@ -16,21 +16,21 @@ public sealed class TestNamingCategoryGuardTests
             RegexOptions.Compiled, TimeSpan.FromSeconds(5));
 
     /// <summary>
-    /// 测试特性声明：覆盖无参/带参（[Fact(Skip=…)]）、命名空间限定（[Xunit.Fact]）与
-    /// Attribute 后缀（[FactAttribute]）等 C# 合法写法（CodeRabbit #233 两轮审查补漏）。
-    /// 仍不覆盖 global:: 全限定等更冷僻形态——仓内从未出现，回潮即撞守卫注释可见。
-    /// 分片拼接防本文件自匹配。
+    /// 测试特性声明：括号组感知——无参/带参（[Fact(Skip=…)]）、命名空间限定（[Xunit.Fact]）、
+    /// Attribute 后缀（[FactAttribute]）、同组混写（[Theory, Trait(…)]）均命中
+    /// （CodeRabbit #233 二至四轮审查补漏的收口形态）。分片拼接防本文件自匹配。
     /// </summary>
     private static readonly Regex TestAttributePattern =
-        new("\\[" + @"\s*(?:Xunit\.)?(?:Fact|Theory)(?:Attribute)?\b",
+        new("\\[" + @"[^\[\]]*" + @"\b(?:Xunit\.)?(?:Fact|Theory)(?:Attribute)?\b",
             RegexOptions.Compiled, TimeSpan.FromSeconds(5));
 
     /// <summary>
-    /// Category trait 声明：覆盖命名空间限定与 Attribute 后缀形态（CodeRabbit #233 第三轮审查补漏）。
+    /// Category trait 声明：括号组感知——`[Trait(…)]`、`[Xunit.TraitAttribute(…)]`、
+    /// `[Fact, Trait("Category", …)]` 同组混写等 C# 合法形态一并覆盖（CodeRabbit #233 二至四轮审查补漏的收口形态）。
     /// 分片拼接是刻意的：本文件源码不得出现连续的 [Trait( 字面量，否则守卫自己踩线。
     /// </summary>
     private static readonly Regex CategoryTraitPattern =
-        new("\\[" + @"\s*(?:Xunit\.)?" + "Trait" + @"(?:Attribute)?\s*\(\s*""Category""\s*,\s*""([^""]*)""\s*\)",
+        new("\\[" + @"[^\[\]]*" + "Trait" + @"(?:Attribute)?\s*\(\s*""Category""\s*,\s*""([^""]*)""\s*\)",
             RegexOptions.Compiled, TimeSpan.FromSeconds(5));
 
     // 同上：口径字面量不在本文件连续出现——目录对齐检查复用 CategoryTraitPattern 的抓取结果。
