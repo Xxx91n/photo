@@ -8,7 +8,7 @@ namespace PhotoPrivacy.IntegrationTests.Smoke;
 /// 2) release-readiness.ps1 对 smoke/publish 子脚本做输出捕获并打印尾部（source guard）；
 /// 3) 冒烟失败路径诊断含子进程 stdout/stderr 尾部（行为测试，坏 exiftool 路径触发校验失败）。
 /// 4) — tests/ 直启宿主（InstanceConflictAuditTests/DryRunOutputFlowTests）无 dotnet run
-///    兜底（含拆参形态），DLL-first 直启 + DLL 缺失显式报错（source guard 扩域）。
+///    保底（含拆参形态），DLL-first 直启 + DLL 缺失显式报错（source guard 扩域）。
 /// </summary>
 [Trait("Category", "Smoke")]
 public sealed class SmokeScriptDiagnosticsTests
@@ -22,14 +22,14 @@ public sealed class SmokeScriptDiagnosticsTests
         Assert.Contains("PhotoPrivacyWorker.dll", source, StringComparison.Ordinal);
     }
 
-    // 拆参形态兜底标记（fileName="dotnet"，arguments 以 "run … --project …" 开头）。标记拆写拼接，避免守卫源码自引用命中全树扫描。
+    // 拆参形态保底标记（fileName="dotnet"，arguments 以 "run … --project …" 开头）。标记拆写拼接，避免检查源码自引用命中全树扫描。
     private const string FallbackMarker = "run --" + "project";
 
     [Fact]
     public void CliTestHosts_Should_Be_DllFirst_Without_DotnetRunFallback()
     {
         // guard 从 scripts/ 扩域到 tests/ 直启宿主：
-        // 1) 全 tests/ 源码树无拆参形态 dotnet run 兜底（排除 bin/obj）；
+        // 1) 全 tests/ 源码树无拆参形态 dotnet run 保底（排除 bin/obj）；
         // 2) 两个直启宿主保留 DLL-first 直启与 DLL 缺失构建指引，不再有 dotnet run。
         var testsRoot = Path.Combine(SourceLint.RepoRoot, "tests");
         var offenders = Directory.GetFiles(testsRoot, "*.cs", SearchOption.AllDirectories)

@@ -56,23 +56,22 @@ public static class AppConfigLoader
             Backup: new BackupOptions(
                 Enabled: dto.Backup.Enabled,
                 Directory: dto.Backup.Directory,
-                // 写侧已统一兜底为空时写 Default；读侧再做空白兜底是双层保险，
+                // 写侧已统一处理：为空时写 Default；读侧对空白再补一次默认是双层保险，
                 // 防止旧磁盘文件或手工编辑时漏值导致空串污染下游路径拼接。
                 Suffix: string.IsNullOrWhiteSpace(dto.Backup.Suffix) ? AppConfig.Default.Backup.Suffix : dto.Backup.Suffix,
                 MaxSizeMb: dto.Backup.MaxSizeMb,
                 RetainDays: dto.Backup.RetainDays),
             Quarantine: new QuarantineOptions(
                 Enabled: dto.Quarantine.Enabled,
-                // 空串/空白回落 DefaultPaths —— 对齐 Backup.Suffix 先例。
+                // 空串/空白回落 DefaultPaths（<BaseDirectory>/hot/...，不改成空串直传）—— 对齐 Backup.Suffix 先例。
                 // 空串直传会让 Path.Combine("", 文件名) 退化成相对路径，隔离文件落进进程 CWD
                 // （config.sample.json 的 quarantine.directory 就是空串，跟着 README 第一步走即命中）。
-                // Design(#240): quarantine.directory 空串保留 <BaseDirectory>/hot/... 回落（不改成空串）。
                 Directory: string.IsNullOrWhiteSpace(dto.Quarantine.Directory)
                     ? DefaultPaths.DefaultQuarantineDirectory
                     : dto.Quarantine.Directory),
             Audit: new AuditOptions(
-                // 同上——审计日志目录空串回落 DefaultPaths，绝不落 CWD。
-                // Design(#240): audit.log_directory 空串保留 <BaseDirectory>/hot/... 回落（不改成空串）；空监控目录下的校验范围已裁为「只跳过监控资源」，见 AppConfigValidator.Validate 的分层标记。
+                // 同上——审计日志目录空串回落 DefaultPaths（<BaseDirectory>/hot/...），绝不落 CWD；
+                // 空监控目录下的校验范围是「只跳过监控资源」，见 AppConfigValidator.Validate 的分层注释。
                 LogDirectory: string.IsNullOrWhiteSpace(dto.Audit.LogDirectory)
                     ? DefaultPaths.DefaultAuditLogDirectory
                     : dto.Audit.LogDirectory,
@@ -82,7 +81,7 @@ public static class AppConfigLoader
             Ui: new UiOptions(
                 HideMainWindowOnStartup: dto.Ui.HideMainWindowOnStartup,
                 HideTrayIcon: dto.Ui.HideTrayIcon,
-                // ThemeVariant/Locale/ThemeId 兜底默认从 AppConfig.Default 取，消双 DTO 漂移。
+                // ThemeVariant/Locale/ThemeId 为空时从 AppConfig.Default 补默认，消双 DTO 漂移。
                 ThemeVariant: string.IsNullOrWhiteSpace(dto.Ui.ThemeVariant) ? AppConfig.Default.Ui.ThemeVariant : dto.Ui.ThemeVariant,
                 Locale: string.IsNullOrWhiteSpace(dto.Ui.Locale) ? AppConfig.Default.Ui.Locale : dto.Ui.Locale,
                 SidebarWidth: dto.Ui.SidebarWidth,
@@ -97,12 +96,12 @@ public static class AppConfigLoader
                 ? legacyPath
                 : nestedPath;
 
-        // 空串回落口径与 quarantine.directory / audit.log_directory 一致：
+        // 空串回落规则与 quarantine.directory / audit.log_directory 一致：
         // 发布包内置 ExifTool 后模板不再写死绝对路径，留空 = 优先 <BaseDirectory>/ExifTool/，
         // 其次系统安装位置；用户手填的绝对路径（含 ETOverrideDir 式目录）仍然优先，不被覆盖。
-        // 手填值若为目录则解析出其中的 exiftool/exiftool.exe（#33 目录式覆盖，对齐 ExifToolGUI ETOverrideDir）；
-        // 该决策的标记挂在其实现处 DefaultPaths.ResolveExifToolExecutable，这里只接线。
-        // Design(#239): exiftool.path 留空按运行时探测回落（DefaultPaths.ExifToolPath），不覆盖用户手填的绝对路径。
+        // 手填值若为目录则解析出其中的 exiftool/exiftool.exe（#33 目录式覆盖，对齐 ExifToolGUI ETOverrideDir），
+        // 实现在 DefaultPaths.ResolveExifToolExecutable，这里只接线。
+        // 留空表示按运行时探测（DefaultPaths.ExifToolPath），绝不写回探测结果、不覆盖用户手填的绝对路径。
         return string.IsNullOrWhiteSpace(resolved)
             ? DefaultPaths.ExifToolPath
             : DefaultPaths.ResolveExifToolExecutable(resolved);
@@ -241,7 +240,7 @@ public static class AppConfigLoader
         [JsonPropertyName("directory")]
         public string Directory { get; init; } = AppConfig.Default.Backup.Directory;
 
-        // 写侧已统一兜底为空时写 Default；Dto 默认值也同步到 AppConfig.Default，
+        // 写侧已统一处理：为空时写 Default；Dto 默认值也同步到 AppConfig.Default，
         // 让 JsonSerializer 不会产出意外的空串。运行时 AppConfig 构造还会再 blanket 一次。
         [JsonPropertyName("suffix")]
         public string Suffix { get; init; } = AppConfig.Default.Backup.Suffix;

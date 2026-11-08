@@ -130,7 +130,7 @@ public sealed class WindowsServicePipeAclTests
             return;
         }
 
-        // 防回潮：注册表出现非法 SID 字符串时抛异常炸绑定、服务起不来——必须与缺失同样走回退。
+        // 防老毛病再犯：注册表出现非法 SID 字符串时抛异常炸绑定、服务起不来——必须与缺失同样走回退。
         await using var transport = new NamedPipeIpcTransport(
             NewPipeName(), WindowsPipeAccessMode.ServiceShared, installerSidResolver: () => "not-a-sid",
             servicePipeAdvertiser: AdvertiseAlways);

@@ -37,9 +37,9 @@ public sealed class UnixDomainSocketIpcTransport : IIpcTransport
     public const string ServiceGroupEnvironmentVariable = "PHOTOPRIVACY_SERVICE_GROUP";
 
     /// <summary>
-    /// socket 目录不存在时本进程建目录所用的模式：与安装器承诺同口径（Linux RuntimeDirectoryMode
+    /// socket 目录不存在时本进程建目录所用的模式：与安装器承诺同一规则（Linux RuntimeDirectoryMode
     /// / macOS SERVICE_SOCKET_DIR 均为 0750）。.NET 的 <see cref="Directory.CreateDirectory(string)"/>
-    /// 按 umask 建出 0755，等于把「目录 0750 收口」这层防线换成缺省值（#187 缺口 1）。
+    /// 按 umask 建出 0755，等于把「目录必须 0750」这层防线换成缺省值（#187 缺口 1）。
     /// </summary>
     public const UnixFileMode SocketDirectoryMode =
         UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
@@ -122,13 +122,13 @@ public sealed class UnixDomainSocketIpcTransport : IIpcTransport
     /// <summary>本实例 ListenAsync 实际施加的 socket 文件模式（未 Listen 或非 Unix 为 null）。</summary>
     public UnixFileMode? AppliedSocketMode { get; private set; }
 
-    /// <summary>ListenAsync 解析出的对端 uid 白名单（诊断/守卫用，运行期不再变更）。</summary>
+    /// <summary>ListenAsync 解析出的对端 uid 白名单（诊断/检查用，运行期不再变更）。</summary>
     public IReadOnlySet<uint> AllowedPeerUids => _allowedPeerUids;
 
     /// <summary>
-    /// 兜底创建 socket 目录：末级目录建为 0750 并显式 <see cref="File.SetUnixFileMode(string, UnixFileMode)"/>。
+    /// 补建 socket 目录：末级目录建为 0750 并显式 <see cref="File.SetUnixFileMode(string, UnixFileMode)"/>。
     /// 只在本进程确实要建目录时调用——已存在的目录一律不碰（属主/组/模式是安装器与服务管理器的事实源，
-    /// 运维手工收紧到 0700 的目录不得被兜底路径放宽）。逐级建中间目录时同样按 0750，
+    /// 运维手工收紧到 0700 的目录不得被补建路径放宽）。逐级建中间目录时同样按 0750，
     /// 避免 <see cref="Directory.CreateDirectory(string, UnixFileMode)"/> 对中间目录只按 umask 施加。
     /// </summary>
     private static void EnsureSocketDirectory(string dir)
@@ -155,7 +155,7 @@ public sealed class UnixDomainSocketIpcTransport : IIpcTransport
     }
 
     /// <summary>
-    /// 绑定并开始监听端点（非阻塞）：清残留 socket → 按需兜底建目录（0750）→ bind → 施加 socket 文件模式
+    /// 绑定并开始监听端点（非阻塞）：清残留 socket → 按需补建目录（0750）→ bind → 施加 socket 文件模式
     /// （后台 0600 / 服务 0660）→ 解析对端 uid 白名单。
     /// </summary>
     /// <param name="cancellationToken">绑定本身是同步内核调用，此参数仅为接口一致性保留。</param>
@@ -167,9 +167,9 @@ public sealed class UnixDomainSocketIpcTransport : IIpcTransport
             try { File.Delete(_socketPath); } catch { /* ignore */ }
         }
 
-        // Ensure parent directory exists — 与安装器同口径建 0750（#187 缺口 1）。
+        // Ensure parent directory exists — 与安装器同一规则建 0750（#187 缺口 1）。
         // 裸 Directory.CreateDirectory 按 umask 建成 0755：目录可被任意本地用户遍历，
-        // socket 端点存在性与目录内容外泄，安装器承诺的「目录 0750 收口」被缺省值替换。
+        // socket 端点存在性与目录内容外泄，安装器承诺的「目录必须 0750」被缺省值替换。
         // 已存在的目录不动（安装器/服务管理器是权限的事实源，这里不覆写属主与组）。
         var dir = Path.GetDirectoryName(_socketPath);
         if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
@@ -228,7 +228,7 @@ public sealed class UnixDomainSocketIpcTransport : IIpcTransport
 
     /// <summary>
     /// 接受一条连接并做纵深第二层校验：对端 uid 不可读或不在白名单内即 close 并抛
-    /// <see cref="UnauthorizedAccessException"/>（不变量①：内核只识别不拦截）。
+    /// <see cref="UnauthorizedAccessException"/>（内核只识别不拦截，拒绝必须由本层明确做出）。
     /// </summary>
     /// <param name="cancellationToken">取消等待接受。</param>
     /// <returns>已通过身份校验的连接流（所有权随流转移）。</returns>
@@ -238,7 +238,7 @@ public sealed class UnixDomainSocketIpcTransport : IIpcTransport
         var client = await _listener.AcceptAsync(cancellationToken);
 
         // 内核只识别不拦截，拒绝必须由本层执行并立即 close。
-        // 凭据不可读或不在白名单内 → fail-closed 拒绝（不变量①）。
+        // 凭据不可读或不在白名单内 → fail-closed 拒绝，绝不静默放行。
         var peerUid = _peerPolicy.ReadPeerUid(client);
         if (peerUid is null || !_allowedPeerUids.Contains(peerUid.Value))
         {

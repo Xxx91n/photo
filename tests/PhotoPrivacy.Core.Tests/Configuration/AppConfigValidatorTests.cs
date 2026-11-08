@@ -50,7 +50,7 @@ public sealed class AppConfigValidatorTests
         }
     }
 
-    // #33: 目录式覆盖解析出的 exe 绝对路径，仍按既有口径校验伴随目录（Windows exiftool_files / Unix lib）。
+    // #33: 目录式覆盖解析出的 exe 绝对路径，仍按既有规则校验伴随目录（Windows exiftool_files / Unix lib）。
     [Fact]
     public void Validate_Should_Accept_Directory_Override_With_Companion_Directory()
     {
@@ -140,12 +140,12 @@ public sealed class AppConfigValidatorTests
     }
 
     // ---------------------------------------------------------------------------------------
-    // 校验分层（Design(#108)）：无条件层在待机/ dry-run 形态同样执行；
+    // 校验分层：无条件层在待机/ dry-run 形态同样执行；
     // 监控资源层只在启用监控时 fail-closed。
     // ---------------------------------------------------------------------------------------
 
     /// <summary>
-    /// 本票的核心收窄：空监控目录不再整体 return，禁用参数这类与监控无关的项必须照常拒。
+    /// 这里的核心收窄：空监控目录不再整体 return，禁用参数这类与监控无关的项必须照常拒。
     /// </summary>
     [Fact]
     public void Validate_Should_Throw_When_ExtraArgs_Forbidden_Even_If_HotFolder_Is_Empty()
@@ -241,7 +241,7 @@ public sealed class AppConfigValidatorTests
         Directory.CreateDirectory(tempHot);
         File.WriteAllText(Path.Combine(tempHot, "exiftool.exe"), "x");
         // 两个平台的伴随运行时目录都建：Windows 要求 exiftool_files，Unix 要求同级 lib/
-        // （见 Design(#108) 的分层与 IsSystemBinDirectory 例外），否则本用例会先撞运行时目录缺失。
+        // （见 AppConfigValidator.Validate 的分层与 IsSystemBinDirectory 例外），否则本用例会先撞运行时目录缺失。
         Directory.CreateDirectory(Path.Combine(tempHot, "exiftool_files"));
         Directory.CreateDirectory(Path.Combine(tempHot, "lib"));
 
@@ -269,7 +269,7 @@ public sealed class AppConfigValidatorTests
 
     /// <summary>
     /// 符号链接安装：<c>bin/exiftool</c> 链接到另一目录，<c>lib/</c> 在目标旁边。
-    /// 防的具体回潮形态（#108 审查）：按链接所在目录查运行时目录，把可用安装误判成装坏。
+    /// 要防的老毛病（#108 审查）：按链接所在目录查运行时目录，把可用安装误判成装坏。
     /// </summary>
     [Fact]
     public void Validate_Should_Accept_Symlinked_ExifTool_With_Lib_Beside_The_Target()
@@ -312,7 +312,7 @@ public sealed class AppConfigValidatorTests
     }
 
     // ---------------------------------------------------------------------------------------
-    // 空隔离/审计目录必须被拒（loader 已兜底，这里是第二层保险 + 可读错误）
+    // 空隔离/审计目录必须被拒（loader 已保底，这里是第二层保险 + 可读错误）
     // ---------------------------------------------------------------------------------------
 
     [Fact]

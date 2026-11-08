@@ -4,14 +4,14 @@ namespace PhotoPrivacy.Core.Tests.Audit;
 
 /// <summary>
 /// 行为测试：审计文件名日期基准（#129）。统一基准的决策是「文件名按本地「今天」
-/// 分卷，三处消费端（写入端、IPC 回填、UI tail）同口径」；本套用例钉死统一入口
+/// 分卷，三处消费端（写入端、IPC 回填、UI tail）同一规则」；本套用例钉死统一入口
 /// <see cref="AuditLogFileNames.BaseName"/> 的取值规则，防止任一端重新引入
 /// UTC 换算或独立格式化。
 ///
-/// 防回潮形态：
+/// 要防的老毛病：
 /// ① 实现把「传入值即本地墙钟」误读成「再补一次 UTC 换算」——UTC+8 00:00–07:59
 ///    时窗内文件名会落到「昨天」，重演写入端/读取端分叉（#129 根因）；
-/// ② 调用方绕过入口自行拼 <c>$"audit-{...:yyyy-MM-dd}.jsonl"</c>，三处口径各自漂移。
+/// ② 调用方绕过入口自行拼 <c>$"audit-{...:yyyy-MM-dd}.jsonl"</c>，三处规则各自漂移。
 /// </summary>
 public sealed class AuditLogFileNamesTests
 {

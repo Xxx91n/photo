@@ -70,9 +70,9 @@ public sealed class JsonLineAuditLoggerTests
     [Fact]
     public async Task WriteAsync_Should_Write_Into_Local_Day_Filename_Not_Utc()
     {
-        // #129 决策钉死：写入端文件名按本地「今天」分卷（与 IPC 回填、UI tail 同口径），
+        // #129 决策钉死：写入端文件名按本地「今天」分卷（与 IPC 回填、UI tail 同一规则），
         // UTC 只保留在行内 timestamp_utc。本用例断言文件名 = 本地日期名。
-        // CI（ubuntu，本地时区=UTC）上本地=UTC，无法靠红灯区分基准——UTC+8 00:00–07:59
+        // CI（ubuntu，本地时区=UTC）上本地=UTC，无法靠测试失败区分基准——UTC+8 00:00–07:59
         // 分叉时窗的行为由 AuditLogFileNamesTests 的窗口用例钉死，本用例钉「入口进文件名」。
         var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
@@ -157,7 +157,7 @@ public sealed class JsonLineAuditLoggerTests
     [Fact]
     public void CleanupExpired_Should_Delete_Files_Older_Than_RetainDays_And_Keep_Recent()
     {
-        // #41 清理双闸之一：按创建时间判龄删除（#208 判据不变）。超龄删，保留窗口内不删。
+        // #41 清理双闸之一：按创建时间判龄删除（#208 判断标准不变）。超龄删，保留窗口内不删。
         var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
 
@@ -184,7 +184,7 @@ public sealed class JsonLineAuditLoggerTests
     [Fact]
     public void CleanupExpired_Should_Evict_Oldest_First_When_Count_Exceeds_Limit()
     {
-        // #41 清理双闸之二：31 文件计数上限（分卷计入 audit-*.jsonl glob）是磁盘保护兜底，
+        // #41 清理双闸之二：31 文件计数上限（分卷计入 audit-*.jsonl glob）是磁盘保护保底，
         // 到上限最旧创建时间先删。判龄窗口放大到 365 天，让本用例只测计数闸。
         var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
@@ -224,7 +224,7 @@ public sealed class JsonLineAuditLoggerTests
     public void CleanupExpired_Should_Skip_Age_Cleanup_When_RetainDays_Is_Not_Positive(int retainDays)
     {
         // #41 防退化配置清空审计面：retain_days<=0 视为「不做年龄清理」（fail-safe，
-        // 对齐 BackupRetentionService.DeleteExpiredTtl 的 <=0 兜底），旧审计文件不因配置退化被全删。
+        // 对齐 BackupRetentionService.DeleteExpiredTtl 的 <=0 保底），旧审计文件不因配置退化被全删。
         var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
 
@@ -257,7 +257,7 @@ public sealed class JsonLineAuditLoggerTests
     [Fact]
     public void CleanupExpired_Should_Still_Enforce_Count_Limit_When_RetainDays_Is_Not_Positive()
     {
-        // #41 清理双闸各自独立：retain_days<=0 只关年龄闸，31 文件计数上限（磁盘保护兜底）仍生效。
+        // #41 清理双闸各自独立：retain_days<=0 只关年龄闸，31 文件计数上限（磁盘保护保底）仍生效。
         var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
 
@@ -290,7 +290,7 @@ public sealed class JsonLineAuditLoggerTests
     {
         // #41 钉删除失败分支：单文件删除失败（Windows sharing violation；POSIX unlink 对
         // 打开文件成功，故 Windows 专属早退）不炸穿清理链——其余超龄文件照删、失败文件保留，
-        // 且以 audit_cleanup_delete_failed 审计事件留痕（不变量④）。
+        // 且以 audit_cleanup_delete_failed 审计事件留下记录（降级必须留记录）。
         if (!OperatingSystem.IsWindows()) return;
 
         var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));

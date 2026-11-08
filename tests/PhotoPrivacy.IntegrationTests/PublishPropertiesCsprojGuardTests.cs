@@ -4,20 +4,20 @@ using System.Xml.Linq;
 namespace PhotoPrivacy.IntegrationTests;
 
 /// <summary>
-/// （correctness-round 顺带发现收口；#61 切换日对账；#12 守卫缺口收口）：
-/// 发布属性单一来源守卫——生产工程文件（csproj / props / targets）不得定义 SelfContained /
+/// （correctness-round 顺带发现并收尾；#61 切换日核对；#12 检查缺口收尾）：
+/// 发布属性单一来源检查——生产工程文件（csproj / props / targets）不得定义 SelfContained /
 /// PublishSingleFile / IncludeNativeLibrariesForSelfExtract / PublishTrimmed；publish-app.ps1
 /// 与 publish.sh 的 Worker 一条 dotnet publish 调用必须带齐三枚 /p: 标志和 --self-contained，
 /// 且脚本默认 self-contained=true。
-/// #12 收口：脚本段补 --self-contained 断言（原先只查三枚 /p:，self-contained 主张无断言）；
-/// 扫描面补 props / targets（原先只扫 src 的 csproj，Directory.Build.props 回潮看不见）；
+/// #12 收尾：脚本段补 --self-contained 断言（原先只查三枚 /p:，self-contained 主张无断言）；
+/// 扫描面补 props / targets（原先只扫 src 的 csproj，Directory.Build.props 又犯老毛病也看不见）；
 /// 工程文件判定升级为 XML 解析（子串匹配会被 XML 注释残留喂红、被 Condition=false 绕过）；
 /// 补脚本默认值断言（默认被改掉时 publish-e2e 不显式传开关，产物静默变 framework-dependent）。
-/// PublishReadyToRun 不在本守卫四属性之列——#12 裁决其中心化在 Directory.Build.props，
+/// PublishReadyToRun 不在本检查四属性之列——#12 裁决其中心化在 Directory.Build.props，
 /// 单一来源由 Net10CompatibilityGuardTests 锁定。
 /// 旧 Ui 工程退役（#61）后 UI 侧 dotnet publish 消失：GUI 入口改为 cargo 构建的
 /// photoprivacy-ui（Windows 走 windows-gnu target + windres，见 ui/crates/photoprivacy-ui/build.rs），
-/// 复制为 PhotoPrivacy(.exe) 作为发布入口——本守卫同时钉住这条接法不被回退。
+/// 复制为 PhotoPrivacy(.exe) 作为发布入口——本检查同时钉住这条接法不被回退。
 /// </summary>
 public sealed class PublishPropertiesCsprojGuardTests
 {
@@ -40,7 +40,7 @@ public sealed class PublishPropertiesCsprojGuardTests
 
     internal static List<string> ClassifyProjectFilePublishProperties(string content, string label)
     {
-        // 防的具体回潮形态（#12）：脚本传入的四发布属性回潮进生产工程文件——csproj 直接持有、
+        // 要防的老毛病（#12）：脚本传入的四发布属性又写回生产工程文件——csproj 直接持有、
         // 根 props/targets 自动导入、src 子目录 props/targets 覆盖。此前为子串匹配：XML 注释里的
         // 示例残留会喂红，<Prop Condition="…"> 的条件定义会被子串绕过。
         // 处置：XML 解析取定义元素——注释节点不计；带 Condition 的定义从严报红
@@ -71,12 +71,12 @@ public sealed class PublishPropertiesCsprojGuardTests
 
     internal static List<string> ClassifyScriptSelfContainedDefault(string script, string label)
     {
-        // 防的具体回潮形态（#12）：发布脚本 self-contained 默认值被改掉或摘除——publish-e2e
+        // 要防的老毛病（#12）：发布脚本 self-contained 默认值被改掉或摘除——publish-e2e
         // 与发版链都不显式传 --self-contained，走的就是这个默认；默认一变，产物静默变
         // framework-dependent，self-contained 主张失效。期望形态按脚本绑定（ps1 参数默认值 /
         // sh 的 SELF_CONTAINED 变量），不做跨形态 OR——任一脚本出现另一平台的字样不算绿。
         // 字面钉扎按 R2「保留」档做 characterization：这是变更探测器——默认声明等价重排
-        // （空格/引号）会误红，撞红时先按 R2 复核三档。关联 issue #12。
+        // （空格/引号）会误红，测试失败时先按 R2 复核三档。关联 issue #12。
         var expectedDefault = label.Contains("publish.sh", StringComparison.Ordinal)
             ? "SELF_CONTAINED=\"true\""
             : "$SelfContained = \"true\"";
@@ -92,10 +92,10 @@ public sealed class PublishPropertiesCsprojGuardTests
     internal static List<string> ClassifyPublishScript(string script, string label)
     {
         // Worker 的 dotnet publish 调用段必须带齐三枚 /p: 标志和 --self-contained；UI 侧走 cargo（见 ClassifyCargoUiEntry）。
-        // 先剥脚本注释（PowerShell/shell 的 # 行注释）：注释里残留的 token 不得让守卫骗绿（#61）。
+        // 先剥脚本注释（PowerShell/shell 的 # 行注释）：注释里残留的 token 不得让检查骗绿（#61）。
         // 残余（#12 登记）：调用段是「本条 dotnet publish 起至下一条或脚本尾」，且
         // --self-contained 只锚开关名不校验取值绑定——调用行被摘而后续非注释行残留该串时
-        // 会代绿。脚本尾部无该串的现实下不构成漏洞，遇具体回潮再收口。
+        // 会代绿。脚本尾部无该串的现实下不构成漏洞，等真犯了再处理。
         script = StripHashComments(script);
         var violations = new List<string>();
         var indices = new List<int>();
@@ -138,7 +138,7 @@ public sealed class PublishPropertiesCsprojGuardTests
 
     internal static List<string> ClassifyCargoUiEntry(string script, string label)
     {
-        // 入口接法守卫（#61）：两个发布脚本都必须以 cargo 构建 photoprivacy-ui 并复制为 PhotoPrivacy 入口。
+        // 入口接法检查（#61）：两个发布脚本都必须以 cargo 构建 photoprivacy-ui 并复制为 PhotoPrivacy 入口。
         // 剥 # 行注释后再判：退出条件 = 构建行 + 复制引用各一处代码级出现；只出现在注释/文案里的
         // 单次引用不足以骗绿（code-review 判定性意见的处置）。
         script = StripHashComments(script);
@@ -183,10 +183,10 @@ public sealed class PublishPropertiesCsprojGuardTests
         return count;
     }
 
-    // 防的具体回潮形态（#12）：SelfContained / PublishSingleFile / IncludeNativeLibrariesForSelfExtract /
-    // PublishTrimmed 回潮进生产工程文件——csproj 直接持有、根 Directory.Build.props /
+    // 要防的老毛病（#12）：SelfContained / PublishSingleFile / IncludeNativeLibrariesForSelfExtract /
+    // PublishTrimmed 又写回生产工程文件——csproj 直接持有、根 Directory.Build.props /
     // Directory.Build.targets 自动导入（全工程生效）、src 子目录 props / targets 覆盖；发布属性只在发布脚本传递。
-    // PublishReadyToRun 例外：#12 裁决中心化于根 Directory.Build.props，不在本守卫四属性之列
+    // PublishReadyToRun 例外：#12 裁决中心化于根 Directory.Build.props，不在本检查四属性之列
     // （单一来源由 Net10CompatibilityGuardTests 锁定），此处合法存在不得报红。
     // 读取走 SourceLint.Read 单一实现；XML 注释由解析器天然无视，不走 ReadStripped
     // （剥 // 会破坏 XML 内 URL 字面量）。关联 issue #12。
@@ -230,7 +230,7 @@ public sealed class PublishPropertiesCsprojGuardTests
     [Fact]
     public void Publish_Properties_Guard_Negative_Self_Proof()
     {
-        // 失效即红自证：工程文件回潮（csproj / props）/ 脚本掉标志 / 默认值漂移 / 入口接法回退各类篡改必须报红，基线必须绿。
+        // 失效即红自我验证：工程文件老毛病再犯（csproj / props）/ 脚本掉标志 / 默认值漂移 / 入口接法回退各类篡改必须报红，基线必须绿。
         var failures = new List<string>();
 
         const string cleanCsproj = "<Project><PropertyGroup><OutputType>Exe</OutputType></PropertyGroup></Project>";
@@ -247,8 +247,8 @@ public sealed class PublishPropertiesCsprojGuardTests
             failures.Add("MISSED: csproj 回潮 <PublishSingleFile> 未红");
         }
 
-        // #12：props 扫描面的红/绿自证——基线 Directory.Build.props 只含中心化的
-        // PublishReadyToRun，必须绿；回潮进脚本传入四属性之一必须红。
+        // #12：props 扫描面的红/绿自我验证——基线 Directory.Build.props 只含中心化的
+        // PublishReadyToRun，必须绿；脚本传入的四属性之一又写回 props 必须红。
         var greenProps = SourceLint.Read("Directory.Build.props");
         if (ClassifyProjectFilePublishProperties(greenProps, "Directory.Build.props").Count != 0)
         {
@@ -304,7 +304,7 @@ public sealed class PublishPropertiesCsprojGuardTests
             }
         }
 
-        // #12：self-contained 断言的失效自证——两个脚本调用段掉 --self-contained、
+        // #12：self-contained 断言的失效自我验证——两个脚本调用段掉 --self-contained、
         // 默认值改 false / 摘除，均必须红。调用段定位从 dotnet publish 之后起查，
         // 避开 publish.sh usage 文案里的 --self-contained。
         static void AssertMissingSelfContainedTurnsRed(string green, string label, List<string> failures)
@@ -354,7 +354,7 @@ public sealed class PublishPropertiesCsprojGuardTests
             failures.Add("MISSED: GUI 入口产物被改写未红");
         }
 
-        // 注释骗绿自证：入口 token 只留在 # 注释里（代码行被删）时必须报红。
+        // 注释骗绿自我验证：入口 token 只留在 # 注释里（代码行被删）时必须报红。
         var commentOnly = "# cargo build --release --locked -p photoprivacy-ui\n" +
                           "# cp ... photoprivacy-ui.exe ... PhotoPrivacy.exe\n";
         if (ClassifyCargoUiEntry(commentOnly, "comment-only").Count == 0)

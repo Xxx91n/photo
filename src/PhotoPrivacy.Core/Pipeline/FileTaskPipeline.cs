@@ -318,7 +318,7 @@ public sealed class FileTaskPipeline
     /// 1. 源或槽位为符号链接/ReparsePoint → 拒绝并写可见告警（fail-closed，Borg create 语义）；
     /// 2. 槽位不存在 → 直接原子写入；
     /// 3. 槽位存在且内容相同 → 跳过（幂等，承接"同文件重处理保留最新"的合法语义）；
-    /// 4. 槽位存在且内容不同 → 写 <c>名字.时间戳.扩展名</c> 旁路版本（绝不覆盖）。
+    /// 4. 槽位存在且内容不同 → 另存一份为 <c>名字.时间戳.扩展名</c>（绝不覆盖）。
     /// </summary>
     private async Task WriteBackupAsync(string sourcePath, string backupSlot, CancellationToken cancellationToken)
     {
@@ -353,7 +353,7 @@ public sealed class FileTaskPipeline
 
         if (BackupPathResolver.ContentsEqual(sourcePath, backupSlot))
         {
-            // 同槽位+内容相同 → 跳过（幂等，不产旁路版本）。
+            // 同槽位+内容相同 → 跳过（幂等，不另存一份）。
             await _audit.WriteAsync(
                 new AuditEvent(
                     "backup_skipped",
@@ -367,7 +367,7 @@ public sealed class FileTaskPipeline
             return;
         }
 
-        // 槽位存在且内容分歧 → 旁路版本（绝不静默覆盖）。
+        // 槽位存在且内容分歧 → 另存一份（绝不静默覆盖）。
         var sidecar = BackupPathResolver.ResolveSidecarPath(
             backupSlot, _config.Backup.Suffix, DateTimeOffset.UtcNow, File.Exists);
         await _fileOperations.AtomicCopyAsync(sourcePath, sidecar, overwrite: false, cancellationToken).ConfigureAwait(false);

@@ -25,7 +25,7 @@ public sealed class LocalFileOperationsTests
         Assert.True(deleted);
     }
 
-    // 防的具体回潮形态：备份写入链路（CopyAsync → AtomicCopyAsync 的 File.Replace）在加
+    // 要防的老毛病：备份写入链路（CopyAsync → AtomicCopyAsync 的 File.Replace）在加
     // Flush(flushToDisk: true) 落盘步之后退化——替换后的备份内容不完整、临时副本 .tmp.* 残留
     // 在备份目录里（.tmp 残留曾出现在 #114 handoff 快照差集里，会造成下次拆卸误捞）。
     // fsync 本身设备级不可观测，这里钉可观测的外部行为：副本内容完整 + 无临时残留 + 覆盖语义。

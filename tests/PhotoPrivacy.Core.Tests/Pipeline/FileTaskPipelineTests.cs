@@ -163,10 +163,10 @@ public sealed class FileTaskPipelineTests
     [Fact]
     public async Task HandleAsync_Should_Skip_Rescan_Of_Same_Path_After_Content_Changed()
     {
-        // 防的具体回潮形态：same_as_source 清洗后文件长度/mtime 指纹变化，旧去重键（路径|长度|mtime）
-        // 不再命中，整目录补扫把已清洗文件又处理一遍（#133）。
+        // 要防的老毛病：same_as_source 清洗后文件长度/mtime 指纹变化，旧去重键（路径|长度|mtime）
+        // 不再命中，整目录补漏扫把已清洗文件又处理一遍（#133）。
         // 关联 issue #133。
-        // 路线 2 口径：去重键收敛为规范化路径粗粒度命中——同一路径已有记录即视为已处理，不再比对指纹。
+        // 路线 2 规则：去重键收敛为规范化路径粗粒度命中——同一路径已有记录即视为已处理，不再比对指纹。
         var hot = Path.Combine(Path.GetTempPath(), "pp-ft-rescan-path-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(hot);
         var file = Path.Combine(hot, "a.jpg");
@@ -189,7 +189,7 @@ public sealed class FileTaskPipelineTests
             await pipeline.HandleAsync(file, CancellationToken.None);
             Assert.Equal(1, bridge.Calls);
 
-            // 模拟清洗后文件内容/指纹变化（same_as_source 会改长度和 mtime）：补扫同一路径应被路径命中挡住。
+            // 模拟清洗后文件内容/指纹变化（same_as_source 会改长度和 mtime）：补漏扫同一路径应被路径命中挡住。
             File.WriteAllBytes(file, [9, 9, 9, 9, 9]);
 
             await pipeline.HandleAsync(file, CancellationToken.None);

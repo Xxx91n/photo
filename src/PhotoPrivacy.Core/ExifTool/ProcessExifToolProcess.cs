@@ -20,7 +20,7 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
     /// 没有这道闸，两遍拆卸同时读到非 null 的 <c>_process</c> 会各自 Dispose 同一对象，
     /// 第二遍抛 ObjectDisposedException 逃到停机路径变成 Warning 噪声。
     /// StartAsync 重置为 0；拆卸中途失败也复位（rethrow 给调用方留痕，重试不被闸挡死）。
-    /// 同族竞态：ExifToolBridge._stdinGate 的 Dispose/Release（其 gate 所有权已随 #126 收口）。
+    /// 同族竞态：ExifToolBridge._stdinGate 的 Dispose/Release（其 gate 所有权已随 #126 定下来）。
     /// </summary>
     private int _stopGate;
 

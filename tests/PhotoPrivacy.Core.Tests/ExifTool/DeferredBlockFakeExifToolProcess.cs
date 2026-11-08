@@ -119,7 +119,7 @@ internal sealed class DeferredBlockFakeExifToolProcess : IExifToolProcess
         return Task.CompletedTask;
     }
 
-    /// <summary>产出第 index 块的 <c>-echo1</c> 回显（该块开始处理的锚点）。</summary>
+    /// <summary>产出第 index 块的 <c>-echo1</c> 回显（该块开始处理的参照点）。</summary>
     public void EmitEcho(int index) => Emit(index, BlockPart.Echo);
 
     /// <summary>产出第 index 块的数据行（只有 <c>-json</c> 块有；擦除块无数据行）。</summary>
@@ -192,7 +192,7 @@ internal sealed class DeferredBlockFakeExifToolProcess : IExifToolProcess
 
     /// <summary>
     /// 块里是否含「待解析文件」参数——探测 / 擦除块有，健康 / 版本探针没有。
-    /// 判定与 <see cref="ProtocolLevelFakeExifToolProcess"/> 同口径（非选项 token，且不是 -echo1 的回显目标）。
+    /// 判定与 <see cref="ProtocolLevelFakeExifToolProcess"/> 同一规则（非选项 token，且不是 -echo1 的回显目标）。
     /// </summary>
     private static bool HasFileInput(IReadOnlyList<string> lines)
     {

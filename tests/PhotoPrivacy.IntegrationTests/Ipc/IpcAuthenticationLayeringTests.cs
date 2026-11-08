@@ -34,7 +34,7 @@ public sealed class IpcAuthenticationLayeringTests
     {
         // macOS UDS 路径上限 104 字节（含 NUL）：长随机子目录在 macOS 约 49 字节 TMPDIR 下
         // 恰好触顶（#9 多平台矩阵 macos 首跑 6 条红实证）；与 WorkerReloadConfigRegressionTests
-        // 端点夹具同口径——短随机段（GUID 前 8 位）压回限内。
+        // 端点夹具同一规则——短随机段（GUID 前 8 位）压回限内。
         var dir = Path.Combine(Path.GetTempPath(), "pp-ipc-" + Guid.NewGuid().ToString("N")[..8]);
         Directory.CreateDirectory(dir);
         return Path.Combine(dir, "worker.sock");

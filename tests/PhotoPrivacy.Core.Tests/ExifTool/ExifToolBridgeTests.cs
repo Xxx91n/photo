@@ -38,7 +38,7 @@ public sealed class ExifToolBridgeTests
     [Fact]
     public async Task WipeMetadataAsync_Should_Not_Return_Cleaned_Before_Block_Ready_Signal()
     {
-        // 防的具体回潮形态（issue #97）：桥一匹配 TASK_DONE_ 回显就完成等待——回显是 ExifTool 在
+        // 要防的老毛病（issue #97）：桥一匹配 TASK_DONE_ 回显就完成等待——回显是 ExifTool 在
         // 参数解析阶段打的，磁盘写入要到本块 {ready} 才保证完成，于是擦除会在还没写盘时就返回
         // Cleaned_Modified（进程随后被杀即静默漏清理）。这里让回显照常先出、把块结束信号推迟：
         // 修复后返回必须发生在该块的 {ready} 之后。
@@ -69,7 +69,7 @@ public sealed class ExifToolBridgeTests
     [Fact]
     public async Task WipeMetadataAsync_Should_Remove_Pending_Task_And_Not_Report_Cleaned_When_Process_Dies_Before_Ready_Signal()
     {
-        // 防的具体回潮形态（issue #97 AC2）：进程在 {ready} 前被杀时，桥要么把 TASK_DONE_ 回显当成
+        // 要防的老毛病（issue #97 AC2）：进程在 {ready} 前被杀时，桥要么把 TASK_DONE_ 回显当成
         // 完成、直接返回 Cleaned_Modified（文件其实还没写完 → 静默漏清理），要么挂在等待里直到调用方
         // 取消；更糟的是新进程的第一个 {ready} 会被旧进程留下的等待方读成「自己那块结束了」。
         var process = new ProtocolLevelFakeExifToolProcess
@@ -98,7 +98,7 @@ public sealed class ExifToolBridgeTests
     [Fact]
     public async Task WipeMetadataAsync_Should_Be_Canceled_And_Not_Report_Cleaned_When_Bridge_Stops_Before_Ready_Signal()
     {
-        // 防的具体回潮形态（issue #97 影响段的另一条杀手路径）：停机/配置热重载走桥的 StopAsync，
+        // 要防的老毛病（issue #97 影响段的另一条杀手路径）：停机/配置热重载走桥的 StopAsync，
         // 退役时必须把在途擦除判成取消，而不是让它带着「回显已到」的乐观结论返回 Cleaned_Modified。
         var process = new ProtocolLevelFakeExifToolProcess
         {
@@ -122,7 +122,7 @@ public sealed class ExifToolBridgeTests
     [Fact]
     public async Task WipeMetadataAsync_Should_Fail_Not_Report_Cleaned_When_HealthCheck_Restarts_Process_During_Wipe()
     {
-        // 防的具体回潮形态（issue #97 影响段第一条杀手路径）：文件处理路径自己的健康检查超时→重启，
+        // 要防的老毛病（issue #97 影响段第一条杀手路径）：文件处理路径自己的健康检查超时→重启，
         // 在途擦除的 marker 就此失去归属。原实现要么已经按回显返回了 Cleaned_Modified，要么挂到
         // 调用方取消；重启后新进程的第一个 {ready} 还可能被旧等待方读成自己那块结束了。
         var process = new ProtocolLevelFakeExifToolProcess
@@ -153,7 +153,7 @@ public sealed class ExifToolBridgeTests
     [Fact]
     public async Task WipeMetadataAsync_Should_Keep_One_Wipe_Block_Per_File_When_Waiting_For_Ready_Signal()
     {
-        // 防的具体回潮形态（issue #97 AC3）：为等块结束信号再补发一个「问写完没有」的命令块，
+        // 要防的老毛病（issue #97 AC3）：为等块结束信号再补发一个「问写完没有」的命令块，
         // 或干脆退回每文件 spawn 进程——stay_open 的常驻收益就没了。等 {ready} 只是晚一点读同一块
         // 的输出，不产生额外往返。
         var process = new ProtocolLevelFakeExifToolProcess
@@ -182,7 +182,7 @@ public sealed class ExifToolBridgeTests
     [Fact]
     public async Task WipeMetadataAsync_Should_Not_Settle_Probe_On_A_Prefixed_Foreign_Probe_Marker()
     {
-        // 防的具体回潮形态（issue #111）：探测块用 Contains 认领 PROBE_DONE_{id} 回显，而 id 是桥内自增
+        // 要防的老毛病（issue #111）：探测块用 Contains 认领 PROBE_DONE_{id} 回显，而 id 是桥内自增
         // 整数、marker 之间互为前缀（PROBE_DONE_1 ⊂ PROBE_DONE_10）。于是别的文件（id=10）那块的回显行
         // 会被 id=1 的探测认领，紧跟其后的那句别块的 {ready} 就把 id=1 的探测结清在空输出上 →
         // HasClearableFields 解析不出东西 → Skipped_NoMetadata：文件里的隐私元数据被静默跳过（不擦除、不告警）。
@@ -208,11 +208,11 @@ public sealed class ExifToolBridgeTests
         var foreignIndex = process.IndexOfMarker("PROBE_DONE_10");
         Assert.True(ownerIndex >= 0, "文件 #1 的探测块未写入");
         Assert.True(foreignIndex >= 0, "文件 #10 的探测块未写入");
-        // 前缀关系自证：id 编号方式变了（本用例就不再复现缺陷）时这里先红，而不是默默放行。
+        // 前缀关系自我验证：id 编号方式变了（本用例就不再复现缺陷）时这里先红，而不是默默放行。
         Assert.StartsWith(process.Blocks[ownerIndex].Marker, process.Blocks[foreignIndex].Marker, StringComparison.Ordinal);
 
         // 别块（id=10）的回显紧跟着它自己的 {ready} 先到，中间没有文件 #1 的探测数据——
-        // 这正是把缺陷逼出来的形状：认领判据若是 Contains，文件 #1 会拿这句别块的 {ready} 结清在空输出上。
+        // 这正是把缺陷逼出来的形状：认领的判断标准若是 Contains，文件 #1 会拿这句别块的 {ready} 结清在空输出上。
         process.EmitEcho(foreignIndex);
         process.EmitReady(foreignIndex);
 
@@ -248,7 +248,7 @@ public sealed class ExifToolBridgeTests
     [Fact]
     public async Task WipeMetadataAsync_Should_Report_Skipped_NoMetadata_Only_When_Probe_Output_Is_Really_Empty()
     {
-        // 防的具体回潮形态（issue #111 AC3）：归属收紧后探测只由自己那块的 {ready} 结清，
+        // 要防的老毛病（issue #111 AC3）：归属收紧后探测只由自己那块的 {ready} 结清，
         // 于是「空输出」必须真的来自空输出——不得由别块的回显 / 结清凭空制造出来。
         // 这里让本块的回显与 {ready} 之间没有任何数据行：Skipped_NoMetadata 是唯一合法结论
         // （file_skipped / no_metadata_found 记账语义不变）。
@@ -274,10 +274,10 @@ public sealed class ExifToolBridgeTests
     [Fact]
     public async Task WipeMetadataAsync_Should_Fail_Probe_Not_Report_NoMetadata_When_Process_Dies_During_Probe()
     {
-        // 防的具体回潮形态（issue #111 AC2）：进程在探测途中没了时，本块永远不会再有自己那句 {ready}。
+        // 要防的老毛病（issue #111 AC2）：进程在探测途中没了时，本块永远不会再有自己那句 {ready}。
         // 原来的局部 ProbeLineHandler 只会被某一句 {ready} 结清——自己的没来、别人的先来就会误结清空输出
-        // （Skipped_NoMetadata，隐私元数据被静默跳过），一个都没来则谁也不收口，调用方挂到取消为止。
-        // 修复后探测与擦除共用 #97 的 ProcessExited 收口：认领不到就继续等，进程没了就地判失败。
+        // （Skipped_NoMetadata，隐私元数据被静默跳过），一个都没来则谁也不收尾，调用方挂到取消为止。
+        // 修复后探测与擦除共用 #97 的 ProcessExited 收尾：认领不到就继续等，进程没了就地判失败。
         var process = new DeferredBlockFakeExifToolProcess();
         var bridge = new ExifToolBridge(process, Config);
         await bridge.StartAsync(CancellationToken.None);
@@ -486,7 +486,7 @@ public sealed class ExifToolBridgeTests
 
         // 合同变更：本断言原先锁定的是缺陷本身——健康探针把 exiftool 自身路径
         // 当「待解析文件」喂入（原为 Assert.Contains(Config.ExifTool.Path, healthCommand, ...)）。
-        // 现翻转为回归守卫：轻量探针不得携带任何文件参数。
+        // 现翻转为回归检查：轻量探针不得携带任何文件参数。
         Assert.DoesNotContain(Config.ExifTool.Path, healthCommand, StringComparison.OrdinalIgnoreCase);
     }
 

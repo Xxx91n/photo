@@ -7,7 +7,7 @@ public sealed class LinuxBackgroundEndpointResolutionTests
     [Fact]
     public void BackgroundSocket_Follows_User_Runtime_Directory()
     {
-        // 防（#201）：回潮到普通用户无权创建的 /run/photoprivacy；与 Rust 纯函数测试对拍。
+        // 防（#201）：又回到普通用户无权创建的 /run/photoprivacy；与 Rust 纯函数测试对拍。
         // 生产仅 Linux 使用；Windows CI 也跑纯函数，故比较时归一分隔符。
         Assert.Equal(
             "/run/user/1000/photoprivacy/worker-background.sock",

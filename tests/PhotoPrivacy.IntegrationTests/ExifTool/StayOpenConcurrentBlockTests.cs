@@ -13,15 +13,15 @@ namespace PhotoPrivacy.IntegrationTests.ExifTool;
 /// <see cref="ExifToolBridge.WriteBlockAsync"/> 的块级串行化）都押在这条假设上。本用例覆盖的
 /// 失败形态：
 /// ① 并发块的行互相插入 → 探测 JSON 被别块 marker/输出污染 → 有元数据文件被判
-///    Skipped_NoMetadata / Cleaned_NoOp 静默跳过（#111 登记的静默失败形态，决策基线 #226）；
+///    Skipped_NoMetadata / Cleaned_NoOp 静默跳过（#111 登记的静默失败形态）；
 /// ② 外块 <c>{ready}</c> 提前结清本块 → Cleaned_Modified 报早 → 每轮后用一次性 exiftool
 ///    独立复核 EXIF 确实已清（不复用桥自己的结论）；
 /// ③ 大输出窗口：模板带 ~120 KB XMP，把探测 JSON 输出推过管道缓冲量级——长窗口下窗口
 ///    归属仍不得被并发块污染（写侧整块性由 <c>_stdinGate</c> 闸内「写+flush」保证，本用例
 ///    验的是它下游的整块处理与归属）。
 ///
-/// 边界与残余（诚实口径，Design(#226) 注释引用此处）：
-/// - 证伪力 = 真进程并发路径未撞红：ExifTool stay_open 是单线程读循环，黑盒用例没有交错
+/// 边界与残余（如实说明，产品侧 ExifToolBridge / ExifToolCommandBuilder 注释引用此处）：
+/// - 证伪力 = 真进程并发路径没有失败：ExifTool stay_open 是单线程读循环，黑盒用例没有交错
 ///   观测手段；抓得住一切跨块插入/错配的下游表现，抓不住 exiftool 内部结构性的处理顺序。
 /// - 产品同桥并发写还有 IPC 状态查询驱动的版本探针：版本只解析一次（EnsureVersionAsync 对
 ///   已知版本直接短路），该形态无法黑盒重发，属残余。
@@ -103,7 +103,7 @@ public sealed class StayOpenConcurrentBlockTests : IntegrationTestBase
 
     /// <summary>
     /// 定位并验证真 ExifTool：一次 spawn <c>-ver</c> 探活。文件不存在 → 返回 null（环境未提供，
-    /// 早退口径同 RealExifToolProbeTests）；文件存在但探活失败 → Assert.Fail（环境损坏，
+    /// 早退规则同 RealExifToolProbeTests）；文件存在但探活失败 → Assert.Fail（环境损坏，
     /// 静默早退违背 #82「不得静默 skip」）。CI 门禁由 exiftool-stayopen job 的 ver 步先行
     /// 验证可用性，两种情形都不会发生在门禁里。
     /// </summary>
@@ -200,7 +200,7 @@ public sealed class StayOpenConcurrentBlockTests : IntegrationTestBase
     }
 
     /// <summary>一次性执行 exiftool：双流都读完（stderr 不读会在管道填满时死锁）、
-    /// 30 s 超时后 tree-kill（进程卫生守卫口径），再取 ExitCode。</summary>
+    /// 30 s 超时后 tree-kill（进程卫生检查规则），再取 ExitCode。</summary>
     private static async Task<(int ExitCode, string Stdout, string Stderr)> RunExifToolOneShotAsync(
         string exe, IReadOnlyList<string> args)
     {

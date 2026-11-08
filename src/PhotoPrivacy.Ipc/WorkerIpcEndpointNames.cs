@@ -7,7 +7,7 @@ public static class WorkerIpcEndpointNames
     public const string ServicePipe = "PhotoPrivacyCleaner.Service";
 
     // Linux 服务模式: /run/photoprivacy/（systemd RuntimeDirectory 创建，属主服务用户；
-    // #167/#180 已定落点、#188 权限口径，#201 明确不动）。
+    // #167/#180 已定落点、#188 权限规则，#201 明确不动）。
     public const string LinuxSocketDirectory = "/run/photoprivacy";
     public const string LinuxServiceSocket = "/run/photoprivacy/worker.sock";
 

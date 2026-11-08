@@ -62,7 +62,7 @@ public sealed class ProcessExifToolProcessTests
         await process.StopAsync(CancellationToken.None);
     }
 
-    // 防的具体回潮形态：停机拆卸没有闸时，停机两遍拆卸（#126 形态）或重载拆卸与停机拆卸并发，
+    // 要防的老毛病：停机拆卸没有闸时，停机两遍拆卸（#126 形态）或重载拆卸与停机拆卸并发，
     // 各自读到非 null 的 _process 后对同一 Process/CTS/job object 二次 Dispose，
     // ObjectDisposedException 逃到停机路径变成 StopBridgeAsync 的 Warning 噪声。
     // 关联 issue #37。
