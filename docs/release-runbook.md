@@ -10,7 +10,7 @@
 | 平台 | 工具链 | 说明 |
 | --- | --- | --- |
 | Windows（发 win-x64） | .NET 10 SDK、Rust（`rustup target add x86_64-pc-windows-gnu`）、MinGW `windres` | `windres` 须在 PATH 中，或位于脚本自动探测的 `C:\msys64\mingw64\bin` / `C:\ProgramData\mingw64\mingw64\bin`；两处都没有直接失败（windows-gnu 清单嵌入必需）。注意脚本预检不读 `WINDRES` 变量，只设它没用 |
-| Linux / macOS | .NET 10 SDK、Rust（宿主默认 target）、perl | 构建主机没有 perl 只警告不失败，但目标机必须有 perl 才能跑内置 ExifTool |
+| Linux / macOS | .NET 10 SDK、Rust（宿主默认 target）、perl、gpui 原生依赖（仅 Linux） | 构建主机没有 perl 只警告不失败，但目标机必须有 perl 才能跑内置 ExifTool。Linux 构建机还要 gpui 的原生依赖（Ubuntu 参考 CI 发布 job 的装法：`sudo apt-get install -y libfontconfig1-dev pkg-config libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev`），缺了 cargo 构建起不来 |
 
 硬约束（脚本内置，违反即报错）：
 
