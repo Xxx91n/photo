@@ -66,13 +66,13 @@ public static class AppConfigLoader
                 // 空串/空白回落 DefaultPaths —— 对齐 Backup.Suffix 先例。
                 // 空串直传会让 Path.Combine("", 文件名) 退化成相对路径，隔离文件落进进程 CWD
                 // （config.sample.json 的 quarantine.directory 就是空串，跟着 README 第一步走即命中）。
-                // Design(#82): quarantine.directory 空串保留 <BaseDirectory>/hot/... 回落（不改成空串）。
+                // Design(#240): quarantine.directory 空串保留 <BaseDirectory>/hot/... 回落（不改成空串）。
                 Directory: string.IsNullOrWhiteSpace(dto.Quarantine.Directory)
                     ? DefaultPaths.DefaultQuarantineDirectory
                     : dto.Quarantine.Directory),
             Audit: new AuditOptions(
                 // 同上——审计日志目录空串回落 DefaultPaths，绝不落 CWD。
-                // Design(#82): audit.log_directory 空串保留 <BaseDirectory>/hot/... 回落（不改成空串）；空监控目录下的校验范围已裁为「只跳过监控资源」，见 AppConfigValidator.Validate 的分层标记。
+                // Design(#240): audit.log_directory 空串保留 <BaseDirectory>/hot/... 回落（不改成空串）；空监控目录下的校验范围已裁为「只跳过监控资源」，见 AppConfigValidator.Validate 的分层标记。
                 LogDirectory: string.IsNullOrWhiteSpace(dto.Audit.LogDirectory)
                     ? DefaultPaths.DefaultAuditLogDirectory
                     : dto.Audit.LogDirectory,
@@ -102,7 +102,7 @@ public static class AppConfigLoader
         // 其次系统安装位置；用户手填的绝对路径（含 ETOverrideDir 式目录）仍然优先，不被覆盖。
         // 手填值若为目录则解析出其中的 exiftool/exiftool.exe（#33 目录式覆盖，对齐 ExifToolGUI ETOverrideDir）；
         // 该决策的标记挂在其实现处 DefaultPaths.ResolveExifToolExecutable，这里只接线。
-        // Design(#82): exiftool.path 留空按运行时探测回落（DefaultPaths.ExifToolPath），不覆盖用户手填的绝对路径。
+        // Design(#239): exiftool.path 留空按运行时探测回落（DefaultPaths.ExifToolPath），不覆盖用户手填的绝对路径。
         return string.IsNullOrWhiteSpace(resolved)
             ? DefaultPaths.ExifToolPath
             : DefaultPaths.ResolveExifToolExecutable(resolved);

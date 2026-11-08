@@ -16,7 +16,7 @@ pub mod methods {
     pub const GET_RECENT_LOGS: &str = "GetRecentLogs";
 }
 
-// Design(#49): IPC JSON 行协议是新旧 UI 的唯一主缝——方法名与字段语义冻结，新能力只以 method 名扩展。
+// Design(#245): IPC JSON 行协议是新旧 UI 的唯一主缝——方法名与字段语义冻结，新能力只以 method 名扩展。
 #[derive(Debug, Clone, Serialize)]
 pub struct Request<'a> {
     pub method: &'a str,

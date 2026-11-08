@@ -40,7 +40,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
     /// volatile：重载路径在多个检查点读它，停机线程写它；检查点之后到发布字段为止保持纯同步。
     /// 决策由重载路径的四处检查点共同执行，标记因此挂在总开关上。
     /// </summary>
-    // Design(#82): 停机开始后重载不再创建运行时，按契约回 reload_failed（#126，D7 协议不变）。
+    // Design(#237): 停机开始后重载不再创建运行时，按契约回 reload_failed（#126，D7 协议不变）。
     private volatile bool _stopping;
 
     /// <summary>
@@ -90,7 +90,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
     /// 生产路径不赋值，为 null 时不产生任何行为。重载失败回滚（#112）会再走一遍建运行时，
     /// 因此钩子可能被触发两次；回滚那趟恒全量补扫，钩里投放的文件不经差集判定。
     /// </summary>
-    // Design(#82): 拆卸窗口的起止由注入钩子划定（生产不赋值），测试不得靠 sleep 猜窗口边界（#114）。
+    // Design(#237): 拆卸窗口的起止由注入钩子划定（生产不赋值），测试不得靠 sleep 猜窗口边界（#114）。
     public Func<Task>? TeardownWindowHookAsync { get; set; }
 
     /// <summary>
@@ -101,7 +101,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
     /// IPC handler 在状态快照仍为 unknown 时调用本方法：未启动则冷启动（启动流程自带版本探针），
     /// 已启动但那次探针超时则补探。失败（路径失效、进程起不来、探针超时）原样上抛，由调用方记录降级。
     /// </summary>
-    // Design(#82): 版本解析按需触发（IPC 状态请求驱动），不引入启动期 eager start，也不进每文件热路径。
+    // Design(#241): 版本解析按需触发（IPC 状态请求驱动），不引入启动期 eager start，也不进每文件热路径。
     public async Task EnsureExifToolVersionAsync(CancellationToken cancellationToken)
     {
         var bridge = _bridge;
@@ -267,7 +267,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
 
         // 先起 watcher 再扫描（与重载首扫同一时序）：扫描期间新建的文件若没被 FSW 盯住，
         // 会落进轮询兜底的初始快照，从此永不上报。once 模式没有监控运行时，保持「枚举→清理→退出」的既有时序。
-        // Design(#82): 启动首扫之前必须先起 watcher，与重载首扫同一时序（once 模式无监控运行时，除外；#109 修复后定稿，残余见 #82 域内）。
+        // Design(#237): 启动首扫之前必须先起 watcher，与重载首扫同一时序（once 模式无监控运行时，除外；#109 修复后定稿，残余见 #82 域内）。
         if (!once)
         {
             _watcher.Start();
@@ -620,7 +620,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
         }
     }
 
-    // Design(#82): 配置加载纯读——LoadEffectiveConfig 不在返回前创建 hot/audit/quarantine；目录只在运行时真正启用监控时创建。
+    // Design(#240): 配置加载纯读——LoadEffectiveConfig 不在返回前创建 hot/audit/quarantine；目录只在运行时真正启用监控时创建。
     private AppConfig LoadEffectiveConfig()
     {
         var configPath = GetValue("config")
@@ -685,7 +685,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
     /// <summary>
     /// 只在运行时真正启用监控时创建配置里的目录（#124）：待机态不创建这些目录。
     /// </summary>
-    // Design(#82): 目录只在真正启用监控时创建；待机（含重载回待机）不创建。
+    // Design(#240): 目录只在真正启用监控时创建；待机（含重载回待机）不创建。
     private static void EnsureConfiguredDirectories(AppConfig config)
     {
         // ponytail: empty config paths (config.sample.json defaults to "") would throw
@@ -899,7 +899,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
     /// 不能改成「先建新运行时再切换」：新旧 store/audit 对同一 processed.ndjson 与审计文件各持
     /// 写句柄，旧实例未释放时新建必然自我冲突（#85 根因），事务化需要改存储共享模型，不在本票。
     /// </summary>
-    // Design(#82): 重载重建失败必须回滚到上一份生效配置（#112），不得停在「活着但不再监控」形态。
+    // Design(#237): 重载重建失败必须回滚到上一份生效配置（#112），不得停在「活着但不再监控」形态。
     private async Task RebuildRuntimeAsync(AppConfig config, CancellationToken token)
     {
         var previousConfig = _currentConfig;
@@ -981,7 +981,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
         // 差集比的是 (长度, mtime)：只看 mtime 余量的话，保留源时间戳的写入躲得过判定，判定多捞到的已处理
         // 文件又只能靠去重表挡住——同一次重载换了审计目录时新表是空的，多捞的就是重处理。
         // 空基准只是「本次走全量补扫」的占位：差集判定只在非全量补扫那条分支上才发生。
-        // Design(#82): 非全量补扫的回收判据是拆卸前后的目录快照差集，不用 mtime 余量、不靠去重表兜多捞（#114）；快照没建成与回滚（#112）两条退路仍走全量补扫，残余就记在这里。
+        // Design(#237): 非全量补扫的回收判据是拆卸前后的目录快照差集，不用 mtime 余量、不靠去重表兜多捞（#114）；快照没建成与回滚（#112）两条退路仍走全量补扫，残余就记在这里。
         var handoffBaseline = new Dictionary<string, FileFingerprint>(PathKeyComparer);
         if (!fullSweep)
         {
@@ -1033,7 +1033,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
         // 则新 store 打开同一文件必然自我冲突（IOException「being used by another process」，
         // 单实例、任何模式皆然），ReloadConfig 从未真正生效。先置空 pipeline/audit 让 drain 循环
         // 走空转分支，再释放（释放失败只吞，不阻断重建）。
-        // Design(#82): 重载重建前必须释放旧 store/audit 的常驻句柄；失败只降级不阻断重建。
+        // Design(#237): 重载重建前必须释放旧 store/audit 的常驻句柄；失败只降级不阻断重建。
         _pipeline = null;
         var retiredStore = _processedRecordStore;
         _processedRecordStore = null;
@@ -1094,7 +1094,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
         _watcher = watcher;
 
         // 先起 watcher 再扫描：扫描期间新建的文件若没被 FSW 盯住，会落进轮询兜底的初始快照，从此永不上报。
-        // Design(#82): 重载首扫之前必须先起 watcher（#100）。
+        // Design(#237): 重载首扫之前必须先起 watcher（#100）。
         watcher.Start();
 
         // 其余重载不整目录补扫：审计目录一改，新的去重记录表是空的，把既有文件全排一遍就会重处理，
@@ -1104,7 +1104,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
         // 非全量补扫时只捞差集，多一个都不捞：窗口外已处理过的文件即便 mtime 很新也不该再进队列。
         // 残余：窗口内被原地改写、长度与 mtime 都没变的写入判不出来（保留时间戳的同名覆盖），
         // 那种写入不留任何可比对的元数据，本路径判不出来；只有后续范围变更触发整目录补扫才会再碰到它。
-        // Design(#82): 重载首扫只在「监控范围被启用」或队列被重建（在途去抖项已随旧队列丢弃）时全量补扫（#100）。
+        // Design(#237): 重载首扫只在「监控范围被启用」或队列被重建（在途去抖项已随旧队列丢弃）时全量补扫（#100）。
         if (Directory.Exists(config.Watch.HotFolder))
         {
             foreach (var path in WatchFolderEnumeration.EnumerateFiles(config.Watch.HotFolder, config.Watch.IncludeSubdirectories))

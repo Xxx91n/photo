@@ -18,7 +18,7 @@ rust-version = "1.97"
 # 不依赖 gpui-pre-platform：它在 Windows 上强制 `windows-manifest`，而本机宿主 rustc 是 MSVC、目标却是
 # windows-gnu，embed-resource 会调用 rc.exe 产出 MinGW 链接器不认的 .lib；平台后端由本 workspace 自行装配。
 [workspace.dependencies]
-# Design(#49): gpui 依赖锁死补丁版本（=0.3.10），禁止改成范围版本。
+# Design(#245): gpui 依赖锁死补丁版本（=0.3.10），禁止改成范围版本。
 gpui = { package = "gpui-pre", version = "=0.3.10", default-features = false, features = ["font-kit", "wayland", "x11"] }
 tokio = { version = "1", features = ["rt-multi-thread", "net", "time", "sync", "io-util", "macros"] }
 serde = { version = "1", features = ["derive"] }

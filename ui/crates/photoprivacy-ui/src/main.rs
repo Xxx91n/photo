@@ -9,7 +9,7 @@ mod log_service;
 mod rules_page;
 mod service_page;
 mod theme;
-// Design(#49): gpui 无内建托盘（T4 已接受自建/第三方），托盘用 tray-icon 原生菜单实现。
+// Design(#245): gpui 无内建托盘（T4 已接受自建/第三方），托盘用 tray-icon 原生菜单实现。
 mod tray;
 mod ui_options;
 mod worker_connection;
@@ -119,7 +119,7 @@ impl Args {
 
 // 平台后端在这里就地装配，替代 gpui_platform 聚合 crate（原因见 ui/Cargo.toml）。
 #[cfg(target_os = "windows")]
-// Design(#49): 平台后端由本 crate 装配，禁止再引入 gpui_platform 聚合 crate。
+// Design(#245): 平台后端由本 crate 装配，禁止再引入 gpui_platform 聚合 crate。
 fn application() -> gpui::Application {
     let platform = std::rc::Rc::new(
         gpui_windows::WindowsPlatform::new(false).expect("初始化 Windows 图形后端失败"),
@@ -162,7 +162,7 @@ fn main() -> anyhow::Result<()> {
         .enable_all()
         .build()?;
 
-    // Design(#82): Service 页同源探测结果落 JSON 后即退出——虚拟环境（CI macOS runner）
+    // Design(#238): Service 页同源探测结果落 JSON 后即退出——虚拟环境（CI macOS runner）
     // 机器可读取证入口；不建窗、不连 Worker，探测链与 Service 页首拍一致。只读探针不受
     // 单实例守卫约束：并存 UI 不应挡掉报告产出（CodeRabbit 审查意见；launchd 取证链落地
     // 于已关闭的 #32，存续出处改指 #82 的验证门禁域）。
@@ -176,7 +176,7 @@ fn main() -> anyhow::Result<()> {
         let probe_state = probe_manager.state();
         // 决策本体随 #167 关闭已落地（macOS 服务端点与 IPC 探针）；标记改指仍存续的治理票
         // #82（死指针清理 / 验证门禁域），正文保留决策本身。
-        // Design(#82): 只报 state 时，「安装态/探测态都对、但 UI 侧连不上」这类端点随身份
+        // Design(#238): 只报 state 时，「安装态/探测态都对、但 UI 侧连不上」这类端点随身份
         // 分裂的缺陷在取证链里完全隐形。--service-probe-ipc 追加客户端实际解析到的端点与
         // IPC 连通三态，供 verify 脚本以 GUI 用户（非服务用户）身份断言同一 socket 可达。
         let mut report = format!("{{\"state\":\"{:?}\"", probe_state);
@@ -244,7 +244,7 @@ fn main() -> anyhow::Result<()> {
         options.worker_path.clone(),
         options.config_path.clone(),
     ));
-    // Design(#49): 启动路径在 main 线程同步首探安装态，上限 PROBE_TIMEOUT；托盘与静默启动据此在建窗前定档。
+    // Design(#245): 启动路径在 main 线程同步首探安装态，上限 PROBE_TIMEOUT；托盘与静默启动据此在建窗前定档。
     let initial_service_state = service_manager.state();
     let (service_snapshots, service_commands) =
         service_page::start(runtime.handle(), service_manager, initial_service_state);
@@ -421,7 +421,7 @@ fn spawn_event_pump(
 }
 
 /// 唤起已有窗口，或在托盘驻守后重建窗口。
-// Design(#49): gpui 无窗口隐藏 API——关窗驻守销毁窗口，托盘唤起时重建；主题与日志状态跨重建保留，
+// Design(#245): gpui 无窗口隐藏 API——关窗驻守销毁窗口，托盘唤起时重建；主题与日志状态跨重建保留，
 // 窗口位置/尺寸会重置为居中（旧 UI 是隐藏/显示，尺寸沿用）。
 fn show_main_window(cx: &mut AsyncApp, deps: app::AppDeps) {
     let windows = cx.update(|cx| cx.windows());

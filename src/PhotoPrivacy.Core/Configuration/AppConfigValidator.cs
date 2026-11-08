@@ -53,7 +53,7 @@ public static class AppConfigValidator
     /// 代价：缺 ExifTool 的裸机在保存监控目录时才会被拒——该拒绝原因由 UI 常驻显示，
     /// 不随 3 s 过期消失（同票 UI 侧）。
     /// </summary>
-    // Design(#82): 空监控目录只跳过监控资源校验（ExifTool 及伴随目录、隔离/审计目录、备份目录冲突）；连接池不变量与禁用参数任何形态都 fail-closed。
+    // Design(#240): 空监控目录只跳过监控资源校验（ExifTool 及伴随目录、隔离/审计目录、备份目录冲突）；连接池不变量与禁用参数任何形态都 fail-closed。
     public static void Validate(AppConfig config)
     {
         // —— 无条件层 ——

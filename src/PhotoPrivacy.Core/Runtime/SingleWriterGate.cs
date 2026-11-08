@@ -15,7 +15,7 @@ namespace PhotoPrivacy.Core.Runtime;
 /// 该形态下两侧仍可能各持一锁；真正的防线还有审计文件自身的 FileShare 语义兜底。
 /// 服务/后台探测编排的体验面归 #58。
 /// </summary>
-// Design(#82): 常驻 Worker 触碰审计文件前必须过本准入门；拿不到锁或门异常一律让位（禁静默降级/禁带险放行），编排预防归 #58。
+// Design(#238): 常驻 Worker 触碰审计文件前必须过本准入门；拿不到锁或门异常一律让位（禁静默降级/禁带险放行），编排预防归 #58。
 public static class SingleWriterGate
 {
     /// <summary>

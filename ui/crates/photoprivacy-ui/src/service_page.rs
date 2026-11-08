@@ -47,7 +47,7 @@ pub enum ServiceCommand {
 ///
 /// `initial_state` 由调用方同步探测：托盘/静默启动的门控必须在建窗前拿到安装态，
 /// 轮询首拍是异步的赶不上；同一结果也作为快照初值，避免首屏闪 `Unknown`。
-// Design(#49): 服务探测走平台辅助进程（sc/systemctl/launchctl），不扩 IPC 协议。
+// Design(#245): 服务探测走平台辅助进程（sc/systemctl/launchctl），不扩 IPC 协议。
 pub fn start(
     runtime: &tokio::runtime::Handle,
     manager: Arc<ServiceManager>,

@@ -62,7 +62,7 @@ public sealed class WorkerIpcRequestHandler
         // 不执行该方法，回 protocol_version_mismatch 并把服务端 V 带回，供客户端下调重试；
         // 申报小于等于服务端版本（或干脆不申报 v）时正常处理，响应照常回带服务端 V。
         // 会话版本由客户端取 min(客户端版本, 服务端版本)，与既有 v1 双端完全兼容。
-        // Design(#42): 会话/启动顺序边界——客户端与服务端通过 v 字段协商版本，不一致时下调对齐。
+        // Design(#245): 会话/启动顺序边界——客户端与服务端通过 v 字段协商版本，不一致时下调对齐。
         var clientVersion = request.V;
         if (clientVersion is { } v && v > WorkerIpcProtocol.Version)
         {
@@ -170,7 +170,7 @@ public sealed class WorkerIpcRequestHandler
     /// 两道闸：in-flight 门闩保证轮询不叠加启动尝试；最小间隔保证降级态不演变成每秒重试。
     /// 失败只记降级告警，版本继续上报 unknown，下一次到点重试。
     /// </summary>
-    // Design(#82): 版本解析由状态消费者驱动（按需冷启动 + 补探），状态响应内容与字段语义不变。
+    // Design(#241): 版本解析由状态消费者驱动（按需冷启动 + 补探），状态响应内容与字段语义不变。
     private void TriggerExifToolVersionProbe()
     {
         if (Interlocked.CompareExchange(ref _versionProbeInFlight, 1, 0) != 0)

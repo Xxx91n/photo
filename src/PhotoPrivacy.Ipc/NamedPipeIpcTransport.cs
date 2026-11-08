@@ -43,7 +43,7 @@ public enum ServicePipeBindOutcome
 /// ③ 后台管道客户端核验服务端进程身份（#7 残余①：PID 优先 + 镜像回退，见
 /// <see cref="NamedPipeServerIdentity"/>，注入期望基准时生效）。
 /// </summary>
-// Design(#82): 服务模式管道以安装者 SID 显式 DACL 取代 CurrentUserOnly（fail-closed 回退 CurrentUserOnly），后台管道保持 CurrentUserOnly；授权集合 opt-in 扩展由 #1 落地（决策记录见该票），残余状态：集合跨令牌验收归人工复测、授权用户可建实例的加固已由 #7 拆位落地（熵与拆位的锚点见 TryBindRandomizedServicePipe / ServerOptions / WindowsServicePipeAcl.ServiceClientAccessMask）。
+// Design(#238): 服务模式管道以安装者 SID 显式 DACL 取代 CurrentUserOnly（fail-closed 回退 CurrentUserOnly），后台管道保持 CurrentUserOnly；授权集合 opt-in 扩展由 #1 落地（决策记录见该票），残余状态：集合跨令牌验收归人工复测、授权用户可建实例的加固已由 #7 拆位落地（熵与拆位的锚点见 TryBindRandomizedServicePipe / ServerOptions / WindowsServicePipeAcl.ServiceClientAccessMask）。
 public sealed class NamedPipeIpcTransport : IIpcTransport
 {
     /// <summary>有效管道名：服务模式监听后为「基名 + 随机后缀」（#7），其余为构造名。</summary>

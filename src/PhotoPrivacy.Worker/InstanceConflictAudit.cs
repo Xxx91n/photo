@@ -15,7 +15,7 @@ namespace PhotoPrivacy.Worker;
 /// 下方那 3 次 IOException 重试对当前 WriteAsync 实现是死代码（只入队、不碰文件，不抛 IOException），
 /// 删除或改造成能感知落盘失败的重试由 #211 裁定。两条残余均继承 #162 / PR #163，由 #211 承接。
 /// </summary>
-// Design(#82): 配置解析与待机路径不得建目录；冲突留痕只在写路径有界建目录，失败降级为可读记录且不阻断退出，只读安装目录不改写落点（后台 flush 残余见 #211）。
+// Design(#240): 配置解析与待机路径不得建目录；冲突留痕只在写路径有界建目录，失败降级为可读记录且不阻断退出，只读安装目录不改写落点（后台 flush 残余见 #211）。
 internal static class InstanceConflictAudit
 {
     /// <summary>

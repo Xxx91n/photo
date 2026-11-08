@@ -62,7 +62,7 @@ pub const IPC_CLIENT_OPEN_FLAGS: u32 =
 
 /// ReloadConfig 会停 watcher → 重建 bridge → 重启 watcher；旧 UI 的 3s 读超时覆盖不了，
 /// 会把「正在重载」误判成 Worker 掉线。契约要求 ≥6s，这里取 10s 留余量。
-// Design(#49): ReloadConfig 的读超时独立于普通请求（10s），避免热重载被 3s 超时误杀。
+// Design(#245): ReloadConfig 的读超时独立于普通请求（10s），避免热重载被 3s 超时误杀。
 pub const RELOAD_CONFIG_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug)]
@@ -98,7 +98,7 @@ impl std::error::Error for IpcError {}
 
 // Worker 服务端同一时刻只预建一个管道实例，并发连接会撞 ERROR_PIPE_BUSY，属主重建实例时还有极短的
 // 「无实例」窗口（ERROR_FILE_NOT_FOUND）。
-// Design(#49): 所有 IPC 请求共用一把异步锁（单飞），连接阶段对 busy/not-found 重试到连接超时。
+// Design(#245): 所有 IPC 请求共用一把异步锁（单飞），连接阶段对 busy/not-found 重试到连接超时。
 pub struct IpcClient {
     connect_timeout: Duration,
     request_timeout: Duration,
@@ -149,7 +149,7 @@ impl IpcClient {
         self
     }
 
-    // Design(#42): 会话/启动顺序边界——UI 可能先于 Worker 启动；首次成功往返后观察服务端 V，
+    // Design(#245): 会话/启动顺序边界——UI 可能先于 Worker 启动；首次成功往返后观察服务端 V，
     // 会话版本取 min(自身, 服务端)，与之不等时下调并记一次告警；收到 protocol_version_mismatch
     // 拒收且响应携带更低 V 时，用对齐后版本重新建连重试一次，不让新旧版本混杂的窗口期
     // 把 UI 永远拒在 Worker 之外。
@@ -424,7 +424,7 @@ fn probe_server_peer(stream: &Stream) -> ServerPeer {
 // 旧 UI 的客户端带 `PipeOptions.CurrentUserOnly`，连接后校验管道属主 == 当前用户。该选项在服务模式下
 // 自相矛盾（服务 Worker 以 LocalSystem 运行，属主是 SYSTEM，用户 UI 必然被拒）——换栈调研 §2.6 已把
 // 「Windows 服务模式管道认证」登记为既有缺陷，属主边界改由服务端 DACL 承担，客户端不复制该校验。
-// Design(#49): IPC 认证以 OS 身份为边界（服务端 DACL），客户端不做属主校验。
+// Design(#245): IPC 认证以 OS 身份为边界（服务端 DACL），客户端不做属主校验。
 //
 // #7 残余①（后台管道同用户抢先建面）由本文件 + verify.rs 闭环：连接建立后、首笔业务请求之前
 // 核验服务端进程身份（UI 拉起的 Worker PID 优先、进程镜像路径回退），失败即作废该连接；
