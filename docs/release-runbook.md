@@ -95,7 +95,7 @@ RID 由构建主机自动推导（linux-x64 / linux-arm64 / osx-x64 / osx-arm64�
 
 随包 `scripts/` 里的安装脚本按平台选：
 
-- Windows：`install-service.ps1`（必须与同目录 `service-worker-match.ps1` 一起在，卸载时的孤儿进程清理依赖它，包内已自动带上；按脚本位置自动推断包根）。注意服务管道授权默认登记安装者账户的 SID：日常跑 GUI 的账户和安装账户不同时，安装时要传 `-AuthorizedUsers <日常账户>` 追加（或 `-InstallerSid` 直接指定），否则 GUI 连不上服务。
+- Windows：`install-service.ps1`（必须与同目录 `service-worker-match.ps1` 一起在，卸载时的孤儿进程清理依赖它，包内已自动带上；按脚本位置自动推断包根）。注意服务管道授权默认登记安装者账户的 SID：日常跑 GUI 的账户和安装账户不同时，安装时要传 `-AuthorizedUsers <日常账户>` 追加（或 `-InstallerSid` 直接传该账户的 SID——注意此参数只收 SID 不收账户名），否则 GUI 连不上服务。
 - Linux：`install-systemd-service.sh`
 - macOS：`install-launchd-service.sh`
 
