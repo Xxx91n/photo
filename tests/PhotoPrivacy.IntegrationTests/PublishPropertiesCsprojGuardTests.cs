@@ -41,9 +41,11 @@ public sealed class PublishPropertiesCsprojGuardTests
     internal static List<string> ClassifyProjectFilePublishProperties(string content, string label)
     {
         // 防的具体回潮形态（#12）：脚本传入的四发布属性回潮进生产工程文件——csproj 直接持有、
-        // 根 props/targets 自动导入、src 子目录 props 覆盖。此前为子串匹配：XML 注释里的
-        // 示例残留会喂红，<Prop Condition="…"> 的禁用定义反而绕过判定。
-        // 处置：XML 解析只认活跃元素。关联 issue #12。
+        // 根 props/targets 自动导入、src 子目录 props/targets 覆盖。此前为子串匹配：XML 注释里的
+        // 示例残留会喂红，<Prop Condition="…"> 的条件定义会被子串绕过。
+        // 处置：XML 解析取定义元素——注释节点不计；带 Condition 的定义从严报红
+        // （MSBuild 条件不静态求值，宁可误红交人复核，不放走过任何持有形态）。
+        // 关联 issue #12。
         XDocument doc;
         try
         {
@@ -59,7 +61,7 @@ public sealed class PublishPropertiesCsprojGuardTests
         {
             if (doc.Descendants().Any(e => e.Name.LocalName == prop))
             {
-                violations.Add(label + ": 工程文件活跃定义发布属性 <" + prop +
+                violations.Add(label + ": 工程文件定义发布属性 <" + prop +
                                ">（发布属性只在发布脚本传递；PublishReadyToRun 例外中心化于 Directory.Build.props，#12）");
             }
         }
@@ -72,7 +74,9 @@ public sealed class PublishPropertiesCsprojGuardTests
         // 防的具体回潮形态（#12）：发布脚本 self-contained 默认值被改掉或摘除——publish-e2e
         // 与发版链都不显式传 --self-contained，走的就是这个默认；默认一变，产物静默变
         // framework-dependent，self-contained 主张失效。默认声明形态两平台各一
-        // （publish-app.ps1 的参数默认值 / publish.sh 的 SELF_CONTAINED 变量），有其一即绿。
+        // （publish-app.ps1 的参数默认值 / publish.sh 的 SELF_CONTAINED 变量），有其一即绿
+        // （两形态互斥，OR 不弱化判定）。字面钉扎按 R2「保留」档做 characterization：
+        // 这是变更探测器——默认声明等价重排（空格/引号）会误红，撞红时先按 R2 复核三档。
         // 关联 issue #12。
         var violations = new List<string>();
         if (!script.Contains("$SelfContained = \"true\"", StringComparison.Ordinal) &&
@@ -177,7 +181,7 @@ public sealed class PublishPropertiesCsprojGuardTests
 
     // 防的具体回潮形态（#12）：SelfContained / PublishSingleFile / IncludeNativeLibrariesForSelfExtract /
     // PublishTrimmed 回潮进生产工程文件——csproj 直接持有、根 Directory.Build.props /
-    // Directory.Build.targets 自动导入（全工程生效）、src 子目录 props 覆盖；发布属性只在发布脚本传递。
+    // Directory.Build.targets 自动导入（全工程生效）、src 子目录 props / targets 覆盖；发布属性只在发布脚本传递。
     // PublishReadyToRun 例外：#12 裁决中心化于根 Directory.Build.props，不在本守卫四属性之列
     // （单一来源由 Net10CompatibilityGuardTests 锁定），此处合法存在不得报红。
     // 读取走 SourceLint.Read 单一实现；XML 注释由解析器天然无视，不走 ReadStripped
@@ -187,7 +191,8 @@ public sealed class PublishPropertiesCsprojGuardTests
     {
         var violations = new List<string>();
         foreach (var file in SourceLint.EnumerateSourceFiles("src", "*.csproj")
-                     .Concat(SourceLint.EnumerateSourceFiles("src", "*.props")))
+                     .Concat(SourceLint.EnumerateSourceFiles("src", "*.props"))
+                     .Concat(SourceLint.EnumerateSourceFiles("src", "*.targets")))
         {
             var relative = Path.GetRelativePath(SourceLint.RepoRoot, file);
             violations.AddRange(ClassifyProjectFilePublishProperties(
@@ -254,7 +259,7 @@ public sealed class PublishPropertiesCsprojGuardTests
             failures.Add("MISSED: props 回潮 <PublishTrimmed> 未红");
         }
 
-        // #12：XML 注释残留与 Condition=false 禁用定义不得喂红（活跃元素判定）。
+        // #12：XML 注释残留不得误红；带 Condition 的定义必须红（从严——条件不静态求值）。
         const string commentDrift = "<Project><PropertyGroup><OutputType>Exe</OutputType>" +
                                     "<!-- <PublishTrimmed>true</PublishTrimmed> --></PropertyGroup></Project>";
         if (ClassifyProjectFilePublishProperties(commentDrift, "x.csproj").Count != 0)
@@ -266,7 +271,7 @@ public sealed class PublishPropertiesCsprojGuardTests
                                       "<PublishTrimmed Condition=\"'$(Never)' == 'true'\">true</PublishTrimmed></PropertyGroup></Project>";
         if (ClassifyProjectFilePublishProperties(conditionDrift, "x.csproj").Count == 0)
         {
-            failures.Add("MISSED: 带条件的活跃 <PublishTrimmed> 定义未红");
+            failures.Add("MISSED: 带条件的 <PublishTrimmed> 定义未红");
         }
 
         var greenScript = SourceLint.Read("scripts", "publish-app.ps1");
@@ -298,35 +303,25 @@ public sealed class PublishPropertiesCsprojGuardTests
         // #12：self-contained 断言的失效自证——两个脚本调用段掉 --self-contained、
         // 默认值改 false / 摘除，均必须红。调用段定位从 dotnet publish 之后起查，
         // 避开 publish.sh usage 文案里的 --self-contained。
-        var pubIdx = greenScript.IndexOf("dotnet publish", StringComparison.Ordinal);
-        var scIdx = pubIdx >= 0 ? greenScript.IndexOf("--self-contained", pubIdx, StringComparison.Ordinal) : -1;
-        if (scIdx < 0)
+        static void AssertMissingSelfContainedTurnsRed(string green, string label, List<string> failures)
         {
-            failures.Add("MUTATION DID NOT APPLY: publish-app.ps1 调用段无 --self-contained");
-        }
-        else
-        {
-            var scTampered = greenScript[..scIdx] + greenScript[(scIdx + "--self-contained".Length)..];
-            if (ClassifyPublishScript(scTampered, "publish-app.ps1").Count == 0)
+            var pubIdx = green.IndexOf("dotnet publish", StringComparison.Ordinal);
+            var scIdx = pubIdx >= 0 ? green.IndexOf("--self-contained", pubIdx, StringComparison.Ordinal) : -1;
+            if (scIdx < 0)
             {
-                failures.Add("MISSED: Worker publish 调用掉 --self-contained 未红");
+                failures.Add("MUTATION DID NOT APPLY: " + label + " 调用段无 --self-contained");
+                return;
+            }
+
+            var tampered = green[..scIdx] + green[(scIdx + "--self-contained".Length)..];
+            if (ClassifyPublishScript(tampered, label).Count == 0)
+            {
+                failures.Add("MISSED: " + label + " Worker publish 调用掉 --self-contained 未红");
             }
         }
 
-        var shPubIdx = greenSh.IndexOf("dotnet publish", StringComparison.Ordinal);
-        var shScIdx = shPubIdx >= 0 ? greenSh.IndexOf("--self-contained", shPubIdx, StringComparison.Ordinal) : -1;
-        if (shScIdx < 0)
-        {
-            failures.Add("MUTATION DID NOT APPLY: publish.sh 调用段无 --self-contained");
-        }
-        else
-        {
-            var shTampered = greenSh[..shScIdx] + greenSh[(shScIdx + "--self-contained".Length)..];
-            if (ClassifyPublishScript(shTampered, "publish.sh").Count == 0)
-            {
-                failures.Add("MISSED: publish.sh Worker publish 调用掉 --self-contained 未红");
-            }
-        }
+        AssertMissingSelfContainedTurnsRed(greenScript, "publish-app.ps1", failures);
+        AssertMissingSelfContainedTurnsRed(greenSh, "publish.sh", failures);
 
         var defaultFlipped = greenScript.Replace(
             "$SelfContained = \"true\"", "$SelfContained = \"false\"", StringComparison.Ordinal);

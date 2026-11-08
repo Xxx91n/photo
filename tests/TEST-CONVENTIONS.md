@@ -60,7 +60,7 @@ public void Theme_Swatch_Count_Must_Be_Five() { ... }   // 无注释：不知道
 
 ## 3. 继承口径（既有先例，不因本文件改变）
 
-- **剥注释口径**：source-lint 读取源码一律走 `SourceLint.ReadStripped` 剥注释后再断言（教训——不剥会把注释里的示例字面量误判为违规）。
+- **剥注释口径**：source-lint 读取源码一律走 `SourceLint.ReadStripped` 剥注释后再断言（教训——不剥会把注释里的示例字面量误判为违规）。XML 工程文件（csproj / props / targets）例外：不走 `ReadStripped`（剥 `//` 会破坏 XML 内 URL 字面量），XML 注释由解析器天然无视，读取走 `SourceLint.Read`（#12）。
 - **单槽串行**：测试执行单槽串行（`test.runsettings` MaxCpuCount=1），多窗口不得并发跑 test（WORKFLOW §5 / §7.2）。
 - **CI-only（agent 窗口，dotnet 侧）**：agent 本机禁跑 dotnet 构建 / 测试，验收交云端 CI（.github/workflows/ci.yml）；窗口侧只做静态自证。例外：`scripts/release-readiness.ps1`（内含 test+smoke+publish）、`scripts/publish-app.ps1` / `scripts/publish.sh`（含 `dotnet publish`）均为发版机专用，只在明确发版时由人执行，agent 不主动触发。
 
@@ -70,3 +70,4 @@ public void Theme_Swatch_Count_Must_Be_Five() { ... }   // 无注释：不知道
 |---|---|---|
 | 2026-09-12 | ui-craft | 立区；写入 R1（新断言必写防什么 + issue 号）与 R2（撞红三档分类 + 语义化优先级 + characterization 定性 + 复审期） |
 | 2026-10-29 | 治理（#87） | 清理已退役旧栈口径（AXAML、Avalonia.Headless、XAML Thickness）并将视觉规范标记为历史 |
+| 2026-11-08 | #12 | §3 剥注释口径补 XML 工程文件豁免：解析器判注释、读取走 `SourceLint.Read` |
