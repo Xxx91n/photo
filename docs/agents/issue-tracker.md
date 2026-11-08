@@ -14,9 +14,9 @@
 
 仓库名从 `git remote -v` 推断；在 clone 里跑 `gh` 时它会自动认。
 
-## 外部 PR 当不当需求来源
+## 外部 PR 当不当需求来源（PRs as a request surface）
 
-**不当。**_（如果本仓决定把外部 PR 当 feature request，把这里改成 `yes`；`/triage` 会读这个标记。）_
+**不当（no）。**_（如果本仓决定把外部 PR 当 feature request，把这里改成 `yes`；`/triage` 会读这个标记。）_
 
 改成 `yes` 之后，PR 走和票一样的标签和状态，用 `gh pr` 的对应命令：
 
