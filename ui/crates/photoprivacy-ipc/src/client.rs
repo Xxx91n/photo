@@ -738,7 +738,8 @@ mod tests {
         let client = IpcClient::new();
         let ok = client.is_alive(&endpoint).await;
 
-        // is_alive 只在两轮往返结束后返回，此时服务端两轮均已处理完
+        // 客户端返回后，停止等待后续连接，避免测试因首轮异常而挂起
+        serve.abort();
         let _ = serve.await;
         let _ = std::fs::remove_dir_all(&dir);
 
