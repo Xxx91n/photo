@@ -5,28 +5,28 @@ using System.Xml.Linq;
 namespace PhotoPrivacy.IntegrationTests;
 
 /// <summary>
-/// （#34 兼容性复测收口）：.NET 10 升级兼容配置单一来源守卫——钉住
+/// （#34 兼容性复测收尾）：.NET 10 升级兼容配置单一来源检查——钉住
 /// net10.0 目标框架、Workstation GC（gcServer=false / gcConcurrent=true）、
 /// PublishReadyToRun=true 与 Serilog 各包固定版本不回归。
 ///
 /// 背景：.NET 10 升级（提交 693b2642 等）涉及 GC 调优（Workstation GC +
 /// ReadyToRun 预编译，e5de5fef）与 Serilog 4.x 系列。这些配置一旦漂移
 /// （目标框架降级、GC 模式回退、Serilog 版本浮动），会在用户侧（#34 用户侧
-/// 复测）暴露兼容性问题。本守卫在 CI 静态锁定这些配置，防「升级后配置回潮」。
+/// 复测）暴露兼容性问题。本检查在 CI 静态锁定这些配置，防「升级后配置老毛病再犯」。
 ///
 /// #12 裁决：PublishReadyToRun=true 维持 props 中心化——与 AGENTS「发布属性只经脚本
-/// 传入」的冲突按改口径收口（其余发布属性只经发布脚本传入，ReadyToRun 是唯一例外，
-/// AGENTS.md 发布条目已同步拆分），本守卫的单一来源断言继续锁定该中心化。
+/// 传入」的冲突按改规则定下来（其余发布属性只经发布脚本传入，ReadyToRun 是唯一例外，
+/// AGENTS.md 发布条目已同步拆分），本检查的单一来源断言继续锁定该中心化。
 ///
 /// 返修记录（PR #186 CodeRabbit 首轮 3 条 finding，逐项判定成立）：
 /// - Major（props 文本匹配不查冲突定义与工程级覆盖）：改为 XML 解析取活跃元素，
 ///   重复定义即红（MSBuild 后定义者胜）；新增工程级文件（csproj / 子目录 props）
-///   定义中心属性即红的覆盖守卫（工程级定义优先于 Directory.Build.props 导入）。
+///   定义中心属性即红的覆盖检查（工程级定义优先于 Directory.Build.props 导入）。
 /// - Minor（runtimeconfig 裸搜子串）：改为 JSON 解析取 runtimeOptions 的
 ///   gcServer/gcConcurrent 布尔有效值，缺键 / 非布尔 / 重复键 / 改值均红。
 /// - Minor（Serilog Contains 不剥 XML 注释）：改为 XML 解析比对活跃
 ///   PackageReference，注释残留与重复引用不再骗绿。
-/// 三条均为本票守卫漏报路径收口；轻量方案（XML/JSON 均在共享框架内，零新增依赖），
+/// 三条均为本检查漏报路径的收尾；轻量方案（XML/JSON 均在共享框架内，零新增依赖），
 /// 不引入 MSBuild evaluation。
 /// </summary>
 public sealed class Net10CompatibilityGuardTests
@@ -72,7 +72,7 @@ public sealed class Net10CompatibilityGuardTests
 
     internal static List<string> ClassifyRuntimeConfig(string content, string label)
     {
-        // 防的具体回潮形态（PR #186 CodeRabbit Minor 返修）：GC 调优（e5de5fef）被回退——
+        // 要防的老毛病（PR #186 CodeRabbit Minor 返修）：GC 调优（e5de5fef）被回退——
         // gcServer=true（Server GC，托盘应用回升 10-20MB 固定开销）或 gcConcurrent=false；
         // 以及键丢失、值字符串化、重复键让有效值脱离判定。处置：JSON 解析按
         // runtimeOptions 的布尔有效值判定，不再裸搜子串。关联 issue #34。
@@ -147,7 +147,7 @@ public sealed class Net10CompatibilityGuardTests
 
     internal static List<string> ClassifyDirectoryBuildProps(string content, string label)
     {
-        // 防的具体回潮形态（PR #186 CodeRabbit Major 返修）：目标框架降级 /
+        // 要防的老毛病（PR #186 CodeRabbit Major 返修）：目标框架降级 /
         // PublishReadyToRun 摘除或改值，以及 MSBuild 后定义者胜的冲突定义——同一属性
         // 第二处定义（哪怕值仍写 net10.0）让有效值脱离文本判定；XML 注释掉的旧行
         // 不再喂绿子串匹配。处置：XML 解析取活跃元素，单一定义 + 值精确匹配。
@@ -194,9 +194,9 @@ public sealed class Net10CompatibilityGuardTests
 
     internal static List<string> ClassifyProjectLevelOverrides(string content, string label)
     {
-        // 防的具体回潮形态（PR #186 CodeRabbit Major 返修）：工程级文件（csproj 或子目录
+        // 要防的老毛病（PR #186 CodeRabbit Major 返修）：工程级文件（csproj 或子目录
         // Directory.Build.props——MSBuild 取最近一层）定义 TargetFramework /
-        // PublishReadyToRun，工程级定义优先于根 Directory.Build.props 导入，中心守卫
+        // PublishReadyToRun，工程级定义优先于根 Directory.Build.props 导入，中心检查
         // 照样绿而有效值已漂移。处置：src/ 与 tests/ 下全部工程级文件禁绝这两枚中心属性。
         // 关联 issue #34。
         XDocument doc;
@@ -224,7 +224,7 @@ public sealed class Net10CompatibilityGuardTests
 
     internal static List<string> ClassifySerilogVersions(string content, string label, string[] packages)
     {
-        // 防的具体回潮形态（PR #186 CodeRabbit Minor 返修）：Serilog 包版本浮动（升级/降级）
+        // 要防的老毛病（PR #186 CodeRabbit Minor 返修）：Serilog 包版本浮动（升级/降级）
         // 破坏 .NET 10 兼容性；旧版本行被 XML 注释掉、活跃引用已改版本时，子串匹配仍骗绿。
         // 处置：XML 解析只看活跃 PackageReference，注释残留不计，重复活跃引用即红。
         // 关联 issue #34。
@@ -272,7 +272,7 @@ public sealed class Net10CompatibilityGuardTests
     [Fact]
     public void RuntimeConfig_Template_Should_Keep_Workstation_Gc()
     {
-        // 防的具体回潮形态：runtimeconfig.template.json 被改成 Server GC 或掉 gcConcurrent，
+        // 要防的老毛病：runtimeconfig.template.json 被改成 Server GC 或掉 gcConcurrent，
         // 托盘应用固定开销回升（e5de5fef 的调优被回退）。关联 issue #34。
         var content = SourceLint.Read("src", "PhotoPrivacy.Worker", "runtimeconfig.template.json");
         var violations = ClassifyRuntimeConfig(content, RuntimeConfigTemplatePath);
@@ -282,7 +282,7 @@ public sealed class Net10CompatibilityGuardTests
     [Fact]
     public void Directory_Build_Props_Should_Keep_Net10_And_ReadyToRun()
     {
-        // 防的具体回潮形态：TargetFramework 降级离开 net10.0、PublishReadyToRun 被摘除/改值，
+        // 要防的老毛病：TargetFramework 降级离开 net10.0、PublishReadyToRun 被摘除/改值，
         // 或出现第二处定义让 MSBuild 后定义者胜（CodeRabbit Major 判定成立的漏报路径）。
         // 关联 issue #34。
         var content = SourceLint.Read("Directory.Build.props");
@@ -293,9 +293,9 @@ public sealed class Net10CompatibilityGuardTests
     [Fact]
     public void Project_Files_Should_Not_Override_Central_Framework_Or_ReadyToRun()
     {
-        // 防的具体回潮形态：csproj / 子目录 props 里塞 <TargetFramework>net9.0</TargetFramework>
+        // 要防的老毛病：csproj / 子目录 props 里塞 <TargetFramework>net9.0</TargetFramework>
         // 或 <PublishReadyToRun>false</PublishReadyToRun>——工程级定义优先于根
-        // Directory.Build.props 导入（MSBuild 取最近一层），中心守卫照样绿而有效值已漂移
+        // Directory.Build.props 导入（MSBuild 取最近一层），中心检查照样绿而有效值已漂移
         // （CodeRabbit Major 判定成立的漏报路径）。关联 issue #34。
         var violations = new List<string>();
         foreach (var root in ProjectLevelScanRoots)
@@ -323,7 +323,7 @@ public sealed class Net10CompatibilityGuardTests
     [Fact]
     public void Serilog_Packages_Should_Stay_On_Fixed_Net10_Compatible_Versions()
     {
-        // 防的具体回潮形态：Serilog 依赖按工程映射校验——Core 只引 Serilog 本体，Worker 引全家桶，
+        // 要防的老毛病：Serilog 依赖按工程映射校验——Core 只引 Serilog 本体，Worker 引全家桶，
         // 任一包漂离复测确认的固定版本即红；其余工程（Ipc 等）不引用 Serilog，不在扫描面内
         // （防「无引用工程误报」）。关联 issue #34。
         var violations = new List<string>();
@@ -339,7 +339,7 @@ public sealed class Net10CompatibilityGuardTests
     [Fact]
     public void Net10_Compatibility_Guard_Negative_Self_Proof()
     {
-        // 失效即红自证（TEST-CONVENTIONS R2 配套）：GC 改值/缺键/重复键/字符串化、
+        // 失效即红自我验证（TEST-CONVENTIONS R2 配套）：GC 改值/缺键/重复键/字符串化、
         // 目标框架降级、R2R 摘除、props 冲突定义、props 注释化摘除、工程级覆盖、
         // Serilog 版本浮动/注释骗绿/重复引用——篡改必须报红，基线必须绿。关联 issue #34。
         var failures = new List<string>();

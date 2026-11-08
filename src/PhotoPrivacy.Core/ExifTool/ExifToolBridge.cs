@@ -190,9 +190,8 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
     }
 
     /// <summary>
-    /// 确保进程在跑，但绝不健康检查/重启（版本解析路径）。只在进程真的没了时启动它。
+    /// 确保进程在跑，但绝不健康检查/重启（版本解析路径）。只在进程真的没了时启动它；健康检查的副作用（重启）只属于文件路径。
     /// </summary>
-    // Design(#241): 状态查询只「拉起已死的进程」，不做健康检查——健康检查的副作用（重启）只属于文件路径。
     private async Task EnsureStartedWithoutHealthCheckAsync(CancellationToken cancellationToken)
     {
         if (_retired || _process.IsRunning)
@@ -218,12 +217,11 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
     }
 
     /// <summary>
-    /// 版本解析入口（#86）——只由状态消费者（IPC 状态请求）调用，<b>不进文件处理热路径</b>。
+    /// 版本解析入口（#86）——只由状态消费者（IPC 状态请求）按需调用，<b>不进文件处理热路径</b>，也不做启动期 eager start。
     ///
     /// 只有进程真的没了才启动它（启动自带版本探针）；进程还在就只补探。这条路径**绝不做健康检查**
     /// ——健康检查的副作用是重启，重启会打断在途擦除。已解析出真实版本时全程零往返。
     /// </summary>
-    // Design(#241): 版本解析按需触发（IPC 状态请求驱动），既不做启动期 eager start，也不进每文件热路径。
     public async Task EnsureVersionAsync(CancellationToken cancellationToken)
     {
         if (_retired || !ExifToolVersionText.IsUnknown(_versionText))
@@ -278,7 +276,7 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
     /// <summary>
     /// 清理单个文件的元数据：未知扩展名立即跳过；否则 stay_open 探测 → 判定是否有可清除字段 →
     /// 按规则生成擦除块，并等到该命令块的 <c>{ready}</c>（块结束才代表写盘完成）为止；
-    /// <c>TASK_DONE_</c> 回显只作「进入该块」的锚点。返回值即该文件的处理结论。
+    /// <c>TASK_DONE_</c> 回显只作「进入该块」的参照点。返回值即该文件的处理结论。
     /// </summary>
     public async Task<WipeResult> WipeMetadataAsync(string targetPath, CancellationToken cancellationToken)
     {
@@ -310,13 +308,14 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
         // We use {ready} as the end-of-task delimiter.
         //
         // 探测不再自带一个局部 ProbeLineHandler：它与擦除块共用 _pending 的 BlockReady 归属
-        // （OnStdoutLine 收行、CompleteBlockJustEchoed 结清、OnProcessExited 收口）。原局部处理器
+        // （OnStdoutLine 收行、CompleteBlockJustEchoed 结清、OnProcessExited 收尾）。原局部处理器
         // 用 Contains 认领 marker，而 id 自增使 marker 互为前缀（PROBE_DONE_1 ⊂ PROBE_DONE_10），
         // 别的文件那块的回显行会被本探测认领，随后那句别块的 {ready} 就把本探测结清在空输出上 →
         // HasClearableFields 解析不出东西 → Skipped_NoMetadata，文件里的隐私元数据被静默跳过。
         // 认领与结清改与擦除块（#97 落地的那半边，见本方法下方 OnStdoutLine / CompleteBlockJustEchoed）
-        // 同口径后，本票#111 的「有元数据却报无元数据」静默跳过形态消失。
-        // Design(#226): 探测块的 marker 认领取整行相等、结清取本块 {ready}——与擦除块同口径，回显只当「进入本块」的锚点；判定同样依赖「块按写入顺序整块处理、回显与 {ready} 一一对应」，这一 stdin 顺序假设已由真进程多并发写实测覆盖（StayOpenConcurrentBlockTests；证伪力=并发路径未撞红，残余见该类注释），决策本体与残余登记在 #226（原登记 #39）。
+        // 同一规则后，「有元数据却报无元数据」的静默跳过形态消失。
+        // 认领取整行相等、结清取本块 {ready}，回显只当「进入本块」的参照点；判定依赖「块按写入顺序整块处理、回显与 {ready} 一一对应」，
+        // 这一 stdin 顺序假设已由真进程多并发写实测覆盖（StayOpenConcurrentBlockTests；证伪力=并发路径没有失败，残余见该类注释）。
         _pending[probeMarker] = probePending;
 
         try
@@ -363,7 +362,7 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
 
         var wipeMarker = $"TASK_DONE_{id}";
         var wipeTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        // Design(#226): 擦除块的完成判定取本块的 {ready}（块结束），-echo1 回显只当「进入该块」的锚点、不作完成信号；判定依赖「块按写入顺序整块处理、回显与 {ready} 一一对应」，这一 stdin 顺序假设已由真进程多并发写实测覆盖（StayOpenConcurrentBlockTests；证伪力=并发路径未撞红，残余见该类注释），决策本体与残余登记在 #226（原登记 #39）。
+        // 擦除块的完成判定取本块的 {ready}（块结束），-echo1 回显只当「进入该块」的参照点、不作完成信号；判定依赖「块按写入顺序整块处理、回显与 {ready} 一一对应」，这一 stdin 顺序假设已由真进程多并发写实测覆盖（StayOpenConcurrentBlockTests；证伪力=并发路径没有失败，残余见该类注释）。
         _pending[wipeMarker] = new PendingBlock(wipeTcs, PendingCompletion.BlockReady);
 
         FileInfo? beforeInfo = null;
@@ -536,7 +535,7 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
             // 轻量存活探针——只做一次 stdin/stdout 往返（-echo1 marker + -execute），
             // 绝不把任何路径当「待解析文件」喂入。原实现把 _config.ExifTool.Path 当输入文件，
             // ExifTool 会真去解析那个（可能十几 MB 的）二进制，慢机上 >500ms 触发 health_timeout，
-            // 于是每处理一个文件就整进程重启一次，摧毁 stay_open 常驻收益（不变量④）。
+            // 于是每处理一个文件就整进程重启一次，摧毁 stay_open 常驻收益——ExifTool 常驻不能被弄坏。
             var cmd = $"-fast\n-echo1\n{marker}\n-execute\n";
 
             // 取闸计入 500 ms 预算：闸被一次卡死的擦除写入长期占用时，这里必须超时走恢复，
@@ -591,7 +590,7 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
             }
 
             // 本探针自己的 marker 必须先认领——它同样以 VERSION_ 开头。
-            // 整行相等（与 #97 / #111 同口径）：VERSION_{Guid:N} 之间不互为前缀，这里只作一致性收敛——
+            // 整行相等（与 #97 / #111 同一规则）：VERSION_{Guid:N} 之间不互为前缀，这里只作一致性收敛——
             // 别块的 VERSION_ 行会先被 IsProtocolNoiseLine 挡住，Contains 不会误伤，但保持同一条认领规则
             // 才能让「marker 认领」只有一种写法。
             if (string.Equals(line.Trim(), marker, StringComparison.Ordinal))
@@ -809,7 +808,7 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
 
         /// <summary>
         /// 回显 marker 到达时刻（<see cref="Environment.TickCount64"/> 毫秒），0 = 本块还没开始处理。
-        /// 由 stdout pump 线程置位、其他线程只读；它不是完成信号，只作「已开始、但等不到 {ready}」的判据与诊断锚点。
+        /// 由 stdout pump 线程置位、其他线程只读；它不是完成信号，只作「已开始、但等不到 {ready}」的判断标准与诊断参照点。
         /// </summary>
         public long MarkerEchoedAt;
 
@@ -886,7 +885,7 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
                 continue;
             }
 
-            // 存活探针的 marker 是 HEALTH_{Guid}，不存在互为前缀，按原有 Contains 口径匹配：
+            // 存活探针的 marker 是 HEALTH_{Guid}，不存在互为前缀，按原有 Contains 规则匹配：
             // 这条路径的失败模式是「探不到健康 → 重启」，不承担写盘完成判定，不值得收紧。
             if (!line.Contains(entry.Key, StringComparison.Ordinal))
             {
@@ -907,7 +906,7 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
     /// <c>{ready}</c> 只结清「紧挨在它前面那句回显」所属的写盘块（擦除）或输出收集块（探测）。
     ///
     /// <c>{ready}</c> 行本身不带块身份，能依据的只有位置，于是归属只能押在「块按顺序整块处理、一块的回显与
-    /// 它自己的 <c>{ready}</c> 之间插不进别块的行」这一假设上——它已由真进程多并发写实测覆盖（#226，原登记 #39，StayOpenConcurrentBlockTests；证伪力=并发路径未撞红，残余见该类注释）。假设破了（插得进）时，
+    /// 它自己的 <c>{ready}</c> 之间插不进别块的行」这一假设上——它已由真进程多并发写实测覆盖（StayOpenConcurrentBlockTests；证伪力=并发路径没有失败，残余见该类注释）。假设破了（插得进）时，
     /// 那句 <c>{ready}</c> 属于别的块：让擦除等待继续等自己那块、或由进程退出判失败，也不把它结清成已清理。
     /// </summary>
     private void CompleteBlockJustEchoed()

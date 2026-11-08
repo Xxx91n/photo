@@ -7,13 +7,13 @@ using PhotoPrivacy.Core.ExifTool;
 namespace PhotoPrivacy.Core.Tests.Configuration;
 
 /// <summary>
-/// （不变量⑤宣称-实现一致）：格式覆盖面对账断言——随 CI 硬失败。
+/// （说了什么，机器就得真的做到什么）：格式覆盖面核对断言——对不上就让 CI 直接报错。
 ///
 /// 背景：收敛前 allowed_extensions 有 109 条，而 ExtensionFamilyMap 只有 35 条
 /// （有效交集 34，差集 75 条无擦除策略）；README 则宣称“109 种扩展名”
-/// 甚至“覆盖 ExifTool 98.2% 可写格式”。本守卫把宣称变成可机器验证的断言：
+/// 甚至“覆盖 ExifTool 98.2% 可写格式”。本检查把宣称变成可机器验证的断言：
 /// 1) allowed_extensions ⊆ ExtensionFamilyMap 键集，且集合差 = 0（宣称的东西必须有擦除策略）；
-/// 2) ExtensionFamilyMap ⊆ allowed_extensions（映射面无死条目，jhc 类不可达条目不得回潮）；
+/// 2) ExtensionFamilyMap ⊆ allowed_extensions（映射面无死条目，jhc 类不可达条目不得再犯老毛病）；
 /// 3) allowed_extensions 无重复条目；
 /// 4) config.sample.json 与 AppConfig.Default 的 allowed_extensions 完全一致；
 /// 5) README 的“NN 种扩展名”数字与实际条目数一致（数字由测试产出，不靠人手维护）。

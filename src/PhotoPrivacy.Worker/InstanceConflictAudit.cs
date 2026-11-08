@@ -9,13 +9,12 @@ namespace PhotoPrivacy.Worker;
 /// 重复启动 / 单写者准入门让位时的冲突留痕（#127）。
 /// 这是「真正写审计」的路径，是「配置加载期零目录副作用」（#124 / #153）的显式例外：
 /// 目录只在这里创建，且创建前有界确认可写；只读 / 不可写安装目录下不改写冲突审计落点
-/// （不另择 %ProgramData% 或 ~/.local/state），只降级为可读记录并保留冲突事实：
+/// （不另择 %ProgramData% 或 ~/.local/state），只降级为可读记录且不阻断退出，保留冲突事实：
 /// stderr 恒写，Serilog 已初始化时再补一路文件日志（服务会话下 stderr 不落盘）。
 /// 残余：留痕本身仍是 best-effort，后台落盘失败由 JsonLineAuditLogger 内部吞掉；
 /// 下方那 3 次 IOException 重试对当前 WriteAsync 实现是死代码（只入队、不碰文件，不抛 IOException），
 /// 删除或改造成能感知落盘失败的重试由 #211 裁定。两条残余均继承 #162 / PR #163，由 #211 承接。
 /// </summary>
-// Design(#240): 配置解析与待机路径不得建目录；冲突留痕只在写路径有界建目录，失败降级为可读记录且不阻断退出，只读安装目录不改写落点（后台 flush 残余见 #211）。
 internal static class InstanceConflictAudit
 {
     /// <summary>
@@ -151,7 +150,7 @@ internal static class InstanceConflictAudit
 
     /// <summary>
     /// 冲突留痕的目录创建只在这条写路径做有界尝试：建目录 + DeleteOnClose 探针确认当前账户真能写。
-    /// 「目录存在」不等于「当前账户可写」（与 Program.TryPrepareWritableDirectory 同判据）。
+    /// 「目录存在」不等于「当前账户可写」（与 Program.TryPrepareWritableDirectory 同一判断标准）。
     /// 只读 / 不可写安装目录（Program Files、受限账户）下返回异常而不外抛，由调用方降级为可读记录。
     /// </summary>
     private static Exception? TryEnsureWritableAuditDirectory(string auditDirectory)
@@ -210,7 +209,7 @@ internal static class InstanceConflictAudit
         }
 
         // 服务会话下 stderr 不落盘：Serilog 已就绪时再补一路文件日志。
-        // 按 #85 口径吞掉 provider 故障，日志不得反过来阻断让位退出。
+        // 按 #85 规则吞掉 provider 故障，日志不得反过来阻断让位退出。
         SafeLog.Try(() => Log.Warning("conflict audit degraded: {DegradationRecord}", record));
 
         return new ConflictAuditOutcome(record);

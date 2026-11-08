@@ -62,7 +62,7 @@ public sealed class ProcessExifToolProcessTests
         await process.StopAsync(CancellationToken.None);
     }
 
-    // 防的具体回潮形态：停机拆卸没有闸时，停机两遍拆卸（#126 形态）或重载拆卸与停机拆卸并发，
+    // 要防的老毛病：停机拆卸没有闸时，停机两遍拆卸（#126 形态）或重载拆卸与停机拆卸并发，
     // 各自读到非 null 的 _process 后对同一 Process/CTS/job object 二次 Dispose，
     // ObjectDisposedException 逃到停机路径变成 StopBridgeAsync 的 Warning 噪声。
     // 关联 issue #37。
@@ -88,7 +88,7 @@ public sealed class ProcessExifToolProcessTests
         Assert.False(process.IsRunning);
     }
 
-    // 防的具体回潮形态：ExifTool 已自行退出（崩溃/被杀）后停机，stdin 的 -stay_open False 写尾
+    // 要防的老毛病：ExifTool 已自行退出（崩溃/被杀）后停机，stdin 的 -stay_open False 写尾
     // 与 StreamWriter.Dispose 会撞 Pipe is broken——该 IO 异常曾经无痕逃出 StopAsync，
     // 落成停机路径的 Warning 噪声（ui-smoke.md L 组 L9 段）。停机必须安静完成。
     // 关联 issue #37。

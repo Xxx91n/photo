@@ -4,10 +4,10 @@ namespace PhotoPrivacy.Core.Tests.Constants;
 
 public sealed class DefaultPathsTests
 {
-    // 防的具体回潮形态（#108 审查，CodeRabbit #155）：断言把 Windows 默认值钉死成 Program Files——
+    // 要防的老毛病（#108 审查，CodeRabbit #155）：断言把 Windows 默认值钉死成 Program Files——
     // 发布包自带 ExifTool/ 与 PATH 探测之后，任一前置候选命中都会合法地改变返回值，钉死它只会随安装环境误红。
     // 保留仍成立的部分：Windows 侧必须是绝对路径（校验器要求）；Unix 侧允许裸 "exiftool" 作为
-    // 「交给 PATH/execvp 解析」的兜底。
+    // 「交给 PATH/execvp 解析」的保底。
     [Fact]
     public void ExifToolPath_Should_Resolve_To_An_Absolute_Path_Or_Bare_Command()
     {
@@ -25,7 +25,7 @@ public sealed class DefaultPathsTests
         }
     }
 
-    // 防的具体回潮形态（#108 审查，CodeRabbit #155）：Unix 候选把包根裸 exiftool 排在 ExifTool/ 之前。
+    // 要防的老毛病（#108 审查，CodeRabbit #155）：Unix 候选把包根裸 exiftool 排在 ExifTool/ 之前。
     // 包内那份自带同级 lib/，包根裸文件通常没有；顺序反了会选中缺运行时目录的副本，
     // AppConfigValidator 随即以「缺 exiftool_files/lib」拒绝启用监控，而 UI 侧选中的却是可用的那份。
     [Fact]
@@ -40,7 +40,7 @@ public sealed class DefaultPathsTests
         Assert.Contains("/usr/bin/exiftool", candidates);
     }
 
-    // 防的具体回潮形态（#108 审查，CodeRabbit #155）：PATH 解析接受相对片段，返回一个依赖工作目录的
+    // 要防的老毛病（#108 审查，CodeRabbit #155）：PATH 解析接受相对片段，返回一个依赖工作目录的
     // 可执行路径——校验器随即以「must be absolute」拒绝启用监控，而 UI 侧显示「已自动检测到」。
     // 相对片段必须被跳过，只认绝对路径片段。
     [Fact]

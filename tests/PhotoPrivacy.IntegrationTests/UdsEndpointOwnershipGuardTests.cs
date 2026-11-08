@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 namespace PhotoPrivacy.IntegrationTests;
 
 /// <summary>
-/// source-lint guard for the UnixDomainSocketIpcTransport
+/// Source-text check for the UnixDomainSocketIpcTransport
 /// endpoint-ownership fix: the socket file may only be deleted by the endpoint owner
 /// (the server-side instance that called ListenAsync, detected via
 /// <c>ownsEndpoint = _listener is not null</c>). Client transports are per-call

@@ -6,7 +6,7 @@ namespace PhotoPrivacy.Ipc;
 /// Unix 对端凭据策略（纵深第二层）。
 /// 内核只做「识别」不做「拦截」——man7 unix(7) 明言 socket 权限位不保证可移植、
 /// 可移植程序不应依赖其做安全；因此对端 uid 读回后必须由本层比对，不匹配即拒绝。
-/// 凭据不可读一律 fail-closed（返回 null / 空集），绝不静默放行（不变量①）。
+/// 凭据不可读一律 fail-closed（返回 null / 空集），绝不静默放行——读不懂就明确拒绝。
 /// 方法均为 virtual：测试可注入伪造凭据以模拟跨用户连接（issue 04「可模拟场景内」）。
 /// </summary>
 public class UnixPeerCredentialPolicy

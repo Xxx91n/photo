@@ -40,8 +40,8 @@ public sealed class FileProcessedRecordStoreTests
     [Fact]
     public void Recover_Should_Normalize_Legacy_Fingerprint_Keys_To_Path()
     {
-        // 防的具体回潮形态：#133 路线 2 前写入的记录是「路径|长度|mtimeTicks」指纹 key；
-        // 若不归一化为纯路径，升级后首轮整目录补扫会把已清洗文件按新 key 判定为未处理而重复清洗。
+        // 要防的老毛病：#133 路线 2 前写入的记录是「路径|长度|mtimeTicks」指纹 key；
+        // 若不归一化为纯路径，升级后首轮整目录补漏扫会把已清洗文件按新 key 判定为未处理而重复清洗。
         // 关联 issue #133。
         var path = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "legacy", "a.jpg"));
         var legacyKey = $"{path}|1234|638000000000000000";
@@ -61,7 +61,7 @@ public sealed class FileProcessedRecordStoreTests
     [Fact]
     public void Recover_Should_Keep_Versioned_Path_Only_Key_With_Numeric_Suffix_Untouched()
     {
-        // 防的具体回潮形态：新口径纯路径 key 被按尾部「|数字|数字」误判为旧指纹并剥掉。
+        // 要防的老毛病：新规则纯路径 key 被按尾部「|数字|数字」误判为旧指纹并剥掉。
         // POSIX 文件名允许 |，路径本身可能以该形态结尾；新记录带 v=2 标记后不再做后缀推断。
         // 关联 issue #133。
         var key = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "versioned", "a.jpg")) + "|123|456";
@@ -100,8 +100,8 @@ public sealed class FileProcessedRecordStoreTests
     [Fact]
     public void Recover_Should_Keep_Latest_Timestamp_When_Same_Path_Has_Multiple_Records()
     {
-        // 同一路径在旧指纹口径下可能留下多条记录；归一化后必须保留最新时间戳，
-        // 否则较早记录先到期会让仍在 TTL 内的路径键被删除，补扫再次处理文件（#151 审查）。
+        // 同一路径在旧指纹规则下可能留下多条记录；归一化后必须保留最新时间戳，
+        // 否则较早记录先到期会让仍在 TTL 内的路径键被删除，补漏扫再次处理文件（#151 审查）。
         var path = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "dupe", "a.jpg"));
         var older = DateTimeOffset.UtcNow.AddHours(-2);
         var newer = DateTimeOffset.UtcNow.AddHours(-1);

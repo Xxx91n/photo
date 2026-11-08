@@ -10,7 +10,7 @@ namespace PhotoPrivacy.IntegrationTests.WorkerIpc;
 /// 请求/响应的 v 字段交换协议版本。
 ///
 /// 外部行为：
-/// ① 客户端申报的协议版本高于服务端所能说话的版本时，服务端按不变量①（fail-closed）
+/// ① 客户端申报的协议版本高于服务端所能说话的版本时，服务端 fail-closed：读不懂就明确拒绝，
 ///   不执行方法，回 ok:false 并带 message=protocol_version_mismatch，响应仍回带服务端 V，
 ///   供客户端下调重试；
 /// ② 客户端申报小于等于服务端版本（或干脆不申报 v）时，正常处理，响应照常回带服务端 V；

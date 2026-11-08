@@ -7,7 +7,7 @@ public static class WorkerIpcEndpointNames
     public const string ServicePipe = "PhotoPrivacyCleaner.Service";
 
     // Linux 服务模式: /run/photoprivacy/（systemd RuntimeDirectory 创建，属主服务用户；
-    // #167/#180 已定落点、#188 权限口径，#201 明确不动）。
+    // #167/#180 已定落点、#188 权限规则，#201 明确不动）。
     public const string LinuxSocketDirectory = "/run/photoprivacy";
     public const string LinuxServiceSocket = "/run/photoprivacy/worker.sock";
 
@@ -21,7 +21,7 @@ public static class WorkerIpcEndpointNames
     // XDG_RUNTIME_DIR 缺失/空/非绝对根路径 → 解析为 null（背景端点不可用），与 macOS 缺 HOME
     // 形态对称；不回落 /run/photoprivacy（缺陷本体），也不回落 /tmp（世界可写目录的可预测
     // 路径 = CWE-377 预蹲面，且跨用户端点相撞）。与 Rust 侧 endpoints.rs 的
-    // linux_background_endpoint 逐字同构（对账守卫：IpcAuthClaimReconciliationTests 的 #201
+    // linux_background_endpoint 逐字同构（核对检查：IpcAuthClaimReconciliationTests 的 #201
     // 对；双端行为测试钉同一路径形态）。
     public const string LinuxRuntimeDirectoryVariable = "XDG_RUNTIME_DIR";
     public const string LinuxBackgroundSocketDirectoryName = "photoprivacy";

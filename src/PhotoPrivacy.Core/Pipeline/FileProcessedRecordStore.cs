@@ -229,8 +229,8 @@ public sealed class FileProcessedRecordStore : IProcessedRecordStore, IDisposabl
 
                     if (DateTimeOffset.TryParse(tsStr, out var ts) && ts >= cutoff)
                     {
-                        // #133 路线 2：key 口径收敛为路径粗粒度。旧记录是「路径|长度|mtimeTicks」指纹格式，
-                        // 归一化为纯路径再入缓存，避免升级首轮整目录补扫把已清洗文件重复处理一遍。
+                        // #133 路线 2：key 规则收敛为路径粗粒度。旧记录是「路径|长度|mtimeTicks」指纹格式，
+                        // 归一化为纯路径再入缓存，避免升级首轮整目录补漏扫把已清洗文件重复处理一遍。
                         // 同一路径可能有多条记录（重复处理后追加），保留最新时间戳，防止较早记录把仍在
                         // TTL 内的路径键提前过期（#151 审查）。
                         CacheRecovered(NormalizeLegacyKey(key, root), ts);
