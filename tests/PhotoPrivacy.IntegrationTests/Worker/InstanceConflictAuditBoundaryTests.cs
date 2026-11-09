@@ -1,3 +1,7 @@
+using System.Diagnostics;
+using System.Text.Json;
+using PhotoPrivacy.Core.Audit;
+using PhotoPrivacy.Core.Configuration;
 using PhotoPrivacy.Worker;
 
 namespace PhotoPrivacy.IntegrationTests.Worker;
@@ -84,6 +88,30 @@ public sealed class InstanceConflictAuditBoundaryTests
     }
 
     [Fact]
+    public async Task Single_Writer_Yield_Should_Write_Audit_Line_When_Directory_Is_Writable()
+    {
+        // 要防的老毛病（#211）：只把重复启动入口改成同步写，让位入口仍走后台队列、失败仍静默丢行。
+        var root = NewTempRoot();
+        var audit = Path.Combine(root, "install", "hot", "_audit");
+
+        try
+        {
+            var outcome = await InstanceConflictAudit.TryWriteSingleWriterYieldAsync(
+                BuildArgs(root, audit), RuntimeMode.Service, audit);
+
+            Assert.Null(outcome.DegradationRecord);
+            var content = await File.ReadAllTextAsync(ConflictFile(audit));
+            Assert.Contains("\"event_type\":\"instance_conflict\"", content, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("single_writer_gate", content, StringComparison.Ordinal);
+            Assert.Contains("检测到另一 Worker", content, StringComparison.Ordinal);
+        }
+        finally
+        {
+            TryDelete(root);
+        }
+    }
+
+    [Fact]
     public async Task Conflict_Audit_Should_Write_When_Audit_Directory_Is_Writable()
     {
         // 要防的老毛病：把「配置解析期不建目录」误做成「所有路径都不建目录」，
@@ -100,10 +128,184 @@ public sealed class InstanceConflictAuditBoundaryTests
             Assert.Null(outcome.DegradationRecord);
             Assert.True(Directory.Exists(audit), "非待机写路径必须建出审计目录");
 
-            var file = WaitForAuditFile(audit, TimeSpan.FromSeconds(5));
+            // 同步写路径返回即已落盘：这里不轮询等待，直接读当天文件（#211 裁决）。
+            var file = ConflictFile(audit);
+            Assert.True(File.Exists(file), "冲突行必须在返回前落到当天审计文件");
             var content = await File.ReadAllTextAsync(file);
             Assert.Contains("\"event_type\":\"instance_conflict\"", content, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("检测到重复启动并已拒绝", content, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            TryDelete(root);
+        }
+    }
+
+    [Fact]
+    public async Task Conflict_Audit_Should_Write_After_Transient_Sharing_Conflict_Clears()
+    {
+        // 要防的老毛病（#211）：3 次重试原来挂在只入队、不碰文件的 WriteAsync 外面，
+        // 常驻 Worker 短暂占着 audit-*.jsonl 时重试根本不触发。改成同步写后，
+        // 300 ms 的间隔要能覆盖「对面开文件就一小会儿」的真实碰撞，而不是直接降级丢行。
+        var root = NewTempRoot();
+        var audit = Path.Combine(root, "install", "hot", "_audit");
+        Directory.CreateDirectory(audit);
+        var target = ConflictFile(audit);
+        await File.WriteAllTextAsync(target, string.Empty);
+
+        FileStream? hold = null;
+        try
+        {
+            hold = new FileStream(target, FileMode.Open, FileAccess.ReadWrite, FileShare.Read);
+            if (!SharingConflictIsEnforced(target))
+            {
+                // POSIX 侧 FileShare 是协作式建议锁，同进程第二个句柄不一定被拦；
+                // 共享冲突本身由 Windows CI 腿与实机覆盖，这里不硬造假失败。
+                return;
+            }
+
+            // 测试把重试间隔拉长到 2s：先占住文件，等第一次打开失败，再放开。
+            // 这样不赌「400ms 释放 vs 600ms 重试」的调度余量——CI 忙时也不会假失败。
+            var writeTask = InstanceConflictAudit.TryWriteAsync(
+                BuildArgs(root, audit),
+                RuntimeMode.Background,
+                "Global\\pp-211-shared-file",
+                retryDelay: TimeSpan.FromSeconds(2));
+
+            await Task.Delay(TimeSpan.FromMilliseconds(100));
+            Assert.False(writeTask.IsCompleted, "文件被占着时第一次同步写不应成功");
+            hold.Dispose();
+            hold = null;
+
+            var outcome = await writeTask;
+            Assert.Null(outcome.DegradationRecord);
+            var content = await File.ReadAllTextAsync(target);
+            Assert.Contains("\"event_type\":\"instance_conflict\"", content, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            hold?.Dispose();
+            TryDelete(root);
+        }
+    }
+
+    [Fact]
+    public async Task Conflict_Audit_Should_Degrade_Readably_When_Audit_File_Sharing_Conflict_Persists()
+    {
+        // 要防的老毛病（#211）：真实落盘失败被后台任务吞掉，Dispose 的空 catch 也不留痕，
+        // 排障时分不清「没写」和「写了但丢」。同步写路径必须把共享冲突当场降级成可读记录。
+        var root = NewTempRoot();
+        var audit = Path.Combine(root, "install", "hot", "_audit");
+        Directory.CreateDirectory(audit);
+        var target = ConflictFile(audit);
+        await File.WriteAllTextAsync(target, string.Empty);
+
+        FileStream? hold = null;
+        try
+        {
+            hold = new FileStream(target, FileMode.Open, FileAccess.ReadWrite, FileShare.Read);
+            if (!SharingConflictIsEnforced(target))
+            {
+                return;
+            }
+
+            var stopwatch = Stopwatch.StartNew();
+            var outcome = await InstanceConflictAudit.TryWriteAsync(
+                BuildArgs(root, audit), RuntimeMode.Background, "Global\\pp-211-shared-file");
+            stopwatch.Stop();
+
+            // 3 次尝试之间固定各等 300 ms：真重试的失败耗时不会低于 ~600 ms。
+            // 重试被删掉或改成空转时，这行断言当场失败。
+            Assert.True(
+                stopwatch.Elapsed >= TimeSpan.FromMilliseconds(500),
+                $"持续撞锁时应完成 3 次有间隔的尝试，实际只等了 {stopwatch.ElapsedMilliseconds} ms");
+
+            var record = outcome.DegradationRecord;
+            Assert.NotNull(record);
+            Assert.Contains("conflict audit degraded", record!, StringComparison.Ordinal);
+            Assert.Contains("冲突留痕写入失败", record!, StringComparison.Ordinal);
+            Assert.Contains(nameof(IOException), record!, StringComparison.Ordinal);
+            Assert.Contains(audit, record!, StringComparison.Ordinal);
+            Assert.Contains("检测到重复启动并已拒绝", record!, StringComparison.Ordinal);
+            Assert.Equal(0, new FileInfo(target).Length);
+        }
+        finally
+        {
+            hold?.Dispose();
+            TryDelete(root);
+        }
+    }
+
+    [Fact]
+    public async Task Conflict_Audit_Should_Degrade_Readably_When_Audit_Target_Cannot_Be_Opened()
+    {
+        // 要防的老毛病（#211）：同步 append 失败被外层空 catch 吞掉，只留下一句「没写成」。
+        // 「当天文件名被目录占住」在 Windows / POSIX 都会让打开写句柄失败，是跨平台可复现的落盘失败。
+        var root = NewTempRoot();
+        var audit = Path.Combine(root, "install", "hot", "_audit");
+        Directory.CreateDirectory(audit);
+        Directory.CreateDirectory(ConflictFile(audit));
+
+        try
+        {
+            var outcome = await InstanceConflictAudit.TryWriteAsync(
+                BuildArgs(root, audit), RuntimeMode.Background, "Global\\pp-211-target-not-file");
+
+            var record = outcome.DegradationRecord;
+            Assert.NotNull(record);
+            Assert.Contains("冲突留痕写入失败", record!, StringComparison.Ordinal);
+            Assert.Contains(audit, record!, StringComparison.Ordinal);
+            Assert.Contains("检测到重复启动并已拒绝", record!, StringComparison.Ordinal);
+            Assert.Contains("requested_mode=background", record!, StringComparison.Ordinal);
+        }
+        finally
+        {
+            TryDelete(root);
+        }
+    }
+
+    [Fact]
+    public async Task Conflict_Audit_And_Json_Line_Logger_Should_Emit_Same_Json_Fields()
+    {
+        // 要防的老毛病（#211）：两条写路径各自拼 JSON，字段名或 diagnostic_mode 以后各改各的，
+        // UI tail 与排障看到的字段对不上。字段名集合必须由同一个拼装入口锁住。
+        var root = NewTempRoot();
+        var audit = Path.Combine(root, "install", "hot", "_audit");
+        var loggerDirectory = Path.Combine(root, "install", "hot", "_logger");
+        Directory.CreateDirectory(loggerDirectory);
+
+        try
+        {
+            var outcome = await InstanceConflictAudit.TryWriteAsync(
+                BuildArgs(root, audit), RuntimeMode.Background, "Global\\pp-211-format");
+            Assert.Null(outcome.DegradationRecord);
+
+            using (var logger = new JsonLineAuditLogger(
+                loggerDirectory,
+                retainDays: 30,
+                diagnosticMode: AppConfig.Default.Audit.DiagnosticMode))
+            {
+                await logger.WriteAsync(
+                    new AuditEvent(
+                        EventType: "instance_conflict",
+                        Level: AuditLevel.Warn,
+                        TimestampUtc: DateTimeOffset.UtcNow,
+                        TaskId: "t-211",
+                        SourcePath: @"C:\photos\a.jpg",
+                        Message: "format check",
+                        Data: null),
+                    CancellationToken.None);
+            }
+
+            var conflictLine = (await File.ReadAllLinesAsync(ConflictFile(audit))).Single();
+            var loggerFile = Directory.GetFiles(loggerDirectory, "audit-*.jsonl").Single();
+            var loggerLine = (await File.ReadAllLinesAsync(loggerFile)).Single();
+
+            // 顺序不是契约，按字段名集合比：两条路径的键集合不能多也不能少。
+            Assert.Equal(
+                JsonFields(loggerLine).OrderBy(name => name, StringComparer.Ordinal),
+                JsonFields(conflictLine).OrderBy(name => name, StringComparer.Ordinal));
+            Assert.Equal(JsonBool(loggerLine, "diagnostic_mode"), JsonBool(conflictLine, "diagnostic_mode"));
         }
         finally
         {
@@ -239,23 +441,32 @@ public sealed class InstanceConflictAuditBoundaryTests
         return root;
     }
 
-    private static string WaitForAuditFile(string auditDirectory, TimeSpan timeout)
+    private static string ConflictFile(string auditDirectory) =>
+        Path.Combine(auditDirectory, AuditLogFileNames.BaseName(DateTime.Now) + ".jsonl");
+
+    private static bool SharingConflictIsEnforced(string path)
     {
-        var deadline = DateTime.UtcNow + timeout;
-        while (DateTime.UtcNow < deadline)
+        try
         {
-            var file = Directory.Exists(auditDirectory)
-                ? Directory.GetFiles(auditDirectory, "audit-*.jsonl").FirstOrDefault()
-                : null;
-            if (!string.IsNullOrEmpty(file))
-            {
-                return file!;
-            }
-
-            Thread.Sleep(50);
+            using var _ = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.Read);
+            return false;
         }
+        catch (IOException)
+        {
+            return true;
+        }
+    }
 
-        throw new FileNotFoundException("instance_conflict audit file not found", auditDirectory);
+    private static List<string> JsonFields(string line)
+    {
+        using var document = JsonDocument.Parse(line);
+        return document.RootElement.EnumerateObject().Select(property => property.Name).ToList();
+    }
+
+    private static bool JsonBool(string line, string propertyName)
+    {
+        using var document = JsonDocument.Parse(line);
+        return document.RootElement.GetProperty(propertyName).GetBoolean();
     }
 
     private static void TryDelete(string root)

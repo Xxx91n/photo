@@ -11,20 +11,27 @@ namespace PhotoPrivacy.Worker;
 /// 目录只在这里创建，且创建前有界确认可写；只读 / 不可写安装目录下不改写冲突审计落点
 /// （不另择 %ProgramData% 或 ~/.local/state），只降级为可读记录且不阻断退出，保留冲突事实：
 /// stderr 恒写，Serilog 已初始化时再补一路文件日志（服务会话下 stderr 不落盘）。
-/// 残余：留痕本身仍是 best-effort，后台落盘失败由 JsonLineAuditLogger 内部吞掉；
-/// 下方那 3 次 IOException 重试对当前 WriteAsync 实现是死代码（只入队、不碰文件，不抛 IOException），
-/// 删除或改造成能感知落盘失败的重试由 #211 裁定。两条残余均继承 #162 / PR #163，由 #211 承接。
+/// 写入方式（#211 用户裁决）：不起 JsonLineAuditLogger 的后台队列，退出前直接同步 append
+/// 到当天 audit 文件；3 次×300 ms 重试包在真写文件外面，落盘失败当场可见并降级，
+/// 不再出现「重试抓不到异常、后台吞掉 IOException」的静默丢行。
 /// </summary>
 internal static class InstanceConflictAudit
 {
+    private const int WriteAttempts = 3;
+    private static readonly TimeSpan DefaultRetryDelay = TimeSpan.FromMilliseconds(300);
+
     /// <summary>
     /// 留痕结果：DegradationRecord 非空即表示降级（可读记录已由 Degrade 写 stderr + Serilog）；
-    /// 为空只表示「未观察到同步失败」，不等于落盘成功——后台 flush 仍是 best-effort（残余见类注释）。
+    /// 为空表示没有发生降级：同步写入已成功，或事件等级低于配置阈值被有意过滤。
     /// 生产调用方可丢弃返回值：两路可观测面都在 Degrade 内落地；返回值供测试与后续调用方判读。
     /// </summary>
     internal sealed record ConflictAuditOutcome(string? DegradationRecord);
 
-    public static Task<ConflictAuditOutcome> TryWriteAsync(string[] args, RuntimeMode requestedMode, string mutexName)
+    public static Task<ConflictAuditOutcome> TryWriteAsync(
+        string[] args,
+        RuntimeMode requestedMode,
+        string mutexName,
+        TimeSpan? retryDelay = null)
     {
         return WriteAsync(
             args,
@@ -33,11 +40,16 @@ internal static class InstanceConflictAudit
             data: new Dictionary<string, string>
             {
                 ["mutex_name"] = mutexName
-            });
+            },
+            retryDelay: retryDelay ?? DefaultRetryDelay);
     }
 
     /// <summary>单写者准入门（#162）让位留痕：后启动 Worker 对同 config 审计目录干净退出前写一条。</summary>
-    public static Task<ConflictAuditOutcome> TryWriteSingleWriterYieldAsync(string[] args, RuntimeMode requestedMode, string auditDirectory)
+    public static Task<ConflictAuditOutcome> TryWriteSingleWriterYieldAsync(
+        string[] args,
+        RuntimeMode requestedMode,
+        string auditDirectory,
+        TimeSpan? retryDelay = null)
     {
         return WriteAsync(
             args,
@@ -47,14 +59,16 @@ internal static class InstanceConflictAudit
             {
                 ["reason"] = "single_writer_gate",
                 ["audit_directory"] = auditDirectory
-            });
+            },
+            retryDelay: retryDelay ?? DefaultRetryDelay);
     }
 
     private static async Task<ConflictAuditOutcome> WriteAsync(
         string[] args,
         RuntimeMode requestedMode,
         string message,
-        IReadOnlyDictionary<string, string> data)
+        IReadOnlyDictionary<string, string> data,
+        TimeSpan retryDelay)
     {
         // 降级记录与审计事件共用同一份 payload：降级时也必须带上 requested_mode 等冲突上下文，
         // 否则「留痕为什么没落盘」之外连冲突形态都看不出（#127 AC1）。
@@ -79,6 +93,13 @@ internal static class InstanceConflictAudit
             return Degrade("<unresolved>", ex, message, payload, "配置解析失败");
         }
 
+        // 与 JsonLineAuditLogger 的等级过滤保持一致：低于配置阈值的事件直接不写，也不算降级。
+        // 过滤放在建目录之前：既然不写，就不该为这条事件碰审计目录（#124 / #153 的零副作用规则）。
+        if (AuditLevel.Warn < AuditLevelParser.Parse(config.Audit.LogLevel))
+        {
+            return new ConflictAuditOutcome(null);
+        }
+
         var auditDirectory = config.Audit.LogDirectory;
         var directoryFailure = TryEnsureWritableAuditDirectory(auditDirectory);
         if (directoryFailure is not null)
@@ -86,66 +107,70 @@ internal static class InstanceConflictAudit
             return Degrade(auditDirectory, directoryFailure, message, payload, "审计目录不可写");
         }
 
-        JsonLineAuditLogger? logger = null;
-        Exception? writeFailure = null;
+        var auditEvent = new AuditEvent(
+            EventType: "instance_conflict",
+            Level: AuditLevel.Warn,
+            TimestampUtc: DateTimeOffset.UtcNow,
+            TaskId: Guid.NewGuid().ToString("N"),
+            SourcePath: config.Watch.HotFolder,
+            Message: message,
+            Data: payload);
+
         try
         {
-            logger = new JsonLineAuditLogger(
-                config.Audit.LogDirectory,
-                config.Audit.RetainDays,
-                config.Audit.DiagnosticMode,
-                AuditLevelParser.Parse(config.Audit.LogLevel));
-
-            // 有界重试（#162 引入）：对当前 JsonLineAuditLogger.WriteAsync 实现是死代码——
-            // 它只做 Serialize + Channel.TryWrite（满即 DropOldest），不碰文件、不抛 IOException。
-            // 后台 flush 与常驻 Worker 抢 audit-*.jsonl 的共享冲突同样不由这里感知；
-            // 删除或改造成能感知落盘失败的重试由 #211 裁定（见类注释）。
-            // 构造/入队阶段抛出的其他异常由外层降级为可读记录（留痕永不阻断退出）。
-            for (var attempt = 1; ; attempt++)
-            {
-                try
-                {
-                    await logger.WriteAsync(
-                        new AuditEvent(
-                            EventType: "instance_conflict",
-                            Level: AuditLevel.Warn,
-                            TimestampUtc: DateTimeOffset.UtcNow,
-                            TaskId: Guid.NewGuid().ToString("N"),
-                            SourcePath: config.Watch.HotFolder,
-                            Message: message,
-                            Data: payload),
-                        CancellationToken.None).ConfigureAwait(false);
-                    break;
-                }
-                catch (IOException) when (attempt < 3)
-                {
-                    await Task.Delay(300, CancellationToken.None).ConfigureAwait(false);
-                }
-            }
+            await AppendSyncWithRetryAsync(auditDirectory, auditEvent, config.Audit.DiagnosticMode, retryDelay)
+                .ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            writeFailure = ex;
-        }
-        finally
-        {
-            if (logger is not null)
-            {
-                // Dispose 会等待后台落盘通道排空（<=5s）；自身吞掉后台异常，这里只兜住意外逃逸。
-                try
-                {
-                    logger.Dispose();
-                }
-                catch (Exception ex)
-                {
-                    writeFailure ??= ex;
-                }
-            }
+            return Degrade(auditDirectory, ex, message, payload, "冲突留痕写入失败");
         }
 
-        return writeFailure is null
-            ? new ConflictAuditOutcome(null)
-            : Degrade(auditDirectory, writeFailure, message, payload, "冲突留痕写入失败");
+        return new ConflictAuditOutcome(null);
+    }
+
+    /// <summary>
+    /// 冲突留痕直接同步 append 到当天审计文件（#211）：这条路径只在退出门前写一行，
+    /// 不起后台队列，失败当场看得见。3 次×300 ms 重试只包在「打开文件」外面：
+    /// 常驻 Worker 也写同一个 audit-*.jsonl 时，它开文件只是一小会儿，隔 300 ms 再试通常能过；
+    /// 打开成功后的写/flush 失败（磁盘满、IO 错误）不再重试——半行可能已经落盘，
+    /// 再追加整行会把坏行接长，宁可当场降级留可读记录。
+    /// 文件共享方式与 JsonLineAuditLogger 一致（FileShare.Read）：Windows 上两边看到同一把共享锁，
+    /// POSIX 上 FileShare 只是协作式建议锁。
+    /// 不套 100 MB 分卷：冲突行固定写当天基础名，基础名已满时只多出一行超限记录，
+    /// 写进 UI 日志页真正尾随的那个文件；下一批批量写仍按既有规则落到 _N（#41）。
+    /// </summary>
+    private static async Task AppendSyncWithRetryAsync(
+        string auditDirectory,
+        AuditEvent auditEvent,
+        bool diagnosticMode,
+        TimeSpan retryDelay)
+    {
+        var line = AuditLineFormatter.Format(auditEvent, diagnosticMode);
+        var target = Path.Combine(auditDirectory, AuditLogFileNames.BaseName(DateTime.Now) + ".jsonl");
+
+        var stream = await OpenForAppendWithRetryAsync(target, retryDelay).ConfigureAwait(false);
+        using (stream)
+        using (var writer = new StreamWriter(stream))
+        {
+            await writer.WriteLineAsync(line).ConfigureAwait(false);
+            await writer.FlushAsync().ConfigureAwait(false);
+        }
+    }
+
+    private static async Task<FileStream> OpenForAppendWithRetryAsync(string target, TimeSpan retryDelay)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return new FileStream(target, FileMode.Append, FileAccess.Write, FileShare.Read);
+            }
+            catch (IOException) when (attempt < WriteAttempts)
+            {
+                await Task.Delay(retryDelay).ConfigureAwait(false);
+            }
+        }
     }
 
     /// <summary>
