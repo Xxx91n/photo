@@ -97,11 +97,10 @@ switch ($Action.ToLower()) {
       Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
       Remove-ServiceCompat $ServiceName
     }
-    if ($PSVersionTable.PSEdition -eq "Core") {
-      New-Service -Name $ServiceName -BinaryPathName $binPath -DisplayName "PhotoPrivacy Cleaner" -StartupType Automatic
-    } else {
-      sc.exe create $ServiceName binPath= $binPath start= auto
-    }
+    # 两种运行时都有 New-Service，统一走它。早先 Desktop 分支用 `sc.exe create`，
+    # 在 Windows PowerShell 5.1 里把带空格的 binPath 传给原生程序会被重新拆词，
+    # 服务注册不成功（含空格的安装路径才会暴露）。New-Service 直接写 SCM，不受这个影响。
+    New-Service -Name $ServiceName -BinaryPathName $binPath -DisplayName "PhotoPrivacy Cleaner" -StartupType Automatic
     # 先登记 SID 再启动服务：服务首次建管道时即按最新授权集合构建 DACL（重装/升级覆盖旧值）。
     if (-not (Test-Path $RegistryPath)) { New-Item -Path $RegistryPath -Force | Out-Null }
     New-ItemProperty -Path $RegistryPath -Name $RegistryValueName -Value $InstallerSid -PropertyType String -Force | Out-Null

@@ -285,7 +285,13 @@ try {
   $pipeResolved = $false
   for ($i = 0; $i -lt 10; $i++) {
     if (Test-Path $regPath) {
-      $advertised = (Get-ItemProperty -Path $regPath -Name "ServicePipeName" -ErrorAction SilentlyContinue).ServicePipeName
+      # 用 PSObject.Properties 读，别直接 `.属性`：值还没写进来时在 Windows PowerShell 5.1
+      # 会抛「找不到属性」把整轮脚本中断。服务没通告管道名是正常情况，要当空值处理。
+      $regItem = Get-ItemProperty -Path $regPath -ErrorAction SilentlyContinue
+      $advertised = $null
+      if ($null -ne $regItem -and $regItem.PSObject.Properties.Name -contains "ServicePipeName") {
+        $advertised = $regItem.ServicePipeName
+      }
       if (-not [string]::IsNullOrWhiteSpace($advertised)) {
         $pipeName = $advertised
         $pipeResolved = $true

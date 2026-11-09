@@ -22,13 +22,23 @@
 # 界面这边：整屏截图用 ImageGrab（跟 Graphics.CopyFromScreen 一样），点鼠标用
 #   SetCursorPos + mouse_event。把窗口置顶、点一下、等一会儿、截图，都放在同一个
 #   进程里一次做完。工具放在 photo-smoke-3\tools\ui_tool.py，不入库。
-# 命令行这边：scripts/verify-windows-service.ps1 跑了三遍，都是本票这一轮里的尝试，
-#   不是历史一轮：
-#   - 远端 CI run 42679959499（windows-service-verify，head 2b2fceb9）→ 成功；
-#   - 本机实机用和 CI 同款的 7.6.9 Core 便携运行时复跑同一份脚本 → 成功；
-#   - 本机自带的 5.1 跑挂了：挂在「带空格路径的 sc.exe create」那一步，3 条 FAIL 后中断。
-#     那一支不是 CI 走的路。照原样留着 console.txt / summary.txt 说明环境差异。
-#   本票没改脚本，改脚本不在本票范围。
+# 命令行这边：scripts/verify-windows-service.ps1 在本票这一轮里跑了好几遍，都是当轮的
+#   尝试，不是历史一轮：
+#   - 远端 CI run 42679959499（windows-service-verify，head 2b2fceb9）→ PASS=21 FAIL=0；
+#   - 本机实机用和 CI 同款的 7.6.9 Core 便携运行时 → PASS=21 FAIL=0；
+#   - 本机自带的 5.1 第一次跑挂在「带空格路径的 sc.exe create」，3 条 FAIL 后中断
+#     （script-channel/ 里的失败记录照原样留着）；
+#   - 用户裁定把脚本顺手改了，改完又在 5.1 和 7.6.9 Core 各复跑一遍，两次都是
+#     PASS=21 FAIL=0、退出码 0（script-channel-51-fixed/ 与 script-channel-core-fixed/）。
+# 脚本改了什么（用户 2026-11-10 裁定「顺手改了」）：
+#   install-service.ps1 的 install 分支原来按运行时分叉，Desktop（5.1）走
+#   `sc.exe create`，把带空格的 binPath 传给原生程序会被重新拆词，服务注册不上。
+#   改成两种运行时都用 New-Service（5.1 也有），直接写 SCM。
+#   verify-windows-service.ps1 读 ServicePipeName 时原来直接 `.属性`，值还没写进来
+#   会在 5.1 抛「找不到属性」中断整轮；改成先看 PSObject.Properties 再取值。
+#   两处都只修兼容性，没改装/卸/校验的行为。本机两种运行时复跑都过了；
+#   .github/workflows/windows-service-verify.yml 会在 PR 里因 scripts/*.ps1 变动自动跑，
+#   本票没推送、没建 PR，远端那次要等推送后才跑。
 # 授权：票面标签是 ready-for-human。用户 2026-11-10 在本票窗口明确批准由 agent 走桌面
 #   截图通道代跑（原话「你来做，你可以识别屏幕，产物用CI出」），并批准在这台机器上
 #   装/卸 PhotoPrivacyCleaner 服务。票面标签和验收标准都没改，跟 #88 / #125 / #156
@@ -58,8 +68,7 @@
 #   Worker 卡片显示 服务模式 / service / 服务 IPC=可达 / 协议 v1；进程侧只剩 1 个
 #   Services 会话 Worker，UI 没拉起后台 Worker。票面样例写的是不带后缀的
 #   「PhotoPrivacyCleaner.Service」，本帧端点名后面多了一串随机字符（#7 命名熵，
-#   服务管道通告名）。字样不完全一样，这处差异列进交付说明请用户确认，但连接态、
-#   服务模式字样、IPC 可达这几条都有当轮截图，所以按这几条判通过。
+#   服务管道通告名）。用户 2026-11-10 裁定这处字样差异「不管」，按连接态和 IPC 判通过。
 #   S4-01-restarted-overview.png / S4-01-process-and-sc.txt
 # S5 通过。配置页把「监控目录」改成私有 hot 目录，连着拍了几张，抓到绿字
 #   「已保存 · Worker 已重载」；随后投进这个新目录的样本被服务 Worker 清洗，日志页
@@ -81,45 +90,62 @@
 # S6 通过。点「停止」→ 状态回「已停止」+ 绿框成功；sc query STATE 1 STOPPED，
 #   tasklist 里 PhotoPrivacyWorker.exe 已无。S6-01-stop-clicked.png / S6-01-sc-stopped.txt /
 #   S6-00-service-page.png / S6-02-stopped-settled.png
-# S7 通过（已停止态）。点「卸载」→ 状态回「未安装」、按钮组回到 S1 的样子、绿框成功；
+# S7 通过（两个分支都跑了，2026-11-10 用户裁定「跑」）。
+#   已停止态：点「卸载」→ 状态回「未安装」、按钮组回到 S1 的样子、绿框成功；
 #   sc query 回 1060，只剩 UI 进程。S7-01-uninstall-clicked.png / S7-01-sc-uninstalled.txt
-#   运行态点「卸载」没动作这一分支：未测（票面括号里注明是设计，本轮没另外点）。
-# S8 未测。票面这一项写「日志页实时出 Service started/Cleaned 等条目，与 _audit 审计文件、
-#   ProgramData 服务日志同刻对得上」。本轮只核到前一半：日志页 02:58:55 的
-#   Cleaned / attempt=1;wipe_result=Cleaned_Modified，和审计 jsonl 的
-#   file_processing_succeeded（UTC 18:58:55，就是本地 02:58:55）、processed.ndjson
-#   同一路径同一刻对得上；跟后台模式的区分看 S4 的连接态。
-#   缺的两处，本轮没有当轮证据，所以整项按规矩记「未测」，不填通过：
-#   1) 日志页没有独立的「Service started」条目。本轮审计事件只有 file_skipped /
-#      exiftool_started / file_processing_succeeded 三种（历史 #156 那轮记过
-#      「Service started mode=live」，当时有；现在没有，属于和旧记录不一样的地方）。
-#   2) ProgramData 服务日志（S8-01-programdata-service-log.txt）只有 02:52:17
-#      Application started 和 02:55:58 一次 ReloadConfig failed，不记逐条 Cleaned，
-#      没法跟日志页 02:58:55 那条「同刻对得上」。
-#   证据：S8-01-logs-page.png / S8-01-audit-jsonl.txt / S8-01-processed-ndjson.txt /
-#   S8-01-programdata-service-log.txt / S8-01-correlation.txt
-#   这两处怎么处理由用户定。本票只如实记下缺什么，不提「按不迁移记下」这类建议，
-#   也不拿「跑过审查」当「通过」。还没拍板的都列在交付说明里。
+#   运行态：S7R-00-running-page.png 是「运行中」的服务页，「卸载」按钮灰着；
+#   在那个位置点一下（S7R-01-uninstall-clicked-while-running.png）状态仍是「运行中」、
+#   卸载钮仍灰、没有新的成功或失败横幅，同刻 sc query 仍 STATE 4 RUNNING
+#   （S7R-01-sc-still-running.txt）。票面写的「运行态点卸载无动作」成立。
+#   随后停止、卸载（S7R-02-stop.png / S7R-03-uninstall.png），收尾见 S-final-cleanup.txt。
+# S8 通过（2026-11-10 用户裁定「补啊，直接补」，补了一轮实机，见 S8R-* 证据）。
+#   上一轮为什么缺：从出厂空 hot_folder 起步，服务 Worker 停在待机分支，那条分支
+#   不写 service_started 事件（src/PhotoPrivacy.Core/Worker/MetadataCleanerWorker.cs
+#   里 service_started 写在「启用监控」之后）。历史 #88 轮的做法是装服务前先把
+#   hot_folder 设好，服务一启动就开始盯着监控目录。这轮照着做，前置条件造对了。
+#   这轮日志页（S8R-04-logs-service-started.png）6 条：
+#     04:33:47 Service started mode=live / ExifTool started
+#     04:34:15 Service started mode=live / 04:34:17 ExifTool started
+#     04:34:30 Cleaned attempt=1;wipe_result=Cleaned_Modified / 04:34:31 Skipped
+#   三处同刻（逐条对照见 S8R-06-correlation.txt）：
+#   - Service started：日志页 04:34:15 = 审计 20:34:15.366 UTC
+#     = ProgramData 服务日志 04:34:15.286 Application started。
+#   - Cleaned：日志页 04:34:30 = 审计 20:34:30.592 file_processing_succeeded
+#     = processed.ndjson 20:34:30.593 同一路径。
+#   - 样本 868 字节 / 4 项 EXIF → 730 字节 / 0 项，投放前记在
+#     S8R-03-sample-before.txt，投放后的 Cleaned 由日志页和审计共同证明。
+#   跟后台模式的区分看连接态（这一轮是服务运行中点的启动，S4 已留服务模式帧）。
+#   一处如实说明：ProgramData 那份是 Serilog 写的进程日志，只记服务进程启停、
+#   告警和错误，不记逐条 Cleaned；逐条文件事件走审计 JSONL，日志页读的也是这份
+#   JSONL（页脚写着「来自每日 JSONL 的审计尾部」）。所以「与 ProgramData 服务日志
+#   同刻对得上」对的是服务启动那一刻，不是每条 Cleaned，这是产品的分工。
+#   证据：S8R-01-install.png / S8R-01-sc.txt / S8R-02-start.png / S8R-02-sc.txt /
+#   S8R-03-sample-before.txt / S8R-04-logs-service-started.png /
+#   S8R-05-audit-jsonl.txt / S8R-05-processed-ndjson.txt /
+#   S8R-05-programdata-service-log.txt / S8R-06-correlation.txt
 #
 # ---------------------------------------------------------------------------
 # 命令行这边和收尾
 # ---------------------------------------------------------------------------
-# 跑成的那两次，最后一行都是 `CONCLUSION: PASS=21 FAIL=0`：
-#   ci-script-channel/summary.txt（远端 CI）、script-channel-pwsh/summary.txt（本机实机）。
+# 跑成的几次，最后一行都是 `CONCLUSION: PASS=21 FAIL=0`：
+#   ci-script-channel/summary.txt（远端 CI）、script-channel-pwsh/summary.txt（本机实机）、
+#   script-channel-51-fixed/summary.txt（5.1 修好之后）、
+#   script-channel-core-fixed/summary.txt（Core 复跑，确认没改坏）。
 # 退出码 0 也留了当轮证据，票面要求的就是这一条：
-#   script-channel-pwsh/exit-code.txt —— 本机实机重跑时把 EXITCODE=0、命令、时间写进文件；
-#   ci-script-channel/exit-code.txt —— 远端 CI 那个脚本步骤是 success（脚本 exit 1 会让
+#   script-channel-pwsh/exit-code.txt、script-channel-51-fixed/exit-code.txt、
+#   script-channel-core-fixed/exit-code.txt 都直写 EXITCODE=0；
+#   ci-script-channel/exit-code.txt 记的是远端 CI 脚本步骤 success（脚本 exit 1 会让
 #   步骤判失败，所以 success 等于退出码 0），连 run id、步骤号、起止时间一起记下。
-#   script-channel/ 是本票这一轮里 5.1 跑挂那次的记录，留着说明环境差异。
+#   script-channel/ 是本票这一轮里 5.1 第一次跑挂那次的记录，留着说明改之前什么样。
 # 收尾（S-final-cleanup.txt）：sc query 回 1060；ServicePipeInstallerSid /
 #   ServicePipeAllowedSids / ServicePipeName 三个值都不存在；无残留 UI/Worker/ExifTool
 #   进程；config.json 与出厂 config.sample.json 逐字节相同（1643bd31…）。
-#   临时测试账户：本轮压根没建，所以没有要删的，如实记下，不拿「没建」冒充「已删」。
-#   票面写了「临时测试账户删掉」，这一项本轮没有对应的删除动作，是否算满足由用户定，
-#   列进交付说明，不当成通过。
+#   临时测试账户：本轮压根没建，所以没有要删的。用户 2026-11-10 裁定「满足」，
+#   这一项按裁决结清，不再列进待拍板。
 # 这台机器的提权情况：EnableLUA=0，登录的是 Administrator，本身就有管理员权限，
 #   所以不会弹 UAC 同意框。S2 里装服务这一步（裸 sc.exe、binPath、注册进 SCM）是真跑过的；
-#   但「点安装弹 UAC、点同意 / 点取消」这两种情况本轮没测，那是 #30 / #206 的范围。
+#   「点安装弹 UAC、点同意 / 点取消」这两种情况本轮没测，用户 2026-11-10 裁定
+#   「那就不管了」，按裁决结清（那两条本来也归 #30 / #206）。
 # 还要说清一点：命令行这边走 install-service.ps1（会把安装者 SID 写进注册表），
 #   界面这边走服务页按钮（裸 sc.exe，不写这个值）。两轮分开跑，各自收尾干净，没混着用。
 #
@@ -132,8 +158,25 @@
 # 期望：下面每一行都回 ': OK'，退出码 0。
 #
 
-# ---- 界面截图与同刻命令输出（29 个文件）----
-9c7d923749703feca446948df683d4ce822640996402b0f5ed7238678624ded4  S-final-cleanup.txt
+# ---- S8/S7 补测（2026-11-10 用户裁定后）（15 个文件）----
+78e325e2e46f2e88dc22023dffe0d4773bab556e0c2c90153d300a7f483c4e89  S7R-00-running-page.png
+f376bad4a2070b1ede504c76a77049b646781c17409fc6d787a9cb57d8b69739  S7R-01-sc-still-running.txt
+35ab01e83d7665c7e4bb3c036556caf552e9a4675f8e727b27a4e79ddf187c64  S7R-01-uninstall-clicked-while-running.png
+3e866da7137c07555e261c7379299b90d19d001cbccae26ac6f2a1f3d8065c4a  S7R-02-stop.png
+f590d2270081e7713f25919483ba208cd03aa1f8805a1e1faf8cb504c3f8ed6f  S7R-03-uninstall.png
+533cc167e6dc76d7d9f5f1e02229d0ba26a5d8dbcd1dd2bd51eab5dbc0ad2640  S8R-01-install.png
+858492f70fd6b2f2fc23104ee1894b179ab0a7574036f1a4a499fba5eecedc96  S8R-01-sc.txt
+f376bad4a2070b1ede504c76a77049b646781c17409fc6d787a9cb57d8b69739  S8R-02-sc.txt
+e399edcc3cd0ee5346dd2cc9ea5c1ac1e93eb255aa265abc204895daeb782414  S8R-02-start.png
+f33e4c653017dba47f6378f4bc6bfa75fd71a75ea9d60de2c777c0ad5a07b180  S8R-03-sample-before.txt
+2a5dc9c2f3eaec8ce990925433da95f5f21f7d2888e66f01c1d8c17e27f63705  S8R-04-logs-service-started.png
+388fc9a2a9d847b5daaebd1221e07b3e7bf0f298a0310fa481a2dc5225f1847b  S8R-05-audit-jsonl.txt
+3d5f4eac349da2a69f2b9a6e9fddb99f880026f8e88ee6a10e0a0f2119e3eb0b  S8R-05-processed-ndjson.txt
+9925ef809b3f634ef3a8bb2ad659ff061a6bd4c67556fa094d3f2328fa8a1600  S8R-05-programdata-service-log.txt
+e1eadf96151988ab8c3c79e5221b3cca1ff7a2645e68d650f7f62ecd02ea717d  S8R-06-correlation.txt
+
+# ---- 界面 8 项截图与同刻命令输出（29 个文件）----
+49e3715670346329a403c0eb313a86e5e7ac1fbdfba53dc048ad226347a2c0ce  S-final-cleanup.txt
 25ac3ef7189c8cea24cdea6039b9d25a45feea4bef5d1bfe20957e29441296a1  S1-01-not-installed.png
 914b0382453ec331c4b961ce12194eef62d8d4b163cf406a95ecd7c67a3e21a4  S1-01-sc-query.txt
 1ed9e0fd42656b1a43edee2fe85de2afa55b54dfb912770f7e60b8f8dfe3a3ea  S2-01-install-clicked.png
@@ -188,7 +231,33 @@ f24dea7055777e12e5b669870fc01e25f20f154801413e7a05027562d03f3145  script-channel
 8efcc4eaec7535b3e290f60b8d9061f57d9a0eb336c33425622c0b5b1269b663  script-channel-pwsh/exit-code.txt
 49e56e2ab3ffbcc201db3ff2ef3696edba012f4bc796041fda6b032b572841e2  script-channel-pwsh/summary.txt
 
-# ---- 本轮里 5.1 跑挂那次的记录（环境差异，留着说明）（5 个文件）----
+# ---- 脚本修好之后本机 5.1 复跑（11 个文件）----
+14160e50c0b21eb5f5d54dbd5567fcd5f6d96eca3f7acded049ee1493d083c0a  script-channel-51-fixed/00-env.txt
+4445c3d347da1353f5d7b6a2e3b0d899e9313ce4665ed3a185a492079855ddbe  script-channel-51-fixed/01-install.txt
+dca02a3b60bc5d76056c1fa4d0071565a40b42c4077a2511c4ed7b7a753c7fb6  script-channel-51-fixed/02-service-status.txt
+0a0b2a924ebb2e0c761ca82aa747130857d7780a2c89c7f385b062567ab83b34  script-channel-51-fixed/03-pipe-response.txt
+59aaefcdc5a8a938020886a91bd4496012648d99f79a82f9738ef02f12ec85e7  script-channel-51-fixed/04-service-log.txt
+1556b9a2a8e60b43425438f78409c9281552c12dcf9e015eb8d2bf6635b971f3  script-channel-51-fixed/05-stop-start.txt
+fb29f2e80f3aa41bc6efac73dc1f2d69a4d8d908ede007f04ba7ea723b30a4a5  script-channel-51-fixed/06-uninstall.txt
+0f029a35c7a7d677905bcc01dbe3d9da9354be1ae4c45a0e8791736ca32c9150  script-channel-51-fixed/07-uninstall-absent.txt
+3b1d71102d7ca97da259857872be8902c90e2ef3562b13d6d786b4edd3cb35c0  script-channel-51-fixed/console.txt
+446dd23c8d8002d16ed8a4f1708350a6c108b1c9600f699f894f7aa2733fc948  script-channel-51-fixed/exit-code.txt
+d2339edf2345dd932f21b2dea3d8aaf66c3faf2c2298def12b37c4959b38fbb2  script-channel-51-fixed/summary.txt
+
+# ---- 脚本修好之后本机 Core 复跑（确认没改坏）（11 个文件）----
+09b5cedcdc3e9861fcc2b2b9ac89215cf5f789f1def2e6ce7b67cce9adc0b397  script-channel-core-fixed/00-env.txt
+e1fb83fee109825c83aec82b946647eadda058da2649f940e6a59dc2dfb477d7  script-channel-core-fixed/01-install.txt
+b87e55a824ad8c99651e0d7329677e494e97486cfb36f474cbd51e5d4ee32d4d  script-channel-core-fixed/02-service-status.txt
+3ac42014c4ebd07aba3f954799128710419725901706f5a67c3e0d39b8417d64  script-channel-core-fixed/03-pipe-response.txt
+11f5e4a693545fe3369092bd344452fc79f897e99a3355db47c089d8c10bed59  script-channel-core-fixed/04-service-log.txt
+e40d364c8aef4ca10e3a9755158e02e597a7a5555d208aeb5bc8767e44674695  script-channel-core-fixed/05-stop-start.txt
+31c639e9e97910536abd880ee52a7ac1e52908266a2e47a28982072532e39bf8  script-channel-core-fixed/06-uninstall.txt
+24f8cc3fae7d90381b267347a695f97fe81123b170b1a4eac1adf2e07e48fe97  script-channel-core-fixed/07-uninstall-absent.txt
+bd20f6baff3a7b2ffe24981cfaacaa3b485f3ea47b198a9305f7fce7737e91db  script-channel-core-fixed/console.txt
+469429ddb77898589f7e48ba964d37d80dcb23c0670acdc71e608060a10b55e8  script-channel-core-fixed/exit-code.txt
+f8eea7130073a5d4d0fff794f74fae6e05e1d8c7ad007822258657ad08cb0a45  script-channel-core-fixed/summary.txt
+
+# ---- 本轮里 5.1 第一次跑挂的记录（说明改之前什么样）（5 个文件）----
 14160e50c0b21eb5f5d54dbd5567fcd5f6d96eca3f7acded049ee1493d083c0a  script-channel/00-env.txt
 1d99772c70283978eb2df2ed326d03cef2437481dcfbb2f824ad84ebc248f6f8  script-channel/01-install.txt
 794a1f9a088c788a28fd0f29eda2bb16fc9b1960dd357b374ad27556e8da4803  script-channel/02-service-status.txt
