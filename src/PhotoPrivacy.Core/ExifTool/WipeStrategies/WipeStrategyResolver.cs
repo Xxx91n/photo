@@ -42,6 +42,11 @@ public static class WipeStrategyResolver
         // GifC2paPreservationTests）
         ["gif"] = WipeFormatFamily.Png,
 
+        // PSD（issue #8：部分清理——EXIF/XMP/IPTC/ICC（IRB 内）可删；版权/URL/分辨率/
+        // 打印参数/缩略图/图层内容删不掉；命令与 PNG 同款，42 图层真实样本实测图层段
+        // 字节级不变；见研究文档 §3.4）
+        ["psd"] = WipeFormatFamily.Png,
+
         // MOV/MP4
         ["mov"] = WipeFormatFamily.Video, ["mp4"] = WipeFormatFamily.Video,
         ["m4v"] = WipeFormatFamily.Video, ["qt"] = WipeFormatFamily.Video,

@@ -80,6 +80,8 @@ public sealed record AppConfig(
             ".heic", ".heif", ".hif", ".avif",
             // PNG / WebP / GIF
             ".png", ".apng", ".webp", ".gif",
+            // PSD（issue #8：复用 Png 族命令，部分清理）
+            ".psd",
             // Video (MOV/MP4)
             ".mov", ".mp4", ".m4v", ".qt", ".3gp", ".3g2",
             // PDF

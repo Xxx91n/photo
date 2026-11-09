@@ -18,6 +18,7 @@ public sealed class WipeStrategyResolverTests
     [InlineData("icon.png", WipeFormatFamily.Png)]
     [InlineData("anim.webp", WipeFormatFamily.Png)]
     [InlineData("loop.gif", WipeFormatFamily.Png)]
+    [InlineData("design.psd", WipeFormatFamily.Png)]
     [InlineData("clip.mov", WipeFormatFamily.Video)]
     [InlineData("doc.pdf", WipeFormatFamily.Pdf)]
     [InlineData("vector.eps", WipeFormatFamily.Eps)]
