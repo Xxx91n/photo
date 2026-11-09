@@ -207,7 +207,7 @@ public sealed class UdsSecurityDefaultsTests
                 path, UnixSocketAccessMode.BackgroundOnly);
             await transport.ListenAsync(CancellationToken.None);
 
-            // 老毛病形态：无条件 chmod 会把安装器/运维收紧的目录（例如 0700 的留证目录）放宽。
+            // 老毛病形态：无条件 chmod 会把安装器/运维收紧的目录（例如 0700 的留证据目录）放宽。
             Assert.Equal(ExpectedDirectoryMode, File.GetUnixFileMode(dir));
         }
         finally

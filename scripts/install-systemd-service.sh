@@ -181,7 +181,7 @@ if [[ -d "${INSTALL_DIR}/config" ]]; then
   find "${INSTALL_DIR}/config" -type f -exec chmod 0640 {} +
 fi
 
-# 审计目录例外：本地 tail（photoprivacy-logs）与留证脚本以 GUI 用户身份直接读日志，
+# 审计目录例外：本地 tail（photoprivacy-logs）与留证据脚本以 GUI 用户身份直接读日志，
 # 组换成 socket 访问组，目录 2750（组只有 r-x，删不掉），文件 0640（组只读，改不了），
 # 属主仍是服务用户（Worker 继续落盘）。hot / quarantine 保持数据组 2770：GUI 用户不进数据组，
 # 就完全不可见。

@@ -127,7 +127,7 @@ rec() {
 }
 
 capture() {
-  # capture <证据文件> <命令...>：命令原样输出留证（失败不中断 harness，退出码记入证据）
+  # capture <证据文件> <命令...>：命令原样输出留证据（失败不中断 harness，退出码记入证据）
   local out="$EVIDENCE_DIR/$1"
   shift
   local rc=0
@@ -359,7 +359,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# ---------- 0. 环境留证（虚拟环境/实机识别） ----------
+# ---------- 0. 环境留证据（虚拟环境/实机识别） ----------
 capture 00-env.txt uname -a
 capture 00-env.txt cat /etc/os-release
 capture 00-env.txt systemctl --version
@@ -383,7 +383,7 @@ else
   exit 1
 fi
 
-# UI 层留证基线：安装前 = 未安装态（Service 页同源探测）
+# UI 层留证据基线：安装前 = 未安装态（Service 页同源探测）
 ui_probe_report pre-install
 
 # ---------- 2. 安装（install-systemd-service.sh，LinuxOps::install 同款通道） ----------
@@ -457,7 +457,7 @@ else
 fi
 OLD_PID="$STABLE_PID"
 
-# UI 层留证：运行中态（Service 页同源探测，IPC 必须可达），在 Restart 试验前取稳定态
+# UI 层留证据：运行中态（Service 页同源探测，IPC 必须可达），在 Restart 试验前取稳定态
 ui_probe_report running 1
 
 # Restart=always 常驻：SIGKILL 后 systemd 应拉起新进程（RestartSec=3）
@@ -685,7 +685,7 @@ if wait_until 30 test -S "$SERVICE_SOCKET"; then
     rec PASS "服务用户对 hot/quarantine/audit/logs 仍可写（属主身份，收敛不打断数据路径）"
   fi
 
-  # ---------- 5b. 诊断留证（DIAG 行经 workflow 提升为 annotation，受限出网环境可读） ----------
+  # ---------- 5b. 诊断留证据（DIAG 行经 workflow 提升为 annotation，受限出网环境可读） ----------
   # 逐条独立追加（不用组合块重定向、不用 sed 管道）：前两版组合块在 systemctl show 处反复
   # 截断，unit/worker-proc/gui 行丢失。本版每条 printf/stat/awk 独立 >> summary，任何一条
   # 失败不影响其余；sudo 一律加 timeout 保底，组身份用 id（root 语境直查，无需 sudo）。
@@ -755,7 +755,7 @@ else
 fi
 expect_state Stopped "停止后状态=已安装未运行"
 
-# UI 层留证：已停止态
+# UI 层留证据：已停止态
 ui_probe_report stopped
 
 # ---------- 7. 启动（LinuxOps::start 同款命令串） ----------
@@ -802,7 +802,7 @@ else
   rec FAIL "卸载 15s 后仍有 Worker 进程残留"
 fi
 
-# UI 层留证：卸载后 = 未安装态
+# UI 层留证据：卸载后 = 未安装态
 ui_probe_report uninstalled
 
 # ---------- 9. 收尾清理 ----------

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# capture-ui-service-page.sh —— #32 UI Service 页截图留证（以 GUI 用户运行）。
+# capture-ui-service-page.sh —— #32 UI Service 页截图留证据（以 GUI 用户运行）。
 #
 # 以 --open-page service 启动发布包里的 PhotoPrivacy，等首屏渲染后整屏截图，
-# 连同时刻的 launchctl 状态一并留证，然后退出 UI。供 verify-launchd-service.sh
+# 连同时刻的 launchctl 状态一并留证据，然后退出 UI。供 verify-launchd-service.sh
 # 在各生命周期状态下调用（虚拟环境 = CI macOS runner；也可在实机手动执行）。
 #
 # #174：`--open-page` 显式覆盖静默启动（ui/crates/photoprivacy-ui/src/main.rs 的
@@ -92,7 +92,7 @@ fi
 # 起跑前不能有已在跑的 UI：单实例检查会让本脚本借到「没加载配置副本」的旧实例，
 # 那样静默场景根本没成立（CodeRabbit 审查意见）。
 if pgrep -x PhotoPrivacy > /dev/null 2>&1; then
-  echo "已有 PhotoPrivacy 实例在跑，先退出再截图留证（#174 要求全新进程）:" >&2
+  echo "已有 PhotoPrivacy 实例在跑，先退出再截图留证据（#174 要求全新进程）:" >&2
   pgrep -fl PhotoPrivacy >&2 || true
   exit 1
 fi
@@ -179,7 +179,7 @@ pgrep -fl "PhotoPrivacy" 2>&1 || true
 
 # 配对状态对照（#172 根因对照，GUI 用户语境）：legacy `launchctl list <label>` 按调用者域
 # 查找（查不到系统 LaunchDaemon），`launchctl print system/<label>` 显式查系统域（MacProbe
-# 事实源）——两路并排留证，截图状态与哪一路一致一目了然。
+# 事实源）——两路并排留证据，截图状态与哪一路一致一目了然。
 {
   echo "---- launchctl list com.photoprivacy.cleaner（legacy，调用者域） ----"
   launchctl list com.photoprivacy.cleaner 2>&1 || true

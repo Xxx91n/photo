@@ -185,7 +185,7 @@ try {
     Rec "FAIL" ("worker ownership: WQL escape returned " + $wqlLiteral)
   }
 
-  # ---------- 0. 环境留证 ----------
+  # ---------- 0. 环境留证据 ----------
   Capture "00-env.txt" {
     [System.Environment]::OSVersion.VersionString
     whoami /all

@@ -124,7 +124,7 @@ rec() {
 }
 
 capture() {
-  # capture <证据文件> <命令...>：命令原样输出留证（失败不中断 harness，退出码记入证据）
+  # capture <证据文件> <命令...>：命令原样输出留证据（失败不中断 harness，退出码记入证据）
   local out="$EVIDENCE_DIR/$1"
   shift
   local rc=0
@@ -379,7 +379,7 @@ ui_shot() {
   chown "$GUI_USER" "$shot_dir" 2>/dev/null || true
   # 安装后 config.json 对 GUI 不可读（0750/0640 服务账户:数据组，#167 配置写入边界）；
   # 截图脚本自行退回最小默认配置（只开 #174 静默开关），这里不再以 root 复制受保护配置，
-  # 避免把配置字节交给 GUI 或为留证放宽安装目录权限。
+  # 避免把配置字节交给 GUI 或为留证据放宽安装目录权限。
   local rc=0
   run_with_timeout 60 "$out" launchctl asuser "$uid" sudo -u "$GUI_USER" \
     bash "$SHOT_SCRIPT" --install-dir "$INSTALL_DIR" --tag "$tag" --out-dir "$shot_dir" || rc=$?
@@ -408,7 +408,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# ---------- 0. 环境留证（虚拟环境/实机识别） ----------
+# ---------- 0. 环境留证据（虚拟环境/实机识别） ----------
 capture 00-env.txt uname -a
 capture 00-env.txt sw_vers
 if [[ "$UI_SHOTS" != 1 ]]; then
@@ -434,7 +434,7 @@ else
   exit 1
 fi
 
-# UI 层留证基线：安装前 = 未安装态（Service 页同源探测 + 截图）
+# UI 层留证据基线：安装前 = 未安装态（Service 页同源探测 + 截图）
 ui_probe_report pre-install
 ui_shot pre-install
 
@@ -503,7 +503,7 @@ else
 fi
 OLD_PID="$STABLE_PID"
 
-# UI 层留证：运行中态（Service 页同源探测 + 截图），在 KeepAlive 试验前取稳定态
+# UI 层留证据：运行中态（Service 页同源探测 + 截图），在 KeepAlive 试验前取稳定态
 ui_probe_report running 1
 ui_shot running
 
@@ -662,7 +662,7 @@ else
 fi
 expect_state Stopped "停止后状态=已安装未运行（plist 仍在、不再加载）"
 
-# UI 层留证：已停止态
+# UI 层留证据：已停止态
 ui_probe_report stopped
 ui_shot stopped
 
@@ -708,7 +708,7 @@ else
   rec FAIL "卸载 15s 后仍有 Worker 进程残留"
 fi
 
-# UI 层留证：卸载后 = 未安装态
+# UI 层留证据：卸载后 = 未安装态
 ui_probe_report uninstalled
 ui_shot uninstalled
 

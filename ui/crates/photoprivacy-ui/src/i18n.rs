@@ -459,10 +459,10 @@ mod tests {
         catalog.merge_locale("xx", r#"{"a.present": "xx 值"}"#);
         catalog.merge_locale(
             FALLBACK_LOCALE,
-            r#"{"a.present": "zh 值", "a.only_zh": "zh 兜底"}"#,
+            r#"{"a.present": "zh 值", "a.only_zh": "zh 保底"}"#,
         );
         assert_eq!(catalog.get("xx", "a.present"), "xx 值");
-        assert_eq!(catalog.get("xx", "a.only_zh"), "zh 兜底");
+        assert_eq!(catalog.get("xx", "a.only_zh"), "zh 保底");
         assert_eq!(
             catalog.get("xx", "a.missing_everywhere"),
             "a.missing_everywhere"

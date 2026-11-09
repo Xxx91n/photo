@@ -3,7 +3,7 @@
 #
 # 目的：在远端 CI 虚拟环境（如 GitHub Actions runner / Linux 容器）下模拟
 # 大批量日志流灌入（超出 500 条上限）、双通道（IPC backfill + 本地 tail）协调、
-# 滚动与过滤等效性断言，提供机器可读与留证产物。
+# 滚动与过滤等效性断言，提供机器可读与留证据产物。
 #
 # 用法:
 #   ./scripts/verify-logs-parity.sh --evidence-dir <dir> [--count <n>]
