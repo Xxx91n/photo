@@ -39,14 +39,14 @@ pub const IPC_CLIENT_DESIRED_ACCESS: u32 =
     FILE_GENERIC_READ | (FILE_GENERIC_WRITE & !FILE_CREATE_PIPE_INSTANCE);
 
 // 打开 flags 的本地常量（winnt.h/winbase.h 值；不 import windows_sys 是为了在非 Windows 编译面
-// 也能用测试钉住组合——审查返修 M1：漏 SECURITY_SQOS_PRESENT 会让 Identification 级别失效）。
-// 叶常量可达性口径（审查返修 M-R1 + CI 返修）：flags 叶常量经 pub 的 IPC_CLIENT_OPEN_FLAGS
+// 也能用测试钉住组合——漏 SECURITY_SQOS_PRESENT 会让 Identification 级别失效）。
+// 叶常量可达性说明：flags 叶常量经 pub 的 IPC_CLIENT_OPEN_FLAGS
 // 初始化式可达（非 Windows lib 面不判死码）；OPEN_EXISTING 是 dwCreationDisposition 实参
 // 而非 flag，仅 connect_once（cfg(windows)）使用，故单独 cfg——非 Windows 面不编译，
 // Windows 面经调用点可达。
 /// FILE_FLAG_OVERLAPPED（winbase.h）：tokio IOCP 注册所需。
 const FILE_FLAG_OVERLAPPED: u32 = 0x4000_0000;
-/// OPEN_EXISTING（winbase.h）：管道客户端打开语义（不存在即失败，不创建）；仅 windows 打开路径使用（CI 返修：非 Windows 面零引用会撞 dead_code）。
+/// OPEN_EXISTING（winbase.h）：管道客户端打开语义（不存在即失败，不创建）；仅 windows 打开路径使用。
 #[cfg(windows)]
 const OPEN_EXISTING: u32 = 3;
 /// SECURITY_SQOS_PRESENT（winnt.h）：SQOS 位生效开关——微软 CreateFileW 文档的前置条件，
@@ -54,15 +54,15 @@ const OPEN_EXISTING: u32 = 3;
 const SECURITY_SQOS_PRESENT: u32 = 0x0010_0000;
 /// SECURITY_IDENTIFICATION（winnt.h）：冒充级别=仅识别——服务端不可对客户端 ImpersonateNamedPipeClient 冒充。
 const SECURITY_IDENTIFICATION: u32 = 0x0001_0000;
-/// IPC 客户端打开 flags（#7）：SQOS 三件套，与 tokio ClientOptions::new 默认 flags 同构（1.54.1 源码核实）。
+/// IPC 客户端打开 flags：SQOS 三件套，与 tokio ClientOptions::new 默认 flags 同构（1.54.1 源码核实）。
 /// pub：与 IPC_CLIENT_DESIRED_ACCESS 同理——非 Windows 编译面（无 windows 打开路径）不判死码，
 /// 三个 flags 叶常量经本常量可达。
 pub const IPC_CLIENT_OPEN_FLAGS: u32 =
     SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION | FILE_FLAG_OVERLAPPED;
 
 /// ReloadConfig 会停 watcher → 重建 bridge → 重启 watcher；旧 UI 的 3s 读超时覆盖不了，
-/// 会把「正在重载」误判成 Worker 掉线。契约要求 ≥6s，这里取 10s 留余量。
-// Design(#245): ReloadConfig 的读超时独立于普通请求（10s），避免热重载被 3s 超时误杀。
+/// 会把「正在重载」误判成 Worker 掉线。要求 ≥6s，这里取 10s 留余量。
+// ReloadConfig 的读超时独立于普通请求（10s），避免热重载被 3s 超时误杀。
 pub const RELOAD_CONFIG_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug)]
@@ -98,7 +98,7 @@ impl std::error::Error for IpcError {}
 
 // Worker 服务端同一时刻只预建一个管道实例，并发连接会撞 ERROR_PIPE_BUSY，属主重建实例时还有极短的
 // 「无实例」窗口（ERROR_FILE_NOT_FOUND）。
-// Design(#245): 所有 IPC 请求共用一把异步锁（单飞），连接阶段对 busy/not-found 重试到连接超时。
+// 所有 IPC 请求共用一把异步锁（单飞），连接阶段对 busy/not-found 重试到连接超时。
 pub struct IpcClient {
     connect_timeout: Duration,
     request_timeout: Duration,
@@ -149,12 +149,12 @@ impl IpcClient {
         self
     }
 
-    // Design(#245): 会话/启动顺序边界——UI 可能先于 Worker 启动；首次成功往返后观察服务端 V，
+    // 会话/启动顺序边界——UI 可能先于 Worker 启动；首次成功往返后观察服务端 V，
     // 会话版本取 min(自身, 服务端)，与之不等时下调并记一次告警；收到 protocol_version_mismatch
     // 拒收且响应携带更低 V 时，用对齐后版本重新建连重试一次，不让新旧版本混杂的窗口期
     // 把 UI 永远拒在 Worker 之外。
     /// 本次会话该用的协议版本。首次成功往返前按自身版本发送；观察到服务端 V 后，会话
-    /// 版本取 min(自身, 服务端)，与之不等时下调（#42：会话/启动顺序边界，UI 可能先于
+    /// 版本取 min(自身, 服务端)，与之不等时下调（UI 可能先于
     /// Worker 启动，双方首次建连必须对齐到都会说的版本，不能按各自版本各走各的）。
     fn negotiated_version(&self) -> i32 {
         let observed = self.observed.load(Ordering::Relaxed);
@@ -422,16 +422,15 @@ fn probe_server_peer(stream: &Stream) -> ServerPeer {
 }
 
 // 旧 UI 的客户端带 `PipeOptions.CurrentUserOnly`，连接后校验管道属主 == 当前用户。该选项在服务模式下
-// 自相矛盾（服务 Worker 以 LocalSystem 运行，属主是 SYSTEM，用户 UI 必然被拒）——换栈调研 §2.6 已把
-// 「Windows 服务模式管道认证」登记为既有缺陷，属主边界改由服务端 DACL 承担，客户端不复制该校验。
-// Design(#245): IPC 认证以 OS 身份为边界（服务端 DACL），客户端不做属主校验。
+// 自相矛盾（服务 Worker 以 LocalSystem 运行，属主是 SYSTEM，用户 UI 必然被拒）——属主边界改由服务端 DACL 承担，客户端不复制该校验。
+// IPC 认证以 OS 身份为边界（服务端 DACL），客户端不做属主校验。
 //
-// #7 残余①（后台管道同用户抢先建面）由本文件 + verify.rs 闭环：连接建立后、首笔业务请求之前
+// 后台管道同用户抢先建由本文件 + verify.rs 解决：连接建立后、首笔业务请求之前
 // 核验服务端进程身份（UI 拉起的 Worker PID 优先、进程镜像路径回退），失败即作废该连接；
-// 服务管道不叠加（命名熵 + 拆位 DACL + HKLM 通告已闭环，D3）。
+// 服务管道不叠加（命名随机 + 拆位 DACL + HKLM 通告）。
 //
-// #7 起客户端改以细粒度掩码打开（IPC_CLIENT_DESIRED_ACCESS）：tokio 1.54 的 ClientOptions 无
-// desired_access 重载（#7 票内评论所述 API 不存在，docs.rs 核实），故自写原生 CreateFileW 再经
+// 客户端改以细粒度掩码打开（IPC_CLIENT_DESIRED_ACCESS）：tokio 1.54 的 ClientOptions 无
+// desired_access 重载，故自写原生 CreateFileW 再经
 // NamedPipeClient::from_raw_handle 交还 tokio IOCP 注册；busy/not-found 重试仍由上层 connect 的
 // 预算循环承担（错误码不变）。打开 flags 与 tokio ClientOptions::new 默认值同构（1.54.1 源码核实）：
 // share=0、OPEN_EXISTING、SQOS 三件套 SECURITY_SQOS_PRESENT|SECURITY_IDENTIFICATION|
@@ -439,7 +438,7 @@ fn probe_server_peer(stream: &Stream) -> ServerPeer {
 // Identification 级别不在文档化行为内（.NET 侧 TokenImpersonationLevel.Identification 内部同样生成
 // PRESENT 位）。与 C# 侧对齐：防伪服务端（预蹲者）对客户端发起 ImpersonateNamedPipeClient 冒充；
 // 产品服务端从不冒充客户端，收紧不改变合法链路。
-// Design(#7): 客户端请求掩码剥除 FILE_CREATE_PIPE_INSTANCE（0x4），SQOS 三件套固定 Identification 冒充级别。
+// 客户端请求掩码剥除 FILE_CREATE_PIPE_INSTANCE（0x4），SQOS 三件套固定 Identification 冒充级别。
 #[cfg(windows)]
 async fn connect_once(endpoint: &Endpoint) -> io::Result<Stream> {
     use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
@@ -494,7 +493,7 @@ pub(crate) fn is_retryable(err: &io::Error) -> bool {
     #[cfg(windows)]
     {
         // ERROR_PIPE_BUSY = 231（实例被占用）、ERROR_FILE_NOT_FOUND = 2（属主重建实例的空窗）。
-        // 与 .NET NamedPipeClientStream.Connect 一致：两者都重试，直到调用方的超时兜底。
+        // 与 .NET NamedPipeClientStream.Connect 一致：两者都重试，直到调用方的超时保底。
         if matches!(err.raw_os_error(), Some(231) | Some(2)) {
             return true;
         }
@@ -588,7 +587,7 @@ mod tests {
 
     #[test]
     fn client_desired_access_drops_create_pipe_instance_bit() {
-        // 防（#7/CWE-732 回潮）：客户端掩码带回 0x4 —— 对拆位后的服务端 DACL 连接被整体拒绝
+        // 防：客户端掩码带回 0x4 —— 对拆位后的服务端 DACL 连接被整体拒绝
         // （UI 完全连不上服务 Worker）；位级值必须与 C# 侧 WindowsServicePipeAcl.ServiceClientAccessMask
         // 同构（FILE_GENERIC_READ|WRITE 去位 = 0x0012019B）。
         assert_eq!(0, IPC_CLIENT_DESIRED_ACCESS & FILE_CREATE_PIPE_INSTANCE);
@@ -601,7 +600,7 @@ mod tests {
 
     #[test]
     fn client_open_flags_pin_sqos_identification_and_overlapped() {
-        // 防（#7 审查返修 M1 回潮）：漏 SECURITY_SQOS_PRESENT —— Identification 级别不在微软
+        // 防：漏 SECURITY_SQOS_PRESENT —— Identification 级别不在微软
         // CreateFileW 文档化行为内，伪服务端（预蹲者）仍可冒充客户端；漏 FILE_FLAG_OVERLAPPED
         // ——tokio IOCP 注册失败。组合必须与 tokio ClientOptions::new 默认 flags 同构。
         assert_eq!(

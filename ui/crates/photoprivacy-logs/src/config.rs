@@ -11,7 +11,7 @@ pub struct AuditConfig {
 
 /// 从同一份 `config.json` 读取 `audit.log_directory` / `audit.log_level`。
 ///
-/// 与旧 UI 的解析口径一致：字段缺失、为空或文件不可读时回落到 `fallback_directory`
+/// 与旧 UI 的解析规则一致：字段缺失、为空或文件不可读时回落到 `fallback_directory`
 /// （旧 UI 经 `DefaultPaths.DefaultAuditLogDirectory` 补成 `BaseDirectory/hot/_audit`），
 /// 级别未知/缺失回落 INFO。目录按原值使用，不在这里展开相对路径——Worker 也用同一份值。
 pub fn resolve_audit_config(config_path: Option<&Path>, fallback_directory: &Path) -> AuditConfig {

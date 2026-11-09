@@ -1,9 +1,9 @@
 //! 「清空水位」持久化：用户上次清空日志视图的绝对 UTC 时刻。
 //!
 //! 水位文件是 config.json 同目录的独立小文件（`logs-clear-watermark.json`），不进
-//! config.json；写入走「同目录临时文件 → rename」的原子覆盖，与 `photoprivacy-ui`
-//! 的 config_file.rs 同一契约，但临时文件每次调用独立命名，多个调用互不踩踏。
-//! 水位损坏不做 `.bak` 备份链——兜底是 fail-open：按无水位处理，最坏回灌一次，
+//! config.json；写入走「同目录临时文件 → rename」的整份替换，与 `photoprivacy-ui`
+//! 的 config_file.rs 规则一致，但临时文件每次调用独立命名，多个调用互不踩踏。
+//! 水位损坏不做 `.bak` 备份链——保底按无水位处理，最坏把旧日志重新显示一次，
 //! 下次清空重写。
 
 use chrono::{DateTime, SecondsFormat, Utc};
@@ -16,11 +16,11 @@ use std::sync::atomic::{AtomicU64, Ordering};
 /// 进程内 save 调用序号：保证每次写入的临时文件名互不相同。
 static SAVE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
-// Design(#209): 水位落 config.json 同目录的独立小文件，不进 config.json（config/rules JSON 契约冻结）。
+// 水位落 config.json 同目录的独立小文件，不进 config.json（保持原有配置结构不变）。
 pub const CLEAR_WATERMARK_FILENAME: &str = "logs-clear-watermark.json";
 
 /// 「清空水位」存储：用户上次清空日志视图的绝对 UTC 时刻。
-// Design(#209): 水位值是绝对 UTC 时刻，不存本地墙钟日期、文件名日期或字节偏移。
+// 水位值是绝对 UTC 时刻，不存本地墙钟日期、文件名日期或字节偏移。
 pub struct ClearWatermark {
     path: PathBuf,
 }
@@ -47,7 +47,7 @@ impl ClearWatermark {
     /// 其余读取失败同样按无水位处理——首启语义不变，绝不阻塞启动。
     ///
     /// 不创建、不改写水位文件；损坏文件的恢复动作是下次清空时的重写。
-    // Design(#209): 文件缺失/损坏一律按无水位处理（fail-open），下次清空重写，load 绝不阻塞启动。
+    // 文件缺失/损坏一律按无水位处理，下次清空重写，加载绝不阻塞启动。
     pub fn load(&self) -> Option<DateTime<Utc>> {
         let text = fs::read_to_string(&self.path).ok()?;
         let root: Value = serde_json::from_str(&text).ok()?;
@@ -62,10 +62,10 @@ impl ClearWatermark {
     ///
     /// 临时文件按调用独立命名，并发的 save 不会共用固定 `.write.tmp` 互相踩踏
     /// （一方把另一方的值 rename 落盘、或对方因临时文件消失而失败）；调用的串行化
-    /// 仍由调用方负责（UI 单实例、单一清空路径，接线归 #137）。崩溃可能残留一个
+    /// 仍由调用方负责（UI 单实例、单一清空路径）。崩溃可能残留一个
     /// 临时文件（体积极小、不影响读取），不做清扫——清扫会在并发下删掉别的调用
     /// 正在写的临时文件。
-    // Design(#209): 水位只由用户清空视图写入，原子覆盖（临时文件+rename），连续清空只保留最新。
+    // 水位只由用户清空视图写入，整份替换（临时文件+rename），连续清空只保留最新。
     pub fn save(&self, cleared_at: DateTime<Utc>) -> io::Result<()> {
         if let Some(parent) = self.path.parent() {
             fs::create_dir_all(parent)?;

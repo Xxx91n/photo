@@ -2,7 +2,7 @@
 //!
 //! 配置页的完整读写、防抖保存与热重载归 #55；本模块刻意不复用那里的实现，
 //! 只按 `config/config.sample.json` 的键名读两个布尔值，文件缺失或损坏时回落到
-//! `AppConfig.Default`（false/false），与旧 UI `LoadConfigOrDefault` 的兜底一致。
+//! `AppConfig.Default`（false/false），与旧 UI `LoadConfigOrDefault` 的默认处理一致。
 
 use serde_json::Value;
 use std::path::Path;
@@ -21,7 +21,7 @@ pub fn load(path: Option<&Path>) -> UiOptions {
 }
 
 /// 解析 `ui.*` 两个布尔开关；坏 JSON 或非布尔值回落默认。
-// Design(#245): 这里只认驻守相关的两个开关；配置页的读写/热重载由新 UI 配置页负责（#55 已关闭，实现见 config_service）。
+// 这里只认驻守相关的两个开关；配置页的读写与热重载由配置页负责（实现见 config_service）。
 fn parse(text: &str) -> UiOptions {
     // Windows 编辑器/脚本常写 UTF-8 BOM；serde_json 不认 BOM，先剥掉再解析。
     let text = text.strip_prefix('\u{feff}').unwrap_or(text);
