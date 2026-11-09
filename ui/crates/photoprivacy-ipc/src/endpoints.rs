@@ -183,6 +183,9 @@ pub fn service_pipe_endpoint_with_advertised(advertised: Option<&str>) -> Endpoi
 /// 回到通告名（服务换了新随机名后仍能接上）。没有合法通告名时候选只有静态名，返回同一个值
 /// ——没有别的可试。调用方只在「端点确实不存在」的失败上调用（服务还活着只是慢一拍时换名
 /// 只会打开预蹲面）；Windows 管道名不区分大小写，比较按不区分大小写处理。
+// 只有 Windows 服务管道有随机通告名；Unix 服务端点静态，本函数在非 Windows 构建里没有调用点
+// （测试会用到，但 clippy 的 lib 构建不含 tests）。
+#[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) fn service_pipe_endpoint_after_failure(
     advertised: Option<&str>,
     failed: &Endpoint,
