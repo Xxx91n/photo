@@ -44,7 +44,8 @@ public static class WipeRuleEngine
         WipeFormatFamily.Tiff => (true, false, false, false, false, false),
         WipeFormatFamily.Raw => (false, false, true, true, true, false),
         WipeFormatFamily.Heic => (true, true, false, false, false, false),
-        WipeFormatFamily.Png => (true, false, false, false, false, false),
+        // issue #8（2026-11-09 拍板）：ICC 统一保留，Png 族默认不再删 iCCP（与 jpeg/heic 同款）。
+        WipeFormatFamily.Png => (true, true, false, false, false, false),
         WipeFormatFamily.Video => (true, false, false, false, false, true),
         WipeFormatFamily.Pdf => (true, false, false, false, false, false),
         WipeFormatFamily.Eps => (true, false, false, false, false, false),
@@ -159,6 +160,15 @@ public static class WipeRuleEngine
                     if (stripTime)
                     {
                         parts.Add("-Time:All=");
+                    }
+                    break;
+                case WipeFormatFamily.Png:
+                    // issue #8：preserve_icc=true 时保住 iCCP（PNG/APNG/WebP 同引擎），实测
+                    // `-all= --icc_profile:all` 在 13.61 上能保住 ICC 且 validate OK。
+                    parts.Add("-all=");
+                    if (preserveIcc)
+                    {
+                        parts.Add("--icc_profile:all");
                     }
                     break;
                 default:
