@@ -6,11 +6,11 @@
 
 ## 1. 一句话结论
 
-**五个扩展名（加 .qt 共六个）都值得留在 allowed_extensions**：真实参数串 `-All= -Time:All=` 把我注入的 ItemList/XMP/GPS/loci 全删净，**时间戳是原地置零而不是删字段**，timeScale/duration/采样表原样，mdat 载荷六个样本字节级 md5 全部不变，全量解码通过。真正的残留风险不在"删坏文件"，而在**"删干净"三个字说满**：官方自己的口径就是 MOV/MP4 "Most top-level metadata is removed"（部分清理），EXIF 只能在已有结构上改、C2PA 只能删（且未实测）。
+**五个扩展名（加 .qt 共六个）都值得留在 allowed_extensions**：真实参数串 `-All= -Time:All=` 把我注入的 ItemList/XMP/GPS/loci 全删净，**时间戳是原地置零而不是删字段**，timeScale/duration/采样表原样，mdat 载荷六个样本字节级 md5 全部不变，全量解码通过。真正的残留风险不在"删坏文件"，而在**"删干净"三个字说满**：官方自己的说法就是 MOV/MP4 "Most top-level metadata is removed"（部分清理），EXIF 只能在已有结构上改、C2PA 只能删（且未实测）。
 
 | 格式 | 13.61 读写 | 实测结论 | 最大风险 |
 |---|---|---|---|
-| MP4 | R/W | 注入全删净，mdat 不变，解码 OK | 官方口径"部分清理"；EXIF 只能改已有结构（未实测删除） |
+| MP4 | R/W | 注入全删净，mdat 不变，解码 OK | 官方说法"部分清理"；EXIF 只能改已有结构（未实测删除） |
 | MOV / QT | R/W | 同上；©swr 写 UserData | 同上 |
 | M4V | R/W | 同上 | 同上 |
 | 3GP | R/W | 同上，**3gp loci 也能删** | loci 归 Location 组，`-Time:All=` 不管它，靠 `-All=` 兜住（实测已验证） |
@@ -28,7 +28,7 @@
 
 ## 3. 注入实测（每项成败，先立靶子再打）
 
-用逐条命令注入（与图片族文档同口径，`-overwrite_original`）：
+用逐条命令注入（与图片族文档同一套做法，`-overwrite_original`）：
 
 | 注入项 | mp4 | mov | m4v | 3gp | 说明 |
 |---|---|---|---|---|---|
@@ -69,7 +69,7 @@
 - 注入：`-QuickTime:CreateDate/-ModifyDate`（mvhd）+ `-TrackCreateDate/-TrackModifyDate`（tkhd）+ `-MediaCreateDate/-MediaModifyDate`（mdhd），mp4 与 mov 各一，全部 1 updated、`-G1 -a -s` 读回确认为 2026:01:0x。
 - 擦除（同真实参数串）后：六个字段全部还在盒子里，值**置零为 `0000:00:00 00:00:00`**；TimeScale=1000、MediaTimeScale=15360/44100、Duration/MediaDuration=2.00s **原样**；mdat md5 不变；ffprobe duration=2.0；全量解码 OK。
 
-源码口径一致：日期 tag 在 `MediaHeader` 等表里标 `Groups => { 2 => 'Time' }`（[QuickTime.pm](https://raw.githubusercontent.com/exiftool/exiftool/13.61/lib/Image/ExifTool/QuickTime.pm)），而 **TimeScale/Duration 没有这个组标**（TimeScale 在 Movie 表，类目是 Video），所以 `-Time:All=` 物理上碰不到 timeScale。**结论：`-Time:All=` 不会伤播放必需时戳**，代价是日期值归零——部分播放器会把 0 显示成 1904 或空日期，属显示问题不属播放问题。
+源码里也对得上：日期 tag 在 `MediaHeader` 等表里标 `Groups => { 2 => 'Time' }`（[QuickTime.pm](https://raw.githubusercontent.com/exiftool/exiftool/13.61/lib/Image/ExifTool/QuickTime.pm)），而 **TimeScale/Duration 没有这个组标**（TimeScale 在 Movie 表，类目是 Video），所以 `-Time:All=` 物理上碰不到 timeScale。**结论：`-Time:All=` 不会伤播放必需时戳**，代价是日期值归零——部分播放器会把 0 显示成 1904 或空日期，属显示问题不属播放问题。
 
 ## 6. 逐格式
 
@@ -95,7 +95,7 @@ R/W（官方表），实测注入全删净、mdat 不变、解码 OK。残留：
 - **EXIF**：官方表 R/W3，但干净文件**注入被拒**（0 updated、无警告）。相机直出的 mov 若已带 EXIF 结构，删除路径未实测——这是本报告最大的证据缺口。
 - **IPTC**：官方 R/W3，未实测（无法注入，同因）。
 - **C2PA/JUMBF**：官方 R/D；`-listd` 里 JUMBF 在可删组列表；**未实测**（无样本）。
-- 官方 Writer Limitations 的原文口径（[exiftool.org](https://exiftool.org/)）：**"MOV/MP4 - Most top-level metadata is removed."** ——"部分清理"是官方明说的。
+- 官方 Writer Limitations 的原文（[exiftool.org](https://exiftool.org/)）：**"MOV/MP4 - Most top-level metadata is removed."** ——"部分清理"是官方明说的。
 
 ## 7. 静态核对
 
@@ -111,8 +111,8 @@ R/W（官方表），实测注入全删净、mdat 不变、解码 OK。残留：
 |---|---|---|
 | 播放安全 | 实测安全 | 六样本 mdat md5 不变、时长/轨道不变、全量解码 OK；日期置零不碰 timeScale |
 | 时间戳语义 | 置零而非删除 | 字段保留、值为 0；部分播放器显示 1904/空日期，是显示问题 |
-| 整体重写 | 无条件发生 | 连无元数据的 3g2 都报 updated 且重排盒序；不能拿"文件没变"当审计口径 |
-| 删不干净的 | EXIF 仅已有结构可改、IPTC 未实测、C2PA R/D 未实测、编码器指纹保留 | 官方口径"Most top-level metadata is removed"，UI/审计文案不能写"全部清除" |
+| 整体重写 | 无条件发生 | 连无元数据的 3g2 都报 updated 且重排盒序；不能拿"文件没变"当审计依据 |
+| 删不干净的 | EXIF 仅已有结构可改、IPTC 未实测、C2PA R/D 未实测、编码器指纹保留 | 官方说法"Most top-level metadata is removed"，UI/审计文案不能写"全部清除" |
 | loci/GPS | 实测可删 | 3gp loci 归 Location 组，靠 `-All=` 删，不靠 `-Time:All=` |
 | 大文件/分片 MP4（moof）、DRM、HEIC-in-MOV | **未实测** | 本次只有小样本；分片 MP4 的 moof/mdat 路径没验证 |
 | 错误扩展名 | 不影响擦除 | ftyp 优先；FileType 字符串会漂（MP4/MQV），别做分支判断 |

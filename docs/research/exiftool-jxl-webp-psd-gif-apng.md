@@ -6,14 +6,14 @@
 
 ## 1. 一句话结论
 
-五种格式里，**WebP 最值得扩，而且风险最低**；**APNG 命令结构没事，不用改，但 ICC 保不保要单独定**；**GIF 能扩，但只能算"部分清理"**（有些东西它真删不掉）；**PSD 只能有限支持**；**JXL 建议继续跳过**，因为它的 `jbrd` 里可能还藏着原始 JPEG 的元数据，删不干净。
+五种格式里，**WebP 最值得扩，而且风险最低**；**APNG 命令结构没事，不用改，但 ICC 保不保要单独定**；**GIF 能扩，但只能算"部分清理"**（有些东西它真删不掉）；**PSD 只能部分清理**；**JXL 建议继续跳过**，因为它的 `jbrd` 里可能还藏着原始 JPEG 的元数据，删不干净。
 
 | 格式 | 13.61 读写 | 建议 | 最大风险 |
 |---|---|---|---|
 | WebP | R/W；EXIF / XMP / ICC 能写能删，C2PA 只能读/删（R/D） | **扩进支持列表** | 默认删 ICC 会偏色；扩展格式(simple/extended)会被自动转换 |
 | APNG | R/W，走 PNG 引擎，`FileType` 单独报 APNG | **命令结构保持现状；ICC 是否保单独定** | 默认连 `iCCP` 一起删，广色域图会偏色 |
 | GIF | R/W，Comment / XMP / ICC 能写能删 | **可扩，但只能部分清理** | C2PA、Plain Text 扩展、MIDI 块删不掉，且是静默不动 |
-| PSD | R/W，但只重写 image resource block | **有限支持，或先不上** | IRB 里的版权/URL/分辨率/打印参数删不掉；缩略图是 Protected |
+| PSD | R/W，但只重写 image resource block | **部分清理，或先不上** | IRB 里的版权/URL/分辨率/打印参数删不掉；缩略图是 Protected |
 | JXL | R/W，**只能删 EXIF / XMP** | **继续跳过** | `jbrd` 里可能有原 JPEG 的 APP13/COM；ICC 删不掉；裸码流写入要重新封装成容器 |
 
 ## 2. 我们现在的擦法
@@ -92,7 +92,7 @@
 
 **建议：可以扩，但描述要诚实。** 只能承诺"删注释/XMP/ICC"，不能承诺"删干净"。如果产品上不允许"部分清理还标成已清理"，那就继续跳过。
 
-### 3.4 PSD —— 只能有限支持
+### 3.4 PSD —— 只能部分清理
 
 **能读能写什么。** PSD/PSB/PSDT 在可写类型表里。但写入范围很窄：`ProcessPSD` 只重写 image resource block（IRB），头、color mode data、图层/蒙版段、图像数据都原样拷贝；trailer 会单独识别处理，`-all=` 可能把它删掉（[Photoshop.pm](https://raw.githubusercontent.com/exiftool/exiftool/13.61/lib/Image/ExifTool/Photoshop.pm) 的 `ProcessPSD`）。官方支持表给 PSD 的列是 EXIF/IPTC/XMP/ICC 都 R/W/C，"Other" 那列只写 `R Photoshop` —— 也就是 Photoshop 自己那堆 IRB 标量标签**只读**。
 
@@ -106,7 +106,7 @@
 
 **结构风险。** 低。我比对了 image data 段：`-all=` 前后前 98 字节（8x8 RGB RLE）md5 完全相同；末尾那 75 字节的 PhotoMechanic IPTC trailer 被删了（这是好事）。这个样本图层数是 0，所以"图层保留"只到源码级证据（`ProcessPSD` 把 IRB 之后的剩余字节整段原样拷贝），**带图层的 PSD 没实测**。
 
-**隐私面要注意：** 图层本身、图层名、文字图层、智能对象、蒙版都原样留着。它们不算传统元数据，但可能带着不想公开的内容；这是"PSD 有限支持"的另一个理由。
+**隐私面要注意：** 图层本身、图层名、文字图层、智能对象、蒙版都原样留着。它们不算传统元数据，但可能带着不想公开的内容；这是"PSD 只能部分清理"的另一个理由。
 
 **格式特有的坑。**
 
@@ -114,7 +114,7 @@
 - PSD 里 EXIF 的位置是嵌套的（EXIFInfo→IFD0），`WritePhotoshop.pl` 里有一段注释说单独改 EXIF 在 PSD 里走的是特殊分支（我实测单独 `-EXIF:all=` 是能删的，但这条路径比较绕，值得进测试）。
 - 大文件（PSB）没测。
 
-**建议：有限支持，或者先不上。** 如果要上，UI 必须写清楚"只清 EXIF/XMP/IPTC/ICC"，并且 `-all=` 后要真的验证这一条，别让审计日志说"已清除全部元数据"。
+**建议：部分清理，或者先不上。** 如果要上，UI 必须写清楚"只清 EXIF/XMP/IPTC/ICC"，并且 `-all=` 后要真的验证这一条，别让审计日志说"已清除全部元数据"。
 
 ### 3.4.1 真实带图层样本实测（用户提供，2026-11-09）
 
@@ -224,7 +224,7 @@ strings -a privacy.jxl                # 擦完仍见 privacy-test / privacy-comm
 
 - 别用 `FileType` 字符串做分支：WebP 会报 `Extended WEBP`，JXL 会报 `JXL Codestream`，APNG 报 `APNG`。按扩展名/族判断更稳。
 - 测试时别用错扩展名：ExifTool 会按扩展名判类型。我用 `.exif` 测 PSD 时它把文件当 EXIF 读，直接报 `Not a valid EXIF`；改成 `.psd` 就正常。同理，`.icc`/`.xmp` 这类临时文件名也会把目标文件带偏。
-- 裸码流 JXL 只要走到写路径就会报错，哪怕没有任何 EXIF/XMP（实测 22 字节裸码流跑 `-all=` 也是 exit 1）。如果将来要支持 JXL，必须在探测阶段先按容器魔数把裸码流挑出去，不能指望"没元数据就不会写"这个兜底。
+- 裸码流 JXL 只要走到写路径就会报错，哪怕没有任何 EXIF/XMP（实测 22 字节裸码流跑 `-all=` 也是 exit 1）。如果将来要支持 JXL，必须在探测阶段先按容器魔数把裸码流挑出去，不能指望"没元数据就不会写"这个保底。
 
 ## 6. 我实际跑过的验证（可复现）
 
