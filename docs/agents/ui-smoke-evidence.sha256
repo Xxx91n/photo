@@ -124,16 +124,22 @@
 #   跟后台模式的区分看连接态（这一轮是服务运行中点的启动，S4 已留服务模式帧）。
 #   票面「与 _audit 审计文件、ProgramData 服务日志同刻对得上」这句，本轮能核到的
 #   是：Service started 那条三处同刻（日志页 / 审计 / ProgramData 的
-#   Application started）；Cleaned 那条在日志页 / 审计 / processed.ndjson 同刻，
-#   但 ProgramData 那份是 Serilog 写的进程日志，只记服务进程启停、告警和错误，
+#   Application started）；Cleaned 那条在日志页 / 审计 / processed.ndjson 同刻。
+#   ProgramData 那份是 Serilog 写的进程日志，只记服务进程启停、告警和错误，
 #   不记逐条 Cleaned，逐条文件事件走审计 JSONL，日志页读的也是这份（页脚写着
-#   「来自每日 JSONL 的审计尾部」）。所以 ProgramData 侧对得上的是服务启动那一刻，
-#   Cleaned 逐条在 ProgramData 里没有对应行。这是产品的分工，不是这轮漏拍，
-#   但票面那句话按字面看确实只覆盖了一半，这一处仍列进交付说明请用户确认。
+#   「来自每日 JSONL 的审计尾部」）。所以 ProgramData 侧对得上的是服务启动
+#   那一刻，Cleaned 逐条在 ProgramData 里没有对应行。这是产品的分工，补实机
+#   也补不出来，不是这轮漏拍。历史 #156 那轮判 S8 通过时，ProgramData 侧
+#   同样只有 Application started（S8-01-correlation.txt 第 7 行），本轮照同一个
+#   办法判。票面那句话按字面看只覆盖一半，这个事实照实留着，不冒充
+#   「两边都逐条对上了」。
+#   S8-01-correlation.txt 是补测前那一轮的当轮观察（那时确实没有 service_started），
+#   保留原文没改；两份文本为什么不一样，见 S8R-07-about-old-correlation.txt。
 #   证据：S8R-01-install.png / S8R-01-sc.txt / S8R-02-start.png / S8R-02-sc.txt /
 #   S8R-03-sample-before.txt / S8R-04-logs-service-started.png /
 #   S8R-05-audit-jsonl.txt / S8R-05-processed-ndjson.txt /
-#   S8R-05-programdata-service-log.txt / S8R-06-correlation.txt
+#   S8R-05-programdata-service-log.txt / S8R-06-correlation.txt /
+#   S8R-07-about-old-correlation.txt
 #
 # ---------------------------------------------------------------------------
 # 命令行这边和收尾
@@ -169,7 +175,7 @@
 # 期望：下面每一行都回 ': OK'，退出码 0。
 #
 
-# ---- S8/S7 补测（2026-11-10 用户裁定后）（15 个文件）----
+# ---- S8/S7 补测（2026-11-10 用户裁定后）（16 个文件）----
 78e325e2e46f2e88dc22023dffe0d4773bab556e0c2c90153d300a7f483c4e89  S7R-00-running-page.png
 f376bad4a2070b1ede504c76a77049b646781c17409fc6d787a9cb57d8b69739  S7R-01-sc-still-running.txt
 35ab01e83d7665c7e4bb3c036556caf552e9a4675f8e727b27a4e79ddf187c64  S7R-01-uninstall-clicked-while-running.png
@@ -184,7 +190,8 @@ f33e4c653017dba47f6378f4bc6bfa75fd71a75ea9d60de2c777c0ad5a07b180  S8R-03-sample-
 388fc9a2a9d847b5daaebd1221e07b3e7bf0f298a0310fa481a2dc5225f1847b  S8R-05-audit-jsonl.txt
 3d5f4eac349da2a69f2b9a6e9fddb99f880026f8e88ee6a10e0a0f2119e3eb0b  S8R-05-processed-ndjson.txt
 9925ef809b3f634ef3a8bb2ad659ff061a6bd4c67556fa094d3f2328fa8a1600  S8R-05-programdata-service-log.txt
-e1eadf96151988ab8c3c79e5221b3cca1ff7a2645e68d650f7f62ecd02ea717d  S8R-06-correlation.txt
+b10ba17e9c45edf1ad8df90eba509c4a33bd14bbfbfca53212859736aafb6fc0  S8R-06-correlation.txt
+042be13762fa57021156cceb895f3aef760f343c3f9c0710219fb05ace8d8748  S8R-07-about-old-correlation.txt
 
 # ---- 界面 8 项截图与同刻命令输出（29 个文件）----
 49e3715670346329a403c0eb313a86e5e7ac1fbdfba53dc048ad226347a2c0ce  S-final-cleanup.txt
