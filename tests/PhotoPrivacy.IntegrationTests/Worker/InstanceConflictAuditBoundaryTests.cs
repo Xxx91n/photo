@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using PhotoPrivacy.Core.Audit;
 using PhotoPrivacy.Core.Configuration;
@@ -87,6 +88,30 @@ public sealed class InstanceConflictAuditBoundaryTests
     }
 
     [Fact]
+    public async Task Single_Writer_Yield_Should_Write_Audit_Line_When_Directory_Is_Writable()
+    {
+        // 要防的老毛病（#211）：只把重复启动入口改成同步写，让位入口仍走后台队列、失败仍静默丢行。
+        var root = NewTempRoot();
+        var audit = Path.Combine(root, "install", "hot", "_audit");
+
+        try
+        {
+            var outcome = await InstanceConflictAudit.TryWriteSingleWriterYieldAsync(
+                BuildArgs(root, audit), RuntimeMode.Service, audit);
+
+            Assert.Null(outcome.DegradationRecord);
+            var content = await File.ReadAllTextAsync(ConflictFile(audit));
+            Assert.Contains("\"event_type\":\"instance_conflict\"", content, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("single_writer_gate", content, StringComparison.Ordinal);
+            Assert.Contains("检测到另一 Worker", content, StringComparison.Ordinal);
+        }
+        finally
+        {
+            TryDelete(root);
+        }
+    }
+
+    [Fact]
     public async Task Conflict_Audit_Should_Write_When_Audit_Directory_Is_Writable()
     {
         // 要防的老毛病：把「配置解析期不建目录」误做成「所有路径都不建目录」，
@@ -145,6 +170,7 @@ public sealed class InstanceConflictAuditBoundaryTests
             // 第一次尝试撞锁、第二次（~300 ms）仍撞锁、第三次（~600 ms）前放开，
             // 正好验证重试真的包在写文件动作外。
             await Task.Delay(TimeSpan.FromMilliseconds(400));
+            Assert.False(writeTask.IsCompleted, "文件被占着时第一次同步写不应成功");
             hold.Dispose();
             hold = null;
 
@@ -180,8 +206,16 @@ public sealed class InstanceConflictAuditBoundaryTests
                 return;
             }
 
+            var stopwatch = Stopwatch.StartNew();
             var outcome = await InstanceConflictAudit.TryWriteAsync(
                 BuildArgs(root, audit), RuntimeMode.Background, "Global\\pp-211-shared-file");
+            stopwatch.Stop();
+
+            // 3 次尝试之间固定各等 300 ms：真重试的失败耗时不会低于 ~600 ms。
+            // 重试被删掉或改成空转时，这里当场变红。
+            Assert.True(
+                stopwatch.Elapsed >= TimeSpan.FromMilliseconds(500),
+                $"持续撞锁时应完成 3 次有间隔的尝试，实际只等了 {stopwatch.ElapsedMilliseconds} ms");
 
             var record = outcome.DegradationRecord;
             Assert.NotNull(record);
@@ -231,7 +265,7 @@ public sealed class InstanceConflictAuditBoundaryTests
     public async Task Conflict_Audit_And_Json_Line_Logger_Should_Emit_Same_Json_Fields()
     {
         // 要防的老毛病（#211）：两条写路径各自拼 JSON，字段名、时间格式、脱敏或 diagnostic_mode
-        // 以后各改各的，UI tail 与排障口径对不上。字段名与顺序必须由同一个拼装入口锁住。
+        // 以后各改各的，UI tail 与排障看到的字段对不上。字段名与顺序必须由同一个拼装入口锁住。
         var root = NewTempRoot();
         var audit = Path.Combine(root, "install", "hot", "_audit");
         var loggerDirectory = Path.Combine(root, "install", "hot", "_logger");

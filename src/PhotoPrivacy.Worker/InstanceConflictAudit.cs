@@ -123,8 +123,8 @@ internal static class InstanceConflictAudit
     /// 常驻 Worker 也写同一个 audit-*.jsonl 时，它开文件只是一小会儿，隔 300 ms 再试通常能过；
     /// 最后一次仍失败就把异常交给调用方降级，不再保留「看起来有重试」的死代码。
     /// 文件共享方式与 JsonLineAuditLogger 一致（FileShare.Read），两边看到同一把锁。
-    /// 不套 100 MB 分卷：单行冲突记录最多让当天文件超限几百字节，下一批批量写会按既有分卷规则
-    /// 落到 _N，分卷口径不变（#41）。
+    /// 不套 100 MB 分卷：冲突行固定写当天基础名，基础名已满时只多出一行超限记录，
+    /// 写进 UI 日志页真正尾随的那个文件；下一批批量写仍按既有规则落到 _N（#41）。
     /// </summary>
     private static async Task AppendSyncWithRetryAsync(
         string auditDirectory,
