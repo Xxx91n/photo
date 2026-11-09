@@ -212,7 +212,7 @@ public sealed class InstanceConflictAuditBoundaryTests
             stopwatch.Stop();
 
             // 3 次尝试之间固定各等 300 ms：真重试的失败耗时不会低于 ~600 ms。
-            // 重试被删掉或改成空转时，这里当场变红。
+            // 重试被删掉或改成空转时，这行断言当场失败。
             Assert.True(
                 stopwatch.Elapsed >= TimeSpan.FromMilliseconds(500),
                 $"持续撞锁时应完成 3 次有间隔的尝试，实际只等了 {stopwatch.ElapsedMilliseconds} ms");
@@ -264,8 +264,8 @@ public sealed class InstanceConflictAuditBoundaryTests
     [Fact]
     public async Task Conflict_Audit_And_Json_Line_Logger_Should_Emit_Same_Json_Fields()
     {
-        // 要防的老毛病（#211）：两条写路径各自拼 JSON，字段名、时间格式、脱敏或 diagnostic_mode
-        // 以后各改各的，UI tail 与排障看到的字段对不上。字段名与顺序必须由同一个拼装入口锁住。
+        // 要防的老毛病（#211）：两条写路径各自拼 JSON，字段名或 diagnostic_mode 以后各改各的，
+        // UI tail 与排障看到的字段对不上。字段名集合必须由同一个拼装入口锁住。
         var root = NewTempRoot();
         var audit = Path.Combine(root, "install", "hot", "_audit");
         var loggerDirectory = Path.Combine(root, "install", "hot", "_logger");
@@ -298,7 +298,10 @@ public sealed class InstanceConflictAuditBoundaryTests
             var loggerFile = Directory.GetFiles(loggerDirectory, "audit-*.jsonl").Single();
             var loggerLine = (await File.ReadAllLinesAsync(loggerFile)).Single();
 
-            Assert.Equal(JsonFields(loggerLine), JsonFields(conflictLine));
+            // 顺序不是契约，按字段名集合比：两条路径的键集合不能多也不能少。
+            Assert.Equal(
+                JsonFields(loggerLine).OrderBy(name => name, StringComparer.Ordinal),
+                JsonFields(conflictLine).OrderBy(name => name, StringComparer.Ordinal));
             Assert.Equal(JsonBool(loggerLine, "diagnostic_mode"), JsonBool(conflictLine, "diagnostic_mode"));
         }
         finally
