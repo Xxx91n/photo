@@ -75,8 +75,9 @@
 #   重填、右上角「保存中…」；S5-06-saved-worker-reloaded.png 是最后成功的绿字提示。
 #   照实记一处我自己操作上的错：中途一次粘贴时旧值没清干净，路径被拼成两段，Worker 报
 #   ReloadConfig failed（S5-02-saved-banner.png，ProgramData 服务日志里也有那条 WARN，
-#   里面能看到拼坏的路径原文）。那次是配置值本身非法，不算通过也不算失败，
-#   列进交付说明；改成连续退格清空后重做的那一轮，才拿来判这一项。
+#   里面能看到拼坏的路径原文）。那次输进去的配置值本身就是坏的，是我截图时操作出了错，
+#   不拿来判这一项；改成连续退格清空后重做的那一轮，才拿来判 S5。
+#   这一处操作失误也列进交付说明。
 # S6 通过。点「停止」→ 状态回「已停止」+ 绿框成功；sc query STATE 1 STOPPED，
 #   tasklist 里 PhotoPrivacyWorker.exe 已无。S6-01-stop-clicked.png / S6-01-sc-stopped.txt /
 #   S6-00-service-page.png / S6-02-stopped-settled.png
