@@ -18,7 +18,7 @@ namespace PhotoPrivacy.Worker;
 internal static class InstanceConflictAudit
 {
     private const int WriteAttempts = 3;
-    private static readonly TimeSpan RetryDelay = TimeSpan.FromMilliseconds(300);
+    private static readonly TimeSpan DefaultRetryDelay = TimeSpan.FromMilliseconds(300);
 
     /// <summary>
     /// 留痕结果：DegradationRecord 非空即表示降级（可读记录已由 Degrade 写 stderr + Serilog）；
@@ -27,7 +27,11 @@ internal static class InstanceConflictAudit
     /// </summary>
     internal sealed record ConflictAuditOutcome(string? DegradationRecord);
 
-    public static Task<ConflictAuditOutcome> TryWriteAsync(string[] args, RuntimeMode requestedMode, string mutexName)
+    public static Task<ConflictAuditOutcome> TryWriteAsync(
+        string[] args,
+        RuntimeMode requestedMode,
+        string mutexName,
+        TimeSpan? retryDelay = null)
     {
         return WriteAsync(
             args,
@@ -36,11 +40,16 @@ internal static class InstanceConflictAudit
             data: new Dictionary<string, string>
             {
                 ["mutex_name"] = mutexName
-            });
+            },
+            retryDelay: retryDelay ?? DefaultRetryDelay);
     }
 
     /// <summary>单写者准入门（#162）让位留痕：后启动 Worker 对同 config 审计目录干净退出前写一条。</summary>
-    public static Task<ConflictAuditOutcome> TryWriteSingleWriterYieldAsync(string[] args, RuntimeMode requestedMode, string auditDirectory)
+    public static Task<ConflictAuditOutcome> TryWriteSingleWriterYieldAsync(
+        string[] args,
+        RuntimeMode requestedMode,
+        string auditDirectory,
+        TimeSpan? retryDelay = null)
     {
         return WriteAsync(
             args,
@@ -50,14 +59,16 @@ internal static class InstanceConflictAudit
             {
                 ["reason"] = "single_writer_gate",
                 ["audit_directory"] = auditDirectory
-            });
+            },
+            retryDelay: retryDelay ?? DefaultRetryDelay);
     }
 
     private static async Task<ConflictAuditOutcome> WriteAsync(
         string[] args,
         RuntimeMode requestedMode,
         string message,
-        IReadOnlyDictionary<string, string> data)
+        IReadOnlyDictionary<string, string> data,
+        TimeSpan retryDelay)
     {
         // 降级记录与审计事件共用同一份 payload：降级时也必须带上 requested_mode 等冲突上下文，
         // 否则「留痕为什么没落盘」之外连冲突形态都看不出（#127 AC1）。
@@ -107,7 +118,7 @@ internal static class InstanceConflictAudit
 
         try
         {
-            await AppendSyncWithRetryAsync(auditDirectory, auditEvent, config.Audit.DiagnosticMode)
+            await AppendSyncWithRetryAsync(auditDirectory, auditEvent, config.Audit.DiagnosticMode, retryDelay)
                 .ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -120,9 +131,10 @@ internal static class InstanceConflictAudit
 
     /// <summary>
     /// 冲突留痕直接同步 append 到当天审计文件（#211）：这条路径只在退出门前写一行，
-    /// 不起后台队列，失败当场看得见。3 次×300 ms 重试包在真写文件外面：
+    /// 不起后台队列，失败当场看得见。3 次×300 ms 重试只包在「打开文件」外面：
     /// 常驻 Worker 也写同一个 audit-*.jsonl 时，它开文件只是一小会儿，隔 300 ms 再试通常能过；
-    /// 最后一次仍失败就把异常交给调用方降级，不再保留「看起来有重试」的死代码。
+    /// 打开成功后的写/flush 失败（磁盘满、IO 错误）不再重试——半行可能已经落盘，
+    /// 再追加整行会把坏行接长，宁可当场降级留可读记录。
     /// 文件共享方式与 JsonLineAuditLogger 一致（FileShare.Read）：Windows 上两边看到同一把共享锁，
     /// POSIX 上 FileShare 只是协作式建议锁。
     /// 不套 100 MB 分卷：冲突行固定写当天基础名，基础名已满时只多出一行超限记录，
@@ -131,24 +143,32 @@ internal static class InstanceConflictAudit
     private static async Task AppendSyncWithRetryAsync(
         string auditDirectory,
         AuditEvent auditEvent,
-        bool diagnosticMode)
+        bool diagnosticMode,
+        TimeSpan retryDelay)
     {
         var line = AuditLineFormatter.Format(auditEvent, diagnosticMode);
         var target = Path.Combine(auditDirectory, AuditLogFileNames.BaseName(DateTime.Now) + ".jsonl");
 
+        var stream = await OpenForAppendWithRetryAsync(target, retryDelay).ConfigureAwait(false);
+        using (stream)
+        using (var writer = new StreamWriter(stream))
+        {
+            await writer.WriteLineAsync(line).ConfigureAwait(false);
+            await writer.FlushAsync().ConfigureAwait(false);
+        }
+    }
+
+    private static async Task<FileStream> OpenForAppendWithRetryAsync(string target, TimeSpan retryDelay)
+    {
         for (var attempt = 1; ; attempt++)
         {
             try
             {
-                using var stream = new FileStream(target, FileMode.Append, FileAccess.Write, FileShare.Read);
-                using var writer = new StreamWriter(stream);
-                await writer.WriteLineAsync(line).ConfigureAwait(false);
-                await writer.FlushAsync().ConfigureAwait(false);
-                return;
+                return new FileStream(target, FileMode.Append, FileAccess.Write, FileShare.Read);
             }
             catch (IOException) when (attempt < WriteAttempts)
             {
-                await Task.Delay(RetryDelay).ConfigureAwait(false);
+                await Task.Delay(retryDelay).ConfigureAwait(false);
             }
         }
     }

@@ -164,12 +164,15 @@ public sealed class InstanceConflictAuditBoundaryTests
                 return;
             }
 
+            // 测试把重试间隔拉长到 2s：先占住文件，等第一次打开失败，再放开。
+            // 这样不赌「400ms 释放 vs 600ms 重试」的调度余量——CI 忙时也不会假失败。
             var writeTask = InstanceConflictAudit.TryWriteAsync(
-                BuildArgs(root, audit), RuntimeMode.Background, "Global\\pp-211-shared-file");
+                BuildArgs(root, audit),
+                RuntimeMode.Background,
+                "Global\\pp-211-shared-file",
+                retryDelay: TimeSpan.FromSeconds(2));
 
-            // 第一次尝试撞锁、第二次（~300 ms）仍撞锁、第三次（~600 ms）前放开，
-            // 正好验证重试真的包在写文件动作外。
-            await Task.Delay(TimeSpan.FromMilliseconds(400));
+            await Task.Delay(TimeSpan.FromMilliseconds(100));
             Assert.False(writeTask.IsCompleted, "文件被占着时第一次同步写不应成功");
             hold.Dispose();
             hold = null;
