@@ -24,7 +24,8 @@ pub const ALLOWED_EXTENSIONS: &[&str] = &[
     ".cr2", ".cr3", ".arw", ".nef", ".orf", ".raf", ".rw2", ".pef", ".srw", ".sr2",
     // HEIF / AVIF
     ".heic", ".heif", ".hif", ".avif", // PNG
-    ".png", ".apng", // Video (MOV/MP4)
+    // issue #8：WebP/GIF/PSD 进名单（GIF/PSD 属部分清理；与 C# 侧 AppConfig/config.sample 对账）
+    ".png", ".apng", ".webp", ".gif", ".psd", // Video (MOV/MP4)
     ".mov", ".mp4", ".m4v", ".qt", ".3gp", ".3g2", // PDF
     ".pdf", // EPS / PS / AI
     ".eps", ".ps", ".ai",
