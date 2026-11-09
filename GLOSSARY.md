@@ -56,7 +56,7 @@
   就定期对比一遍补上。
 - **专家模式（Expert Mode）**：危险项（比如把 MakerNotes 一起删）要用户明确打开并确认。
 - **按格式选删法（Wipe Strategy）**：JPEG、RAW、视频、PDF、EPS 五类各有各的删法；不认识的格式不处理。
-- **留 ICC 防变色（Safe Color-Space）**：全删之后把 ICC 色彩配置写回去，不然照片会偏色。现在所有图片族默认都留（Png 族从 2026-11 起也从删改留）。
+- **留 ICC 防变色（Safe Color-Space）**：全删之后把 ICC 色彩配置写回去，不然照片会偏色。JPEG/HEIC/Png 三族默认都留（Png 族从 2026-11 起从删改留；TIFF/RAW 仍默认删）。
 - **部分清理（Partial Clean）**：这个格式能删掉主要隐私信息（EXIF/XMP/GPS 等），但有删不掉的尾巴；界面和文档如实写明删了什么、留了什么。现在 GIF（C2PA/Plain Text/MIDI 删不掉）、PSD（版权/URL/缩略图/图层内容删不掉）、视频（官方说法就是「删掉大部分顶层元数据」）都属这类。
 
 ## 界面和连接
