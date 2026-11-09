@@ -1,4 +1,4 @@
-# Windows 服务 worker 归属匹配（#218 / CodeRabbit 返修）。
+﻿# Windows 服务 worker 归属匹配（#218 / CodeRabbit 返修）。
 #
 # 卸载时要保底清理"已经脱离 SCM 的 worker 进程"，但只能清本次安装的进程：别的同名服务、
 # 另一份安装的 worker 都跟本安装无关，顺手杀掉会伤到别处（CodeRabbit Major）。
