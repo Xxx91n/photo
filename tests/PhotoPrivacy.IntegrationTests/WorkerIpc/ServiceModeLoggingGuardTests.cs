@@ -26,13 +26,13 @@ public sealed class ServiceModeLoggingGuardTests
 
         if (windowsServiceIndex < 0)
         {
-            violations.Add("Program.cs 不再注册 AddWindowsService：守卫前提失效，需复审本守卫");
+            violations.Add("Program.cs 不再注册 AddWindowsService：检查前提失效，需复审本检查");
         }
 
         if (clearProvidersIndex < 0)
         {
             violations.Add(
-                "Program.cs 缺少 builder.Logging.ClearProviders()：AddWindowsService 隐式挂载的 EventLog provider 会留在服务进程里（#85 挂起形态可回潮）");
+                "Program.cs 缺少 builder.Logging.ClearProviders()：AddWindowsService 隐式挂载的 EventLog provider 会留在服务进程里（#85 的挂起问题会再出现）");
         }
         else if (windowsServiceIndex >= 0 && clearProvidersIndex < windowsServiceIndex)
         {

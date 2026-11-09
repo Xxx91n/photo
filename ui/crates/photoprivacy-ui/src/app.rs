@@ -3496,7 +3496,7 @@ mod tests {
         }
         assert!(
             !denied.contains("os error"),
-            "授权拒绝文案不得混入端点缺失的 os error 口径: {denied}"
+            "授权拒绝文案不得混入端点缺失的 os error 提示: {denied}"
         );
 
         let startup = connect_failure_text(

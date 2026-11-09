@@ -1,13 +1,13 @@
-﻿# Windows 服务 worker 归属匹配（#218 / CodeRabbit 返修）。
+# Windows 服务 worker 归属匹配（#218 / CodeRabbit 返修）。
 #
-# 卸载时要兜底清理"已经脱离 SCM 的 worker 进程"，但只能清本次安装的进程：别的同名服务、
+# 卸载时要保底清理"已经脱离 SCM 的 worker 进程"，但只能清本次安装的进程：别的同名服务、
 # 另一份安装的 worker 都跟本安装无关，顺手杀掉会伤到别处（CodeRabbit Major）。
-# 归属判据 = worker 命令行里 `--mode service` 且 `--config <path>` 与本次安装的配置路径等价。
+# 归属判断标准 = worker 命令行里 `--mode service` 且 `--config <path>` 与本次安装的配置路径等价。
 #
 # 这里只放纯函数（无任何副作用），供 install-service.ps1 dot-source 使用；同一份逻辑被
 # verify-windows-service.ps1 拿去做回归断言，避免"脚本里一套、测试里另一套"。
 #
-# 解析口径（CodeRabbit 返修）：
+# 解析规则（CodeRabbit 返修）：
 #   * `--config` 参数优先按引号配对取，含空格的路径不会被截断成 `C:\Te`；
 #   * 无引号时按完整令牌取（遇到空白或引号结束）；
 #   * 比较前把 `/` 归一成 `\` 并忽略大小写——SCM binPath 与本次 `-ConfigPath` 可能用不同写法。
@@ -15,7 +15,7 @@
 Set-StrictMode -Version Latest
 
 # WQL 字符串字面量转义：`Get-CimInstance -Filter` 里的单引号必须成对，否则 "o'brien" 这类
-# 服务名会让过滤条件直接语法错误，兜底清理就查不到自己的服务。
+# 服务名会让过滤条件直接语法错误，保底清理就查不到自己的服务。
 function ConvertTo-WqlLiteral {
   param(
     [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Value

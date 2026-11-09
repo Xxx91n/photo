@@ -4,7 +4,7 @@
 # 用途：在 Linux（实机或 CI Ubuntu runner 虚拟环境，systemd 为 PID 1）对 systemd 服务安装链做
 # 端到端断言：安装 → 注册 → 常驻（Restart=always 重启）→ 日志 → socket/权限组边界 → 停止 →
 # 启动 → 卸载 → 清理。结构对齐 scripts/verify-launchd-service.sh（#32 macOS 同款 harness）。
-# 操作与判定口径对齐 ui/crates/photoprivacy-service/src/unix.rs：
+# 操作和判断标准与 ui/crates/photoprivacy-service/src/unix.rs 一致：
 #   - 安装走 scripts/install-systemd-service.sh（LinuxOps::install 同款，仅跳过 pkexec 提权包装——
 #     本 harness 本身要求 root 运行）；
 #   - 停止/启动/卸载用 LinuxOps 同款 systemctl 命令串；
@@ -141,15 +141,15 @@ capture() {
 
 # ---------- GUI 用户（安装脚本 --gui-user 的显式语义） ----------
 # harness 要求 sudo 从 GUI 用户运行，SUDO_USER 即调用者；这里显式传给安装脚本，让 --gui-user 的显式
-# 分支（指定用户不存在/加不进组必须让安装失败）在 CI 里真的被走到，而不是全程只靠 SUDO_USER 推断兜底。
+# 分支（指定用户不存在/加不进组必须让安装失败）在 CI 里真的被走到，而不是全程只靠 SUDO_USER 推断。
 GUI_USER="${SUDO_USER:-}"
 INSTALL_GUI_ARGS=()
 if [[ -n "$GUI_USER" ]]; then
   INSTALL_GUI_ARGS=(--gui-user "$GUI_USER")
 fi
 
-# 负向自证（早于铺发布包，安装脚本在参数解析阶段拒绝，无任何账户/目录副作用）：
-# 1) 显式空 --gui-user 必须硬失败（macOS #180 评审 R5 回归锚点，Linux 同款）——早前它会静默落进
+# 负向验证（早于铺发布包，安装脚本在参数解析阶段拒绝，无任何账户/目录副作用）：
+# 1) 显式空 --gui-user 必须直接报错（macOS #180 评审 R5 定下的回归参照点，Linux 同款）——早前它会静默落进
 #    「未解析到 GUI 用户」的告警分支并以 exit 0 收场，调用方会把「没给名字」误判成「权限已供给」。
 if bash "$INSTALL_SCRIPT" --gui-user "" > "$EVIDENCE_DIR/00-negative-gui-user-empty.txt" 2>&1; then
   rec FAIL "install-systemd-service.sh 接受了空 --gui-user（期望非零退出）"
@@ -279,7 +279,7 @@ ui_probe_report() {
     return 0
   fi
   local user_dir report out rc
-  # GUI 用户只拿专用子目录可写，root 侧证据文件不交出去（CWE-59，与 macOS harness 同口径）；
+  # GUI 用户只拿专用子目录可写，root 侧证据文件不交出去（CWE-59，与 macOS harness 同一套规则）；
   # 报告由 root 收回证据根（rename 不跟随符号链接，无截断面）。
   user_dir="$EVIDENCE_DIR/ui-user"
   mkdir -p "$user_dir"
@@ -350,7 +350,7 @@ new_pid_alive() {
 }
 
 cleanup() {
-  # 兜底：任一环节失败也不留运行中的服务（与产品卸载语义一致：stop + disable + 删 unit +
+  # 保底：任一环节失败也不留运行中的服务（与产品卸载语义一致：stop + disable + 删 unit +
   # daemon-reload；对已卸载态幂等——失败一律吞掉）。
   systemctl stop "$SERVICE_NAME" >/dev/null 2>&1 || true
   systemctl disable "$SERVICE_NAME" >/dev/null 2>&1 || true
@@ -364,7 +364,7 @@ capture 00-env.txt uname -a
 capture 00-env.txt cat /etc/os-release
 capture 00-env.txt systemctl --version
 
-# ---------- 1. staging：按用户口径把发布包解压进安装目录 ----------
+# ---------- 1. staging：按目标用户的规则把发布包解压进安装目录 ----------
 capture 01-staging.txt echo "release dir: ${RELEASE_DIR}"
 mkdir -p "$INSTALL_DIR"
 set +e
@@ -383,7 +383,7 @@ else
   exit 1
 fi
 
-# UI 层取证基线：安装前 = 未安装态（Service 页同源探测）
+# UI 层留证基线：安装前 = 未安装态（Service 页同源探测）
 ui_probe_report pre-install
 
 # ---------- 2. 安装（install-systemd-service.sh，LinuxOps::install 同款通道） ----------
@@ -418,7 +418,7 @@ else
 fi
 
 if [[ ! -f "$UNIT_PATH" ]]; then
-  rec FAIL "unit 未写入 ${UNIT_PATH}——后续生命周期断言无意义，提前收口"
+  rec FAIL "unit 未写入 ${UNIT_PATH}——后续生命周期断言无意义，提前退出"
   echo "---- summary ----" | tee -a "$SUMMARY_FILE"
   echo "PASS=${PASS_COUNT} FAIL=${FAIL_COUNT}" | tee -a "$SUMMARY_FILE"
   exit 1
@@ -457,7 +457,7 @@ else
 fi
 OLD_PID="$STABLE_PID"
 
-# UI 层取证：运行中态（Service 页同源探测，IPC 必须可达），在 Restart 试验前取稳定态
+# UI 层留证：运行中态（Service 页同源探测，IPC 必须可达），在 Restart 试验前取稳定态
 ui_probe_report running 1
 
 # Restart=always 常驻：SIGKILL 后 systemd 应拉起新进程（RestartSec=3）
@@ -523,8 +523,8 @@ if wait_until 30 test -S "$SERVICE_SOCKET"; then
     rec FAIL "审计目录组边界不符（${AUDIT_FOLDER} mode=${AUDIT_MODE:-<空>} owner=${AUDIT_OWNER:-<空>}；期望 2750 ${SERVICE_USER}:${SOCKET_GROUP}）"
   fi
   # 运行期审计文件（running 探针的 GetStatus 触发 exiftool_started 审计后应已出现）：
-  # 有文件则硬断言 0640 + socket 组；无文件记 INFO——文件 0640 的运行期口径（UMask=0027）
-  # 已由 Worker Serilog 日志文件硬断言覆盖（同一进程 umask），安装期既有文件口径由安装脚本 chmod 覆盖。
+  # 有文件则硬断言 0640 + socket 组；无文件记 INFO——文件 0640 的运行期规则（UMask=0027）
+  # 已由 Worker Serilog 日志文件硬断言覆盖（同一进程 umask），安装期既有文件的规则由安装脚本 chmod 覆盖。
   if audit_files_present; then
     AUDIT_FILE_MODE="$(find "$AUDIT_FOLDER" -maxdepth 1 -type f -name 'audit-*' -exec stat -c '%a' {} + 2>/dev/null | sort -u | tr '\n' ' ' || true)"
     AUDIT_FILE_GROUP="$(find "$AUDIT_FOLDER" -maxdepth 1 -type f -name 'audit-*' -exec stat -c '%G' {} + 2>/dev/null | sort -u | tr '\n' ' ' || true)"
@@ -534,7 +534,7 @@ if wait_until 30 test -S "$SERVICE_SOCKET"; then
       rec FAIL "审计文件权限不符（mode=${AUDIT_FILE_MODE:-<空>} group=${AUDIT_FILE_GROUP:-<空>}；期望 640 ${SOCKET_GROUP}）"
     fi
   else
-    rec INFO "暂无审计文件（无处理事件）；文件 0640 运行期口径由 Worker 日志断言覆盖（同进程 UMask=0027）"
+    rec INFO "暂无审计文件（无处理事件）；文件 0640 运行期规则由 Worker 日志断言覆盖（同进程 UMask=0027）"
   fi
 
   # 安装目录与 Worker 日志（macOS R1 同款）：安装目录 0755（GUI 用户要执行其中的 UI 二进制，
@@ -601,7 +601,7 @@ if wait_until 30 test -S "$SERVICE_SOCKET"; then
   fi
 
   # 功能面 + GUI 组边界：GUI_USER 是 SUDO_USER 的受控投影。root 直登或 SUDO_USER=root 无法代表
-  # 真实 GUI 用户，与 ui_probe_report 同口径记 FAIL，而不是静默跳过（fail-closed）。
+  # 真实 GUI 用户，与 ui_probe_report 一样记 FAIL，而不是静默跳过（fail-closed）。
   if [[ -z "$GUI_USER" || "$GUI_USER" == "root" ]]; then
     rec FAIL "GUI 组边界未验证：需经 sudo 从 GUI 用户运行（GUI_USER 缺失或为 root）"
   else
@@ -688,13 +688,13 @@ if wait_until 30 test -S "$SERVICE_SOCKET"; then
   # ---------- 5b. 诊断留证（DIAG 行经 workflow 提升为 annotation，受限出网环境可读） ----------
   # 逐条独立追加（不用组合块重定向、不用 sed 管道）：前两版组合块在 systemctl show 处反复
   # 截断，unit/worker-proc/gui 行丢失。本版每条 printf/stat/awk 独立 >> summary，任何一条
-  # 失败不影响其余；sudo 一律 timeout 兜底，组身份用 id（root 语境直查，无需 sudo）。
+  # 失败不影响其余；sudo 一律加 timeout 保底，组身份用 id（root 语境直查，无需 sudo）。
   # 命令替换一律 timeout 预计算成变量再 rec INFO（tee -a，与 PASS/FAIL 同可靠通道）：
   # 上一版直接 printf "$(id/systemctl/sudo)" 在 worker-proc 后截断，疑 NSS/dbus  lookup 挂起。
   # 根因数据最优先（config 读穿之谜）：GUI 进程实际降权身份/能力 + config ACL + 实际读 rc。
   # 注意：unit-umask 的 systemctl show 已移除——命令替换里 dbus 子进程持有 stdout 管道，
   # timeout 杀主进程后 $(...) 仍挂起，致其后 DIAG 全丢（GUI 检查的 sudo test 不挂可证）。
-  # umask 口径已由 worker-umask（/proc 直读）实证，无需再走 systemctl。
+  # umask 规则已由 worker-umask（/proc 直读）实证，无需再走 systemctl。
   set +e
   DIAG_PID="$(get_pid)"
   rec INFO "DIAG meta pid=${DIAG_PID:-none} gui_user=${GUI_USER:-none}"
@@ -755,7 +755,7 @@ else
 fi
 expect_state Stopped "停止后状态=已安装未运行"
 
-# UI 层取证：已停止态
+# UI 层留证：已停止态
 ui_probe_report stopped
 
 # ---------- 7. 启动（LinuxOps::start 同款命令串） ----------
@@ -802,10 +802,10 @@ else
   rec FAIL "卸载 15s 后仍有 Worker 进程残留"
 fi
 
-# UI 层取证：卸载后 = 未安装态
+# UI 层留证：卸载后 = 未安装态
 ui_probe_report uninstalled
 
-# ---------- 9. 收口 ----------
+# ---------- 9. 收尾清理 ----------
 capture 10-final.txt systemctl is-active "$SERVICE_NAME"
 {
   echo "---- 结论 ----"

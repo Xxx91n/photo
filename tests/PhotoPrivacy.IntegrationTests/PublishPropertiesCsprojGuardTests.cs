@@ -244,7 +244,7 @@ public sealed class PublishPropertiesCsprojGuardTests
             StringComparison.Ordinal);
         if (ClassifyProjectFilePublishProperties(driftCsproj, "x.csproj").Count == 0)
         {
-            failures.Add("MISSED: csproj 回潮 <PublishSingleFile> 未红");
+            failures.Add("MISSED: csproj 里又写进 <PublishSingleFile>，检查没报错");
         }
 
         // #12：props 扫描面的红/绿自我验证——基线 Directory.Build.props 只含中心化的
@@ -260,7 +260,7 @@ public sealed class PublishPropertiesCsprojGuardTests
             StringComparison.Ordinal);
         if (ClassifyProjectFilePublishProperties(driftProps, "Directory.Build.props").Count == 0)
         {
-            failures.Add("MISSED: props 回潮 <PublishTrimmed> 未红");
+            failures.Add("MISSED: props 里又写进 <PublishTrimmed>，检查没报错");
         }
 
         // #12：XML 注释残留不得误红；带 Condition 的定义必须红（从严——条件不静态求值）。

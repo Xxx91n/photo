@@ -1,4 +1,4 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 #Requires -PSEdition Desktop,Core
 <#
 .SYNOPSIS
@@ -34,7 +34,7 @@ $RegistryAdvertisedValueName = "ServicePipeName"
 $ErrorActionPreference = "Stop"
 
 # worker 归属匹配的纯函数（#218 CodeRabbit 返修）：与 verify-windows-service.ps1 共用同一份，
-# 避免"卸载脚本里一套口径、回归断言里另一套"。随包发布由 scripts/publish-app.ps1 一并复制。
+# 避免"卸载脚本里一套规则、回归断言里另一套"。随包发布由 scripts/publish-app.ps1 一并复制。
 . (Join-Path $PSScriptRoot "service-worker-match.ps1")
 
 # Auto-detect exe and config relative to this script (release/<rid>/scripts/)
@@ -171,7 +171,7 @@ switch ($Action.ToLower()) {
       $serviceConfirmedGone = $true
       Write-Host "Not found"
     }
-    # 兜底：SCM 删服务不会结束已经脱离的进程（Stop-Service 超时、进程不响应 SERVICE_STOP 时
+    # 保底：SCM 删服务不会结束已经脱离的进程（Stop-Service 超时、进程不响应 SERVICE_STOP 时
     # 会留下孤儿 worker，占住审计目录并让下次安装的命名管道抢占失败，#218）。
     # 归属限定（CodeRabbit 返修）：只清"本次安装"的 worker——命令行必须是 `--mode service`
     # 且 `--config` 命中上面收集到的归属路径。服务不存在时，另一个同名服务 / 另一份安装留下的

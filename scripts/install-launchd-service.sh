@@ -19,7 +19,7 @@ CONFIG_PATH="${INSTALL_DIR}/config/config.json"
 # RuntimeDirectory（0750）同构——root 建、属主为服务用户、socket 访问组可遍历；GUI 用户
 # 加入 socket 访问组后才能穿过目录并连上 0660 的 socket（#167）。
 SERVICE_SOCKET_DIR="/Library/Application Support/photoprivacy"
-# 服务模式 IPC 的调用者：默认取 sudo 的原始用户，显式可用 --gui-user 指定（与 Linux 同口径）。
+# 服务模式 IPC 的调用者：默认取 sudo 的原始用户，显式可用 --gui-user 指定（与 Linux 同一套规则）。
 GUI_USER="${SUDO_USER:-}"
 # 显式与隐式两种来源的可失败性不同：`--gui-user` 是调用方的明确意图，用户不存在或加不进
 # socket 组时安装必须以非零退出失败；`SUDO_USER` 只是环境推断，可能为空或不适用（自动化
@@ -58,7 +58,7 @@ while [[ $# -gt 0 ]]; do
     --group) GROUP_NAME="$2"; shift 2 ;;
     --socket-group) SOCKET_GROUP="$2"; shift 2 ;;
     --gui-user)
-      # 显式空值必须硬失败：早前 `--gui-user ""` 只把 GUI_USER 置空、GUI_USER_EXPLICIT=1，随后落进
+      # 显式空值必须直接报错：早前 `--gui-user ""` 只把 GUI_USER 置空、GUI_USER_EXPLICIT=1，随后落进
       # 「未解析到 GUI 用户」的告警分支以 exit 0 收场，调用方会把「没给名字」误判成「IPC 权限已供给」
       # （#180 评审 R5）。真缺值（$2 未定义）同样在此拒绝，早于任何账户/目录副作用。
       if [[ -z "${2//[[:space:]]/}" ]]; then
@@ -85,7 +85,7 @@ fi
 
 # Create service group and user if needed.
 # dscl -create 对已存在记录回 eDSRecordAlreadyExists（exit 55）：安装必须可重入，且 CI 虚拟环境
-# （macOS runner，#32）实测出现 -read 守卫与 -create 结果不一致的形态——这里按幂等处理：
+# （macOS runner，#32）实测出现 -read 检查与 -create 结果不一致的形态——这里按幂等处理：
 # 55 视为“已在位”继续，其余退出码照旧中止（不吞真错误）。
 dscl_ensure() {
   local rc=0

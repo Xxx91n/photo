@@ -1,4 +1,4 @@
-﻿param(
+param(
   [string]$Version = "0.1.0-preview",
   [string]$Runtime = "win-x64",
   [string]$Framework = "",
@@ -44,7 +44,7 @@ if ($resolvedFramework -ne "net10.0") {
   throw "Runtime '$Runtime' must use framework 'net10.0'"
 }
 
-# Design(#245): 默认入口为新 UI——cargo（windows-gnu target）产物 photoprivacy-ui.exe
+# 默认入口为新 UI——cargo（windows-gnu target）产物 photoprivacy-ui.exe
 # 复制为 PhotoPrivacy.exe 作为发布入口。MSVC 目标不嵌应用清单（gpui 依赖 comctl32 v6，
 # 缺清单启动即失败），见 ui/crates/photoprivacy-ui/build.rs；发布链必须走 windows-gnu + windres。
 $uiTarget = "x86_64-pc-windows-gnu"
@@ -130,7 +130,7 @@ Copy-Item (Join-Path $repoRoot "README.md") (Join-Path $targetDir "README.md") -
 # --- 内置 ExifTool（#108）---
 # 裸机不再要求预装 ExifTool：Windows 版 exiftool.exe 自带私有 Perl 运行时，与同级
 # exiftool_files/ 一起放进 <包根>/ExifTool/。配置模板的 exiftool.path 留空，运行时探测
-# 优先命中这里（DefaultPaths.ExifToolPath 与 UI 的 resolve_default_exiftool_path 同口径）。
+# 优先命中这里（DefaultPaths.ExifToolPath 与 UI 的 resolve_default_exiftool_path 一致）。
 # 版本必须显式钉扎校验值：未登记的版本直接失败，避免把被替换或半截的归档打进发布包。
 $exifToolSha256 = @{
   "13.61" = "ab75b37515385a753aa60a58f68ffffe1ff81e43b319df9540978fb19e0580e5"

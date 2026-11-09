@@ -78,7 +78,7 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --gui-user)
-      # 显式空值必须硬失败（macOS #180 评审 R5 同款）：否则 `--gui-user ""` 只把 GUI_USER 置空，
+      # 显式空值必须直接报错（macOS #180 评审 R5 同款）：否则 `--gui-user ""` 只把 GUI_USER 置空，
       # 随后落进「未解析到 GUI 用户」的告警分支以 exit 0 收场，调用方会把「没给名字」误判成
       # 「IPC 权限已供给」。真缺值（$2 未定义）同样在此拒绝，早于任何账户/目录副作用。
       if [[ -z "${2//[[:space:]]/}" ]]; then
@@ -181,7 +181,7 @@ if [[ -d "${INSTALL_DIR}/config" ]]; then
   find "${INSTALL_DIR}/config" -type f -exec chmod 0640 {} +
 fi
 
-# 审计目录例外：本地 tail（photoprivacy-logs）与取证脚本以 GUI 用户身份直接读日志，
+# 审计目录例外：本地 tail（photoprivacy-logs）与留证脚本以 GUI 用户身份直接读日志，
 # 组换成 socket 访问组，目录 2750（组只有 r-x，删不掉），文件 0640（组只读，改不了），
 # 属主仍是服务用户（Worker 继续落盘）。hot / quarantine 保持数据组 2770：GUI 用户不进数据组，
 # 就完全不可见。
@@ -245,13 +245,13 @@ Group=${SOCKET_GROUP}
 # 不注入的话 Worker 会拿硬编码默认名比对，自定义 --socket-group 的机器上合法调用者被拒。
 Environment=PHOTOPRIVACY_SERVICE_GROUP=${SOCKET_GROUP}
 # 运行期新文件 0640 / 新目录 0750（macOS plist Umask 23 同款）：Worker Serilog 与审计的
-# 运行期新文件也要落在组只读口径，安装期 chmod 只覆盖既有文件。
+# 运行期新文件也要落在组只读规则里，安装期 chmod 只覆盖既有文件。
 UMask=0027
 WorkingDirectory=${INSTALL_DIR}
-# umask 0027 经 sh 兜底再 exec（纵深防御）：UMask= 已写入 unit，启动壳再显式 umask 0027，
+# umask 0027 经 sh 壳保底再 exec（纵深防御）：UMask= 已写入 unit，启动壳再显式 umask 0027，
 # 防个别服务管理器不把 UMask 施加到进程时运行期新文件（含审计）落 0666；exec 替换后
 # MainPID 仍是 Worker。注：#188 读穿根因实为发布包继承的命名/default ACL（绕过 umask 与
-# 0640），已由上方 setfacl -b 剥离；本壳与日志 hook 同为口径兜底，非根因修复。
+# 0640），已由上方 setfacl -b 剥离；本壳与日志 hook 同为保底措施，非根因修复。
 ExecStart=/bin/sh -c 'umask 0027; exec "${EXE_PATH}" --mode service --config "${CONFIG_PATH}" --hot-folder "${HOT_FOLDER}" --audit-folder "${AUDIT_FOLDER}"'
 Restart=always
 RestartSec=3
