@@ -37,7 +37,7 @@ fn group_key(group: Group) -> &'static str {
 }
 
 /// rules crate 的 Notice 只出英文；展示层按键翻译。LoadWarning 的前缀键化，
-/// 诊断正文（serde/IO 错误详情）作 {0} 参数保留原文，与「服务反馈诊断保留原文」口径一致。
+/// 诊断正文（serde/IO 错误详情）作 {0} 参数保留原文，与「服务反馈诊断保留原文」保持一致。
 fn notice_text(app: &AppView, notice: &Notice) -> String {
     match notice {
         Notice::LoadWarning(message) => app.tr(k::RULES_LOAD_WARNING, &[message]),

@@ -68,10 +68,10 @@ pub const MACOS_SERVICE_SOCKET: &str = "/Library/Application Support/photoprivac
 // （$XDG_RUNTIME_DIR）；候选 2（tmpfiles.d 预建）需 root 安装落点，「未安装服务」形态下
 // 无从落地，否决。服务端点 /run/photoprivacy/worker.sock 不动（#167/#180/#188）。
 
-/// Linux 背景模式在运行时目录下的 socket 子目录与文件名（#201）：与 C# 侧
+/// Linux 背景模式在运行时目录下的 socket 子目录与文件名：与 C# 侧
 /// `WorkerIpcEndpointNames.LinuxBackgroundSocketDirectoryName / LinuxBackgroundSocketFileName`
-/// 逐字一致（Rust 无法引用 C# 常量：C# 侧 `IpcAuthClaimReconciliationTests` 读本文件字面量
-/// 核对，下方测试钉解析形态）。
+/// 逐字一致（Rust 无法引用 C# 常量：C# 侧测试读本文件字面量
+/// 核对，下方测试钉住解析形态）。
 pub const LINUX_BACKGROUND_SOCKET_DIR: &str = "photoprivacy";
 pub const LINUX_BACKGROUND_SOCKET_FILE: &str = "worker-background.sock";
 
@@ -96,9 +96,9 @@ pub fn linux_background_endpoint(runtime_dir: Option<&Path>) -> Option<Endpoint>
     ))
 }
 
-// IPC 端点名是协议主缝的一部分：与 `WorkerIpcEndpointNames` 逐字一致，不改协议；旧 C# UI 全程硬编码
-// Windows 管道名（Linux/macOS 实际连不上），新客户端（#54）改按 OS 解析，修的是客户端缺陷而非协议。
-// Design(#245): 端点名冻结为既有契约，禁止为解析方便改名。
+// IPC 端点名保持与 `WorkerIpcEndpointNames` 逐字一致，不改协议；旧 C# UI 全程硬编码
+// Windows 管道名（Linux/macOS 实际连不上），新客户端改按 OS 解析，修的是客户端缺陷而非协议。
+// 端点名保持既有约定，禁止为解析方便改名。
 pub fn resolve_endpoint(
     platform: HostPlatform,
     mode: WorkerMode,
@@ -143,9 +143,9 @@ pub fn resolve_endpoint(
 // 与 C# 侧出处对齐的常量（WorkerIpcEndpointNames.ServicePipe / WindowsServicePipeAcl）：Rust 无法
 // 引用 C# 常量，靠下方测试钉住静态回退名，通告名形态见 is_advertised_pipe_name。
 
-/// 服务管道通告名解析（#7）：有效通告名优先；缺失/非法回退静态名（与 `resolve_endpoint` 的
+/// 服务管道通告名解析：有效通告名优先；缺失/非法回退静态名（与 `resolve_endpoint` 的
 /// Windows Service 名一致——旧版服务兼容、值损坏防注入）。只在 Windows 语义下调用。
-// Design(#7): 服务端点按通告名优先解析、缺失回退静态名；随机名防预蹲，HKLM 管理员可写防指针伪造。
+// 服务端点按通告名优先解析、缺失回退静态名；随机名防预蹲，HKLM 管理员可写防指针伪造。
 pub fn service_pipe_endpoint_with_advertised(advertised: Option<&str>) -> Endpoint {
     match advertised.filter(|name| is_advertised_pipe_name(name)) {
         Some(name) => Endpoint::Pipe(name.to_string()),
@@ -295,7 +295,7 @@ mod tests {
 
     #[test]
     fn linux_background_socket_follows_xdg_runtime_dir() {
-        // 防（#201）：后台端点回潮到普通用户无法创建的 /run/photoprivacy；与 C# 行为测试对拍。
+        // 防：后台端点变回普通用户无法创建的 /run/photoprivacy；与 C# 行为测试对照。
         assert_eq!(
             linux_background_endpoint(Some(Path::new("/run/user/1000"))),
             Some(Endpoint::UnixSocket(

@@ -110,7 +110,7 @@ pub fn parse_systemctl_active(exit_code: i32, stdout: &str) -> ServiceRuntimeSta
 
 /// `launchctl print system/<label>`：非 0 退出 = 未安装（系统域无此 job）；有非零 PID = 运行中；
 /// 否则已安装未运行。兼容旧式 `launchctl list` 的字典（`"PID" = 4321;`）与表格（PID Status Label）
-/// 形态——语义与历史 `parse_launchctl_list` 对齐，MacProbe 显式系统域查询后这里是唯一判据（#172）。
+/// 形态——语义与历史 `parse_launchctl_list` 对齐，MacProbe 显式系统域查询后这里是唯一判断标准。
 #[cfg(any(target_os = "macos", test))]
 pub fn parse_launchctl_print(exit_code: i32, stdout: &str) -> ServiceRuntimeState {
     if exit_code != 0 {

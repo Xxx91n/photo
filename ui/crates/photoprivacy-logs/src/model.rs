@@ -11,7 +11,7 @@ pub enum AuditLevel {
 }
 
 impl AuditLevel {
-    /// 未知/缺失级别按 INFO 处理，与旧 UI `ShouldInclude` 的兜底一致。
+    /// 未知/缺失级别按 INFO 处理，与旧 UI `ShouldInclude` 的退路处理一致。
     pub fn parse(text: &str) -> Self {
         match text.to_ascii_lowercase().as_str() {
             "debug" => Self::Debug,

@@ -69,7 +69,7 @@ pub fn start(
 
     // 服务态 3s 拍：与连接编排并行起跑（旧 UI 的服务模式轮询同样独立于心跳）。
     // 短连接预算：服务未安装时不值得每拍耗满 700ms 的重试预算。
-    // #7：服务端点每拍动态解析（通告名优先、静态名兜底）——服务重启换随机名后探测不悬死。
+    // 服务端点每拍动态解析（通告名优先、静态名保底）——服务重启换随机名后探测不悬死。
     if current_service_endpoint(current_platform(), current_home().as_deref()).is_some() {
         let probe_platform = current_platform();
         let probe_home = current_home();
@@ -106,7 +106,7 @@ pub fn start(
                     // 失败分类随快照广播，心跳连上时由 apply_success 清空。
                     snapshot.connect_failure = failure;
                 });
-                // 端点解析器（#7）：后台 = 静态契约名（恒等）；服务 = 动态解析（通告名优先、静态兜底），
+                // 端点解析器：后台 = 静态名称（恒等）；服务 = 动态解析（通告名优先、静态保底），
                 // 解析结果推送 endpoint watch（backfill 每 5s 重试时重读，服务重启换名后自愈）。
                 // 心跳与版本轮询共用：服务重启换名后两者都不悬死在旧名。
                 let resolve = endpoint_resolver(
@@ -146,19 +146,19 @@ pub fn start(
     link
 }
 
-/// 服务探测端点（#7）：每拍重解析——Windows 通告名优先、静态名兜底；解析不到的平台形态
+/// 服务探测端点：每拍重解析——Windows 通告名优先、静态名保底；解析不到的平台形态
 /// （mac 无 HOME，仅理论可达：探测任务仅在初始解析成功时起跑）退静态服务名（经
-/// service_pipe_endpoint_with_advertised 的单一出处派生，消除字面量重复——审查返修 n-R2），
+/// service_pipe_endpoint_with_advertised 的单一出处派生，消除字面量重复），
 /// 探测必然失败等价「服务不可达」，不产生误导性成功。
 fn probe_service_endpoint(platform: HostPlatform, home: Option<&Path>) -> Endpoint {
     current_service_endpoint(platform, home)
         .unwrap_or_else(|| service_pipe_endpoint_with_advertised(None))
 }
 
-/// 按模式构造端点解析器（#7）：后台 = 静态契约名（恒等返回）；服务 = 每次调用重读通告名
+/// 按模式构造端点解析器：后台 = 静态名称（恒等返回）；服务 = 每次调用重读通告名
 /// （随机化后服务重启会换名），解析不到时退连接时的端点。服务模式解析结果推送 `endpoint_tx`
 /// （backfill 持 receiver 每 5s 重试时重读自愈）；同值不写——避免 1s 版本节拍制造稳定的
-/// watch 唤醒（与 watch_service_reachability 的同值抑制同口径）。
+/// watch 唤醒（与 watch_service_reachability 的同值抑制规则一致）。
 fn endpoint_resolver(
     mode: WorkerMode,
     platform: HostPlatform,
@@ -187,8 +187,8 @@ fn endpoint_resolver(
 /// 连接顺序与旧 UI `WorkerProcessManager.ConnectOrLaunchAsync` 对齐：服务端点优先，其次后台端点，
 /// 都不可用时启动后台 Worker 并轮询 5s。服务「已安装未运行」时本版会落到后台 Worker，而不是像旧 UI
 /// 停在服务壳；服务态本身由服务页独立探测。
-// Design(#242): 连接编排维持「服务端点优先、不可用回落后台 Worker」；同 config 双 Worker 并存的审计争用由 #162 单写者准入门兜底，编排预防归 #58。
-// Design(#242): 编排顺序与轮询预算不变，只把每一步的真实失败原因（服务端点 DACL 拒、后台拉起结果）带出给呈现层分类（#169 落地后关票，决策归档）。
+// 连接逻辑维持「服务端点优先、不可用回落后台 Worker」；同 config 双 Worker 并存的审计争用由单写者准入保底。
+// 连接顺序与轮询预算不变，只把每一步的真实失败原因（服务端点权限拒、后台拉起结果）带出给呈现层分类。
 async fn connect_worker(
     client: &IpcClient,
     options: &ConnectOptions,
@@ -196,7 +196,7 @@ async fn connect_worker(
 ) -> Option<(Endpoint, WorkerMode, Option<ConnectFailureCause>)> {
     let platform = current_platform();
     let home = current_home();
-    // #7：服务端点动态解析（通告名优先、静态名兜底）——随机化后的服务端点只有通告名可发现。
+    // 服务端点动态解析（通告名优先、静态名保底）——随机化后的服务端点只有通告名可发现。
     let service = current_service_endpoint(platform, home.as_deref());
     let background = resolve_endpoint(platform, WorkerMode::Background, home.as_deref());
 
@@ -339,7 +339,7 @@ fn launch_background_worker(
     Ok((exit_slot, pid))
 }
 
-/// 后台 Worker 可执行文件名（与 `background_worker_command` 的钉死口径同源）。
+/// 后台 Worker 可执行文件名（与 `background_worker_command` 规则同源）。
 fn worker_binary_name() -> &'static str {
     if cfg!(windows) {
         "PhotoPrivacyWorker.exe"
@@ -364,10 +364,10 @@ fn expected_worker_image(options: &ConnectOptions) -> Option<PathBuf> {
     Some(background_worker_image(&worker))
 }
 
-/// 核验不了时的平台策略（#7 D2 / AC2）：macOS 首版无镜像回退（`LOCAL_PEEREPID` 只给 PID），
+/// 核验不了时的平台策略：macOS 首版无镜像回退（`LOCAL_PEEREPID` 只给 PID），
 /// 且该平台攻击者本可直接抢建 socket 阻断可用性，fail-closed 无净增益 → fail-open + warning；
-/// Windows/Linux 按 AC2 fail-closed（核验不了即拒该连接）。
-// Design(#7): 核验不了时的平台矩阵——Windows/Linux 按 AC2 fail-closed（核验不了即拒连），macOS 按 D2 fail-open + warning；服务管道不叠加（D3）。
+/// Windows/Linux 按 fail-closed（核验不了即拒该连接）。
+// 核验不了时的平台策略：Windows/Linux fail-closed（核验不了即拒连），macOS fail-open + warning；服务管道不叠加。
 fn unverifiable_policy(platform: HostPlatform) -> UnverifiablePolicy {
     match platform {
         HostPlatform::MacOs => UnverifiablePolicy::FailOpen,
@@ -494,7 +494,7 @@ mod tests {
 
     #[test]
     fn exited_worker_reports_its_code_for_single_writer_yield() {
-        // 防：#163 单写者让位（秒退、退出码 1）被 5s 轮询超时口径吞掉，用户只看到笼统的未就绪（#169）。
+        // 防：单写者让位（秒退、退出码 1）被 5s 轮询超时规则吞掉，用户只看到笼统的未就绪。
         let exit_slot = Arc::new(Mutex::new(Some(exit_status_with_code(1))));
         let launch = LaunchObservation {
             spawn_error: None,

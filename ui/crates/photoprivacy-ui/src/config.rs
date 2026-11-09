@@ -69,7 +69,7 @@ impl Default for AppConfig {
 }
 
 impl AppConfig {
-    /// 解析磁盘上的 config.json，并套用旧侧读侧兜底。
+    /// 解析磁盘上的 config.json，并套用旧侧读侧默认保底。
     pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
         let value: serde_json::Value = serde_json::from_str(json)?;
         let legacy_exiftool_path = value
@@ -102,9 +102,9 @@ impl AppConfig {
             self.exiftool.path = path;
         }
 
-        // Design(#239): exiftool.path 留空必须原样保留——空串是「按运行时探测」的持久化形态，
+        // exiftool.path 留空必须原样保留——空串是「按运行时探测」的持久化形态，
         // 由 Worker 侧 AppConfigLoader 在加载时解析（它不写回 config.json）。
-        // UI 是 config.json 的写入方：在这里解析成绝对路径，一次保存就会把「探测」冻结成
+        // UI 是 config.json 的写入方：在这里解析成绝对路径，一次保存就会把「探测」写死成
         // 那台机器当时的绝对路径，发布包换个目录解压后 Worker 仍指向旧位置。
         // 探测结果只用于界面提示，见 ConfigUiState::set_config 的 exiftool_hint。
 
@@ -442,7 +442,7 @@ fn normalize_path(path: &str) -> String {
         }
     }
     let mut text = collapsed.to_string_lossy().into_owned();
-    // 根路径（`C:\` / `/`）保留尾分隔符，其余去掉；旧 UI 的 NormalizePath 同口径。
+    // 根路径（`C:\` / `/`）保留尾分隔符，其余去掉；与旧 UI 的 NormalizePath 规则一致。
     let root_len = if text.len() >= 2 && text.as_bytes()[1] == b':' {
         3
     } else if text.starts_with('/') {
@@ -482,7 +482,7 @@ pub fn detect_exiftool_path(current: &str) -> Option<String> {
         };
     }
 
-    // #33: exiftool.path 支持目录式覆盖（ExifToolGUI 的 ETOverrideDir 口径）：
+    // exiftool.path 支持目录式覆盖（支持填入目录）：
     // 用户给一个 ExifTool 安装目录时，解析目录内的 exiftool/exiftool.exe 作为可用路径。
     let resolved = resolve_exiftool_executable_from_configured(current);
     if resolved != current && Path::new(&resolved).is_file() {
@@ -687,10 +687,9 @@ fn resolve_exiftool_from_path() -> Option<PathBuf> {
 }
 
 /// 把配置里的 exiftool.path 归一到可执行文件：已存在文件原样返回；已存在目录解析出
-/// 其中的 exiftool/exiftool.exe（对齐 ExifToolGUI 的 ETOverrideDir 与 C# DefaultPaths.ResolveExifToolExecutable）。
+/// 其中的 exiftool/exiftool.exe。
 /// 仅用于提示/探测；UI 不据此改写存储值（存储值保持用户手填形态，解析交给 Worker 的 loader）。
-/// 决策本体随 #33 关闭已实现（ExifTool 下载链验证走通）；标记改指仍存续的治理票 #82（死指针清理）。
-// Design(#239): 目录式覆盖，目录内解析出 exiftool/exiftool.exe。
+// 目录式覆盖，目录内解析出 exiftool/exiftool.exe。
 fn resolve_exiftool_executable_from_configured(configured: &str) -> String {
     let path = Path::new(configured);
     if path.is_file() {
@@ -847,7 +846,7 @@ mod tests {
     #[test]
     fn blank_paths_fall_back_to_app_local_defaults() {
         // 防：空白 quarantine/audit 目录被写成空串，Worker 的 Path.Combine("", name)
-        // 把隔离/审计文件落到进程 CWD（AppConfigLoader 已专门兜底，见 #55）。
+        // 把隔离/审计文件落到进程工作目录（AppConfigLoader 已专门处理）。
         let config = AppConfig::from_json(
             r#"{"quarantine":{"directory":""},"audit":{"log_directory":"  "}}"#,
         )
@@ -872,7 +871,7 @@ mod tests {
         .unwrap();
         assert_eq!(nested.exiftool.path, r"D:\new.exe");
 
-        // 整个 exiftool 节缺省时，默认路径不能盖掉遗留的顶层值（C# ResolveExifToolPath 同口径）。
+        // 整个 exiftool 节缺省时，默认路径不能盖掉遗留的顶层值（与 C# ResolveExifToolPath 规则一致）。
         let only_legacy =
             AppConfig::from_json(r#"{"exiftool_path":"D:\\tools\\exiftool.exe"}"#).unwrap();
         assert_eq!(only_legacy.exiftool.path, r"D:\tools\exiftool.exe");
@@ -896,7 +895,7 @@ mod tests {
         )
         .expect("显式 null 必须可解析");
 
-        // Design(#239): 空 / null 的 exiftool.path 原样保留（空串 = 运行时探测的持久化形态），
+        // 空 / null 的 exiftool.path 原样保留（空串 = 运行时探测的持久化形态），
         // 由 Worker 侧 loader 在加载时解析；UI 不在这里解析，否则一次保存会把它冻结成绝对路径。
         assert_eq!(config.exiftool.path, "");
         assert!(config.exiftool.extra_exiftool_args.is_empty());
@@ -915,7 +914,7 @@ mod tests {
 
     #[test]
     fn blank_exiftool_path_survives_round_trip() {
-        // 防的具体回潮形态（CodeRabbit #155 Major）：在 normalize 里把模板的空 path 解析成绝对路径，
+        // 防：在 normalize 里把模板的空 path 解析成绝对路径，
         // UI 保存时把它写回 config.json——发布包换个目录解压后 Worker 仍指向旧位置，监控起不来。
         // 空串是「按运行时探测」的持久化形态，必须原样往返，解析只在 Worker 的 loader 侧发生。
         let config = AppConfig::from_json(r#"{"exiftool":{"path":""}}"#).unwrap();
@@ -1002,8 +1001,8 @@ mod tests {
 
     #[test]
     fn detect_exiftool_path_resolves_directory_override() {
-        // #33: exiftool.path 给一个 ExifTool 安装目录时，提示解析目录内的 exiftool/exiftool.exe
-        // （ExifToolGUI 的 ETOverrideDir 口径）。UI 不改写存储值，仅用于提示。
+        // exiftool.path 给一个 ExifTool 安装目录时，提示解析目录内的 exiftool/exiftool.exe。
+        // UI 不改写存储值，仅用于提示。
         let unique = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()

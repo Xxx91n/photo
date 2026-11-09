@@ -2,7 +2,7 @@
 //!
 //! 机制按 Rust 惯例重做，但语义与旧 UI `LocalizationService` 等效：
 //! - 三层加载（升序优先级）：内嵌资源 → exe 同目录 `Localization/Locales/` → 用户数据目录 `locales/`；
-//! - 缺键兜底链：当前语言 → `zh-CN` → 键名本身；
+//! - 缺键退路链：当前语言 → `zh-CN` → 键名本身；
 //! - 嵌套 JSON 展平为点路径键（`{"nav":{"config":"…"}}` → `nav.config`）；
 //! - en 为对齐基准：10 语言键集与 en.json 全等（测试守护）。
 //!
@@ -27,7 +27,7 @@ const EMBEDDED: &[(&str, &str)] = &[
     ("zh-CN", include_str!("../locales/zh-CN.json")),
 ];
 
-/// 缺键兜底链的中间层语言，与旧 UI `LocalizationService.Get` 的 zh-CN 兜底一致。
+/// 缺键退路链的中间层语言，与旧 UI `LocalizationService.Get` 的 zh-CN 退路一致。
 pub const FALLBACK_LOCALE: &str = "zh-CN";
 
 /// 旧 UI `LocalePathResolver.ExeLocaleDirectory` 的等价物。
@@ -157,7 +157,7 @@ impl Catalog {
         })
     }
 
-    /// 缺键兜底链：当前语言 → zh-CN → 键名本身（旧 UI `Get` 的语义）。
+    /// 缺键退路链：当前语言 → zh-CN → 键名本身（旧 UI `Get` 的语义）。
     pub fn get(&self, locale: &str, key: &str) -> String {
         if let Some(value) = self
             .locale_strings(locale)
@@ -388,7 +388,7 @@ mod tests {
         }
     }
 
-    /// AC1：10 语言键集与 en.json 全等（键值复用，含内嵌兜底语义等效）。
+    /// AC1：10 语言键集与 en.json 全等（键值复用，含内嵌退路语义等效）。
     #[test]
     fn all_ten_locales_have_exactly_the_en_key_set() {
         let catalog = Catalog::embedded();
@@ -410,7 +410,7 @@ mod tests {
         }
     }
 
-    /// 内嵌层是兜底底线：任何键在任何语言的值都必须是非空字符串。
+    /// 内嵌层是保底底线：任何键在任何语言的值都必须是非空字符串。
     #[test]
     fn embedded_values_are_all_non_empty_strings() {
         let catalog = Catalog::embedded();
@@ -438,7 +438,7 @@ mod tests {
 
     #[test]
     fn locale_codes_match_case_insensitively() {
-        // 防：config 手写 "AR"/"EN" 时 is_rtl 已镜像但目录查找落空，整页落到 zh-CN 兜底。
+        // 防：config 手写 "AR"/"EN" 时 is_rtl 已镜像但目录查找落空，整页落到 zh-CN 保底。
         let catalog = Catalog::embedded();
         assert_eq!(
             catalog.get("AR", "nav.overview"),

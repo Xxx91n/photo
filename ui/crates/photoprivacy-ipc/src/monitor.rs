@@ -50,10 +50,10 @@ pub enum ServiceReachability {
 /// 处境给出各自的行动指引（找安装者加授权 vs 检查 Worker 安装），不再统一归到 os error 2。
 ///
 /// 三态互斥，按最近一次真实失败原因归类：服务端点权限拒绝优先（它是回落链的第一环，也是
-/// 未授权用户唯一正确的行动线索）；其次才是后台 Worker 启动未就绪（含 #163 单写者让位退出）
+/// 未授权用户唯一正确的行动线索）；其次才是后台 Worker 启动未就绪（含单写者让位退出）
 /// 与未找到可拉起的 Worker 程序。连接成功即清空（`apply_success`）；心跳失败不清——授权拒绝
-/// 是编排期事实，心跳掉线不推翻它。
-// Design(#242): 连接失败提示按三态分类呈现，不把授权拒绝混同为 Worker 缺失的 os error 2（#169 落地后关票，决策归档）。
+/// 是连接阶段事实，心跳掉线不推翻它。
+// 连接失败提示按三态分类呈现，不把授权拒绝混同为 Worker 缺失的 os error 2。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ConnectFailureCause {
     /// 服务端点存在但连接被服务管道 DACL 拒绝（未列入授权集合的账户，#1/#160）。
@@ -105,7 +105,7 @@ const BACKOFF_STEPS: [u64; 7] = [1, 2, 4, 8, 16, 32, 60];
 
 // 心跳退避与旧 UI 的 ConnectionStateService 逐步一致（1s→60s）；状态机 Connecting → Connected /
 // Reconnecting，Disconnected 只用于端点无法解析（任务永不启动）。
-// Design(#245): 退避序列与旧 UI 对齐并封顶 60s。
+// 退避序列与旧 UI 对齐并封顶 60s。
 pub fn next_backoff(current: Duration) -> Duration {
     let seconds = current.as_secs();
     let next = BACKOFF_STEPS
@@ -124,8 +124,8 @@ pub fn next_backoff(current: Duration) -> Duration {
 /// 见 ipc-contract 的登记）。
 /// 探针用 GetStatus 而非旧 UI 的 Ping：每跳顺带刷新协议版本、模式与 ExifTool 版本；代价是
 /// 「Ping 通但 GetStatus 失败」会被判为不可用（旧 UI 不用这些字段，所以只发 Ping）。
-// Design(#245): 心跳探针固定为 GetStatus，版本可见性优先于 Ping 的纯活性语义。
-// Design(#7): 心跳失败即重解析端点（服务重启换随机名后自愈）；解析器由调用方按模式注入。
+// 心跳探针固定为 GetStatus，版本可见性优先于 Ping 的纯活性语义。
+// 心跳失败即重解析端点（服务重启换随机名后自愈）；解析器由调用方按模式注入。
 pub fn spawn_monitor<F>(
     client: Arc<IpcClient>,
     resolve: F,
@@ -167,7 +167,7 @@ where
 /// 探针由调用方注入：生产用服务端点的连通性（短连接预算），安装态探测另经
 /// `photoprivacy-service` 的 `ServiceProbe`（SCM / launchctl / systemd）取得；只换探针，
 /// 不改节拍与快照字段。
-// Design(#245): 服务态轮询 3s 节拍与快照字段固定、探针注入可换；安装态探测已在 photoprivacy-service 落地（#58 收口）。
+// 服务态轮询 3s 节拍与快照字段固定、探针注入可换；安装态探测已在 photoprivacy-service 完成。
 pub async fn watch_service_reachability<F, Fut>(probe: F, tx: watch::Sender<ConnectionSnapshot>)
 where
     F: Fn() -> Fut,
@@ -437,7 +437,7 @@ mod tests {
         );
         assert_eq!(snapshot.connect_failure, None);
 
-        // 防：心跳掉线顺手清掉授权拒绝结论——os error 2 重新盖住「未被授权」，#169 回潮。
+        // 防：心跳掉线顺手清掉授权拒绝结论——os error 2 重新盖住「未被授权」。
         snapshot.connect_failure = Some(ConnectFailureCause::ServiceAccessDenied);
         apply_failure(&mut snapshot, &IpcError::Timeout);
         assert_eq!(
