@@ -12,11 +12,11 @@ pub mod protocol;
 pub mod single_instance;
 pub mod verify;
 
-pub use client::{IpcClient, IpcError, is_service_access_denied};
+pub use client::{IpcClient, IpcError, is_endpoint_missing, is_service_access_denied};
 pub use endpoints::{
     Endpoint, HostPlatform, WorkerMode, current_home, current_platform, current_runtime_dir,
-    current_service_endpoint, linux_background_endpoint, resolve_endpoint,
-    service_pipe_endpoint_with_advertised,
+    current_service_endpoint, current_service_endpoint_after_failure, current_service_endpoints,
+    linux_background_endpoint, resolve_endpoint, service_pipe_endpoint_with_advertised,
 };
 pub use monitor::{
     ConnectFailureCause, ConnectionSnapshot, ConnectionState, HEARTBEAT_INTERVAL,

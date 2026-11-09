@@ -295,15 +295,23 @@ impl IpcClient {
     async fn connect(&self, endpoint: &Endpoint) -> Result<Stream, IpcError> {
         let deadline = Instant::now() + self.connect_timeout;
         let mut transient: Option<String> = None;
+        // 最近一次可重试的连接层错误：预算耗尽时用它保留「端点缺失/忙」的真实原因，
+        // 而不是一律报超时（#7 残余⑤ 据此只在端点真的不存在时才换名再试）。
+        let mut last_connect_error: Option<io::Error> = None;
         loop {
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
-                return Err(identity_exhausted(endpoint, transient));
+                return Err(identity_exhausted(
+                    endpoint,
+                    transient,
+                    last_connect_error,
+                ));
             }
             // 每次尝试都套上剩余预算：Unix 非阻塞 connect 可能等到可写（EINPROGRESS），
             // 不设上限会让一次探测挂到 OS 级连接超时，远超 700ms 的连接预算。
             // #7：服务端身份核验并入同一次尝试——核验失败不属于「连接没建立」，
-            // 但同受连接预算约束（AC4 超时语义不变）。
+            // 但同受连接预算约束（AC4 的预算不变；预算耗尽时保留最近一次连接层错误，
+            // 见 identity_exhausted）。
             match timeout(
                 remaining,
                 attempt_connect(endpoint, self.server_guard.as_deref()),
@@ -326,8 +334,15 @@ impl IpcClient {
                     if !retryable || Instant::now() >= deadline {
                         return Err(IpcError::Connect(err));
                     }
+                    last_connect_error = Some(err);
                 }
-                Err(_elapsed) => return Err(identity_exhausted(endpoint, transient)),
+                Err(_elapsed) => {
+                    return Err(identity_exhausted(
+                        endpoint,
+                        transient,
+                        last_connect_error,
+                    ));
+                }
             }
             tokio::time::sleep(CONNECT_RETRY_INTERVAL).await;
         }
@@ -335,8 +350,14 @@ impl IpcClient {
 }
 
 /// 连接预算耗尽：本轮出现过瞬时核验失败（进程已退出）时，按连接失败上报并记 warning
-/// （AC2 的原因可观测 + AC5 不升级为授权失败）；否则保持原有的超时语义（AC4）。
-fn identity_exhausted(endpoint: &Endpoint, transient: Option<String>) -> IpcError {
+/// （AC2 的原因可观测 + AC5 不升级为授权失败）；否则按最近一次连接层错误上报（端点缺失/
+/// 忙），没有连接层错误才保持原有的超时语义（AC4）。保留真实错误让 #7 残余⑤ 能区分
+/// 「通告名不存在」与「端点还在但这一拍超时」——只有前者才该换静态名。
+fn identity_exhausted(
+    endpoint: &Endpoint,
+    transient: Option<String>,
+    last_connect_error: Option<io::Error>,
+) -> IpcError {
     match transient {
         Some(reason) => {
             eprintln!(
@@ -345,7 +366,7 @@ fn identity_exhausted(endpoint: &Endpoint, transient: Option<String>) -> IpcErro
             );
             IpcError::Connect(io::Error::new(io::ErrorKind::TimedOut, reason))
         }
-        None => IpcError::Timeout,
+        None => last_connect_error.map_or(IpcError::Timeout, IpcError::Connect),
     }
 }
 
@@ -527,6 +548,27 @@ pub fn is_service_access_denied(err: &IpcError) -> bool {
     }
 }
 
+/// 端点不存在（连接层）：只用于「通告名失效后是否换静态名再试」的判断（#7 残余⑤）。
+/// 忙（属主重建实例的空窗）与超时都不算——这两种失败说明端点还在，换名只会多撞一个面；
+/// 授权拒绝（raw 5 / PermissionDenied）也不是「不存在」，必须保留 #169 的真实原因。
+pub fn is_endpoint_missing(err: &IpcError) -> bool {
+    let IpcError::Connect(io_err) = err else {
+        return false;
+    };
+    #[cfg(windows)]
+    {
+        // ERROR_FILE_NOT_FOUND = 2；ERROR_PIPE_BUSY(231) 不算：实例还在，只是被占。
+        io_err.raw_os_error() == Some(2)
+    }
+    #[cfg(not(windows))]
+    {
+        matches!(
+            io_err.kind(),
+            io::ErrorKind::NotFound | io::ErrorKind::ConnectionRefused
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -583,6 +625,54 @@ mod tests {
         assert!(!is_service_access_denied(&IpcError::Rejected(
             "no".to_string()
         )));
+    }
+
+    #[test]
+    fn endpoint_missing_is_only_the_connect_layer_not_found() {
+        // 防（#7 残余⑤）：把「端点还在但这一拍忙/超时」也判成不存在——UI 会在健康服务
+        // 只是慢一拍时换静态名，白白打开预蹲面。只有连接层的「找不到」才允许换名。
+        #[cfg(windows)]
+        {
+            assert!(is_endpoint_missing(&IpcError::Connect(
+                io::Error::from_raw_os_error(2)
+            )));
+            assert!(!is_endpoint_missing(&IpcError::Connect(
+                io::Error::from_raw_os_error(231)
+            )));
+            assert!(!is_endpoint_missing(&IpcError::Connect(
+                io::Error::from_raw_os_error(5)
+            )));
+        }
+        #[cfg(unix)]
+        {
+            assert!(is_endpoint_missing(&IpcError::Connect(io::Error::from(
+                io::ErrorKind::NotFound
+            ))));
+            assert!(!is_endpoint_missing(&IpcError::Connect(io::Error::from(
+                io::ErrorKind::PermissionDenied
+            ))));
+        }
+        // 超时/协议/授权类错误都不携带「端点不存在」的信号。
+        assert!(!is_endpoint_missing(&IpcError::Timeout));
+        assert!(!is_endpoint_missing(&IpcError::Rejected(
+            "no".to_string()
+        )));
+    }
+
+    #[test]
+    fn budget_exhaustion_keeps_the_last_connect_error() {
+        // 防（#7 残余⑤）：预算耗尽一律报 Timeout —— 「通告名压根不存在」和「这一拍
+        // 慢/忙」被混成一种，UI 要么永远不换名，要么在健康服务慢一拍时乱换名。
+        let endpoint = Endpoint::Pipe("pp-t7-budget".into());
+        let last = io::Error::from_raw_os_error(2);
+        match identity_exhausted(&endpoint, None, Some(last)) {
+            IpcError::Connect(err) => assert_eq!(err.raw_os_error(), Some(2)),
+            other => panic!("expected Connect(last), got {other:?}"),
+        }
+        assert!(matches!(
+            identity_exhausted(&endpoint, None, None),
+            IpcError::Timeout
+        ));
     }
 
     #[test]
