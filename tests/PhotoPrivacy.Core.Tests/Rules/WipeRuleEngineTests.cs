@@ -41,11 +41,11 @@ public sealed class WipeRuleEngineTests
     [InlineData(WipeFormatFamily.Tiff, "-all= -CommonIFD0=")]
     [InlineData(WipeFormatFamily.Raw, "-exif:all= -xmp:all= -iptc:all= -icc_profile:all=")]
     [InlineData(WipeFormatFamily.Heic, "-all= --icc_profile:all")]
-    [InlineData(WipeFormatFamily.Png, "-all=")]
+    [InlineData(WipeFormatFamily.Png, "-all= --icc_profile:all")]
     [InlineData(WipeFormatFamily.Video, "-All= -Time:All=")]
     [InlineData(WipeFormatFamily.Pdf, "-all=")]
     [InlineData(WipeFormatFamily.Eps, "-all=")]
-    public void Resolve_WithoutRules_Reproduces_Adr0053_Commands(WipeFormatFamily family, string expected)
+    public void Resolve_WithoutRules_Reproduces_Safe_Default_Commands(WipeFormatFamily family, string expected)
     {
         Assert.Equal(expected, WipeRuleEngine.Resolve(family, rules: null).EffectiveArgs);
     }
@@ -55,11 +55,11 @@ public sealed class WipeRuleEngineTests
     [InlineData(WipeFormatFamily.Tiff, "-all= -CommonIFD0=")]
     [InlineData(WipeFormatFamily.Raw, "-exif:all= -xmp:all= -iptc:all= -icc_profile:all=")]
     [InlineData(WipeFormatFamily.Heic, "-all= --icc_profile:all")]
-    [InlineData(WipeFormatFamily.Png, "-all=")]
+    [InlineData(WipeFormatFamily.Png, "-all= --icc_profile:all")]
     [InlineData(WipeFormatFamily.Video, "-All= -Time:All=")]
     [InlineData(WipeFormatFamily.Pdf, "-all=")]
     [InlineData(WipeFormatFamily.Eps, "-all=")]
-    public void Resolve_WithPanelDefaults_Reproduces_Adr0053_Commands(WipeFormatFamily family, string expected)
+    public void Resolve_WithPanelDefaults_Reproduces_Safe_Default_Commands(WipeFormatFamily family, string expected)
     {
         Assert.Equal(expected, WipeRuleEngine.Resolve(family, PanelDefaults()).EffectiveArgs);
     }
@@ -80,10 +80,10 @@ public sealed class WipeRuleEngineTests
             WipeRuleEngine.Resolve(WipeFormatFamily.Video, defaults).EffectiveArgs);
         Assert.Equal("-all=", WipeRuleEngine.Resolve(WipeFormatFamily.Pdf, defaults).EffectiveArgs);
         Assert.Equal("-all=", WipeRuleEngine.Resolve(WipeFormatFamily.Eps, defaults).EffectiveArgs);
-        // 非面板族（无存储键）回退安全默认。
+        // 非面板族（无存储键）回退安全默认；Png 族默认已翻为保留 ICC（issue #8）。
         Assert.Equal("-all= -CommonIFD0=", WipeRuleEngine.Resolve(WipeFormatFamily.Tiff, defaults).EffectiveArgs);
         Assert.Equal("-all= --icc_profile:all", WipeRuleEngine.Resolve(WipeFormatFamily.Heic, defaults).EffectiveArgs);
-        Assert.Equal("-all=", WipeRuleEngine.Resolve(WipeFormatFamily.Png, defaults).EffectiveArgs);
+        Assert.Equal("-all= --icc_profile:all", WipeRuleEngine.Resolve(WipeFormatFamily.Png, defaults).EffectiveArgs);
     }
 
     [Fact]
@@ -96,6 +96,22 @@ public sealed class WipeRuleEngineTests
         var args = WipeRuleEngine.Resolve(WipeFormatFamily.Jpeg, rules).EffectiveArgs;
 
         Assert.Equal("-all= -tagsfromfile @ -colorspacetags", args);
+        Assert.DoesNotContain("--icc_profile:all", args, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Png_PreserveIcc_Unchecked_Really_Changes_Command()
+    {
+        // 防的是：issue #8 拍板「ICC 统一保留」后，Png 族的 --icc_profile:all 保护段被
+        // 悄悄丢掉，PNG/APNG/WebP 退回默认删 iCCP、广色域图偏色的老行为。
+        // 关联 issue #8。
+        var rules = PanelDefaults();
+        rules[K("png", "strip_all")] = true;
+        rules[K("png", "preserve_icc")] = false;
+
+        var args = WipeRuleEngine.Resolve(WipeFormatFamily.Png, rules).EffectiveArgs;
+
+        Assert.Equal("-all=", args);
         Assert.DoesNotContain("--icc_profile:all", args, StringComparison.Ordinal);
     }
 

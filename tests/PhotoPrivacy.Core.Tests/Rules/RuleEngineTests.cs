@@ -93,9 +93,6 @@ public sealed class RuleEngineTests
     /// 并落 wipe_skipped_unknown 审计（见 UnsupportedFormatPipelineTests）。
     /// </summary>
     [Theory]
-    [InlineData(".webp")]
-    [InlineData(".psd")]
-    [InlineData(".gif")]
     [InlineData(".ori")]
     [InlineData(".mpo")]
     [InlineData(".x3f")]

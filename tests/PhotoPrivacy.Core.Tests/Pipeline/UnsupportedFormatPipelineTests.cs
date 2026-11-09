@@ -10,9 +10,9 @@ namespace PhotoPrivacy.Core.Tests.Pipeline;
 /// <summary>
 /// （不认识的格式明确跳过并留下可见记录，不许悄悄放过）：挂死链行为测试——喂未映射格式走完管道。
 ///
-/// 场景：升级前的旧配置（或用户自定义配置）把 .webp 这类“宣称支持但无擦除策略”的扩展名留在
+/// 场景：升级前的旧配置（或用户自定义配置）把 .mpo 这类“宣称支持但无擦除策略”的扩展名留在
 /// allowed_extensions 里——管道会把它喂到 ExifToolBridge。原实现在这里永久挂起：
-/// SKIP_ no-op 块永不匹配 TASK_DONE_ marker，TCS 挂到取消（“扔进一张 .webp 就卡住”）。
+/// SKIP_ no-op 块永不匹配 TASK_DONE_ marker，TCS 挂到取消（“扔进一张 .mpo 就卡住”）。
 ///
 /// 本测试用真实 ExifToolBridge + 协议级 fake（不是回放式 fake）走完整管道，断言：
 /// 1) 有限时间内完成（不挂死）；
@@ -37,19 +37,19 @@ public sealed class UnsupportedFormatPipelineTests : IDisposable
     [Fact]
     public async Task HandleAsync_Should_Skip_Unmapped_Extension_With_Visible_Audit_Without_Hanging()
     {
-        var source = Path.Combine(_hotFolder, "legacy.webp");
+        var source = Path.Combine(_hotFolder, "legacy.mpo");
         File.WriteAllBytes(source, [0x52, 0x49, 0x46, 0x46]);
 
         var process = new ProtocolLevelFakeExifToolProcess();
         var audit = new InMemoryAuditLogger();
-        var pipeline = BuildPipeline(process, audit, ".webp");
+        var pipeline = BuildPipeline(process, audit, ".mpo");
 
         await pipeline.HandleAsync(source, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
 
         var skipEvent = audit.Events.FirstOrDefault(e => e.EventType == "wipe_skipped_unknown");
         Assert.NotNull(skipEvent);
         Assert.Equal(AuditLevel.Warn, skipEvent!.Level);
-        Assert.Equal(".webp", skipEvent.Data?["extension"]);
+        Assert.Equal(".mpo", skipEvent.Data?["extension"]);
         Assert.Equal(0, process.StartCalls);
         Assert.Empty(process.Writes);
     }
@@ -69,6 +69,25 @@ public sealed class UnsupportedFormatPipelineTests : IDisposable
         Assert.Contains(audit.Events, e => e.EventType == "file_processing_succeeded");
         Assert.DoesNotContain(audit.Events, e => e.EventType == "wipe_skipped_unknown");
         Assert.True(process.StartCalls >= 1);
+    }
+
+    [Fact]
+    public async Task HandleAsync_Should_Mark_Partial_Clean_In_Success_Audit_For_Gif()
+    {
+        // issue #8：部分清理族（gif/psd/视频）成功事件带 partial_clean 标注，不谎报清干净。
+        var source = Path.Combine(_hotFolder, "keep.gif");
+        File.WriteAllBytes(source, [0x47, 0x49, 0x46, 0x38]);
+
+        var process = new ProtocolLevelFakeExifToolProcess();
+        var audit = new InMemoryAuditLogger();
+        var pipeline = BuildPipeline(process, audit, ".gif");
+
+        await pipeline.HandleAsync(source, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
+
+        var okEvent = Assert.Single(audit.Events, e => e.EventType == "file_processing_succeeded");
+        var note = okEvent.Data?["partial_clean"];
+        Assert.NotNull(note);
+        Assert.Contains("部分清理", note, StringComparison.Ordinal);
     }
 
     private FileTaskPipeline BuildPipeline(
