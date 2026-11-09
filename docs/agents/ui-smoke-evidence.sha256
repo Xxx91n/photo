@@ -36,8 +36,14 @@
 #   改成两种运行时都用 New-Service（5.1 也有），直接写 SCM。
 #   verify-windows-service.ps1 读 ServicePipeName 时原来直接 `.属性`，值还没写进来
 #   会在 5.1 抛「找不到属性」中断整轮；改成先看 PSObject.Properties 再取值。
-#   两处都只修兼容性，没改装/卸/校验的行为。本机两种运行时复跑都过了；
-#   .github/workflows/windows-service-verify.yml 会在 PR 里因 scripts/*.ps1 变动自动跑，
+#   这两处改的是跨平台能不能跑通，装/卸/校验的步骤没动。有一处行为变化要如实说：
+#   原来 5.1 走 `sc.exe create`、没带 DisplayName，服务的显示名就是服务名
+#   PhotoPrivacyCleaner；改用 New-Service 之后变成 PhotoPrivacy Cleaner，和 Core
+#   分支一样了。票面验的是 binPath / AUTO_START / LocalSystem，不验显示名，
+#   这处差异列进交付说明，不藏着。
+#   本机两种运行时复跑都过了。远端 CI 那边：windows-service-verify.yml 的
+#   pull_request 路径确实列了这两个脚本，PR 里会触发；但那个 job 四步全写
+#   `shell: pwsh`（Core），跑不到 5.1 那条分支，5.1 修没修好靠本机复跑证明。
 #   本票没推送、没建 PR，远端那次要等推送后才跑。
 # 授权：票面标签是 ready-for-human。用户 2026-11-10 在本票窗口明确批准由 agent 走桌面
 #   截图通道代跑（原话「你来做，你可以识别屏幕，产物用CI出」），并批准在这台机器上
@@ -112,13 +118,18 @@
 #     = ProgramData 服务日志 04:34:15.286 Application started。
 #   - Cleaned：日志页 04:34:30 = 审计 20:34:30.592 file_processing_succeeded
 #     = processed.ndjson 20:34:30.593 同一路径。
-#   - 样本 868 字节 / 4 项 EXIF → 730 字节 / 0 项，投放前记在
-#     S8R-03-sample-before.txt，投放后的 Cleaned 由日志页和审计共同证明。
+#   - 投放的样本被清洗：投放前记在 S8R-03-sample-before.txt，投放后由日志页
+#     Cleaned 条目与审计成功事件共同证明。不写前后字节数——投放后的数字只在
+#     终端打印过，没另存成当轮证据，按票面规矩不填（和上面 S5 同一条规矩）。
 #   跟后台模式的区分看连接态（这一轮是服务运行中点的启动，S4 已留服务模式帧）。
-#   一处如实说明：ProgramData 那份是 Serilog 写的进程日志，只记服务进程启停、
-#   告警和错误，不记逐条 Cleaned；逐条文件事件走审计 JSONL，日志页读的也是这份
-#   JSONL（页脚写着「来自每日 JSONL 的审计尾部」）。所以「与 ProgramData 服务日志
-#   同刻对得上」对的是服务启动那一刻，不是每条 Cleaned，这是产品的分工。
+#   票面「与 _audit 审计文件、ProgramData 服务日志同刻对得上」这句，本轮能核到的
+#   是：Service started 那条三处同刻（日志页 / 审计 / ProgramData 的
+#   Application started）；Cleaned 那条在日志页 / 审计 / processed.ndjson 同刻，
+#   但 ProgramData 那份是 Serilog 写的进程日志，只记服务进程启停、告警和错误，
+#   不记逐条 Cleaned，逐条文件事件走审计 JSONL，日志页读的也是这份（页脚写着
+#   「来自每日 JSONL 的审计尾部」）。所以 ProgramData 侧对得上的是服务启动那一刻，
+#   Cleaned 逐条在 ProgramData 里没有对应行。这是产品的分工，不是这轮漏拍，
+#   但票面那句话按字面看确实只覆盖了一半，这一处仍列进交付说明请用户确认。
 #   证据：S8R-01-install.png / S8R-01-sc.txt / S8R-02-start.png / S8R-02-sc.txt /
 #   S8R-03-sample-before.txt / S8R-04-logs-service-started.png /
 #   S8R-05-audit-jsonl.txt / S8R-05-processed-ndjson.txt /
