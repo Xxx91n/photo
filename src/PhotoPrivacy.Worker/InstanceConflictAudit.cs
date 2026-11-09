@@ -82,6 +82,13 @@ internal static class InstanceConflictAudit
             return Degrade("<unresolved>", ex, message, payload, "配置解析失败");
         }
 
+        // 与 JsonLineAuditLogger 的等级过滤保持一致：低于配置阈值的事件直接不写，也不算降级。
+        // 过滤放在建目录之前：既然不写，就不该为这条事件碰审计目录（#124 / #153 的零副作用规则）。
+        if (AuditLevel.Warn < AuditLevelParser.Parse(config.Audit.LogLevel))
+        {
+            return new ConflictAuditOutcome(null);
+        }
+
         var auditDirectory = config.Audit.LogDirectory;
         var directoryFailure = TryEnsureWritableAuditDirectory(auditDirectory);
         if (directoryFailure is not null)
@@ -97,12 +104,6 @@ internal static class InstanceConflictAudit
             SourcePath: config.Watch.HotFolder,
             Message: message,
             Data: payload);
-
-        // 与 JsonLineAuditLogger 的等级过滤保持一致：低于配置阈值的事件直接不写，也不算降级。
-        if (auditEvent.Level < AuditLevelParser.Parse(config.Audit.LogLevel))
-        {
-            return new ConflictAuditOutcome(null);
-        }
 
         try
         {
@@ -122,7 +123,8 @@ internal static class InstanceConflictAudit
     /// 不起后台队列，失败当场看得见。3 次×300 ms 重试包在真写文件外面：
     /// 常驻 Worker 也写同一个 audit-*.jsonl 时，它开文件只是一小会儿，隔 300 ms 再试通常能过；
     /// 最后一次仍失败就把异常交给调用方降级，不再保留「看起来有重试」的死代码。
-    /// 文件共享方式与 JsonLineAuditLogger 一致（FileShare.Read），两边看到同一把锁。
+    /// 文件共享方式与 JsonLineAuditLogger 一致（FileShare.Read）：Windows 上两边看到同一把共享锁，
+    /// POSIX 上 FileShare 只是协作式建议锁。
     /// 不套 100 MB 分卷：冲突行固定写当天基础名，基础名已满时只多出一行超限记录，
     /// 写进 UI 日志页真正尾随的那个文件；下一批批量写仍按既有规则落到 _N（#41）。
     /// </summary>
