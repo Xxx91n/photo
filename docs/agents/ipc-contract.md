@@ -7,14 +7,15 @@
 
 | 平台 | 后台端点 | 服务端点 |
 | --- | --- | --- |
-| Windows | 命名管道 `PhotoPrivacyCleaner.Background` | 命名管道 `PhotoPrivacyCleaner.Service.<32hex>`（#7：每次监听随机化，先建首例再通告于 `HKLM\SOFTWARE\PhotoPrivacy\ServicePipeName`；通告缺失/非法回退静态 `PhotoPrivacyCleaner.Service`） |
+| Windows | 命名管道 `PhotoPrivacyCleaner.Background` | 命名管道 `PhotoPrivacyCleaner.Service.<32hex>`（#7：每次监听随机化，先建首例再通告于 `HKLM\SOFTWARE\PhotoPrivacy\ServicePipeName`；通告缺失/非法，或通告名连不上（端点不存在）时回退静态 `PhotoPrivacyCleaner.Service`） |
 | Linux | `$XDG_RUNTIME_DIR/photoprivacy/worker-background.sock`（#201：per-user；变量缺失/空/非根路径时不可用） | `/run/photoprivacy/worker.sock`（权限规则见下方 Linux 段，#188） |
 | macOS | `~/Library/Application Support/photoprivacy/worker-background.sock` | `/Library/Application Support/photoprivacy/worker.sock`（系统级固定落点，#167） |
 
 出处：`src/PhotoPrivacy.Ipc/WorkerIpcEndpointNames.cs`、`src/PhotoPrivacy.Ipc/IpcTransportFactory.cs`、
 `src/PhotoPrivacy.Ipc/NamedPipeIpcTransport.cs`（#7 随机化）、`ui/crates/photoprivacy-ipc/src/endpoints.rs`（客户端动态发现）。
 客户端必须按 OS 解析端点（旧 Avalonia UI 全程硬编码 Windows 管道名，Linux/macOS 因此连不上）；
-Windows 服务端点自 #7 起按通告名动态解析（每次探测/失败重解析，详见认证边界节），其余端点静态。
+Windows 服务端点自 #7 起按通告名动态解析（每次探测/失败重解析；通告名连不上时再试静态名，
+见认证边界节），其余端点静态。
 
 Linux 背景端点自 #201 起使用 `$XDG_RUNTIME_DIR/photoprivacy/worker-background.sock`：
 旧 `/run/photoprivacy` 仅在服务安装/启动时由 systemd 创建，未安装服务的普通用户无权 mkdir，
@@ -216,20 +217,33 @@ UI 内存里那份 `config.audit.log_directory`，服务用安装时落盘的 `c
     名字，剥掉权限位使建例后无法加实例，HKLM 权限使指针不可伪造——三者闭环。通告失败（非
     LocalSystem 服务账户/注册表损坏）回退静态名重绑：fail-safe 可用性优先（与 #70 的 SID
     缺失回退同构），Worker 记 warning 观测，此时防抢占面回到 #7 前、剥掉权限位后的 DACL 仍生效；
-    回退时 best-effort 清除残留通告值（审查返修 m1：客户端只对缺失/非法回退静态名，不清
-    残留会把 UI 钉死在陈旧名上）。
+    回退时 best-effort 清除残留通告值（审查返修 m1）。清除失败也不再把 UI 钉死：客户端在
+    通告名连不上时会再试静态名（残余⑤，见下）。
     优雅停机清除通告值；崩溃残留由下次启动覆盖/卸载清除（卸载脚本一并清三个登记值）。
-  - **UI 侧动态发现**：服务端点解析按拍/失败时重读通告名（3s 可达性探测、连接编排、心跳
-    失败重解析、1s 版本轮询）；通告缺失/非法（字符集/长度校验防注入）回退静态名——旧版服务
-    兼容。服务重启换名后心跳/版本/探测自愈；backfill 每轮 5s 重试时重读 endpoint watch
-    （心跳重解析以同值抑制推送）。
+  - **UI 侧动态发现**：服务端点解析随拍/失败重读通告名（3s 可达性探测、心跳失败重解析、
+    1s 版本轮询）；连接编排在启动时读一次候选。通告缺失/非法（字符集/长度校验防注入）回退
+    静态名——旧版服务兼容。**通告名不存在时也再试一次静态名**（#7 残余⑤）：连接编排、3s
+    探测、1s 版本轮询和心跳失败后的下一次尝试都走候选；版本轮询优先用心跳已落定的端点
+    （可能是静态名），只有它不存在时才轮到通告名候选。忙/超时（端点还在，只是这一拍被占或
+    慢）不换名，授权拒绝更不换（那是端点存在但账户不在授权集合的证据）。服务重启换名后心跳
+    失败重解析并推送 endpoint watch，版本轮询下一拍跟随；backfill 每轮 5s 重试时重读 endpoint
+    watch。Windows 管道名不区分大小写，候选去重与「同一个失败端点」判断都按不区分大小写处理。
   - **已知残余**（如实登记）：① 已闭环——后台管道同用户抢先建面由客户端核验服务端进程身份
     覆盖（见下方「后台管道服务端身份核验」）；新上限随之登记在该节。② 混合版本窗口：新服务
-    + 旧 UI 表现为「服务不可达→回退后台」（发布目录同体、升级关 UI，实际窗口≈0）；③ UI 启动
-    恰逢服务重启的毫秒级通告空窗内可能读到陈旧通告名——探测失败一拍后自愈；④ 同机授权用户
-    以客户端身份连服务管道发任意请求仍是信任边界内的既有行为（#1 语义）；⑤ 通告持续失败
-    （权限性）且回退时的残留清除也失败——UI 会钉死在陈旧通告值上（探测恒失败），需修复注册表
-    写入权限后服务重启才恢复（清除是 best-effort，审查返修 m1 已登记）。
+    + 旧 UI 表现为「服务不可达→回退后台」——**接受不修**：发布目录同体、升级先关 UI，
+    实际窗口≈0；为旧 UI 保留静态名监听会把预蹲面加回来，得不偿失。③ UI 启动恰逢服务重启的
+    毫秒级通告空窗内可能读到陈旧通告名——**可达性探测**下一拍重读通告名即恢复显示，纯函数用例
+    `service_pipe_endpoint_after_failure` 的 NEW/OLD 分支钉住「新名来了就选新名」；但启动时的
+    连接编排只读一次，若那一拍已回落到后台 Worker，本版不会自动升回服务模式（重启 UI 才切），
+    这是既有编排语义，不在本票内改。④ 同机授权用户以客户端身份连服务管道发任意请求仍是
+    信任边界内的既有行为（#1 语义）。⑤ **已闭环**——通告持续失败（权限性）且回退时的残留
+    清除也失败时，UI 不再钉死在陈旧通告值上：通告名在连接预算内连续找不到就换静态名再试。
+    **新上限**：判定口径是「整个连接预算（700ms）内最后一次可重试错误仍是 raw 2/NotFound」
+    ——服务停了、崩了、或卡过重建空窗预算都算；同一预算里先忙（231）后缺失的极端组合按最后
+    一次错误算，可能被当成缺失。兜底不改写健康服务（通告名还在、只是忙/超时）的预蹲保护；
+    但服务确实不在、静态名又被同用户进程抢占时，兜底会连到抢占者，且只要抢占者应答，UI 会
+    停在它上面直到下一次失败或 UI 重启（成功期不主动换回）——这与通告缺失/非法时既有的静态
+    兜底是同一暴露面，不宣称防同用户恶意软件（同 ④ 的信任边界口径）。
 - 后台管道服务端身份核验（#7 残余① 闭环，客户端认证服务端）：
   后台 Worker 由 UI 拉起，发现通道（拉起参数、同用户可写位置、管道枚举）同用户均可伪造，
   命名熵无法闭环——改由**客户端核验服务端进程身份**，在连接建立后、首笔业务请求写入前完成

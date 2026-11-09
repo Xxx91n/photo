@@ -14,6 +14,15 @@ impl Endpoint {
             Endpoint::UnixSocket(path) => path.display().to_string(),
         }
     }
+
+    /// 是否同一个端点：Windows 管道名不区分大小写（内核与 CreateFileW 都按不区分处理），
+    /// Unix socket 路径按精确比较。用于候选去重、失败端点比对与 watch 同值抑制。
+    pub fn same_as(&self, other: &Endpoint) -> bool {
+        match (self, other) {
+            (Endpoint::Pipe(left), Endpoint::Pipe(right)) => left.eq_ignore_ascii_case(right),
+            _ => self == other,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -96,6 +105,10 @@ pub fn linux_background_endpoint(runtime_dir: Option<&Path>) -> Option<Endpoint>
     ))
 }
 
+/// 服务管道静态兜底名（与 C# `WorkerIpcEndpointNames.ServicePipe` 逐字一致）。随机名通告
+/// 缺失/损坏，或通告名连不上时的兜底（#7；残余⑤ 见 `service_pipe_endpoint_after_failure`）。
+pub const STATIC_SERVICE_PIPE_NAME: &str = "PhotoPrivacyCleaner.Service";
+
 // IPC 端点名保持与 `WorkerIpcEndpointNames` 逐字一致，不改协议；旧 C# UI 全程硬编码
 // Windows 管道名（Linux/macOS 实际连不上），新客户端改按 OS 解析，修的是客户端缺陷而非协议。
 // 端点名保持既有约定，禁止为解析方便改名。
@@ -108,7 +121,7 @@ pub fn resolve_endpoint(
         HostPlatform::Windows => Some(Endpoint::Pipe(
             match mode {
                 WorkerMode::Background => "PhotoPrivacyCleaner.Background",
-                WorkerMode::Service => "PhotoPrivacyCleaner.Service",
+                WorkerMode::Service => STATIC_SERVICE_PIPE_NAME,
             }
             .to_string(),
         )),
@@ -143,14 +156,48 @@ pub fn resolve_endpoint(
 // 与 C# 侧出处对齐的常量（WorkerIpcEndpointNames.ServicePipe / WindowsServicePipeAcl）：Rust 无法
 // 引用 C# 常量，靠下方测试钉住静态回退名，通告名形态见 is_advertised_pipe_name。
 
+/// 服务端点候选（#7）：有合法通告名时先试通告名，再试静态名；没有或非法通告名时只试静态名。
+/// 静态名不是第二个服务，而是通告值陈旧时的自愈路径（残余⑤：通告写入失败且残留清除也失败，
+/// 服务已回绑静态名，UI 却还拿着旧随机名）。顺序固定、去重（通告值等于静态名时不重复）。
+pub(crate) fn service_pipe_candidates(advertised: Option<&str>) -> Vec<Endpoint> {
+    match advertised.filter(|name| is_advertised_pipe_name(name)) {
+        // Windows 管道名不区分大小写：同一名字的另一种写法不算第二个候选。
+        Some(name) if !name.eq_ignore_ascii_case(STATIC_SERVICE_PIPE_NAME) => vec![
+            Endpoint::Pipe(name.to_string()),
+            Endpoint::Pipe(STATIC_SERVICE_PIPE_NAME.to_string()),
+        ],
+        _ => vec![Endpoint::Pipe(STATIC_SERVICE_PIPE_NAME.to_string())],
+    }
+}
+
 /// 服务管道通告名解析：有效通告名优先；缺失/非法回退静态名（与 `resolve_endpoint` 的
 /// Windows Service 名一致——旧版服务兼容、值损坏防注入）。只在 Windows 语义下调用。
-// 服务端点按通告名优先解析、缺失回退静态名；随机名防预蹲，HKLM 管理员可写防指针伪造。
 pub fn service_pipe_endpoint_with_advertised(advertised: Option<&str>) -> Endpoint {
-    match advertised.filter(|name| is_advertised_pipe_name(name)) {
-        Some(name) => Endpoint::Pipe(name.to_string()),
-        // 与 resolve_endpoint(Windows, Service) 同名（既有测试 windows_pipe_names_match_dotnet_contract 钉住）。
-        None => Endpoint::Pipe("PhotoPrivacyCleaner.Service".to_string()),
+    service_pipe_candidates(advertised)
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| Endpoint::Pipe(STATIC_SERVICE_PIPE_NAME.to_string()))
+}
+
+/// 连接失败后的下一次尝试（#7 残余⑤）：刚失败的是通告名就换静态名；失败的是静态名兜底时
+/// 回到通告名（服务换了新随机名后仍能接上）。没有合法通告名时候选只有静态名，返回同一个值
+/// ——没有别的可试。调用方只在「端点确实不存在」的失败上调用（服务还活着只是慢一拍时换名
+/// 只会打开预蹲面）；Windows 管道名不区分大小写，比较按不区分大小写处理。
+// 只有 Windows 服务管道有随机通告名；Unix 服务端点静态，本函数在非 Windows 构建里没有调用点
+// （测试会用到，但 clippy 的 lib 构建不含 tests）。
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn service_pipe_endpoint_after_failure(
+    advertised: Option<&str>,
+    failed: &Endpoint,
+) -> Endpoint {
+    let mut candidates = service_pipe_candidates(advertised).into_iter();
+    let primary = candidates
+        .next()
+        .unwrap_or_else(|| Endpoint::Pipe(STATIC_SERVICE_PIPE_NAME.to_string()));
+    if primary.same_as(failed) {
+        candidates.next().unwrap_or(primary)
+    } else {
+        primary
     }
 }
 
@@ -183,6 +230,40 @@ pub fn current_service_endpoint(platform: HostPlatform, home: Option<&Path>) -> 
 #[cfg(not(windows))]
 pub fn current_service_endpoint(platform: HostPlatform, home: Option<&Path>) -> Option<Endpoint> {
     resolve_endpoint(platform, WorkerMode::Service, home)
+}
+
+/// 当前服务端点候选（#7）：Windows 读一次通告名后给出「通告名 → 静态名」，调用方按序尝试；
+/// Unix 端点静态，只有一项。Windows 管道名不区分大小写，重复写法只保留一项。
+pub fn current_service_endpoints(platform: HostPlatform, home: Option<&Path>) -> Vec<Endpoint> {
+    #[cfg(windows)]
+    {
+        if platform == HostPlatform::Windows {
+            return service_pipe_candidates(read_advertised_service_pipe_name().as_deref());
+        }
+    }
+    resolve_endpoint(platform, WorkerMode::Service, home)
+        .into_iter()
+        .collect()
+}
+
+/// 一次连接失败后的服务端点解析（#7 残余⑤）：Windows 重读通告名，走
+/// `service_pipe_endpoint_after_failure`（通告名失效换静态名，静态名失效回通告名）；
+/// Unix 端点静态，保持原值。
+pub fn current_service_endpoint_after_failure(
+    platform: HostPlatform,
+    home: Option<&Path>,
+    failed: &Endpoint,
+) -> Endpoint {
+    #[cfg(windows)]
+    {
+        if platform == HostPlatform::Windows {
+            return service_pipe_endpoint_after_failure(
+                read_advertised_service_pipe_name().as_deref(),
+                failed,
+            );
+        }
+    }
+    resolve_endpoint(platform, WorkerMode::Service, home).unwrap_or_else(|| failed.clone())
 }
 
 /// 读服务管道通告名（#7）：`HKLM\SOFTWARE\PhotoPrivacy\ServicePipeName`（REG_SZ）。
@@ -400,6 +481,106 @@ mod tests {
                 "invalid advertised name must fall back: {bad:?}"
             );
         }
+    }
+
+    #[test]
+    fn service_pipe_candidates_try_advertised_then_static() {
+        // 防（#7 残余⑤）：通告名存在时只试通告名、不试静态名——通告写入失败且残留清除也失败
+        // 时服务已回绑静态名，UI 会永远钉在旧随机名上。
+        assert_eq!(
+            service_pipe_candidates(Some("PhotoPrivacyCleaner.Service.0123ABCDEF")),
+            vec![
+                Endpoint::Pipe("PhotoPrivacyCleaner.Service.0123ABCDEF".into()),
+                Endpoint::Pipe(STATIC_SERVICE_PIPE_NAME.into()),
+            ]
+        );
+        assert_eq!(
+            service_pipe_candidates(None),
+            vec![Endpoint::Pipe(STATIC_SERVICE_PIPE_NAME.into())]
+        );
+        assert_eq!(
+            service_pipe_candidates(Some("bad/name")),
+            vec![Endpoint::Pipe(STATIC_SERVICE_PIPE_NAME.into())]
+        );
+        // 通告值就是静态名：不重复同一个端点（重复只会白耗一次连接预算）。
+        assert_eq!(
+            service_pipe_candidates(Some(STATIC_SERVICE_PIPE_NAME)),
+            vec![Endpoint::Pipe(STATIC_SERVICE_PIPE_NAME.into())]
+        );
+        // Windows 管道名不区分大小写：换个写法仍是同一个名字，不能多出一个候选。
+        assert_eq!(
+            service_pipe_candidates(Some("photoprivacycleaner.service")),
+            vec![Endpoint::Pipe(STATIC_SERVICE_PIPE_NAME.into())]
+        );
+    }
+
+    #[test]
+    fn service_pipe_endpoint_after_failure_switches_names() {
+        // 防（#7 残余⑤）：第一次失败后仍返回同一个通告名——UI 每一拍都撞同一堵墙，
+        // 服务明明已回绑静态名却永远连不上。
+        let stale = Endpoint::Pipe("PhotoPrivacyCleaner.Service.OLD".into());
+        let static_endpoint = Endpoint::Pipe(STATIC_SERVICE_PIPE_NAME.into());
+        assert_eq!(
+            service_pipe_endpoint_after_failure(Some("PhotoPrivacyCleaner.Service.OLD"), &stale),
+            static_endpoint
+        );
+        // 静态名也失败时回到通告名：服务重启换了新随机名后仍能接上，不在两个名字间死循环。
+        assert_eq!(
+            service_pipe_endpoint_after_failure(
+                Some("PhotoPrivacyCleaner.Service.OLD"),
+                &static_endpoint
+            ),
+            stale
+        );
+        // 没有合法通告名时只有静态名可试，返回原值（不是另造一个端点）。
+        assert_eq!(
+            service_pipe_endpoint_after_failure(None, &static_endpoint),
+            static_endpoint
+        );
+        // ③：服务重启已把通告名换成 NEW，而 UI 手里还是 OLD——下一次解析必须选 NEW，
+        // 不能还回旧值（否则服务回来了也连不上）。
+        let new = Endpoint::Pipe("PhotoPrivacyCleaner.Service.NEW".into());
+        assert_eq!(
+            service_pipe_endpoint_after_failure(Some("PhotoPrivacyCleaner.Service.NEW"), &stale),
+            new
+        );
+        // Windows 管道名不区分大小写：大小写写法差异仍是同一个失败端点，必须换静态名。
+        assert_eq!(
+            service_pipe_endpoint_after_failure(
+                Some("PhotoPrivacyCleaner.Service.OLD"),
+                &Endpoint::Pipe("photoprivacycleaner.service.old".into())
+            ),
+            static_endpoint
+        );
+    }
+
+    #[test]
+    #[cfg(not(windows))]
+    fn current_service_endpoints_matches_static_resolution_off_windows() {
+        // 防（#7）：Unix 侧被误接通告名候选（Unix 端点静态、SO_PEERCRED uid 边界，不适用）。
+        for (platform, home) in [
+            (HostPlatform::Linux, None),
+            (HostPlatform::MacOs, Some(Path::new("/Users/example"))),
+        ] {
+            assert_eq!(
+                current_service_endpoints(platform, home),
+                resolve_endpoint(platform, WorkerMode::Service, home)
+                    .into_iter()
+                    .collect::<Vec<_>>()
+            );
+        }
+    }
+
+    #[test]
+    #[cfg(not(windows))]
+    fn current_service_endpoint_after_failure_keeps_static_socket_off_windows() {
+        // 防（#7 残余⑤）把 Windows 的静态管道兜底误接到 Unix socket 上：Unix 端点只有一项，
+        // 失败后必须还是同一个 socket（服务换随机名只存在于 Windows 管道）。
+        let failed = Endpoint::UnixSocket("/run/photoprivacy/worker.sock".into());
+        assert_eq!(
+            current_service_endpoint_after_failure(HostPlatform::Linux, None, &failed),
+            failed
+        );
     }
 
     #[test]

@@ -178,23 +178,40 @@ fn main() -> anyhow::Result<()> {
         // IPC 连通三态，供验证脚本以 GUI 用户（非服务用户）身份断言同一 socket 可达。
         let mut report = format!("{{\"state\":\"{:?}\"", probe_state);
         if args.service_probe_ipc {
-            match photoprivacy_ipc::current_service_endpoint(
+            // 与产品客户端同一条候选链：通告名 → 静态名（端点不存在才换下一个）。
+            // 只探首个候选会在「陈旧通告名 + 服务已回绑静态名」（#7 残余⑤）时
+            // 报 Unavailable，和 UI 实际能连上相矛盾，S4 取证会变成假阴性。
+            let endpoints = photoprivacy_ipc::current_service_endpoints(
                 photoprivacy_ipc::current_platform(),
                 photoprivacy_ipc::current_home().as_deref(),
-            ) {
-                Some(endpoint) => {
-                    let client = IpcClient::with_connect_timeout(Duration::from_millis(700));
-                    let (verdict, detail) = match runtime.block_on(client.status(&endpoint)) {
-                        Ok((status, _)) => ("Reachable".to_string(), format!("{status:?}")),
+            );
+            if endpoints.is_empty() {
+                report.push_str(",\"endpoint\":null,\"ipc\":\"Unresolved\"");
+            } else {
+                let client = IpcClient::with_connect_timeout(Duration::from_millis(700));
+                let mut observed = None;
+                for endpoint in endpoints {
+                    match runtime.block_on(client.status(&endpoint)) {
+                        Ok((status, _)) => {
+                            observed =
+                                Some((endpoint, "Reachable".to_string(), format!("{status:?}")));
+                            break;
+                        }
                         Err(err) => {
                             let verdict = if photoprivacy_ipc::is_service_access_denied(&err) {
                                 "Denied"
                             } else {
                                 "Unavailable"
                             };
-                            (verdict.to_string(), err.to_string())
+                            let missing = photoprivacy_ipc::is_endpoint_missing(&err);
+                            observed = Some((endpoint, verdict.to_string(), err.to_string()));
+                            if !missing {
+                                break;
+                            }
                         }
-                    };
+                    }
+                }
+                if let Some((endpoint, verdict, detail)) = observed {
                     report.push_str(&format!(
                         ",\"endpoint\":{},\"ipc\":{},\"ipc_detail\":{}",
                         json_string(&endpoint.display()),
@@ -202,7 +219,6 @@ fn main() -> anyhow::Result<()> {
                         json_string(&detail)
                     ));
                 }
-                None => report.push_str(",\"endpoint\":null,\"ipc\":\"Unresolved\""),
             }
         }
         report.push_str("}\n");
