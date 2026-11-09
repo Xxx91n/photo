@@ -135,6 +135,9 @@ public static class WipeRuleEngine
                     parts.Add("-CommonIFD0=");
                     break;
                 case WipeFormatFamily.Heic:
+                case WipeFormatFamily.Png:
+                    // Heic/Png 同形：-all= 加 ICC 保护段（issue #8 起 Png 族默认保留 ICC，
+                    // 实测 `-all= --icc_profile:all` 在 13.61 上能保住 ICC 且 validate OK）。
                     parts.Add("-all=");
                     if (preserveIcc)
                     {
@@ -160,15 +163,6 @@ public static class WipeRuleEngine
                     if (stripTime)
                     {
                         parts.Add("-Time:All=");
-                    }
-                    break;
-                case WipeFormatFamily.Png:
-                    // issue #8：preserve_icc=true 时保住 iCCP（PNG/APNG/WebP 同引擎），实测
-                    // `-all= --icc_profile:all` 在 13.61 上能保住 ICC 且 validate OK。
-                    parts.Add("-all=");
-                    if (preserveIcc)
-                    {
-                        parts.Add("--icc_profile:all");
                     }
                     break;
                 default:
