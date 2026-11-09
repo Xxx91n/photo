@@ -53,12 +53,13 @@
 #   再点「启动」→ 状态「运行中」+ 绿点 + 绿框成功；sc query STATE 4 RUNNING，
 #   Worker 进程在 Services 会话 0、NT AUTHORITY\SYSTEM。
 #   S3-01-start-clicked.png / S3-01-sc-running.txt
-# S4 通过。服务运行中重启 UI（总览页）：「已连接 · PhotoPrivacyCleaner.Service.f7005641011F13
-#   ABBDEFF937AD5A3431 · 服务模式」，Worker 卡片显示 服务模式 / service / 服务 IPC=可达 /
-#   协议 v1；进程侧只剩 1 个 Services 会话 Worker，UI 没拉起后台 Worker。
-#   一处要请用户确认的差异：票面样例写的是「已连接 · PhotoPrivacyCleaner.Service · 服务模式」，
-#   本帧端点名后面多了一串随机字符（#7 命名熵，服务管道通告名）。连接态、服务模式字样、
-#   IPC 可达这几条都对得上，但字样不完全一样；算不算符合样例由用户定，本票不自己判。
+# S4 通过。判的依据是连接态和 IPC：服务运行中重启 UI（总览页）显示
+#   「已连接 · PhotoPrivacyCleaner.Service.f7005641011F13ABBDEFF937AD5A3431 · 服务模式」，
+#   Worker 卡片显示 服务模式 / service / 服务 IPC=可达 / 协议 v1；进程侧只剩 1 个
+#   Services 会话 Worker，UI 没拉起后台 Worker。票面样例写的是不带后缀的
+#   「PhotoPrivacyCleaner.Service」，本帧端点名后面多了一串随机字符（#7 命名熵，
+#   服务管道通告名）。字样不完全一样，这处差异列进交付说明请用户确认，但连接态、
+#   服务模式字样、IPC 可达这几条都有当轮截图，所以按这几条判通过。
 #   S4-01-restarted-overview.png / S4-01-process-and-sc.txt
 # S5 通过。配置页把「监控目录」改成私有 hot 目录，连着拍了几张，抓到绿字
 #   「已保存 · Worker 已重载」；随后投进这个新目录的样本被服务 Worker 清洗，日志页
@@ -73,8 +74,9 @@
 #   操作失误（路径拼成两段、Worker 拒绝重载）；S5-03-config-saved-clean.png 是清空后
 #   重填、右上角「保存中…」；S5-06-saved-worker-reloaded.png 是最后成功的绿字提示。
 #   照实记一处我自己操作上的错：中途一次粘贴时旧值没清干净，路径被拼成两段，Worker 报
-#   ReloadConfig failed（S5-02-saved-banner.png，ProgramData 服务日志里也有那条 WARN）。
-#   这是截图工具的问题，不是产品缺陷；改成连续退格清空后重做，只有成功的那一轮作数。
+#   ReloadConfig failed（S5-02-saved-banner.png，ProgramData 服务日志里也有那条 WARN，
+#   里面能看到拼坏的路径原文）。那次是配置值本身非法，不算通过也不算失败，
+#   列进交付说明；改成连续退格清空后重做的那一轮，才拿来判这一项。
 # S6 通过。点「停止」→ 状态回「已停止」+ 绿框成功；sc query STATE 1 STOPPED，
 #   tasklist 里 PhotoPrivacyWorker.exe 已无。S6-01-stop-clicked.png / S6-01-sc-stopped.txt /
 #   S6-00-service-page.png / S6-02-stopped-settled.png
@@ -96,7 +98,7 @@
 #   证据：S8-01-logs-page.png / S8-01-audit-jsonl.txt / S8-01-processed-ndjson.txt /
 #   S8-01-programdata-service-log.txt / S8-01-correlation.txt
 #   这两处怎么处理由用户定。本票只如实记下缺什么，不提「按不迁移记下」这类建议，
-#   也不拿「跑过审查」当「通过」。整张票因此还不能说八项全通过。
+#   也不拿「跑过审查」当「通过」。还没拍板的都列在交付说明里。
 #
 # ---------------------------------------------------------------------------
 # 命令行这边和收尾
@@ -112,6 +114,8 @@
 #   ServicePipeAllowedSids / ServicePipeName 三个值都不存在；无残留 UI/Worker/ExifTool
 #   进程；config.json 与出厂 config.sample.json 逐字节相同（1643bd31…）。
 #   临时测试账户：本轮压根没建，所以没有要删的，如实记下，不拿「没建」冒充「已删」。
+#   票面写了「临时测试账户删掉」，这一项本轮没有对应的删除动作，是否算满足由用户定，
+#   列进交付说明，不当成通过。
 # 这台机器的提权情况：EnableLUA=0，登录的是 Administrator，本身就有管理员权限，
 #   所以不会弹 UAC 同意框。S2 里装服务这一步（裸 sc.exe、binPath、注册进 SCM）是真跑过的；
 #   但「点安装弹 UAC、点同意 / 点取消」这两种情况本轮没测，那是 #30 / #206 的范围。
