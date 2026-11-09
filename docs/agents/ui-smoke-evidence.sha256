@@ -6,6 +6,7 @@
 #   C:\Users\Administrator\photo-smoke-3\evidence\
 # 有了这份清单，随时能核对这些文件还在、内容没被人事后换过。
 # 目录要是删了，就只剩哈希，内容没法再看一遍——这个缺口大家已经认了，不算漏项。
+# 连拍的中间帧只留看得懂内容的几张，其余删了；下面逐张写清楚每张是什么。
 #
 # ---------------------------------------------------------------------------
 # 这一轮是怎么跑的
@@ -21,18 +22,22 @@
 # 界面这边：整屏截图用 ImageGrab（跟 Graphics.CopyFromScreen 一样），点鼠标用
 #   SetCursorPos + mouse_event。把窗口置顶、点一下、等一会儿、截图，都放在同一个
 #   进程里一次做完。工具放在 photo-smoke-3\tools\ui_tool.py，不入库。
-# 命令行这边：scripts/verify-windows-service.ps1，两条都跑了——
-#   远端 CI run 42679959499（windows-service-verify，head 2b2fceb9）→ PASS=21 FAIL=0；
-#   本机实机用和 CI 同款的 PowerShell 7.6.9 Core（便携版，放在私有目录）复跑同一份脚本
-#   → PASS=21 FAIL=0、退出码 0。本机自带的 Windows PowerShell 5.1 跑这份脚本会挂在
-#   「带空格路径的 sc.exe create」那一步（3 条 FAIL 后中断），那一步不是 CI 走的路；
-#   照原样留着 console.txt / summary.txt，本票没改脚本，改脚本不在本票范围。
+# 命令行这边：scripts/verify-windows-service.ps1 跑了三遍，都是本票这一轮里的尝试，
+#   不是历史一轮：
+#   - 远端 CI run 42679959499（windows-service-verify，head 2b2fceb9）→ 成功；
+#   - 本机实机用和 CI 同款的 7.6.9 Core 便携运行时复跑同一份脚本 → 成功；
+#   - 本机自带的 5.1 跑挂了：挂在「带空格路径的 sc.exe create」那一步，3 条 FAIL 后中断。
+#     那一支不是 CI 走的路。照原样留着 console.txt / summary.txt 说明环境差异。
+#   本票没改脚本，改脚本不在本票范围。
 # 授权：票面标签是 ready-for-human。用户 2026-11-10 在本票窗口明确批准由 agent 走桌面
-#   截图通道代跑，并批准在这台机器上装/卸 PhotoPrivacyCleaner 服务（同 #88 / #125 / #156 先例）。
+#   截图通道代跑（原话「你来做，你可以识别屏幕，产物用CI出」），并批准在这台机器上
+#   装/卸 PhotoPrivacyCleaner 服务。票面标签和验收标准都没改，跟 #88 / #125 / #156
+#   是同款先例（那三张票也是 ready-for-human，由用户在实现窗口批准 agent 代跑）。
 #   没有证据的地方一律不填通过。
 #
 # ---------------------------------------------------------------------------
 # 界面 8 项，一项一项说（按 docs/agents/ui-smoke.md「服务模式（Windows，8 项）」）
+# 档位按文档「怎么记结果」填：通过 / 失败 / 未测 / 不迁移（裁决）。
 # ---------------------------------------------------------------------------
 # S1 通过。2026-11-10 桌面截图：状态行「未安装」，启动/停止/卸载三个钮灰着，「安装」蓝色可点；
 #   同刻 sc query 回 1060。S1-01-not-installed.png / S1-01-sc-query.txt
@@ -53,12 +58,18 @@
 #   协议 v1；进程侧只剩 1 个 Services 会话 Worker，UI 没拉起后台 Worker。
 #   服务管道名字后面带一串随机字符，是 #7 故意加的；票面样例写的是不带这串字符的简写，
 #   不因为这个记失败。S4-01-restarted-overview.png / S4-01-process-and-sc.txt
-# S5 通过。配置页把「监控目录」改成私有 hot 目录：连着拍了几张，抓到绿字
-#   「已保存 · Worker 已重载」，config.json 秒级落盘（watch.hot_folder 变成新值）。
-#   热生效：投放一张带 EXIF 的样本，845 字节 / 4 项 EXIF → 691 字节 / 0 项，
-#   原件在 hot/bak 留了备份，日志页出新条目。
-#   S5-06-saved-worker-reloaded.png（含绿字提示那张）/ S5-01-config-saved.png /
-#   S5-00b-config-page.png / S8-01-logs-page.png
+# S5 通过。配置页把「监控目录」改成私有 hot 目录，连着拍了几张，抓到绿字
+#   「已保存 · Worker 已重载」；随后投进这个新目录的样本被服务 Worker 清洗，日志页
+#   出了新条目。有实物的是这三样：S5-06-saved-worker-reloaded.png（绿字那张）、
+#   S8-01-audit-jsonl.txt 里 sample-live-2.jpg 的 file_processing_succeeded /
+#   wipe_result=Cleaned_Modified（审计路径正指向新目录 photo-smoke-3\hot）、
+#   S8-01-logs-page.png 的 Cleaned 条目，S8-01-processed-ndjson.txt 也记下同一路径。
+#   本轮没把 config.json 的内容另存成证据文件，也没有给落盘计时，所以不写「秒级落盘」、
+#   不写样本前后字节数——那些数字只在终端打印过，没留下当轮证据，按票面规矩不算。
+#   几张 S5 截图各是什么：S5-00b-config-page.png 是空监控目录的配置页；
+#   S5-01-config-saved.png 是第一次填完路径；S5-02-saved-banner.png 是下面说的那次
+#   操作失误（路径拼成两段、Worker 拒绝重载）；S5-03-config-saved-clean.png 是清空后
+#   重填、右上角「保存中…」；S5-06-saved-worker-reloaded.png 是最后成功的绿字提示。
 #   照实记一处我自己操作上的错：中途一次粘贴时旧值没清干净，路径被拼成两段，Worker 报
 #   ReloadConfig failed（S5-02-saved-banner.png，ProgramData 服务日志里也有那条 WARN）。
 #   这是截图工具的问题，不是产品缺陷；改成连续退格清空后重做，只有成功的那一轮作数。
@@ -66,29 +77,35 @@
 #   tasklist 里 PhotoPrivacyWorker.exe 已无。S6-01-stop-clicked.png / S6-01-sc-stopped.txt /
 #   S6-00-service-page.png / S6-02-stopped-settled.png
 # S7 通过（已停止态）。点「卸载」→ 状态回「未安装」、按钮组回到 S1 的样子、绿框成功；
-#   sc query 回 1060，只剩 UI 进程。运行态点「卸载」没动作是设计（button_state Running
-#   分支），票面也这么注明，本轮没另外测。S7-01-uninstall-clicked.png /
-#   S7-01-sc-uninstalled.txt
-# S8 通过（Cleaned 这条通道）。日志页 16 条，02:58:55 的
-#   Cleaned / attempt=1;wipe_result=Cleaned_Modified，和 audit-2026-11-10.jsonl 的
-#   file_processing_succeeded、processed.ndjson 的同一路径、ProgramData 服务日志
-#   02:52:17 Application started 同刻对得上；跟后台模式的区分看 S4 的连接态。
-#   S8-01-logs-page.png / S8-01-audit-jsonl.txt / S8-01-processed-ndjson.txt /
+#   sc query 回 1060，只剩 UI 进程。S7-01-uninstall-clicked.png / S7-01-sc-uninstalled.txt
+#   运行态点「卸载」没动作这一分支：未测（票面括号里注明是设计，本轮没另外点）。
+# S8 未测。票面这一项写「日志页实时出 Service started/Cleaned 等条目，与 _audit 审计文件、
+#   ProgramData 服务日志同刻对得上」。本轮只核到前一半：日志页 02:58:55 的
+#   Cleaned / attempt=1;wipe_result=Cleaned_Modified，和审计 jsonl 的
+#   file_processing_succeeded（UTC 18:58:55，就是本地 02:58:55）、processed.ndjson
+#   同一路径同一刻对得上；跟后台模式的区分看 S4 的连接态。
+#   缺的两处，本轮没有当轮证据，所以整项按规矩记「未测」，不填通过：
+#   1) 日志页没有独立的「Service started」条目。本轮审计事件只有 file_skipped /
+#      exiftool_started / file_processing_succeeded 三种（历史 #156 那轮记过
+#      「Service started mode=live」，当时有；现在没有，属于和旧记录不一样的地方）。
+#   2) ProgramData 服务日志（S8-01-programdata-service-log.txt）只有 02:52:17
+#      Application started 和 02:55:58 一次 ReloadConfig failed，不记逐条 Cleaned，
+#      没法跟日志页 02:58:55 那条「同刻对得上」。
+#   证据：S8-01-logs-page.png / S8-01-audit-jsonl.txt / S8-01-processed-ndjson.txt /
 #   S8-01-programdata-service-log.txt / S8-01-correlation.txt
-#   一处不一样的地方照实记：本轮日志页没有独立的「Service started」条目，审计事件只有
-#   file_skipped / exiftool_started / file_processing_succeeded 三种。历史 #156 已经说过
-#   service_started 讲的是 Worker 进程启动，后台和服务 Worker 都会写，不是服务模式专属。
-#   这处差异在交付说明里单独列出来交给用户定，不拿它当通过，也不拿它当失败。
+#   这两处算不算这张票通过，得由用户定：要么补一轮实机专门盯这两条，要么按
+#   「不迁移（裁决）」记下。本票不替用户拍板，也不拿「跑过审查」当「通过」。
 #
 # ---------------------------------------------------------------------------
 # 命令行这边和收尾
 # ---------------------------------------------------------------------------
-# 脚本跑成的那两次，最后一行都是 `CONCLUSION: PASS=21 FAIL=0`，退出码 0：
+# 跑成的那两次，最后一行都是 `CONCLUSION: PASS=21 FAIL=0`，退出码 0：
 #   ci-script-channel/summary.txt（远端 CI）、script-channel-pwsh/summary.txt（本机实机）。
-#   script-channel/ 是本机 PowerShell 5.1 那一轮的失败记录，留着说明环境差异。
+#   script-channel/ 是本票这一轮里 5.1 跑挂那次的记录，留着说明环境差异。
 # 收尾（S-final-cleanup.txt）：sc query 回 1060；ServicePipeInstallerSid /
 #   ServicePipeAllowedSids / ServicePipeName 三个值都不存在；无残留 UI/Worker/ExifTool
-#   进程；config.json 与出厂 config.sample.json 逐字节相同（1643bd31…）；本轮没建临时账户。
+#   进程；config.json 与出厂 config.sample.json 逐字节相同（1643bd31…）。
+#   临时测试账户：本轮压根没建，所以没有要删的，如实记下，不拿「没建」冒充「已删」。
 # 这台机器的提权情况：EnableLUA=0，登录的是 Administrator，本身就有管理员权限，
 #   所以不会弹 UAC 同意框。S2 里装服务这一步（裸 sc.exe、binPath、注册进 SCM）是真跑过的；
 #   但「点安装弹 UAC、点同意 / 点取消」这两种情况本轮没测，那是 #30 / #206 的范围。
@@ -104,7 +121,7 @@
 # 期望：下面每一行都回 ': OK'，退出码 0。
 #
 
-# ---- 界面截图与同刻命令输出（32 个文件）----
+# ---- 界面截图与同刻命令输出（29 个文件）----
 51bfb7e35dd036c4f7b45bc753fb37d801f7475ba178ccd33a919b9528476e4f  S-final-cleanup.txt
 25ac3ef7189c8cea24cdea6039b9d25a45feea4bef5d1bfe20957e29441296a1  S1-01-not-installed.png
 914b0382453ec331c4b961ce12194eef62d8d4b163cf406a95ecd7c67a3e21a4  S1-01-sc-query.txt
@@ -118,13 +135,10 @@ cb5b7b02acf5f30ab341e70d23829dc3b1dac9aba5acada47fc0aedaabbef720  S3-01-sc-runni
 73ed7516f50722a7f13ccaf2e516cc4bc1afb93d3e459413912c19f8020fca6b  S3-01-start-clicked.png
 376fa33e676b39671cf893ab57721bd1007dc15fe9d080c4e63662421b85ffc4  S4-01-process-and-sc.txt
 6367d3a25c94246cc41876eda4c71755e6bf130d93c5a43a2b3202b01aa9d090  S4-01-restarted-overview.png
-bfa666eb1cac75b757465734397842b5eda583ce5013ef4c3af7f65ad63ce7e2  S5-00-config-page.png
 6b3e0b4ee9074e63f5601b24f1c79b5dab156193494b8f13f66d21a6e7c35304  S5-00b-config-page.png
 db5d216ae0f0218cb5343b174a59e98ed8352476730938cafbf383a299c6f5da  S5-01-config-saved.png
 57b53daa59c5f8e182fb3c41a7bedeb2691135b5742e88ddfd6f7585b2a8cdf5  S5-02-saved-banner.png
 ed304b3b971fe2282459c79f59f8c3405566ee23aeb369f18fe55e3d70abdc3f  S5-03-config-saved-clean.png
-093689e9a44c3f48d55334b8a44cbb23db72b5ea962dcc28adf7c337004dd64f  S5-04-saved-worker-reloaded.png
-023a98c24e8d08f0296cf22873684f395dda4267522393c7adea43efd563dec0  S5-05-saved-banner-ok.png
 205b453ef5ae87d0b2618bca172efcd2ed77d859075afa66033824cd1bed2d42  S5-06-saved-worker-reloaded.png
 07c3a1ce825bd554978abd709fd1a57205b3539b28bcf684bf68e1428a27c8ec  S6-00-service-page.png
 435719bbd6feaa46da384d4f70642414a81dbc6a7f11a37e2cd5c4922624e112  S6-01-sc-stopped.txt
@@ -149,7 +163,7 @@ e40d364c8aef4ca10e3a9755158e02e597a7a5555d208aeb5bc8767e44674695  ci-script-chan
 24f8cc3fae7d90381b267347a695f97fe81123b170b1a4eac1adf2e07e48fe97  ci-script-channel/07-uninstall-absent.txt
 33cae696d7afa0b544d1ee550379f95f48e29cab93906b0d98b518e0120f96e7  ci-script-channel/summary.txt
 
-# ---- 本机实机脚本通道（PowerShell 7.6.9 Core）（10 个文件）----
+# ---- 本机实机脚本通道（7.6.9 Core，和 CI 同款）（10 个文件）----
 09b5cedcdc3e9861fcc2b2b9ac89215cf5f789f1def2e6ce7b67cce9adc0b397  script-channel-pwsh/00-env.txt
 e1fb83fee109825c83aec82b946647eadda058da2649f940e6a59dc2dfb477d7  script-channel-pwsh/01-install.txt
 0e16183f6e02790311e9ef6c830cc2b4f3c8c3d8fda2c7d307ee3ac98b9c3b5a  script-channel-pwsh/02-service-status.txt
@@ -161,7 +175,7 @@ e40d364c8aef4ca10e3a9755158e02e597a7a5555d208aeb5bc8767e44674695  script-channel
 0652e3730b2a33f7e54fd753f116d5b1617781162262ebdcffb10ba7cfa1d889  script-channel-pwsh/console.txt
 6487f8abc8cf02c651739cfa0aa6c9b3eb2fb79e56fb2c2bf7b7d5743fd65adb  script-channel-pwsh/summary.txt
 
-# ---- 本机 PowerShell 5.1 那一轮的失败记录（环境差异，留着说明）（5 个文件）----
+# ---- 本轮里 5.1 跑挂那次的记录（环境差异，留着说明）（5 个文件）----
 14160e50c0b21eb5f5d54dbd5567fcd5f6d96eca3f7acded049ee1493d083c0a  script-channel/00-env.txt
 1d99772c70283978eb2df2ed326d03cef2437481dcfbb2f824ad84ebc248f6f8  script-channel/01-install.txt
 794a1f9a088c788a28fd0f29eda2bb16fc9b1960dd357b374ad27556e8da4803  script-channel/02-service-status.txt
