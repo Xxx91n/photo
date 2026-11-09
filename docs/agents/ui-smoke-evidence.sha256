@@ -56,8 +56,10 @@
 # S4 通过。服务运行中重启 UI（总览页）：「已连接 · PhotoPrivacyCleaner.Service.f7005641011F13
 #   ABBDEFF937AD5A3431 · 服务模式」，Worker 卡片显示 服务模式 / service / 服务 IPC=可达 /
 #   协议 v1；进程侧只剩 1 个 Services 会话 Worker，UI 没拉起后台 Worker。
-#   服务管道名字后面带一串随机字符，是 #7 故意加的；票面样例写的是不带这串字符的简写，
-#   不因为这个记失败。S4-01-restarted-overview.png / S4-01-process-and-sc.txt
+#   一处要请用户确认的差异：票面样例写的是「已连接 · PhotoPrivacyCleaner.Service · 服务模式」，
+#   本帧端点名后面多了一串随机字符（#7 命名熵，服务管道通告名）。连接态、服务模式字样、
+#   IPC 可达这几条都对得上，但字样不完全一样；算不算符合样例由用户定，本票不自己判。
+#   S4-01-restarted-overview.png / S4-01-process-and-sc.txt
 # S5 通过。配置页把「监控目录」改成私有 hot 目录，连着拍了几张，抓到绿字
 #   「已保存 · Worker 已重载」；随后投进这个新目录的样本被服务 Worker 清洗，日志页
 #   出了新条目。有实物的是这三样：S5-06-saved-worker-reloaded.png（绿字那张）、
@@ -93,14 +95,18 @@
 #      没法跟日志页 02:58:55 那条「同刻对得上」。
 #   证据：S8-01-logs-page.png / S8-01-audit-jsonl.txt / S8-01-processed-ndjson.txt /
 #   S8-01-programdata-service-log.txt / S8-01-correlation.txt
-#   这两处算不算这张票通过，得由用户定：要么补一轮实机专门盯这两条，要么按
-#   「不迁移（裁决）」记下。本票不替用户拍板，也不拿「跑过审查」当「通过」。
+#   这两处怎么处理由用户定。本票只如实记下缺什么，不提「按不迁移记下」这类建议，
+#   也不拿「跑过审查」当「通过」。整张票因此还不能说八项全通过。
 #
 # ---------------------------------------------------------------------------
 # 命令行这边和收尾
 # ---------------------------------------------------------------------------
-# 跑成的那两次，最后一行都是 `CONCLUSION: PASS=21 FAIL=0`，退出码 0：
+# 跑成的那两次，最后一行都是 `CONCLUSION: PASS=21 FAIL=0`：
 #   ci-script-channel/summary.txt（远端 CI）、script-channel-pwsh/summary.txt（本机实机）。
+# 退出码 0 也留了当轮证据，票面要求的就是这一条：
+#   script-channel-pwsh/exit-code.txt —— 本机实机重跑时把 EXITCODE=0、命令、时间写进文件；
+#   ci-script-channel/exit-code.txt —— 远端 CI 那个脚本步骤是 success（脚本 exit 1 会让
+#   步骤判失败，所以 success 等于退出码 0），连 run id、步骤号、起止时间一起记下。
 #   script-channel/ 是本票这一轮里 5.1 跑挂那次的记录，留着说明环境差异。
 # 收尾（S-final-cleanup.txt）：sc query 回 1060；ServicePipeInstallerSid /
 #   ServicePipeAllowedSids / ServicePipeName 三个值都不存在；无残留 UI/Worker/ExifTool
@@ -122,7 +128,7 @@
 #
 
 # ---- 界面截图与同刻命令输出（29 个文件）----
-51bfb7e35dd036c4f7b45bc753fb37d801f7475ba178ccd33a919b9528476e4f  S-final-cleanup.txt
+9c7d923749703feca446948df683d4ce822640996402b0f5ed7238678624ded4  S-final-cleanup.txt
 25ac3ef7189c8cea24cdea6039b9d25a45feea4bef5d1bfe20957e29441296a1  S1-01-not-installed.png
 914b0382453ec331c4b961ce12194eef62d8d4b163cf406a95ecd7c67a3e21a4  S1-01-sc-query.txt
 1ed9e0fd42656b1a43edee2fe85de2afa55b54dfb912770f7e60b8f8dfe3a3ea  S2-01-install-clicked.png
@@ -152,7 +158,7 @@ cf0b07944e254472e5d0aa635af5c45207ffa3f8b73f67d6bdacae6ae93ed841  S8-01-logs-pag
 b2eb3d054cb2add42f57b80d3f0c488955a02bc9ea95cec74cfff0a8615b5a0c  S8-01-processed-ndjson.txt
 2dab3caa896b26d83520fa7aa06d087680b8d29c2a32e91ddab38c30ac0d3da4  S8-01-programdata-service-log.txt
 
-# ---- 远端 CI 脚本通道（run 42679959499）（9 个文件）----
+# ---- 远端 CI 脚本通道（run 42679959499）（10 个文件）----
 27a854121cf5d14ffcbaa9bbcb627aff3240f078a0f2d3ba0ad24d293ab7c84a  ci-script-channel/00-env.txt
 e1fb83fee109825c83aec82b946647eadda058da2649f940e6a59dc2dfb477d7  ci-script-channel/01-install.txt
 3e2a41523201ca417aa11fd29f624d97b6672af1e704dad7704564d6677e9187  ci-script-channel/02-service-status.txt
@@ -161,19 +167,21 @@ e1fb83fee109825c83aec82b946647eadda058da2649f940e6a59dc2dfb477d7  ci-script-chan
 e40d364c8aef4ca10e3a9755158e02e597a7a5555d208aeb5bc8767e44674695  ci-script-channel/05-stop-start.txt
 31c639e9e97910536abd880ee52a7ac1e52908266a2e47a28982072532e39bf8  ci-script-channel/06-uninstall.txt
 24f8cc3fae7d90381b267347a695f97fe81123b170b1a4eac1adf2e07e48fe97  ci-script-channel/07-uninstall-absent.txt
+1fb214983bf997cef72ca2d348d6db5d48eb0f65bcbe72ea838d7712fa3bac22  ci-script-channel/exit-code.txt
 33cae696d7afa0b544d1ee550379f95f48e29cab93906b0d98b518e0120f96e7  ci-script-channel/summary.txt
 
-# ---- 本机实机脚本通道（7.6.9 Core，和 CI 同款）（10 个文件）----
+# ---- 本机实机脚本通道（7.6.9 Core，和 CI 同款）（11 个文件）----
 09b5cedcdc3e9861fcc2b2b9ac89215cf5f789f1def2e6ce7b67cce9adc0b397  script-channel-pwsh/00-env.txt
 e1fb83fee109825c83aec82b946647eadda058da2649f940e6a59dc2dfb477d7  script-channel-pwsh/01-install.txt
-0e16183f6e02790311e9ef6c830cc2b4f3c8c3d8fda2c7d307ee3ac98b9c3b5a  script-channel-pwsh/02-service-status.txt
+4ceb1ac0f3be4eb16f50cc7c1a6b488898df2512fa09eebe444a863200abdf87  script-channel-pwsh/02-service-status.txt
 3ac42014c4ebd07aba3f954799128710419725901706f5a67c3e0d39b8417d64  script-channel-pwsh/03-pipe-response.txt
 11f5e4a693545fe3369092bd344452fc79f897e99a3355db47c089d8c10bed59  script-channel-pwsh/04-service-log.txt
 e40d364c8aef4ca10e3a9755158e02e597a7a5555d208aeb5bc8767e44674695  script-channel-pwsh/05-stop-start.txt
 31c639e9e97910536abd880ee52a7ac1e52908266a2e47a28982072532e39bf8  script-channel-pwsh/06-uninstall.txt
 24f8cc3fae7d90381b267347a695f97fe81123b170b1a4eac1adf2e07e48fe97  script-channel-pwsh/07-uninstall-absent.txt
-0652e3730b2a33f7e54fd753f116d5b1617781162262ebdcffb10ba7cfa1d889  script-channel-pwsh/console.txt
-6487f8abc8cf02c651739cfa0aa6c9b3eb2fb79e56fb2c2bf7b7d5743fd65adb  script-channel-pwsh/summary.txt
+f24dea7055777e12e5b669870fc01e25f20f154801413e7a05027562d03f3145  script-channel-pwsh/console.txt
+8efcc4eaec7535b3e290f60b8d9061f57d9a0eb336c33425622c0b5b1269b663  script-channel-pwsh/exit-code.txt
+49e56e2ab3ffbcc201db3ff2ef3696edba012f4bc796041fda6b032b572841e2  script-channel-pwsh/summary.txt
 
 # ---- 本轮里 5.1 跑挂那次的记录（环境差异，留着说明）（5 个文件）----
 14160e50c0b21eb5f5d54dbd5567fcd5f6d96eca3f7acded049ee1493d083c0a  script-channel/00-env.txt
