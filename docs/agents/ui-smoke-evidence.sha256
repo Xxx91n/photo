@@ -126,7 +126,7 @@ d6f891aa5c3527e71ceb328162f2eceae45579ea27c990f38f60bcbce3508201  S7-after-unins
 #
 # 校验（验证机 bash，从证据目录开始）：
 #   cd /home/ubuntu/photo-verify/evidence && grep -E '^[0-9a-f]{64}  L2-' <仓库>/docs/agents/ui-smoke-evidence.sha256 | sha256sum -c -
-# 期望：24 行全部 ': OK'、退出码 0。
+# 期望：32 行全部 ': OK'、退出码 0。
 2b8b24c6f898a59f2fc535fc7d48cb14b49caacf8c999e1fd7ff97de3823f78c  L2-00-env.txt
 fb02db08918a0ec6a2e4e5f407fb23d047ca496115f9ed302bd2fc803ffa0057  L2-00-negative-gui-user-empty.txt
 5ee70525087e6d347df89def66ed6973314dc9490f5a08c9fca5947039ffe502  L2-00-negative-socket-group-empty.txt
