@@ -78,8 +78,8 @@ public sealed record AppConfig(
             ".rw2", ".pef", ".srw", ".sr2",
             // HEIF / AVIF
             ".heic", ".heif", ".hif", ".avif",
-            // PNG / WebP
-            ".png", ".apng", ".webp",
+            // PNG / WebP / GIF
+            ".png", ".apng", ".webp", ".gif",
             // Video (MOV/MP4)
             ".mov", ".mp4", ".m4v", ".qt", ".3gp", ".3g2",
             // PDF

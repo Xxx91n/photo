@@ -37,6 +37,10 @@ public static class WipeStrategyResolver
         // PNG / WebP（issue #8：WebP 实测 -all= 往返安全，ICC 保留与 PNG 同引擎）
         ["png"] = WipeFormatFamily.Png, ["apng"] = WipeFormatFamily.Png,
         ["webp"] = WipeFormatFamily.Png,
+        // GIF（issue #8：部分清理——Comment/XMP/ICC 可删；C2PA/PlainText/MIDI 删不掉，
+        // 命令与 PNG 同款，禁止塞 -jumbf:all= 装作删 C2PA；见研究文档 §3.3 与
+        // GifC2paPreservationTests）
+        ["gif"] = WipeFormatFamily.Png,
 
         // MOV/MP4
         ["mov"] = WipeFormatFamily.Video, ["mp4"] = WipeFormatFamily.Video,

@@ -24,7 +24,7 @@
       ".cr2", ".cr3", ".arw", ".nef", ".orf", ".raf",
       ".rw2", ".pef", ".srw", ".sr2",
       ".heic", ".heif", ".hif", ".avif",
-      ".png", ".apng", ".webp",
+      ".png", ".apng", ".webp", ".gif",
       ".mov", ".mp4", ".m4v", ".qt", ".3gp", ".3g2",
       ".pdf",
       ".eps", ".ps", ".ai"

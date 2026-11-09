@@ -17,6 +17,7 @@ public sealed class WipeStrategyResolverTests
     [InlineData("img.heic", WipeFormatFamily.Heic)]
     [InlineData("icon.png", WipeFormatFamily.Png)]
     [InlineData("anim.webp", WipeFormatFamily.Png)]
+    [InlineData("loop.gif", WipeFormatFamily.Png)]
     [InlineData("clip.mov", WipeFormatFamily.Video)]
     [InlineData("doc.pdf", WipeFormatFamily.Pdf)]
     [InlineData("vector.eps", WipeFormatFamily.Eps)]
@@ -71,6 +72,19 @@ public sealed class WipeStrategyResolverTests
     {
         var result = WipeStrategyResolver.Resolve(@"C:\art\logo.eps");
         Assert.True(result.RequiresUserWarning);
+    }
+
+    [Fact]
+    public void Resolve_Gif_Uses_Png_Command_And_Never_Fakes_Jumbf_Deletion()
+    {
+        // 防的是：GIF 的 C2PA 在 ExifTool 13.61 删不掉（-jumbf:all= 实测 0 updated
+        // 静默不动）；若有人往 GIF 命令里塞 -jumbf:all= 装作删了 C2PA，审计就撒谎。
+        // 关联 issue #8。
+        var result = WipeStrategyResolver.Resolve(@"C:\photos\loop.gif");
+
+        Assert.Equal(WipeFormatFamily.Png, result.Family);
+        Assert.Equal("-all= --icc_profile:all", result.EffectiveArgs);
+        Assert.DoesNotContain("-jumbf", result.EffectiveArgs, StringComparison.Ordinal);
     }
 
     [Fact]
