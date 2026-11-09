@@ -301,11 +301,7 @@ impl IpcClient {
         loop {
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
-                return Err(identity_exhausted(
-                    endpoint,
-                    transient,
-                    last_connect_error,
-                ));
+                return Err(identity_exhausted(endpoint, transient, last_connect_error));
             }
             // 每次尝试都套上剩余预算：Unix 非阻塞 connect 可能等到可写（EINPROGRESS），
             // 不设上限会让一次探测挂到 OS 级连接超时，远超 700ms 的连接预算。
@@ -337,11 +333,7 @@ impl IpcClient {
                     last_connect_error = Some(err);
                 }
                 Err(_elapsed) => {
-                    return Err(identity_exhausted(
-                        endpoint,
-                        transient,
-                        last_connect_error,
-                    ));
+                    return Err(identity_exhausted(endpoint, transient, last_connect_error));
                 }
             }
             tokio::time::sleep(CONNECT_RETRY_INTERVAL).await;
@@ -654,9 +646,7 @@ mod tests {
         }
         // 超时/协议/授权类错误都不携带「端点不存在」的信号。
         assert!(!is_endpoint_missing(&IpcError::Timeout));
-        assert!(!is_endpoint_missing(&IpcError::Rejected(
-            "no".to_string()
-        )));
+        assert!(!is_endpoint_missing(&IpcError::Rejected("no".to_string())));
     }
 
     #[test]

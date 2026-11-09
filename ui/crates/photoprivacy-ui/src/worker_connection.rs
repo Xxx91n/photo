@@ -160,10 +160,9 @@ pub fn start(
                             // 心跳已落定的端点优先试；只有它不存在时才轮到候选（含重读
                             // 通告名）——这样既不用每秒先撞一次旧名字，服务换名后也能在
                             // 心跳下一拍之前靠版本轮询先发现。
-                            for candidate in current_service_endpoints(
-                                version_platform,
-                                version_home.as_deref(),
-                            ) {
+                            for candidate in
+                                current_service_endpoints(version_platform, version_home.as_deref())
+                            {
                                 if !endpoints.iter().any(|known| known.same_as(&candidate)) {
                                     endpoints.push(candidate);
                                 }
@@ -238,7 +237,10 @@ fn endpoint_resolver(
                 None => connected.clone(),
             };
             endpoint_tx.send_if_modified(|current| {
-                if current.as_ref().is_some_and(|current| current.same_as(&resolved)) {
+                if current
+                    .as_ref()
+                    .is_some_and(|current| current.same_as(&resolved))
+                {
                     false
                 } else {
                     *current = Some(resolved.clone());
