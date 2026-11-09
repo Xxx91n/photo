@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using PhotoPrivacy.Core.Configuration;
 using PhotoPrivacy.Core.ExifTool;
 
@@ -880,7 +880,7 @@ public sealed class ExifToolBridgeTests
         var bridge = new ExifToolBridge(process, Config);
 
         var result = await bridge
-            .WipeMetadataAsync(Path.Combine(Path.GetTempPath(), "pp-bridge", "legacy.webp"), CancellationToken.None)
+            .WipeMetadataAsync(Path.Combine(Path.GetTempPath(), "pp-bridge", "legacy.mpo"), CancellationToken.None)
             .WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.Equal(WipeResult.UnknownFormat, result);
