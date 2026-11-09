@@ -226,6 +226,9 @@ public sealed class FileTaskPipeline
                                 tempPath = null;
                             }
 
+                            // issue #8：部分清理族（gif/psd/视频）的成功事件必须带尾巴标注，
+                            // 不许让 GIF 和 JPEG 在审计里不可区分。
+                            var partialNote = WipeStrategyResolver.PartialCleanNote(sourcePath);
                             await _audit.WriteAsync(
                                 new AuditEvent(
                                     "file_processing_succeeded",
@@ -234,7 +237,9 @@ public sealed class FileTaskPipeline
                                     Guid.NewGuid().ToString("N"),
                                     sourcePath,
                                     $"attempt={attempt};wipe_result=Cleaned_Modified",
-                                    null),
+                                    partialNote is null
+                                        ? null
+                                        : new Dictionary<string, string> { ["partial_clean"] = partialNote }),
                                 cancellationToken);
                             if (processedKey is not null)
                             {

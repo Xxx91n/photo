@@ -71,6 +71,25 @@ public sealed class UnsupportedFormatPipelineTests : IDisposable
         Assert.True(process.StartCalls >= 1);
     }
 
+    [Fact]
+    public async Task HandleAsync_Should_Mark_Partial_Clean_In_Success_Audit_For_Gif()
+    {
+        // issue #8：部分清理族（gif/psd/视频）成功事件带 partial_clean 标注，不谎报清干净。
+        var source = Path.Combine(_hotFolder, "keep.gif");
+        File.WriteAllBytes(source, [0x47, 0x49, 0x46, 0x38]);
+
+        var process = new ProtocolLevelFakeExifToolProcess();
+        var audit = new InMemoryAuditLogger();
+        var pipeline = BuildPipeline(process, audit, ".gif");
+
+        await pipeline.HandleAsync(source, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
+
+        var okEvent = Assert.Single(audit.Events, e => e.EventType == "file_processing_succeeded");
+        var note = okEvent.Data?["partial_clean"];
+        Assert.NotNull(note);
+        Assert.Contains("部分清理", note, StringComparison.Ordinal);
+    }
+
     private FileTaskPipeline BuildPipeline(
         ProtocolLevelFakeExifToolProcess process,
         InMemoryAuditLogger audit,

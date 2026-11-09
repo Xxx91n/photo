@@ -89,6 +89,18 @@ public sealed class WipeStrategyResolverTests
     }
 
     [Fact]
+    public void PartialCleanNote_Flags_Tails_For_Gif_Psd_Video_And_Null_For_Clean_Families()
+    {
+        // 防的是：宽线验收（issue #8）承诺「删不掉的尾巴在审计里如实写明」；新增部分
+        // 清理格式时若漏配标注，审计就会对用户谎报「已清干净」。关联 issue #8。
+        Assert.Contains("C2PA", WipeStrategyResolver.PartialCleanNote(@"C:\p\a.gif"), StringComparison.Ordinal);
+        Assert.Contains("图层", WipeStrategyResolver.PartialCleanNote(@"C:\p\a.psd"), StringComparison.Ordinal);
+        Assert.NotNull(WipeStrategyResolver.PartialCleanNote(@"C:\p\a.mp4"));
+        Assert.Null(WipeStrategyResolver.PartialCleanNote(@"C:\p\a.jpg"));
+        Assert.Null(WipeStrategyResolver.PartialCleanNote(@"C:\p\a.xyz"));
+    }
+
+    [Fact]
     public void Resolve_Unknown_Extension_Returns_SkipResult()
     {
         var result = WipeStrategyResolver.Resolve(@"C:\data\file.xyz");

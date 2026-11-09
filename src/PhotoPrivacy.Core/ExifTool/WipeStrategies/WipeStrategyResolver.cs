@@ -80,4 +80,27 @@ public static class WipeStrategyResolver
         return ExtensionFamilyMap.TryGetValue(key, out var family) ? family : WipeFormatFamily.Unknown;
     }
 
+    /// <summary>
+    /// 「部分清理」标注（issue #8 拍板：删不掉的尾巴要在审计里如实写明，不许谎报清干净）。
+    /// 返回 null 表示该格式按宽线属清得干净的族，无需标注。新增部分清理格式时必须同步此表。
+    /// </summary>
+    public static string? PartialCleanNote(string filePath)
+    {
+        var ext = Path.GetExtension(filePath);
+        if (string.IsNullOrEmpty(ext))
+        {
+            return null;
+        }
+
+        var key = (ext.StartsWith('.') ? ext[1..] : ext).ToLowerInvariant();
+        return key switch
+        {
+            "gif" => "部分清理：C2PA(JUMBF)、Plain Text、MIDI 块保留（ExifTool 删不掉）",
+            "psd" => "部分清理：版权标记、URL、分辨率、打印参数、缩略图、图层内容保留",
+            "mov" or "mp4" or "m4v" or "qt" or "3gp" or "3g2"
+                => "部分清理：官方说明 Most top-level metadata is removed，编码器指纹等部分顶层元数据保留",
+            _ => null,
+        };
+    }
+
 }
