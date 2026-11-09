@@ -19,7 +19,6 @@ public static class AppConfigLoader
         }
 
         var json = File.ReadAllText(configPath);
-        var (legacyExifToolPath, hasNestedExifToolPath) = ReadLegacyHints(json);
 
         var dto = JsonSerializer.Deserialize<AppConfigDto>(json, s_serializerOptions);
 
@@ -31,7 +30,7 @@ public static class AppConfigLoader
         return new AppConfig(
             SchemaVersion: Math.Max(1, dto.SchemaVersion),
             ExifTool: new ExifToolOptions(
-                Path: ResolveExifToolPath(dto.ExifTool.Path, legacyExifToolPath, hasNestedExifToolPath),
+                Path: ResolveExifToolPath(dto.ExifTool.Path),
                 EnableWindowsLongPath: dto.ExifTool.EnableWindowsLongPath,
                 EnableLargeFileSupport: dto.ExifTool.EnableLargeFileSupport,
                 DryRun: dto.ExifTool.DryRun,
@@ -88,49 +87,17 @@ public static class AppConfigLoader
                 ThemeId: string.IsNullOrWhiteSpace(dto.Ui.ThemeId) ? AppConfig.Default.Ui.ThemeId : dto.Ui.ThemeId));
     }
 
-    private static string ResolveExifToolPath(string nestedPath, string? legacyPath, bool hasNestedExifToolPath)
+    private static string ResolveExifToolPath(string nestedPath)
     {
-        var resolved = hasNestedExifToolPath
-            ? nestedPath
-            : !string.IsNullOrWhiteSpace(legacyPath)
-                ? legacyPath
-                : nestedPath;
-
         // 空串回落规则与 quarantine.directory / audit.log_directory 一致：
         // 发布包内置 ExifTool 后模板不再写死绝对路径，留空 = 优先 <BaseDirectory>/ExifTool/，
         // 其次系统安装位置；用户手填的绝对路径（含 ETOverrideDir 式目录）仍然优先，不被覆盖。
         // 手填值若为目录则解析出其中的 exiftool/exiftool.exe（#33 目录式覆盖，对齐 ExifToolGUI ETOverrideDir），
         // 实现在 DefaultPaths.ResolveExifToolExecutable，这里只接线。
         // 留空表示按运行时探测（DefaultPaths.ExifToolPath），绝不写回探测结果、不覆盖用户手填的绝对路径。
-        return string.IsNullOrWhiteSpace(resolved)
+        return string.IsNullOrWhiteSpace(nestedPath)
             ? DefaultPaths.ExifToolPath
-            : DefaultPaths.ResolveExifToolExecutable(resolved);
-    }
-
-    private static (string? LegacyExifToolPath, bool HasNestedExifToolPath) ReadLegacyHints(string json)
-    {
-        using var document = JsonDocument.Parse(json);
-        var root = document.RootElement;
-
-        string? legacyExifToolPath = null;
-        var hasNestedExifToolPath = false;
-
-        if (root.TryGetProperty("exiftool_path", out var legacyPathElement)
-            && legacyPathElement.ValueKind == JsonValueKind.String)
-        {
-            legacyExifToolPath = legacyPathElement.GetString();
-        }
-
-        if (root.TryGetProperty("exiftool", out var exiftoolElement)
-            && exiftoolElement.ValueKind == JsonValueKind.Object
-            && exiftoolElement.TryGetProperty("path", out var nestedPathElement)
-            && nestedPathElement.ValueKind == JsonValueKind.String
-            && !string.IsNullOrWhiteSpace(nestedPathElement.GetString()))
-        {
-            hasNestedExifToolPath = true;
-        }
-
-        return (legacyExifToolPath, hasNestedExifToolPath);
+            : DefaultPaths.ResolveExifToolExecutable(nestedPath);
     }
 
     private sealed class AppConfigDto
