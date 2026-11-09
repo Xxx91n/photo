@@ -14,6 +14,11 @@ on:
       - "scripts/verify-windows-service.ps1"
       - "scripts/publish-app.ps1"
       - "config/config.sample.json"
+      # 服务本体：发布、安装、Ping 探针跑的都是 Worker，只改它也要过 Windows VM 门禁（#203）
+      - "src/PhotoPrivacy.Worker/**"
+      # 端点常量双端各有一份（C# / Rust），改任一侧都要过 Windows VM（#203）
+      - "src/PhotoPrivacy.Ipc/**"
+      - "ui/crates/photoprivacy-ipc/**"
       - ".github/workflows/windows-service-verify.yml"
 
 jobs:
