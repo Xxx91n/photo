@@ -27,8 +27,8 @@ PhotoPrivacy 自动清除热文件夹中图片/视频/PDF 的隐私元数据（E
 - **自带 ExifTool（#33）**：`exiftool.path` 也可直接填一个**安装目录**（对齐 ExifToolGUI 的 `ETOverrideDir` 做法），运行时解析出目录内的 `exiftool.exe` / `exiftool`；构建发版时用 `--exiftool-path-override <目录>`（`publish.sh`）或 `-ExifToolPathOverride <目录>`（`publish-app.ps1`）直接打包该目录、跳过下载。发布脚本钉死的 SHA256 由 `scripts/verify-exiftool-download.sh` 与官方 `exiftool.org/checksums.txt` 核对（CI 在发布脚本变更时触发，另做周常巡检）
 
 ### 格式支持
-- **34 种扩展名**（与擦除策略映射表一一对应）：JPEG（jpg/jpeg/jpe/jps/jph）、TIFF/DNG、RAW（cr2/cr3/arw/nef/orf/raf/rw2/pef/srw/sr2）、PNG/APNG、HEIF/AVIF、MOV/MP4（mov/mp4/m4v/qt/3gp/3g2）、PDF、EPS/PS/AI
-- **不支持格式明确跳过**：映射面之外的格式（如 `.webp`、`.gif`、`.psd`、长尾 RAW 变体）不做任何清理，立即跳过并写入 `wipe_skipped_unknown` 审计事件（fail-closed，绝不静默处理）
+- **35 种扩展名**（与擦除策略映射表一一对应）：JPEG（jpg/jpeg/jpe/jps/jph）、TIFF/DNG、RAW（cr2/cr3/arw/nef/orf/raf/rw2/pef/srw/sr2）、PNG/APNG/WebP、HEIF/AVIF、MOV/MP4（mov/mp4/m4v/qt/3gp/3g2）、PDF、EPS/PS/AI
+- **不支持格式明确跳过**：映射面之外的格式（如 `.gif`、`.psd`、长尾 RAW 变体）不做任何清理，立即跳过并写入 `wipe_skipped_unknown` 审计事件（fail-closed，绝不静默处理）
 - 数字由 CI 断言钉死：`allowed_extensions` ⊆ `ExtensionFamilyMap` 且集合差 = 0（含本行数字），宣称与实现脱钩就 CI 失败
 
 ### Worker 健壮性

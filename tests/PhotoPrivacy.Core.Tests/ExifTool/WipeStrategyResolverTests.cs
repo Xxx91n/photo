@@ -16,6 +16,7 @@ public sealed class WipeStrategyResolverTests
     [InlineData("shot.cr3", WipeFormatFamily.Raw)]
     [InlineData("img.heic", WipeFormatFamily.Heic)]
     [InlineData("icon.png", WipeFormatFamily.Png)]
+    [InlineData("anim.webp", WipeFormatFamily.Png)]
     [InlineData("clip.mov", WipeFormatFamily.Video)]
     [InlineData("doc.pdf", WipeFormatFamily.Pdf)]
     [InlineData("vector.eps", WipeFormatFamily.Eps)]

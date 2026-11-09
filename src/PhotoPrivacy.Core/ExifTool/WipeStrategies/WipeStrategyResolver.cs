@@ -34,8 +34,9 @@ public static class WipeStrategyResolver
         ["heic"] = WipeFormatFamily.Heic, ["heif"] = WipeFormatFamily.Heic,
         ["hif"] = WipeFormatFamily.Heic, ["avif"] = WipeFormatFamily.Heic,
 
-        // PNG
+        // PNG / WebP（issue #8：WebP 实测 -all= 往返安全，ICC 保留与 PNG 同引擎）
         ["png"] = WipeFormatFamily.Png, ["apng"] = WipeFormatFamily.Png,
+        ["webp"] = WipeFormatFamily.Png,
 
         // MOV/MP4
         ["mov"] = WipeFormatFamily.Video, ["mp4"] = WipeFormatFamily.Video,
