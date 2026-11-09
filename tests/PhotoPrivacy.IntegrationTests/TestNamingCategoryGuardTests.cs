@@ -88,7 +88,7 @@ public sealed class TestNamingCategoryGuardTests
                 var category = m.Groups[1].Value;
                 if (category is not ("Smoke" or "ExifTool"))
                 {
-                    violations.Add($"{relPath}: Category 取值 \"{category}\" 不在口径 {{Smoke, ExifTool}} 内");
+                    violations.Add($"{relPath}: Category 取值 \"{category}\" 不在允许范围 {{Smoke, ExifTool}} 内");
                 }
             }
         }

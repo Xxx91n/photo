@@ -56,7 +56,7 @@ public sealed class WorkerIpcSyncOverAsyncGuardTests
 
         Assert.True(
             violations.Count == 0,
-            "Worker IPC 面出现 sync-over-async 回潮：" + string.Join("; ", violations));
+            "Worker IPC 又出现 sync-over-async 写法：" + string.Join("; ", violations));
     }
 
     [Fact]

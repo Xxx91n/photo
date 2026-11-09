@@ -75,7 +75,7 @@ public sealed class StayOpenConcurrentBlockTests : IntegrationTestBase
 
                 Assert.All(results, (result, i) => Assert.True(
                     result == WipeResult.Cleaned_Modified,
-                    $"#226 实测撞红：第 {round} 轮 {Path.GetFileName(files[i])} -> {result}"
+                    $"#226 实测失败：第 {round} 轮 {Path.GetFileName(files[i])} -> {result}"
                     + "（有元数据文件未被 Cleaned_Modified，疑并发块跨块污染/错配）"));
 
                 // ②外块 {ready} 提前结清会让 Cleaned_Modified 报早——不复用桥的结论，
@@ -283,7 +283,7 @@ public sealed class StayOpenConcurrentBlockTests : IntegrationTestBase
             var check = await RunExifToolOneShotAsync(_exe, new[] { "-s3", "-EXIF:Make", file });
             Assert.True(
                 check.ExitCode == 0 && string.IsNullOrWhiteSpace(check.Stdout),
-                $"#226 实测撞红：{Path.GetFileName(file)} 报 Cleaned_Modified 但 EXIF:Make 仍在"
+                $"#226 实测失败：{Path.GetFileName(file)} 报 Cleaned_Modified 但 EXIF:Make 仍在"
                 + $"（疑外块 {{ready}} 提前结清本块）：exit={check.ExitCode}, stdout={check.Stdout.Trim()}");
         }
 

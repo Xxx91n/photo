@@ -59,14 +59,14 @@ public sealed class WorkerStartupSweepScopeTests
             // 正向对照：范围内的既有文件必须被启动先扫一遍处理，否则「范围外文件没记录」只是因为整段扫描没跑。
             Assert.True(
                 await WaitForProcessedRecordForAsync(processedPath, "in-scope.jpg", TimeSpan.FromSeconds(30)),
-                "启动首扫未处理监听范围内的既有文件：用例前提不成立");
+                "启动先扫一遍没有处理监听范围内的既有文件：用例前提不成立");
 
             Assert.False(
                 await WaitForProcessedRecordForAsync(processedPath, "out-of-scope.jpg", TimeSpan.FromSeconds(5)),
-                "include_subdirectories=false 时启动首扫越界处理了子目录文件（#109）");
+                "include_subdirectories=false 时启动先扫一遍越界处理了子目录文件（#109）");
             Assert.False(
                 await WaitForProcessedRecordForAsync(processedPath, "post-start-nested.jpg", TimeSpan.FromSeconds(5)),
-                "include_subdirectories=false 时轮询兜底越界上报了子目录新文件（#109）");
+                "include_subdirectories=false 时轮询补漏扫越界上报了子目录新文件（#109）");
         }
         finally
         {

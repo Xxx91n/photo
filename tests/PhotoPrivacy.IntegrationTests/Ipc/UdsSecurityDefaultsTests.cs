@@ -207,7 +207,7 @@ public sealed class UdsSecurityDefaultsTests
                 path, UnixSocketAccessMode.BackgroundOnly);
             await transport.ListenAsync(CancellationToken.None);
 
-            // 老毛病形态：无条件 chmod 会把安装器/运维收紧的目录（例如 0700 的留证目录）放宽。
+            // 老毛病形态：无条件 chmod 会把安装器/运维收紧的目录（例如 0700 的留证据目录）放宽。
             Assert.Equal(ExpectedDirectoryMode, File.GetUnixFileMode(dir));
         }
         finally
@@ -406,7 +406,7 @@ public sealed class UdsSecurityDefaultsTests
             TimeSpan.FromSeconds(5));
         if (!createsWithMode)
         {
-            violations.Add("socket 目录兜底创建不再显式施加 SocketDirectoryMode（0750）");
+            violations.Add("socket 目录在自动创建时不再显式施加 SocketDirectoryMode（0750）");
         }
 
         // 目录从出现起就要是 0750：创建后必须显式 SetUnixFileMode（createMode 受 umask 影响）。
@@ -478,7 +478,7 @@ public sealed class UdsSecurityDefaultsTests
                 green.Replace(
                     "Directory.CreateDirectory(level, SocketDirectoryMode);",
                     "Directory.CreateDirectory(dir);"),
-                "目录兜底退回裸创建"),
+                "目录自动创建退回裸创建"),
             (
                 green.Replace("File.SetUnixFileMode(level, SocketDirectoryMode);", "// removed"),
                 "创建后不再收紧目录模式"),

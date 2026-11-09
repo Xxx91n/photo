@@ -828,7 +828,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
                     TimestampUtc: DateTimeOffset.UtcNow,
                     TaskId: Guid.NewGuid().ToString("N"),
                     SourcePath: config.Watch.HotFolder,
-                    Message: $"重载拆卸前的目录快照未建成（{reason}），本次改走整目录补扫：已处理文件可能被重处理。",
+                    Message: $"重载拆卸前的目录快照未建成（{reason}），本次改走整目录补漏扫：已处理文件可能被重处理。",
                     Data: null),
                 bounded.Token);
         }
@@ -988,7 +988,7 @@ public sealed class MetadataCleanerWorker : BackgroundService
                 // 记录的取舍：差集没有基准可用，退回整目录补漏扫——多捞的已处理文件此时只能靠去重表挡
                 // （审计目录同批改时新表为空，会重处理）。选它是因为另一头漏捞等于元数据静默留存。
                 // 这条降级目前只有日志和 config_warning 审计事件，没有专门用例。
-                _logger.LogWarning(ex, "重载拆卸前的目录快照未建成，本次重建改走整目录补扫。");
+                _logger.LogWarning(ex, "重载拆卸前的目录快照未建成，本次重建改走整目录补漏扫。");
                 fullSweep = true;
                 await EmitHandoffDegradedAsync(config, ex.Message);
             }

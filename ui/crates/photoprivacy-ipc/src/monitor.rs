@@ -35,7 +35,7 @@ impl ConnectionState {
 
 /// 服务端点可达性：本版只区分「服务端点此刻能否连上」。
 ///
-/// 与 GLOSSARY 的 `Service State Probe`（三平台安装态枚举：NotInstalled/Stopped/Running）不是同一概念：
+/// 与三平台安装态枚举（NotInstalled/Stopped/Running）不是同一概念：
 /// 旧 UI 读 SCM/launchd/systemd 的安装态，完整探测归 #58；本票先保证 3s 拍与消费点在位，
 /// #58 接入安装态后再决定是本类型扩展还是另立类型。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

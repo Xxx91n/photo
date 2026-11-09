@@ -54,7 +54,7 @@ public sealed class BackupDurabilityGuardTests
         var atomicStart = source.IndexOf("async Task AtomicCopyAsync(", StringComparison.Ordinal);
         if (copyStart < 0 || atomicStart <= copyStart)
         {
-            violations.Add("LocalFileOperations 失去了 CopyAsync → AtomicCopyAsync 的方法序，守卫切片失效，需先修守卫再改实现");
+            violations.Add("LocalFileOperations 失去了 CopyAsync → AtomicCopyAsync 的调用顺序，检查前提失效，需先修检查再改实现");
             return violations;
         }
 

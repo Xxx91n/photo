@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # #33: ExifToolPathOverride 构建层自检——纯 shell，不编译应用、不联网。
 # 覆盖 publish.sh 的目录式打包路径：布局校验、产物落盘、-ver 探针、错误路径 fail-closed。
-# CI 与本地 WSL 同口径；publish.sh 被 source 时不进入 cargo/dotnet 主流程。
+# CI 与本地 WSL 同一套规则；publish.sh 被 source 时不进入 cargo/dotnet 主流程。
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

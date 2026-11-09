@@ -1,10 +1,10 @@
 name: Launchd verify
 
 # #32 macOS launchd 安装/卸载/日志——虚拟环境验证链（GitHub macOS runner 即 macOS VM）。
-# 发布构建走 scripts/publish.sh（与 release.yml 同口径，发布属性不经 csproj），再由
+# 发布构建走 scripts/publish.sh（与 release.yml 一致，发布属性不经 csproj），再由
 # scripts/verify-launchd-service.sh 做 launchd 生命周期断言（安装→注册→常驻→日志→
-# 停止/启动→卸载→清理），操作与判定口径对齐 ui/crates/photoprivacy-service/src/unix.rs。
-# UI Service 页联动两路取证：--service-probe-report 与 CLI 判定对拍（硬断言）+ --ui-shots
+# 停止/启动→卸载→清理），操作和判断标准与 ui/crates/photoprivacy-service/src/unix.rs 对齐。
+# UI Service 页联动两路留证据：--service-probe-report 与 CLI 判定对拍（硬断言）+ --ui-shots
 # 整屏截图（内容供目检）；截图依赖 runner 图形会话与屏幕录制权限，失败按 FAIL 如实记录。
 on:
   workflow_dispatch:
@@ -15,9 +15,9 @@ on:
       - "scripts/capture-ui-service-page.sh"
       - "scripts/publish.sh"
       - "config/config.sample.json"
-      # 服务探测语义（MacProbe）改动必须过 macOS VM 对拍门禁（#172：S1–S8 macOS 探测项验收口径）
+      # 服务探测语义（MacProbe）改动必须过 macOS VM 对拍门禁（#172：S1–S8 macOS 探测项验收标准）
       - "ui/crates/photoprivacy-service/**"
-      # 服务模式 UDS 落点与探测取证（#167）：端点常量在双端各有一份，改动任一侧都要过 macOS VM
+      # 服务模式 UDS 落点与探测留证据（#167）：端点常量在双端各有一份，改动任一侧都要过 macOS VM
       - "src/PhotoPrivacy.Ipc/**"
       - "ui/crates/photoprivacy-ipc/**"
       - "ui/crates/photoprivacy-ui/src/main.rs"
@@ -55,7 +55,7 @@ jobs:
           chmod +x scripts/publish.sh
           ./scripts/publish.sh --version 0.0.0-ci --runtime "${{ matrix.rid }}" --zip false
 
-      - name: Verify launchd lifecycle (install/uninstall/logs + UI Service 页取证)
+      - name: Verify launchd lifecycle (install/uninstall/logs + UI Service 页留证据)
         shell: bash
         run: |
           chmod +x scripts/verify-launchd-service.sh scripts/capture-ui-service-page.sh

@@ -135,7 +135,7 @@ public sealed class IpcAuthClaimReconciliationTests
                 green.Replace(
                     "-a \"$GUI_USER\" -t user \"$SOCKET_GROUP\"",
                     "-a \"$GUI_USER\" -t user \"$GROUP_NAME\""),
-                "GUI 用户被加进数据组（组写回潮）"),
+                "GUI 用户被加进数据组（组写权限又放开了）"),
             (green.Replace("--gui-user", "--user"), "GUI 用户入口被移除"),
             (green.Replace("<string>${SOCKET_GROUP}</string>", "<string>${GROUP_NAME}</string>"), "plist GroupName 退回数据组"),
         };
@@ -184,7 +184,7 @@ public sealed class IpcAuthClaimReconciliationTests
         }
         if (!script.Contains("UMask=0027", StringComparison.Ordinal))
         {
-            violations.Add("systemd unit 缺少 UMask=0027（运行期新日志/审计文件落 0644，组只读口径只覆盖安装期）");
+            violations.Add("systemd unit 缺少 UMask=0027（运行期新日志/审计文件落 0644，组只读规则只覆盖安装期）");
         }
         if (!script.Contains("chmod 0755 \"$INSTALL_DIR\"", StringComparison.Ordinal))
         {
@@ -208,7 +208,7 @@ public sealed class IpcAuthClaimReconciliationTests
         }
         if (script.Contains("chmod 2770 \"$HOT_FOLDER\" \"$AUDIT_FOLDER\" \"$QUARANTINE_FOLDER\"", StringComparison.Ordinal))
         {
-            violations.Add("审计目录仍先给数据组 2770（先放宽再收紧窗口 + 组写回潮）");
+            violations.Add("审计目录仍先给数据组 2770（先放宽再收紧窗口 + 组写权限又放开了）");
         }
         return violations;
     }
@@ -233,7 +233,7 @@ public sealed class IpcAuthClaimReconciliationTests
                 green.Replace(
                     "usermod -aG \"$SOCKET_GROUP\" \"$GUI_USER\"",
                     "usermod -aG \"$GROUP_NAME\" \"$GUI_USER\""),
-                "GUI 用户被加进数据组（组写回潮）"),
+                "GUI 用户被加进数据组（组写权限又放开了）"),
             (green.Replace("Group=${SOCKET_GROUP}", "Group=${GROUP_NAME}"), "unit Group 退回数据组"),
             (green.Replace("UMask=0027", "UMask=0022"), "运行期 umask 被放宽"),
             (green.Replace("chmod 0755 \"$INSTALL_DIR\"", "chmod 0777 \"$INSTALL_DIR\""), "安装目录被放宽"),
@@ -295,7 +295,7 @@ public sealed class IpcAuthClaimReconciliationTests
         var guardIdx = strippedTransportSource.LastIndexOf("if (isFirstInstance)", flagIdx, StringComparison.Ordinal);
         if (guardIdx < 0)
         {
-            violations.Add("FirstPipeInstance 不再受 if (isFirstInstance) 守卫（标志会被施加到后续实例）");
+            violations.Add("FirstPipeInstance 的 if (isFirstInstance) 判断没了（标志会被施加到后续实例）");
         }
 
         return violations;
@@ -316,7 +316,7 @@ public sealed class IpcAuthClaimReconciliationTests
         var failing = new (string Source, string Reason)[]
         {
             (green.Replace("isFirstInstance: true", "isFirstInstance: false"), "首例建例点被改为后续实例"),
-            (green.Replace("if (isFirstInstance)", "if (true)"), "FirstPipeInstance 守卫被短路"),
+            (green.Replace("if (isFirstInstance)", "if (true)"), "FirstPipeInstance 的判断被短路"),
         };
 
         var failures = new List<string>();
@@ -421,7 +421,7 @@ public sealed class IpcAuthClaimReconciliationTests
         }
         if (strippedRustSource.Contains("\"/run/photoprivacy/worker-background.sock\"", StringComparison.Ordinal))
         {
-            violations.Add("Rust 背景端点回潮到系统目录");
+            violations.Add("Rust 背景端点又退回系统目录");
         }
         return violations;
     }

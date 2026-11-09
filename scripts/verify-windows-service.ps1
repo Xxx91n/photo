@@ -185,7 +185,7 @@ try {
     Rec "FAIL" ("worker ownership: WQL escape returned " + $wqlLiteral)
   }
 
-  # ---------- 0. 环境留证 ----------
+  # ---------- 0. 环境留证据 ----------
   Capture "00-env.txt" {
     [System.Environment]::OSVersion.VersionString
     whoami /all
@@ -279,7 +279,7 @@ try {
   }
 
   # ---------- 5. 命名管道 IPC 连通性测试 (验证 #70 修复的 DACL 与通信) ----------
-  # 等待服务建管道并通告注册表 ServicePipeName（或静态名兜底）
+  # 等待服务建管道并通告注册表 ServicePipeName（没有通告就走静态名）
   $pipeName = "PhotoPrivacyCleaner.Service"
   $regPath = "HKLM:\SOFTWARE\PhotoPrivacy"
   $pipeResolved = $false

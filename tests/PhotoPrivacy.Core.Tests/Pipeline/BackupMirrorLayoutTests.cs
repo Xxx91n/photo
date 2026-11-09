@@ -226,7 +226,7 @@ public sealed class BackupMirrorLayoutTests : IDisposable
             .ToList();
         // 锁定语义 = 递归枚举让 size 保底对镜像子树生效（删除顺序按最旧优先，不断言幸存个数）。
         Assert.True(survivors.Sum(f => f.Length) <= 1024,
-            $"size 兜底未递归生效：{string.Join("; ", survivors.Select(f => $"{f.Name}:{f.Length}"))}");
+            $"size 保底未递归生效：{string.Join("; ", survivors.Select(f => $"{f.Name}:{f.Length}"))}");
         Assert.NotEmpty(survivors); // 远未超限时不误删光
     }
 

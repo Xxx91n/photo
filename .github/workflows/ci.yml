@@ -5,13 +5,13 @@ on:
   pull_request:
 
 jobs:
-  # dotnet 测试多平台矩阵（#9）：ubuntu/windows/macos 三平台同口径跑 test job；
+  # dotnet 测试多平台矩阵（#9）：ubuntu/windows/macos 三平台按同一套规则跑 test job；
   # fail-fast 关闭——一次 run 同时暴露全部平台的失败，便于按平台分票处置。
   # Windows 腿排除 WindowsServicePipeAclTests / ServicePipeNameEntropyTests（如实登记，#9）：
   # 本票在 CI 实证（run 41962838592 / 41964334172 / 41965777267 / 41967967629）——这两类
   # 真跑即挂死整个 test host：trx 0 完成、blame-hang(4m) dump 显示 xunit runner 与 VSTest
   # 各层全部阻塞等待、线程池空闲、测试执行线程缺席（xunit v2 2.9.3 + runner.visualstudio
-  # 3.1.4 + .NET 10 windows 宿主的执行层挂起，与测试体无关，本仓不可修）。基线口径本就是
+  # 3.1.4 + .NET 10 windows 宿主的执行层挂起，与测试体无关，本仓不可修）。基线规则本来就是
   # 「Windows 专属断言不入 CI，归人工 S4 实机复测」（两类头注释原文）；ubuntu/macos 腿
   # 全量真跑（Windows 专属用例早退），windows 腿跑其余全部 20 类（基线为 0 dotnet 覆盖）。
   # timeout-minutes: 25 封顶——.NET 10 dotnet test 的默认 1h 运行超时层先于 VSTest blame-hang
@@ -128,7 +128,7 @@ jobs:
         run: cargo test -p photoprivacy-ipc -p photoprivacy-logs -p photoprivacy-rules -p photoprivacy-service --locked
 
   # UI crate：MSVC 目标做 check（build.rs 不嵌清单），另以 windows-gnu 做一次 release 构建——
-  # 这是发布链的实际产出路径（publish-app.ps1 同口径，见 ui/crates/photoprivacy-ui/build.rs 与 #61）。
+  # 这是发布链的实际产出路径（与 publish-app.ps1 一致，见 ui/crates/photoprivacy-ui/build.rs 与 #61）。
   ui-check:
     runs-on: windows-latest
     permissions:
@@ -183,11 +183,11 @@ jobs:
   # 端到端发布链验证（#10）：CI 只跑测试不跑 publish，发布链坏在 main 上要等发版才暴露
   # （#164 先例）。用 linux-x64 单 RID 代表性验证整条链：cargo release 构建 UI + dotnet
   # publish Worker + ExifTool 下载/SHA256 校验/内置 + 产物结构核验，与 release.yml 的
-  # build job 同口径（同走 scripts/publish.sh，Linux 系统依赖同 #84）。不传 artifact，
+  # build job 同一套做法（同走 scripts/publish.sh，Linux 系统依赖同 #84）。不传 artifact，
   # 只作门禁。
   # 触发条件（#12 成本评估）：ci.yml 是 on: push + on: pull_request 双事件叠加，PR 内每推
   # 一提交，这条重活（cargo release + dotnet publish R2R + 11MB ExifTool 下载）会跑两遍。
-  # 收紧为 PR 事件或 main 分支 push 才跑：PR 迭代省一半开销，main 合入后仍全链路兜底；
+  # 收紧为 PR 事件或 main 分支 push 才跑：PR 迭代省一半开销，main 合入后仍跑全链路保底；
   # feature 分支直推不跑——合入走 PR（main 分支），发布链由 PR 与 main 两处覆盖。
   publish-e2e:
     if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
@@ -231,5 +231,5 @@ jobs:
           test -f release/linux-x64/ExifTool/exiftool
           test -d release/linux-x64/ExifTool/lib
           test -f release/PhotoPrivacy-0.1.0-ci-linux-x64.tar.gz
-          # 内置 ExifTool 必须可执行且为钉扎版本（#164 同类下载链回归在此兜底）
+          # 内置 ExifTool 必须可执行且为钉扎版本（#164 那类下载链回归就靠这里拦住）
           [ "$(release/linux-x64/ExifTool/exiftool -ver)" = "13.61" ]

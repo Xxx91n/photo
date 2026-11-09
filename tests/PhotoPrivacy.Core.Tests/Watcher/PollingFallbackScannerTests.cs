@@ -35,7 +35,7 @@ public sealed class PollingFallbackScannerTests
 
             Assert.True(
                 await WaitForAsync(() => reported.Contains(Path.Combine(root, "in-scope.jpg")), TimeSpan.FromSeconds(10)),
-                "轮询兜底未上报顶层新文件：用例前提不成立");
+                "轮询补漏扫未上报顶层新文件：用例前提不成立");
 
             await Task.Delay(TimeSpan.FromSeconds(2));
             Assert.DoesNotContain(reported, p => p.Contains("out-of-scope", StringComparison.Ordinal));
@@ -72,7 +72,7 @@ public sealed class PollingFallbackScannerTests
 
             Assert.True(
                 await WaitForAsync(() => reported.Contains(Path.Combine(nested, "in-scope-deep.jpg")), TimeSpan.FromSeconds(10)),
-                "include_subdirectories=true 时轮询兜底未上报子目录新文件");
+                "include_subdirectories=true 时轮询补漏扫未上报子目录新文件");
         }
         finally
         {

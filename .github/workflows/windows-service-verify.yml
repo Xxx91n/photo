@@ -4,7 +4,7 @@ name: Windows Service verify
 # 发布构建走 scripts/publish-app.ps1（win-x64，发布属性不经 csproj），再由
 # scripts/verify-windows-service.ps1 做 Windows Service 生命周期端到端断言：
 #   安装 -> 注册 -> 常驻 -> 命名管道 IPC 通信 (DACL 往返) -> 日志 -> 停止/重启 -> 卸载 -> 清理。
-# 操作与判定口径对齐 scripts/install-service.ps1 与 docs/agents/ipc-contract.md。
+# 操作和判断标准与 scripts/install-service.ps1、docs/agents/ipc-contract.md 对齐。
 on:
   workflow_dispatch:
   pull_request:

@@ -264,7 +264,7 @@ public sealed class WorkerReloadConfigRegressionTests
 
             Assert.False(
                 await WaitForProcessedRecordForAsync(processedPath, "out-of-scope.jpg", TimeSpan.FromSeconds(5)),
-                "include_subdirectories=false 时重载首扫越界处理了子目录文件（#100）");
+                "include_subdirectories=false 时重载后先扫一遍越界处理了子目录文件（#100）");
         }
         finally
         {
@@ -482,7 +482,7 @@ public sealed class WorkerReloadConfigRegressionTests
                 "启动期未创建处理记录表：用例前提不成立");
             Assert.True(
                 await WaitForProcessedRecordForAsync(processedPath, "already-done.jpg", TimeSpan.FromSeconds(30)),
-                "启动首扫未处理既有文件：用例前提不成立");
+                "启动先扫一遍没有处理既有文件：用例前提不成立");
 
             worker.TeardownWindowHookAsync = () =>
             {
@@ -511,7 +511,7 @@ public sealed class WorkerReloadConfigRegressionTests
             Assert.True(windowEntered, "重载没有进入拆卸窗口：钩子未执行，用例前提不成立");
             Assert.True(
                 await WaitForProcessedRecordForAsync(processedPath, "pre-existing.jpg", TimeSpan.FromSeconds(30)),
-                "放开 include_subdirectories 后未补扫新放开的子目录，既有文件永远不会被处理（#100）");
+                "放开 include_subdirectories 后没有补漏扫新放开的子目录，既有文件永远不会被处理（#100）");
 
             // 补漏扫会再次枚举 already-done.jpg；路径粗粒度记录命中后不得追加第二条。
             // 旧指纹规则下 mtime 变化会让它重新入队，总数会变成 3（#133 AC1）。
@@ -569,7 +569,7 @@ public sealed class WorkerReloadConfigRegressionTests
             var processedPath = Path.Combine(audit, "processed.ndjson");
             Assert.True(
                 await WaitForProcessedRecordForAsync(processedPath, "pre-existing.jpg", TimeSpan.FromSeconds(30)),
-                "启动首扫未处理既有文件：用例前提不成立");
+                "启动先扫一遍没有处理既有文件：用例前提不成立");
 
             // 监控目录、深度、去抖都没变的重载——走差集回收那条分支，不是整目录补漏扫。
             await worker.ReloadConfigAsync();
@@ -989,7 +989,7 @@ public sealed class WorkerReloadConfigRegressionTests
                     fixture.ProcessedPath,
                     "in-flight-before-failed-reload.jpg",
                     TimeSpan.FromSeconds(40)),
-                "回滚复用了失败尝试按新配置重建的去抖队列，旧窗口内的在途文件没有被补扫（#112）");
+                "回滚复用了失败尝试按新配置重建的去抖队列，旧窗口内的在途文件没有被补漏扫（#112）");
         }
         finally
         {
@@ -1182,7 +1182,7 @@ public sealed class WorkerReloadConfigRegressionTests
             var processedPath = Path.Combine(audit, "processed.ndjson");
             Assert.True(
                 await WaitForProcessedRecordForAsync(processedPath, "pre-existing.jpg", TimeSpan.FromSeconds(30)),
-                "启动首扫未处理既有文件：用例前提不成立");
+                "启动先扫一遍没有处理既有文件：用例前提不成立");
 
             var reloadTask = worker.ReloadConfigAsync();
             Assert.True(

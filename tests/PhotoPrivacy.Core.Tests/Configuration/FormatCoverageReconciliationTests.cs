@@ -95,7 +95,7 @@ public sealed class FormatCoverageReconciliationTests
         var readme = File.ReadAllText(Path.Combine(RepoRoot, "README.md"));
         var match = Regex.Match(readme, @"\*\*(\d+)\s*种扩展名\*\*");
 
-        Assert.True(match.Success, "README 缺少“**NN 种扩展名**”宣称行——宣称与实现对账失败");
+        Assert.True(match.Success, "README 缺少“**NN 种扩展名**”宣称行——宣称与实现核对不上");
 
         var claimed = int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
         var actual = DefaultAllowed.Distinct(StringComparer.Ordinal).Count();

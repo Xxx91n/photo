@@ -128,7 +128,7 @@ public sealed class Net10CompatibilityGuardTests
 
         if (hits > 1)
         {
-            return [label + ": " + name + " 重复定义 " + hits + " 处（合并后有效值脱离守卫判定）"];
+            return [label + ": " + name + " 重复定义 " + hits + " 处（多处定义互相覆盖，检查管不住最终生效值）"];
         }
 
         var value = options.GetProperty(name);
@@ -174,13 +174,13 @@ public sealed class Net10CompatibilityGuardTests
         var hits = doc.Descendants().Where(e => e.Name.LocalName == name).ToList();
         if (hits.Count == 0)
         {
-            return [label + ": 缺少 <" + name + ">（.NET 10 升级锚点回退）"];
+            return [label + ": 缺少 <" + name + ">（.NET 10 升级必需的属性丢了）"];
         }
 
         if (hits.Count > 1)
         {
             return [label + ": <" + name + "> 活跃定义 " + hits.Count +
-                    " 处——MSBuild 后定义者胜，有效值脱离守卫判定（须收敛回单一定义）"];
+                    " 处——MSBuild 后定义的生效，检查管不住最终值（必须收敛回单一定义）"];
         }
 
         var value = hits[0].Value.Trim();
@@ -189,7 +189,7 @@ public sealed class Net10CompatibilityGuardTests
             return [];
         }
 
-        return [label + ": <" + name + ">=" + value + "（预期 " + expected + "，升级锚点回退）"];
+        return [label + ": <" + name + ">=" + value + "（预期 " + expected + "，升级必需的值被改回去）"];
     }
 
     internal static List<string> ClassifyProjectLevelOverrides(string content, string label)
@@ -235,7 +235,7 @@ public sealed class Net10CompatibilityGuardTests
         }
         catch (XmlException)
         {
-            return [label + ": 非合法 XML（csproj 损坏，Serilog 版本守卫失效）"];
+            return [label + ": 非合法 XML（csproj 损坏，Serilog 版本检查失效）"];
         }
 
         var violations = new List<string>();
@@ -306,7 +306,7 @@ public sealed class Net10CompatibilityGuardTests
                 if (pattern == "*.csproj")
                 {
                     // csproj 必须存在（扫描面防半盲）；props 允许为零——根目录中心 props 不在扫描根下。
-                    Assert.True(files.Count > 0, root + "/ 未找到任何 csproj——守卫扫描面漂移");
+                    Assert.True(files.Count > 0, root + "/ 未找到任何 csproj——检查的扫描范围不对");
                 }
 
                 foreach (var file in files)

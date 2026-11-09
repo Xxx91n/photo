@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# capture-ui-service-page.sh —— #32 UI Service 页截图取证（以 GUI 用户运行）。
+# capture-ui-service-page.sh —— #32 UI Service 页截图留证据（以 GUI 用户运行）。
 #
 # 以 --open-page service 启动发布包里的 PhotoPrivacy，等首屏渲染后整屏截图，
-# 连同时刻的 launchctl 状态一并留证，然后退出 UI。供 verify-launchd-service.sh
+# 连同时刻的 launchctl 状态一并留证据，然后退出 UI。供 verify-launchd-service.sh
 # 在各生命周期状态下调用（虚拟环境 = CI macOS runner；也可在实机手动执行）。
 #
 # #174：`--open-page` 显式覆盖静默启动（ui/crates/photoprivacy-ui/src/main.rs 的
 # should_open_main_window），ui.hide_main_window_on_startup=true 的机器上首实例也直接建窗。
-# 注意下面的第二次实例唤起只是兜「已有实例先跑起来」的单实例守卫，它对 #174 的回归不敏感
+# 注意下面的第二次实例唤起只是兜「已有实例先跑起来」的单实例检查，它对 #174 的回归不敏感
 # （静默被吞时第二实例照样能把窗带出来）——不能拿它当本票的判定依据。
 #
 # 用法: ./capture-ui-service-page.sh --install-dir <dir> --tag <name> --out-dir <dir>
@@ -89,10 +89,10 @@ if ! grep -Eq "\"${SILENT_KEY}\"[[:space:]]*:[[:space:]]*true" "$UI_CONFIG"; the
   exit 1
 fi
 
-# 起跑前不能有已在跑的 UI：单实例守卫会让本脚本借到「没加载配置副本」的旧实例，
+# 起跑前不能有已在跑的 UI：单实例检查会让本脚本借到「没加载配置副本」的旧实例，
 # 那样静默场景根本没成立（CodeRabbit 审查意见）。
 if pgrep -x PhotoPrivacy > /dev/null 2>&1; then
-  echo "已有 PhotoPrivacy 实例在跑，先退出再取证（#174 要求全新进程）:" >&2
+  echo "已有 PhotoPrivacy 实例在跑，先退出再截图留证据（#174 要求全新进程）:" >&2
   pgrep -fl PhotoPrivacy >&2 || true
   exit 1
 fi
@@ -107,7 +107,7 @@ ui_window_geometry() {
 
 # 静默启动只在「托盘会建」时才生效：`tray::should_show_tray_icon` 在服务已安装时返回 false，
 # `should_start_hidden` 随之恒 false，窗口无论如何都会出。所以服务已安装的 tag（running/stopped）
-# 只取截图，不承担 #174 判据——否则对照组必然建窗，把正常行为判成失败。
+# 只取截图，不负责 #174 的判断——否则对照组必然建窗，把正常行为判成失败。
 SERVICE_PLIST="/Library/LaunchDaemons/com.photoprivacy.cleaner.plist"
 SILENT_APPLICABLE=1
 if [[ -e "$SERVICE_PLIST" ]]; then
@@ -138,13 +138,13 @@ if [[ "$SILENT_APPLICABLE" -eq 1 ]]; then
     exit 1
   fi
   # 「无窗」只认 System Events 的 Invalid index（进程在、窗口不存在）。权限或其它错误
-  # （-1743 等）说明这次取证根本没跑通，不能当成静默生效的证据。
+  # （-1743 等）说明这次截图根本没跑通，不能当成静默生效的证据。
   if ! grep -q "Invalid index" "$CONTROL_WINDOW"; then
     echo "对照组没给出『无窗』的确定结论（osascript 报错不是 Invalid index，像权限/会话问题）: ${CONTROL_WINDOW}" >&2
     cat "$CONTROL_WINDOW" >&2
     exit 1
   fi
-  # 让单实例守卫完全释放，再起正式实例。
+  # 让单实例检查完全释放，再起正式实例。
   sleep 2
 fi
 
@@ -155,7 +155,7 @@ UI_LOG="${OUT_DIR}/ui-${TAG}-ui.log"
 UI_PID=$!
 sleep "$STARTUP_WAIT"
 if ! kill -0 "$UI_PID" 2>/dev/null; then
-  echo "正式实例在取景前就退出了（未驻守），本次取证无效: ${UI_LOG}" >&2
+  echo "正式实例在取景前就退出了（未驻守），本次截图无效: ${UI_LOG}" >&2
   cat "$UI_LOG" >&2 || true
   exit 1
 fi
@@ -179,7 +179,7 @@ pgrep -fl "PhotoPrivacy" 2>&1 || true
 
 # 配对状态对照（#172 根因对照，GUI 用户语境）：legacy `launchctl list <label>` 按调用者域
 # 查找（查不到系统 LaunchDaemon），`launchctl print system/<label>` 显式查系统域（MacProbe
-# 事实源）——两路并排留证，截图状态与哪一路一致一目了然。
+# 事实源）——两路并排留证据，截图状态与哪一路一致一目了然。
 {
   echo "---- launchctl list com.photoprivacy.cleaner（legacy，调用者域） ----"
   launchctl list com.photoprivacy.cleaner 2>&1 || true
@@ -192,7 +192,7 @@ cat "$LAUNCHCTL_TXT" || true
 echo "---- screencapture ----"
 screencapture -x "$PNG" || echo "screencapture failed (TCC 屏幕录制权限或无图形会话?)"
 
-# 收口：先 TERM 后兜底 KILL，不让 UI 残留
+# 收尾清理：先 TERM，不退就 KILL，不让 UI 残留
 kill "$UI_PID" 2>/dev/null || true
 WAITED=0
 while kill -0 "$UI_PID" 2>/dev/null; do
@@ -205,20 +205,20 @@ while kill -0 "$UI_PID" 2>/dev/null; do
 done
 wait "$UI_PID" 2>/dev/null || true
 
-# #174 判据（硬）：静默配置 + --open-page service 必须在**首拍**就建窗。osascript 取不到几何
+# #174 硬性要求：静默配置 + --open-page service 必须在**首拍**就建窗。osascript 取不到几何
 # 说明窗口没建（无窗报 Invalid index / 权限问题），此时整屏截图照样是「非空桌面帧」——只看 PNG
 # 会假绿。取的是唤醒之前那一拍，避免第二次实例把窗口补出来掩盖回归。
 if ! ui_window_geometry "$WINDOW_INFO"; then
-  # 只有 System Events 的 Invalid index 才等于「进程在、窗口没建」；别的报错是取证通道
+  # 只有 System Events 的 Invalid index 才等于「进程在、窗口没建」；别的报错是截图通道
   # 本身没跑通（权限/会话），不能算 #174 的结论（CodeRabbit 审查意见）。
   if ! grep -q "Invalid index" "$WINDOW_INFO"; then
-    echo "窗口几何取不到且不是 Invalid index（osascript/权限/会话问题），本次取证无效: ${WINDOW_INFO}" >&2
+    echo "窗口几何取不到且不是 Invalid index（osascript/权限/会话问题），本次截图无效: ${WINDOW_INFO}" >&2
     cat "$WINDOW_INFO" >&2
     exit 1
   fi
   echo "静默配置下首启动未建窗（#174）：唤醒前取不到窗口几何，见 ${WINDOW_INFO}" >&2
   if ui_window_geometry "$WINDOW_AFTER_WAKE"; then
-    echo "（唤醒之后才有窗：正是本判据要抓的『静默吞掉请求页、靠第二次唤起兜底』形态）" >&2
+    echo "（唤醒之后才有窗：正是这条要求要抓的『静默吞掉请求页、靠第二次唤起才补上』形态）" >&2
   fi
   exit 1
 fi
