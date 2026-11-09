@@ -4,6 +4,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="PhotoPrivacy.Core.Tests" />
+    <InternalsVisibleTo Include="PhotoPrivacy.Worker" />
   </ItemGroup>
 
   <ItemGroup>

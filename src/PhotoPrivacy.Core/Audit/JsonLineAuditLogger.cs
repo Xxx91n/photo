@@ -1,5 +1,3 @@
-using System.Text.Json;
-using System.Text.Encodings.Web;
 using System.Threading.Channels;
 
 namespace PhotoPrivacy.Core.Audit;
@@ -9,11 +7,6 @@ public sealed class JsonLineAuditLogger : IAuditLogger, IDisposable
     private const long MaxFileSizeBytes = 100 * 1024 * 1024; // 100MB
     private const int RetainedFileCountLimit = 31;
     private const int BatchSize = 64;
-
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        Encoder = JavaScriptEncoder.Create(System.Text.Unicode.UnicodeRanges.All)
-    };
 
     private readonly string _logDirectory;
     private readonly int _retainDays;
@@ -59,20 +52,7 @@ public sealed class JsonLineAuditLogger : IAuditLogger, IDisposable
         if (auditEvent.Level < _minimumWriteLevel)
             return ValueTask.CompletedTask;
 
-        var payload = new
-        {
-            event_type = auditEvent.EventType,
-            level = auditEvent.Level.ToString().ToUpperInvariant(),
-            timestamp_utc = auditEvent.TimestampUtc.ToUniversalTime().ToString("O"),
-            task_id = auditEvent.TaskId,
-            source_path_masked = PathMasker.Mask(auditEvent.SourcePath),
-            source_path_hash = PathMasker.StableHash(auditEvent.SourcePath),
-            message = auditEvent.Message,
-            data = auditEvent.Data,
-            diagnostic_mode = _diagnosticMode
-        };
-
-        var json = JsonSerializer.Serialize(payload, JsonOptions);
+        var json = AuditLineFormatter.Format(auditEvent, _diagnosticMode);
 
         if (_channel.Writer.TryWrite(json))
             return ValueTask.CompletedTask;
