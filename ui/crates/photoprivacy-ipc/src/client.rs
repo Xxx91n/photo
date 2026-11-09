@@ -21,7 +21,7 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(3);
 const CONNECT_RETRY_INTERVAL: Duration = Duration::from_millis(25);
 
 // ------------------------------------------------------------------
-// #7 / CWE-732：IPC 客户端请求掩码（与服务端拆位后的授权用户掩码同值，双端同构）
+// #7 / CWE-732：IPC 客户端请求掩码（与服务端按位去掉 0x4 后的授权用户掩码同值，双端同构）
 // ------------------------------------------------------------------
 
 /// FILE_GENERIC_READ（winnt.h）：READ_DATA|READ_ATTRIBUTES|READ_EA|READ_CONTROL|SYNCHRONIZE。
@@ -29,7 +29,7 @@ const FILE_GENERIC_READ: u32 = 0x0012_0089;
 /// FILE_GENERIC_WRITE（winnt.h）：WRITE_DATA|APPEND_DATA|WRITE_ATTRIBUTES|WRITE_EA|READ_CONTROL|SYNCHRONIZE。
 /// APPEND_DATA(0x4) 与 FILE_CREATE_PIPE_INSTANCE 同值——微软 Named Pipe 文档登记的位碰撞缺陷源。
 const FILE_GENERIC_WRITE: u32 = 0x0012_0116;
-/// FILE_CREATE_PIPE_INSTANCE：仅服务端建例需要；客户端请求掩码必须剥除（#7），否则对拆位后的
+/// FILE_CREATE_PIPE_INSTANCE：仅服务端建例需要；客户端请求掩码必须剥除（#7），否则对按位去掉 0x4 后的
 /// 服务端 DACL 连接被 AccessCheck 整体拒绝（UI 完全连不上服务 Worker）。
 const FILE_CREATE_PIPE_INSTANCE: u32 = 0x0000_0004;
 /// IPC 客户端请求掩码（#7）：FILE_GENERIC_READ|WRITE 剥除 0x4 后的 0x0012019B，与 C# 侧
@@ -427,7 +427,7 @@ fn probe_server_peer(stream: &Stream) -> ServerPeer {
 //
 // 后台管道同用户抢先建由本文件 + verify.rs 解决：连接建立后、首笔业务请求之前
 // 核验服务端进程身份（UI 拉起的 Worker PID 优先、进程镜像路径回退），失败即作废该连接；
-// 服务管道不叠加（命名随机 + 拆位 DACL + HKLM 通告）。
+// 服务管道不叠加（命名随机 + 按位去掉 0x4 的 DACL + HKLM 通告）。
 //
 // 客户端改以细粒度掩码打开（IPC_CLIENT_DESIRED_ACCESS）：tokio 1.54 的 ClientOptions 无
 // desired_access 重载，故自写原生 CreateFileW 再经
@@ -587,7 +587,7 @@ mod tests {
 
     #[test]
     fn client_desired_access_drops_create_pipe_instance_bit() {
-        // 防：客户端掩码带回 0x4 —— 对拆位后的服务端 DACL 连接被整体拒绝
+        // 防：客户端掩码带回 0x4 —— 对按位去掉 0x4 后的服务端 DACL 连接被整体拒绝
         // （UI 完全连不上服务 Worker）；位级值必须与 C# 侧 WindowsServicePipeAcl.ServiceClientAccessMask
         // 同构（FILE_GENERIC_READ|WRITE 去位 = 0x0012019B）。
         assert_eq!(0, IPC_CLIENT_DESIRED_ACCESS & FILE_CREATE_PIPE_INSTANCE);

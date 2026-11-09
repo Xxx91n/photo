@@ -10,7 +10,7 @@ namespace PhotoPrivacy.IntegrationTests.Ipc;
 /// ① 服务模式监听即随机化：有效名 = 基名 + "." + 32 位大写 hex（crypto-random 后缀，名字即地址、
 ///    地址即攻击面——预蹲者无从得知未诞生的名字）；通告器收到的是实际绑定名（先建例后通告的
 ///    端到端证据），绑定结果 <see cref="ServicePipeBindOutcome.RandomizedAdvertised"/>；
-///    随机名上的往返同时覆盖细粒度客户端掩码（0x12019B）对拆位 DACL 的可达性；
+///    随机名上的往返同时覆盖细粒度客户端掩码（0x12019B）对按位去掉 0x4 的 DACL 的可达性；
 /// ② 通告失败回退静态名：有效名 == 传入基名，绑定结果 <see cref="ServicePipeBindOutcome.StaticFallback"/>，
 ///    往返不回归（fail-safe 可用性优先，与 #70 的 SID 缺失回退 CurrentUserOnly 同构）；
 /// ③ 后台模式不随机化：有效名 == 构造名，绑定结果 None——熵只施加于服务管道（后台同用户
@@ -90,7 +90,7 @@ public sealed class ServicePipeNameEntropyTests
                 SuffixPattern.IsMatch(transport.EndpointName[(baseName.Length + 1)..]),
                 $"random suffix must be 32 uppercase hex chars, got: {transport.EndpointName[(baseName.Length + 1)..]}"));
 
-        // 随机名 + 拆位 DACL + 细粒度客户端掩码三者同链路往返（① 的可达性证据）。
+        // 随机名 + 按位去掉 0x4 的 DACL + 细粒度客户端掩码三者同链路往返（① 的可达性证据）。
         await AssertRoundTripAsync(transport);
     }
 
@@ -104,7 +104,7 @@ public sealed class ServicePipeNameEntropyTests
 
         // 通告失败（模拟非 LocalSystem 服务账户/注册表损坏）→ 回退静态名重绑：可用性优先，
         // 防抢占面回到 #7 前（宿主记 warning 观测，见 WorkerIpcServerHostedService），
-        // 拆位后的 DACL 与细粒度客户端路径仍生效。
+        // 按位去掉 0x4 后的 DACL 与细粒度客户端路径仍生效。
         var baseName = NewPipeName();
         var installerSid = WindowsIdentity.GetCurrent().User!.Value;
         await using var transport = new NamedPipeIpcTransport(
