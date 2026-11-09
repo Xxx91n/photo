@@ -12,10 +12,10 @@ namespace PhotoPrivacy.Core.Pipeline;
 /// 都解析到同一个 <c>{backupDir}/IMG_0001.jpg.bak</c>，后写静默覆盖前写）。
 ///
 /// 冲突规则（atomcode 组合方案）：目标槽位存在时——内容相同→跳过（幂等）；
-/// 内容不同→写 <c>名字.时间戳.扩展名</c> 旁路版本；绝不静默覆盖。
+/// 内容不同→另存一份为 <c>名字.时间戳.扩展名</c>；绝不静默覆盖。
 /// 「同文件重处理保留最新」的合法语义由「同槽位+内容相同跳过」承接。
 ///
-/// 边缘兜底：源路径无法归位监控子树时回退「文件名 + 路径短哈希」；
+/// 边缘退路：源路径无法归位监控子树时回退「文件名 + 路径短哈希」；
 /// 防穿越复用与 <see cref="PhotoPrivacy.Core.Watcher.WatchPathFilter"/> 一致的
 /// 组件级边界判定（GetRelativePath + ".." 检测，非裸字符串 startswith）；
 /// 符号链接/ReparsePoint 拒绝；Windows 结尾点/空格/保留名规范化。
@@ -25,7 +25,7 @@ public static class BackupPathResolver
     public const string DefaultBackupDirName = "bak";
 
     /// <summary>
-    /// 兜底子目录名：源路径无法归位监控子树时落此目录，文件名保留原名 + 短哈希。
+    /// 退路子目录名：源路径无法归位监控子树时落此目录，文件名保留原名 + 短哈希。
     /// 对应 atomcode 调研的 "_unsorted / lost+found" 旁路区（Borg "skip-with-warning" 哲学）。
     /// </summary>
     public const string FallbackDirName = "_unsorted";
@@ -93,7 +93,7 @@ public static class BackupPathResolver
     }
 
     /// <summary>
-    /// 旁路版本路径：槽位已存在且内容分歧时写 <c>槽位名.时间戳</c>（在 .bak 后缀之前插入）。
+    /// 另存文件的路径：槽位已存在且内容分歧时写 <c>槽位名.时间戳</c>（在 .bak 后缀之前插入）。
     /// 例：<c>IMG_0001.jpg.20260916-021530.bak</c>。同秒碰撞经 <paramref name="exists"/>
     /// 探测后追加 <c>-N</c> 序号区分。
     /// </summary>
@@ -124,7 +124,7 @@ public static class BackupPathResolver
     }
 
     /// <summary>
-    /// 逐字节内容比对：用于「槽位存在时内容相同→跳过 / 不同→旁路版本」判定。
+    /// 逐字节内容比对：用于「槽位存在时内容相同→跳过 / 不同→另存一份」判定。
     /// </summary>
     public static bool ContentsEqual(string pathA, string pathB)
     {
@@ -164,7 +164,7 @@ public static class BackupPathResolver
         }
         catch
         {
-            // 比对失败按"内容不同"处理——宁可落旁路版本也不冒静默覆盖险。
+            // 比对失败按"内容不同"处理——宁可另存一份也不冒静默覆盖险。
             return false;
         }
     }
@@ -304,7 +304,7 @@ public static class BackupPathResolver
     private static bool IsInvalidFileNameChar(char ch) =>
         ch is '<' or '>' or ':' or '"' or '|' or '?' or '*' || ch < ' ';
 
-    /// <summary>路径短哈希：8 字符十六进制（SHA-256 前 4 字节），用于兜底消歧。</summary>
+    /// <summary>路径短哈希：8 字符十六进制（SHA-256 前 4 字节），用于退路消歧。</summary>
     private static string ShortPathHash(string path)
     {
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(path));

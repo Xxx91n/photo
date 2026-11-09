@@ -3,17 +3,17 @@ using PhotoPrivacy.Ipc;
 namespace PhotoPrivacy.IntegrationTests.Ipc;
 
 /// <summary>
-/// IPC 与部署安全不变量守卫：每条断言都直接对账代码/脚本/配置，改措辞不会让它变红。
+/// IPC 与部署安全检查：每条断言都直接核对代码/脚本/配置，改措辞不会让它失败。
 /// 1) install-systemd-service.sh 的 unit 模板必须钉住 RuntimeDirectoryMode=0750 并提供 GUI 用户组供给；
 /// 1b/1c) launchd/systemd 的 socket 访问组必须独立于数据组，systemd 侧另钉住权限收敛
 ///    （安装目录 0755、config/ 0750、logs/ 2750、审计目录 socket 组 2750、UMask=0027，#188）；
 /// 2) NamedPipeIpcTransport 的 FirstPipeInstance 仅施加于 listen 期首例（#7 拓扑：后台直建/
 ///    服务随机名建例/通告失败回退静态名重绑，恰 3 处；accept 后预建的后续实例不得携带）；
-/// 3) 服务管道通告名登记键的 Rust 读侧与 C# 写侧字面量对账（#7 命名熵的发现通道主缝）。
-/// 4) Linux 背景端点的运行时变量、目录与文件名双端对账（#201）。
-/// 每组守卫都带 negative self-proof：把源码改坏后备守卫必须变红，防止守卫空转。
-/// 原 UiSingleInstance ACL 守卫随旧 Ui 工程退役（#61）；新 UI 单实例管线的 DACL 决策见
-/// ui/crates/photoprivacy-ipc/src/single_instance.rs（Design(#49)），由 cargo test 守护。
+/// 3) 服务管道通告名登记键的 Rust 读侧与 C# 写侧字面量核对（#7 命名熵的发现通道主缝）。
+/// 4) Linux 背景端点的运行时变量、目录与文件名双端核对（#201）。
+/// 每组检查都带 negative self-proof：把源码改坏后检查必须失败，防止检查空转。
+/// 原 UiSingleInstance ACL 检查随旧 Ui 工程退役（#61）；新 UI 单实例管线的 DACL 决策见
+/// ui/crates/photoprivacy-ipc/src/single_instance.rs，由 cargo test 检查。
 /// </summary>
 public sealed class IpcAuthClaimReconciliationTests
 {
@@ -336,7 +336,7 @@ public sealed class IpcAuthClaimReconciliationTests
         Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
     }
 
-    // ---------- 3. 服务管道通告名登记键的 Rust/C# 两侧对账（#7） ----------
+    // ---------- 3. 服务管道通告名登记键的 Rust/C# 两侧核对（#7） ----------
 
     /// <summary>needle 构造与断言同一处，供正向断言与 negative self-proof 共用（本类惯例）。</summary>
     internal static List<string> ClassifyServicePipeAdvertisementRegistryNames(
@@ -362,8 +362,8 @@ public sealed class IpcAuthClaimReconciliationTests
         // 防（#7 审查返修 m-R1）：命名熵闭环押在 C# 写侧（WindowsServicePipeAcl）与 Rust 读侧
         // （endpoints.rs 的 read_advertised_service_pipe_name）的注册表键/值名一致上——漂移形态是
         // UI 静默读不到通告值、永久退回静态名（熵关闭，回到 #7 前攻击面），且无行为测试会红
-        // （Rust 无法引用 C# 常量）。按本类的 source-lint 对账先例钉住两侧字面量；安装脚本侧的
-        // 同类重复自 #70 起即无守卫（既有先例，卸载清三值清单已在 ipc-contract 登记），不扩本票面。
+        // （Rust 无法引用 C# 常量）。按本类的源码文本核对先例钉住两侧字面量；安装脚本侧的
+        // 同类重复自 #70 起即无检查（既有先例，卸载清三值清单已在 ipc-contract 登记），不扩本票面。
         var rust = SourceLint.ReadStripped("ui", "crates", "photoprivacy-ipc", "src", "endpoints.rs");
         var violations = ClassifyServicePipeAdvertisementRegistryNames(
             rust, WindowsServicePipeAcl.RegistrySubKeyName, WindowsServicePipeAcl.AdvertisedServicePipeValueName);
@@ -373,8 +373,8 @@ public sealed class IpcAuthClaimReconciliationTests
     [Fact]
     public void Service_Pipe_Advertisement_Registry_Names_Guard_Negative_Self_Proof()
     {
-        // 失效即红自证（终审 M-F1，本类惯例）：改坏 Rust 源码的键/值名字面量后守卫必须变红，
-        // 防止对账断言随字面量漂移而空转。verbatim 字面量保持与 Rust 源码一致的双反斜杠字节。
+        // 失效即红自我验证（终审 M-F1，本类惯例）：改坏 Rust 源码的键/值名字面量后检查必须变红，
+        // 防止核对断言随字面量漂移而空转。verbatim 字面量保持与 Rust 源码一致的双反斜杠字节。
         var green = SourceLint.ReadStripped("ui", "crates", "photoprivacy-ipc", "src", "endpoints.rs");
         var failing = new (string Source, string Reason)[]
         {
@@ -401,7 +401,7 @@ public sealed class IpcAuthClaimReconciliationTests
         Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
     }
 
-    // ---------- 4. Linux 背景端点 Rust/C# 两侧对账（#201） ----------
+    // ---------- 4. Linux 背景端点 Rust/C# 两侧核对（#201） ----------
 
     internal static List<string> ClassifyLinuxBackgroundEndpointLiterals(
         string strippedRustSource, string directory, string file, string variable)
@@ -442,7 +442,7 @@ public sealed class IpcAuthClaimReconciliationTests
     [Fact]
     public void Linux_Background_Endpoint_Guard_Negative_Self_Proof()
     {
-        // 防（#201）：对账守卫空转；每种契约漂移都必须被识别，且确认变异确实应用。
+        // 防（#201）：核对检查空转；每种契约漂移都必须被识别，且确认变异确实应用。
         var green = SourceLint.ReadStripped("ui", "crates", "photoprivacy-ipc", "src", "endpoints.rs");
         Assert.Empty(ClassifyLinuxBackgroundEndpoint(green));
         foreach (var (before, after) in new[]

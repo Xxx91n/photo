@@ -20,7 +20,7 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
     /// 没有这道闸，两遍拆卸同时读到非 null 的 <c>_process</c> 会各自 Dispose 同一对象，
     /// 第二遍抛 ObjectDisposedException 逃到停机路径变成 Warning 噪声。
     /// StartAsync 重置为 0；拆卸中途失败也复位（rethrow 给调用方留痕，重试不被闸挡死）。
-    /// 同族竞态：ExifToolBridge._stdinGate 的 Dispose/Release（其 gate 所有权已随 #126 收口）。
+    /// 同族竞态：ExifToolBridge._stdinGate 的 Dispose/Release（其 gate 所有权已随 #126 定下来）。
     /// </summary>
     private int _stopGate;
 
@@ -265,9 +265,9 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
             _jobObject = null;
 
             // 5. Clean up remaining resources.
-            // stdin StreamWriter.Dispose 在进程已死时会抛 IOException: Pipe is broken（#37，
-            // ui-smoke.md L 组 L9 段）——停机预期形态，降 Debug 不进停机日志；
-            // 其余异常留 Warning 痕后继续拆卸（停机收尾不阻断，与 StopBridgeAsync 口径一致）。
+            // stdin StreamWriter.Dispose 在进程已死时会抛 IOException: Pipe is broken（#37；
+            // #31 轮 2026-11-04 实机观察，原记录已随 #254 移入 git 历史）——停机预期形态，降 Debug 不进停机日志；
+            // 其余异常留 Warning 后继续拆卸（停机收尾不阻断，与 StopBridgeAsync 同一处理方式）。
             try
             {
                 _stdin?.Dispose();

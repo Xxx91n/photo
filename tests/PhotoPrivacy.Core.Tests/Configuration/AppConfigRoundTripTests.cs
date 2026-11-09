@@ -146,7 +146,7 @@ public sealed class AppConfigRoundTripTests
     }
 
     /// <summary>
-    /// 读侧空白兜底:手工编辑漏填关键字段后,AppConfigLoader 必须回填到 AppConfig.Default
+    /// 读侧空白保底:手工编辑漏填关键字段后,AppConfigLoader 必须回填到 AppConfig.Default
     /// 语义值,而不是传空串到下游路径拼接或主题切换逻辑里.
     /// </summary>
     [Theory]
@@ -188,7 +188,7 @@ public sealed class AppConfigRoundTripTests
         Assert.Equal(AppConfig.Default.SchemaVersion, root.GetProperty("schema_version").GetInt32());
 
         var exiftool = root.GetProperty("exiftool");
-        // Design(#108): 模板不再写死绝对路径——留空表示按运行时探测（优先发布包内置的 ExifTool/），
+        // 模板不再写死绝对路径——留空表示按运行时探测（优先发布包内置的 ExifTool/），
         // 裸机解压即用；用户手填的绝对路径仍然优先，不被覆盖。
         // 关联 issue #108。
         Assert.Equal(string.Empty, exiftool.GetProperty("path").GetString());

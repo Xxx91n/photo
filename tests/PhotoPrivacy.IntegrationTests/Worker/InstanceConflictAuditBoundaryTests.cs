@@ -4,7 +4,7 @@ namespace PhotoPrivacy.IntegrationTests.Worker;
 
 /// <summary>
 /// 行为测试：#127 冲突/让位留痕的「目录创建边界」。
-/// 待机与配置解析路径零副作用（#124 / #153 已核销），只有真正写审计的冲突/让位退出路径允许建目录；
+/// 待机与配置解析路径零副作用（#124 / #153 已逐项确认做完），只有真正写审计的冲突/让位退出路径允许建目录；
 /// 只读 / 不可写安装目录下该创建必须有界降级，且降级本身可读、不静默。
 /// </summary>
 public sealed class InstanceConflictAuditBoundaryTests
@@ -12,7 +12,7 @@ public sealed class InstanceConflictAuditBoundaryTests
     [Fact]
     public async Task Conflict_Audit_Should_Degrade_Readably_When_Audit_Directory_Cannot_Be_Created()
     {
-        // 防的回潮形态：JsonLineAuditLogger 构造里的 Directory.CreateDirectory 在只读安装目录抛出，
+        // 要防的老毛病：JsonLineAuditLogger 构造里的 Directory.CreateDirectory 在只读安装目录抛出，
         // 被外层空 catch 静默吞掉——冲突事实只在 stderr 留一句，留痕为何消失无据可查（#127）。
         var root = NewTempRoot();
         var installRoot = Path.Combine(root, "install");
@@ -54,7 +54,7 @@ public sealed class InstanceConflictAuditBoundaryTests
     [Fact]
     public async Task Single_Writer_Yield_Should_Degrade_Readably_On_Unwritable_Audit_Directory()
     {
-        // 防的回潮形态：#162 让位留痕与重复启动留痕共用写通道，只修一条入口时另一条仍静默失败。
+        // 要防的老毛病：#162 让位留痕与重复启动留痕共用写通道，只修一条入口时另一条仍静默失败。
         var root = NewTempRoot();
         var installRoot = Path.Combine(root, "install");
         Directory.CreateDirectory(installRoot);
@@ -86,7 +86,7 @@ public sealed class InstanceConflictAuditBoundaryTests
     [Fact]
     public async Task Conflict_Audit_Should_Write_When_Audit_Directory_Is_Writable()
     {
-        // 防的回潮形态：把「配置解析期不建目录」误做成「所有路径都不建目录」，
+        // 要防的老毛病：把「配置解析期不建目录」误做成「所有路径都不建目录」，
         // 重复启动退出时冲突留痕彻底消失（非待机写路径仍须建目录并落盘）。
         var root = NewTempRoot();
         var audit = Path.Combine(root, "install", "hot", "_audit");
@@ -114,8 +114,8 @@ public sealed class InstanceConflictAuditBoundaryTests
     [Fact]
     public void Config_Resolution_Should_Stay_Pure_Read_With_Write_Path_Owning_Directory_Creation()
     {
-        // 防的回潮形态：#127 新加的「写路径有界创建」被顺手挪回 LoadConfigFromArgs，
-        // 待机首启重新长出 hot/_audit，把 #124 / #153 已核销的零副作用带回来。
+        // 要防的老毛病：#127 新加的「写路径有界创建」被顺手挪回 LoadConfigFromArgs，
+        // 待机首启重新长出 hot/_audit，把 #124 / #153 已逐项确认做完的零副作用带回来。
         var root = NewTempRoot();
         var hot = Path.Combine(root, "install", "hot");
         var audit = Path.Combine(hot, "_audit");
@@ -139,10 +139,10 @@ public sealed class InstanceConflictAuditBoundaryTests
     [Fact]
     public async Task Conflict_Audit_Should_Degrade_When_Existing_Audit_Directory_Is_Not_Writable()
     {
-        // 防的回潮形态：删掉可写性探针后，「目录已存在但当前账户不可写」不再被识别——
+        // 要防的老毛病：删掉可写性探针后，「目录已存在但当前账户不可写」不再被识别——
         // Directory.CreateDirectory 原样返回，JsonLineAuditLogger 构造不抛，后台落盘静默丢行（#127）。
         // Windows 的目录 ReadOnly 属性不阻止建文件，ACL 改写与 CI 账户耦合，故该分支只在 POSIX 构造
-        // （与 SingleWriterGateTests 的 symlink 用例同口径）；Windows 侧由实机只读目录验收覆盖。
+        // （与 SingleWriterGateTests 的 symlink 用例同一规则）；Windows 侧由实机只读目录验收覆盖。
         if (OperatingSystem.IsWindows())
         {
             return;

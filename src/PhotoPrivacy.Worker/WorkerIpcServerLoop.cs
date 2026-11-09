@@ -16,10 +16,10 @@ namespace PhotoPrivacy.Worker;
 ///    同步调用请求处理）——于是循环体内一旦出现 sync-over-async，整条循环被堵死，
 ///    后续 accept 与 UI 心跳探针全部拿不到服务；
 /// 2) 读走 <see cref="IpcLineReader"/> 缓冲读（原为 <c>new byte[1]</c> 逐字节读）；
-/// 3) 请求处理链抛异常时仍写出 <c>ok:false</c> 兜底响应，且本类日志调用走 best-effort
+/// 3) 请求处理链抛异常时仍写出 <c>ok:false</c> 保底响应，且本类日志调用走 best-effort
 ///    （<see cref="SafeLog"/>）——响应是否送达不得取决于日志 provider 是否健康（#85）。
 ///
-/// 退出前 best-effort 排空在途连接，避免传输释放与在途读写在停机窗口竞争（不变量②）。
+/// 退出前 best-effort 排空在途连接，避免传输释放与在途读写在停机窗口竞争（停机时手上的活不能丢）。
 /// </summary>
 public sealed class WorkerIpcServerLoop
 {
@@ -154,8 +154,7 @@ public sealed class WorkerIpcServerLoop
                 {
                     // 服务模式 EventLog provider 写失败会让 catch 里的 ILogger 再抛、异常逃出本方法，
                     // 响应写入被跳过，客户端只能等到读超时——这正是服务管道 ReloadConfig 挂起的直接机制。
-                    // 因此请求处理链的任何异常都必须仍回一条 ok:false。
-                    // Design(#242): 处理链异常必须仍写出 ok:false 响应；本类日志调用失败只降级不反噬。
+                    // 因此请求处理链的任何异常都必须仍写出 ok:false 响应；本类日志调用失败只降级不反噬。
                     SafeLog.Try(() => _logger.LogWarning(ex, "worker ipc request handling fault"));
                     response = new WorkerIpcResponse(
                         false,

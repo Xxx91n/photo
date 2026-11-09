@@ -155,7 +155,7 @@ public sealed class JsonLineAuditLogger : IAuditLogger, IDisposable
 
     private string ResolveRolloverTarget()
     {
-        // Design(#208): 审计文件名按本地「今天」命名，与 IPC 回填、UI tail 同口径——UTC+8 00:00–07:59 时窗内不再把行写进「昨天」名文件。
+        // 审计文件名按本地「今天」命名，与 IPC 回填、UI tail 同一规则——UTC+8 00:00–07:59 时窗内不再把行写进「昨天」名文件。
         var baseName = AuditLogFileNames.BaseName(DateTime.Now);
         var baseTarget = Path.Combine(_logDirectory, baseName + ".jsonl");
 
@@ -208,7 +208,7 @@ public sealed class JsonLineAuditLogger : IAuditLogger, IDisposable
 
     public void CleanupExpired()
     {
-        // Design(#208): 清理按文件创建时间（UTC 表示）判龄、按 audit-*.jsonl 全局枚举计数，与文件名日期无关。Design(#231): 清理双闸=判龄删除 + 31 文件计数上限（分卷计入）；retain_days<=0 视为不做年龄清理，绝不因退化配置清空审计面（对齐 BackupRetentionService.DeleteExpiredTtl 的 <=0 兜底）。
+        // 清理按文件创建时间（UTC 表示）判龄、按 audit-*.jsonl 全局枚举计数，与文件名日期无关。清理双闸=判龄删除 + 31 文件计数上限（分卷计入）；retain_days<=0 视为不做年龄清理，绝不因退化配置清空审计面（与 BackupRetentionService.DeleteExpiredTtl 的 <=0 保底一致）。
         if (_retainDays > 0)
         {
             var cutoff = DateTime.UtcNow.AddDays(-_retainDays);
@@ -222,7 +222,7 @@ public sealed class JsonLineAuditLogger : IAuditLogger, IDisposable
                     }
                     catch
                     {
-                        // 不变量④ 降级必留痕：单文件被占用/已消失不炸穿清理链，留待下个周期重试，失败以审计事件留痕。
+                        // 降级必须留下记录：单文件被占用/已消失不炸穿清理链，留待下个周期重试，失败以审计事件记录。
                         TraceDeleteFailed(file);
                     }
                 }
@@ -232,7 +232,7 @@ public sealed class JsonLineAuditLogger : IAuditLogger, IDisposable
         EnforceRetainedFileCountLimit();
     }
 
-    // Design(#231): 31 文件计数上限（glob audit-*.jsonl，分卷计入）是磁盘占用保护兜底；到上限后最旧创建时间先删——即使文件仍在 retain_days 窗口内也会被淘汰，属记录在案的静默淘汰。
+    // 31 文件计数上限（glob audit-*.jsonl，分卷计入）是磁盘占用保护的保底；到上限后最旧创建时间先删——即使文件仍在 retain_days 窗口内也会被淘汰，属记录在案的静默淘汰。
     private void EnforceRetainedFileCountLimit()
     {
         var files = Directory.EnumerateFiles(_logDirectory, "audit-*.jsonl")
@@ -248,7 +248,7 @@ public sealed class JsonLineAuditLogger : IAuditLogger, IDisposable
         }
     }
 
-    // 不变量④ 降级必留痕：年龄闸与计数闸共用——删除失败以审计事件留痕（Warn），留待下个清理周期重试。
+    // 降级必须留下记录：年龄闸与计数闸共用——删除失败以审计事件记录（Warn），留待下个清理周期重试。
     private void TraceDeleteFailed(string path)
     {
         WriteAsync(new AuditEvent(

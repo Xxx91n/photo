@@ -63,7 +63,8 @@ pub const MACOS_SERVICE_SOCKET: &str = "/Library/Application Support/photoprivac
 
 // 旧契约 /run/photoprivacy/worker-background.sock 对普通用户是死路：该目录只由 systemd
 // RuntimeDirectory 在服务模式创建（0750 服务用户），普通用户拉起的后台 Worker mkdir 吃
-// EACCES，UI 只见 ENOENT——未安装服务时回落不到后台模式（L 组观察 2）。票内拍板走候选 1
+// EACCES，UI 只见 ENOENT——未安装服务时回落不到后台模式（#31 轮 2026-11-04 实机观察，
+// 原记录已随 #254 移入 git 历史）。票内拍板走候选 1
 // （$XDG_RUNTIME_DIR）；候选 2（tmpfiles.d 预建）需 root 安装落点，「未安装服务」形态下
 // 无从落地，否决。服务端点 /run/photoprivacy/worker.sock 不动（#167/#180/#188）。
 

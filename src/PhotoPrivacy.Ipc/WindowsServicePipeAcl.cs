@@ -44,7 +44,6 @@ public static class WindowsServicePipeAcl
     /// 服务身份（SYSTEM/Administrators）保留 FILE_ALL_ACCESS 含该位，服务自建 2..N 实例
     /// 不受影响（38142f9b 教训保位）。
     /// </summary>
-    // Design(#7): 授权用户掩码剥除 FILE_CREATE_PIPE_INSTANCE（0x4），建例权仅授服务身份；双端客户端同步改为同值细粒度请求掩码。
     public const uint ServiceClientAccessMask = (FileGenericRead | FileGenericWrite) & ~FileCreatePipeInstance;
     internal const uint FileAllAccess = 0x001F01FF;
     private const uint FileGenericRead = 0x00120089;
@@ -91,7 +90,6 @@ public static class WindowsServicePipeAcl
     /// 调用方回退安装者单值路径，不因集合损坏而放宽或收紧任何边界。
     /// 非 Windows、键缺失、值缺失或无合法条目均返回 false。
     /// </summary>
-    // Design(#7): 服务管道授权集合 opt-in——优先 MULTI_SZ 全集（安装者+显式授权用户），无该值回退安装者单值（默认不扩权），非法条目剔除、空集视为缺失；未列入集合的账户仍被拒。残余状态：授权用户可建实例的加固已由 #7 拆位落地；未授权侧提示语义已随 #169 落地（PR #170）——两项均不折算进本决策。
     public static bool TryResolveAllowedSids([NotNullWhen(true)] out IReadOnlyList<string>? allowedSids)
     {
         allowedSids = null;

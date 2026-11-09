@@ -9,12 +9,12 @@ namespace PhotoPrivacy.Worker;
 /// <summary>
 /// Worker IPC 请求处理（从 <c>WorkerIpcServerHostedService</c> 抽出，语义逐字保持）。
 ///
-/// 本票唯一的行为改动：请求处理整体异步化。原 <c>HandleRequest</c> 是同步方法，
+/// 抽出时唯一的行为改动：请求处理整体异步化。原 <c>HandleRequest</c> 是同步方法，
 /// ReloadConfig 分支用 <c>_runtime.ReloadConfigAsync().GetAwaiter().GetResult()</c> 阻塞调用线程；
 /// 它又被 accept 循环同步调用，于是整条循环被堵死数秒（ApplyConfigAsync：停 watcher →
 /// 停 bridge 4s CTS → 重建 → 重启 watcher），而 UI 心跳读超时只有 3s
 /// （WorkerIpcClient.ReadTimeoutMs）→ 一次配置热重载就足以让 UI 误判 Worker 掉线，
-/// 破坏不变量④「驻守可观测」（不允许「看起来在跑实际没在跑」）。
+/// 破坏「不许看着在跑、其实没在跑」这条规矩。
 /// 现在 <see cref="HandleAsync"/> 真 await，并由 <see cref="WorkerIpcServerLoop"/>
 /// 在独立任务中驱动，后续 accept 与心跳探针不再被重载阻塞。
 /// </summary>
@@ -57,12 +57,11 @@ public sealed class WorkerIpcRequestHandler
             return (new WorkerIpcResponse(false, Message: "invalid request", V: ProtocolVersion), false);
         }
 
-        // 会话/启动顺序边界——UI 可能先于 Worker 启动，双方通过请求/响应的 v 字段
-        // 交换协议版本。客户端申报的版本高于服务端所能说话的版本时，按不变量①（fail-closed）
-        // 不执行该方法，回 protocol_version_mismatch 并把服务端 V 带回，供客户端下调重试；
+        // 会话/启动顺序边界——UI 可能先于 Worker 启动，双方通过请求/响应的 v 字段协商版本，不一致时下调对齐。
+        // 客户端申报的版本高于服务端所能说话的版本时，fail-closed：不执行该方法，
+        // 回 protocol_version_mismatch 并把服务端 V 带回，供客户端下调重试——读不懂就明确拒绝，不许悄悄放过；
         // 申报小于等于服务端版本（或干脆不申报 v）时正常处理，响应照常回带服务端 V。
         // 会话版本由客户端取 min(客户端版本, 服务端版本)，与既有 v1 双端完全兼容。
-        // Design(#245): 会话/启动顺序边界——客户端与服务端通过 v 字段协商版本，不一致时下调对齐。
         var clientVersion = request.V;
         if (clientVersion is { } v && v > WorkerIpcProtocol.Version)
         {
@@ -118,7 +117,7 @@ public sealed class WorkerIpcRequestHandler
                     }
 
                     // 真 await。禁止回退为 GetAwaiter().GetResult()/Result/Wait()
-                    // —— 那会把 accept 循环重新堵死（守卫 WorkerIpcSyncOverAsyncGuardTests 锁死此约束）。
+                    // —— 那会把 accept 循环重新堵死（测试 WorkerIpcSyncOverAsyncGuardTests 锁死此约束）。
                     await _runtime.ReloadConfigAsync().ConfigureAwait(false);
                     return (new WorkerIpcResponse(true, Data: BuildStatus(), Id: request.Id, V: ProtocolVersion), false);
                 }
@@ -165,12 +164,11 @@ public sealed class WorkerIpcRequestHandler
 
     /// <summary>
     /// 版本补探（#86）：状态快照仍为 <see cref="ExifToolVersionText.Unknown"/> 时，
-    /// 在后台驱动一次版本解析（未启动则冷启动、已启动则重探冷启动时超时的那次）。
+    /// 在后台驱动一次版本解析（未启动则冷启动、已启动则重探冷启动时超时的那次），状态响应内容与字段语义不变。
     ///
     /// 两道闸：in-flight 门闩保证轮询不叠加启动尝试；最小间隔保证降级态不演变成每秒重试。
     /// 失败只记降级告警，版本继续上报 unknown，下一次到点重试。
     /// </summary>
-    // Design(#241): 版本解析由状态消费者驱动（按需冷启动 + 补探），状态响应内容与字段语义不变。
     private void TriggerExifToolVersionProbe()
     {
         if (Interlocked.CompareExchange(ref _versionProbeInFlight, 1, 0) != 0)
@@ -223,7 +221,7 @@ public sealed class WorkerIpcRequestHandler
     /// Read the tail N lines of today audit JSONL file.
     /// Returns empty array if the log directory or file is missing.
     /// </summary>
-    // Design(#231): 读取只认基础名 audit-<date>.jsonl，分卷 audit-<date>_N.jsonl 的行不返回——记录在案的接受行为，非缺陷；分卷与清理生命周期归 #231（原登记 #41 已关闭）。
+    // 读取只认基础名 audit-<date>.jsonl，分卷 audit-<date>_N.jsonl 的行不返回——这是记录在案的接受行为，非缺陷；分卷文件计入清理端的 31 文件计数上限。
     private string[] ReadRecentAuditLogs(int maxLines)
     {
         try
@@ -234,7 +232,7 @@ public sealed class WorkerIpcRequestHandler
                 return [];
             }
 
-            // Design(#208): IPC 回填按本地「今天」基础名读取，与写入端、UI tail 同口径——统一基准前 UTC+8 00:00–07:59 时窗内写入端落昨天名、读取端找今天名，日志页恒空。
+            // IPC 回填按本地「今天」基础名读取，与写入端、UI tail 同一规则——统一基准前 UTC+8 00:00–07:59 时窗内写入端落昨天名、读取端找今天名，日志页恒空。
             var auditPath = Path.Combine(logDir, AuditLogFileNames.BaseName(DateTime.Today) + ".jsonl");
             if (!File.Exists(auditPath))
             {

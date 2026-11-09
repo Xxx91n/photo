@@ -5,20 +5,20 @@ using PhotoPrivacy.Worker;
 namespace PhotoPrivacy.IntegrationTests.WorkerIpc;
 
 /// <summary>
-/// 行为测试：Worker IPC <c>GetRecentLogs</c> 读取端的外部契约（此前 tests/ 零覆盖，#138 补回归锚点）。
+/// 行为测试：Worker IPC <c>GetRecentLogs</c> 读取端的外部契约（此前 tests/ 零覆盖，#138 补回归参照点）。
 ///
 /// 读取端现行契约（<c>WorkerIpcRequestHandler.ReadRecentAuditLogs</c>，经本套用例钉死）：
 /// ① 只回 Worker 本地「今天」单个基础名文件 <c>audit-&lt;yyyy-MM-dd&gt;.jsonl</c> 的末 ≤50 行，
 ///    按文件内行序原样返回（UI 侧再按时间戳排序，读取端不得自行重排）；
-/// ② 历史日期文件与分卷文件 <c>audit-&lt;date&gt;_N.jsonl</c> 的行不返回——#135 记录的既有口径，
+/// ② 历史日期文件与分卷文件 <c>audit-&lt;date&gt;_N.jsonl</c> 的行不返回——#135 记录的既有规则，
 ///    本套用例固化它，不是把它改成缺陷；
 /// ③ 目录缺失、文件缺失、读取失败一律空数组且 ok:true，不向调用方抛出。
 ///
 /// 日期基准说明：写入端、IPC 回填、UI tail 三处的审计文件名日期基准已随 #129 统一为本地
 /// 「今天」（统一入口 <c>AuditLogFileNames.BaseName</c>，UTC 只保留在行内 <c>timestamp_utc</c>）。
-/// 本套用例按本地日期取样，是统一基准后的契约锚点。注意 CI（ubuntu，本地时区=UTC）上
-/// 本地=UTC，任一端单方面改回 UTC 基准在 CI 可能不触发红灯，时区≠UTC 的实机才会显红——
-/// 三处口径的守卫靠 AuditLogFileNamesTests 与写入端命名用例，不靠 CI 时区巧合。
+/// 本套用例按本地日期取样，是统一基准后的契约参照点。注意 CI（ubuntu，本地时区=UTC）上
+/// 本地=UTC，任一端单方面改回 UTC 基准在 CI 可能不会失败，时区≠UTC 的实机才会显红——
+/// 三处规则的检查靠 AuditLogFileNamesTests 与写入端命名用例，不靠 CI 时区巧合。
 /// </summary>
 public sealed class WorkerIpcGetRecentLogsTests
 {
@@ -36,11 +36,11 @@ public sealed class WorkerIpcGetRecentLogsTests
 
             var response = await GetRecentLogsAsync(logDir);
 
-            // 防回潮形态：读取端从「末 ≤50 行」退化成全量返回（#102 原型实测的日志页回灌风暴
+            // 要防的老毛病：读取端从「末 ≤50 行」退化成全量返回（#102 原型实测的日志页回灌风暴
             // 会随单日行数增长而放大），或为省事按倒序/字典序截断（UI 侧按时间戳排序的输入
             // 前提被破坏，末尾行出现在页面顶部）。本断言钉死：条数 = 50、且等于文件内最后
             // 50 行的原有顺序。
-            // 关联 issue #138（本票固化），#129/#135 的读取端回归锚点。
+            // 关联 issue #138（本票固化），#129/#135 的读取端回归参照点。
             Assert.Equal(lines[^MaxLines..], OkLines(response));
         }
         finally
@@ -60,9 +60,9 @@ public sealed class WorkerIpcGetRecentLogsTests
 
             var response = await GetRecentLogsAsync(logDir);
 
-            // 防回潮形态：未超限时读取端做去重/重排/补齐（例如按解析时间戳重排）——行序是
+            // 要防的老毛病：未超限时读取端做去重/重排/补齐（例如按解析时间戳重排）——行序是
             // UI 排序的输入，被动过手脚后「文件内行序返回」的契约静默失效。
-            // 关联 issue #138（本票固化），#129/#135 的读取端回归锚点。
+            // 关联 issue #138（本票固化），#129/#135 的读取端回归参照点。
             Assert.Equal(lines, OkLines(response));
         }
         finally
@@ -87,10 +87,10 @@ public sealed class WorkerIpcGetRecentLogsTests
 
             var response = await GetRecentLogsAsync(logDir);
 
-            // 防回潮形态：读取端把「单文件 tail」扩成「枚举 audit-*.jsonl 聚合」——历史日期
+            // 要防的老毛病：读取端把「单文件 tail」扩成「枚举 audit-*.jsonl 聚合」——历史日期
             // 行混进回灌，UI 日志页出现陈旧条目；同时钉死返回范围只含今天文件。日期基准
-            // 已随 #129 统一为本地「今天」（写入端同口径），任一端单方面改回 UTC 都会让
-            // 本锚点失配——时区≠UTC 的实机上显红，CI（UTC）上可能保持绿（见文件头说明）。
+            // 已随 #129 统一为本地「今天」（写入端同一规则），任一端单方面改回 UTC 都会让
+            // 本参照点失配——时区≠UTC 的实机上显红，CI（UTC）上可能保持绿（见文件头说明）。
             // 关联 issue #129、#135。
             Assert.Equal(today, OkLines(response));
         }
@@ -114,7 +114,7 @@ public sealed class WorkerIpcGetRecentLogsTests
 
             var response = await GetRecentLogsAsync(logDir);
 
-            // 防回潮形态：今天文件缺失时回退读最近的历史文件——这正是 #129 A 组实机形态
+            // 要防的老毛病：今天文件缺失时回退读最近的历史文件——这正是 #129 A 组实机形态
             // （写入端落昨天名、读取端找今天名）被「顺手兼容」后的静默错配：看起来恢复了
             // 回灌，实际读的是错位一天的数据，三处日期基准的分叉被掩盖而不是被修复。
             // 关联 issue #129。
@@ -144,9 +144,9 @@ public sealed class WorkerIpcGetRecentLogsTests
 
             var response = await GetRecentLogsAsync(logDir);
 
-            // 防回潮形态：读取端把文件匹配从基础名扩到 _N 分卷（或枚举 audit-*.jsonl）——
+            // 要防的老毛病：读取端把文件匹配从基础名扩到 _N 分卷（或枚举 audit-*.jsonl）——
             // 分卷行与基础名行重复/乱序回灌 UI。分卷行不经 GetRecentLogs 可见是 #135 记录的
-            // 既有口径，是否改由 #135 裁决；本锚点让任何「顺手修」显式变红。
+            // 既有规则，是否改由 #135 裁决；本参照点让任何「顺手修」显式变红。
             // 关联 issue #135。
             Assert.Equal(today, OkLines(response));
         }
@@ -165,10 +165,10 @@ public sealed class WorkerIpcGetRecentLogsTests
 
         var response = await GetRecentLogsAsync(missingDir);
 
-        // 防回潮形态：目录缺失分支被改成 DirectoryNotFoundException 上抛——一次目录缺失
+        // 要防的老毛病：目录缺失分支被改成 DirectoryNotFoundException 上抛——一次目录缺失
         // 就把 IPC 循环带崩或让 UI 日志轮询报错；#124 落地的待机零目录副作用形态也落在
         // 这条路径上。
-        // 关联 issue #138（本票固化），#129/#135 的读取端回归锚点。
+        // 关联 issue #138（本票固化），#129/#135 的读取端回归参照点。
         Assert.Empty(OkLines(response));
     }
 
@@ -181,9 +181,9 @@ public sealed class WorkerIpcGetRecentLogsTests
             // 目录在、今天文件不在：Worker 刚换审计目录或当日尚无写入时的常规形态。
             var response = await GetRecentLogsAsync(logDir);
 
-            // 防回潮形态：文件缺失分支被 FileNotFoundException 上抛或改读目录里"最新的
-            // 其他文件"兜底——前者炸 IPC，后者与「只回今天文件」的契约冲突。
-            // 关联 issue #138（本票固化），#129/#135 的读取端回归锚点。
+            // 要防的老毛病：文件缺失分支被 FileNotFoundException 上抛或改读目录里"最新的
+            // 其他文件"保底——前者炸 IPC，后者与「只回今天文件」的契约冲突。
+            // 关联 issue #138（本票固化），#129/#135 的读取端回归参照点。
             Assert.Empty(OkLines(response));
 
             // 正向对照（R2「失效即红」自检）：同一目录补上今天文件后同一路径必须回行——
@@ -201,12 +201,12 @@ public sealed class WorkerIpcGetRecentLogsTests
     [Fact]
     public async Task Handle_Should_Return_Empty_When_Audit_Log_Directory_Is_Not_Set()
     {
-        // AuditLogDirectory 为 null：运行时未提供审计目录（待机/回落前形态）时的守卫分支。
+        // AuditLogDirectory 为 null：运行时未提供审计目录（待机/回落前形态）时的检查分支。
         var response = await GetRecentLogsAsync(logDirectory: null);
 
-        // 防回潮形态：null/空目录守卫被去掉——Path.Combine(null, ...) 抛 ArgumentNullException
+        // 要防的老毛病：null/空目录检查被去掉——Path.Combine(null, ...) 抛 ArgumentNullException
         // 或把 "" 拼成相对路径在进程工作目录下乱找文件。
-        // 关联 issue #138（本票固化），#129/#135 的读取端回归锚点。
+        // 关联 issue #138（本票固化），#129/#135 的读取端回归参照点。
         Assert.Empty(OkLines(response));
     }
 
@@ -224,10 +224,10 @@ public sealed class WorkerIpcGetRecentLogsTests
             {
                 var response = await GetRecentLogsAsync(logDir);
 
-                // 防回潮形态：catch-all 被移除或改为上抛——杀软扫描、备份工具持句柄这类
+                // 要防的老毛病：catch-all 被移除或改为上抛——杀软扫描、备份工具持句柄这类
                 // 一次瞬时读取失败就让 IPC 循环崩掉/客户端收到异常；同族约束见 #85
                 // （日志失败不得吃掉回包）。固化「读取失败降级为空数组」的既有行为。
-                // 关联 issue #138（本票固化），#129/#135 的读取端回归锚点。
+                // 关联 issue #138（本票固化），#129/#135 的读取端回归参照点。
                 Assert.Empty(OkLines(response));
             }
         }

@@ -9,7 +9,7 @@ public sealed class SingleWriterGateYieldSmokeTests : IntegrationTestBase
     /// #162 进程级冒烟：同 config 跨模式（服务 owner + 后台 contender）并存时，后启动者必须在准入门
     /// 让位——干净退出（exit 1）、stderr 有 yielding 提示、审计留痕 instance_conflict/reason=single_writer_gate，
     /// 而不是炸成 store 句柄冲突的 IOException。owner 必须用 --mode service：两个 background 会先撞
-    /// 按模式分的实例守卫（Global\PhotoPrivacyWorker_Background），到不了门（CodeRabbit #163 指正）。
+    /// 按模式分的单实例检查（Global\PhotoPrivacyWorker_Background），到不了门（CodeRabbit #163 指正）。
     /// CI 不跑 Smoke；Windows 实机复测归票面 AC。
     /// </summary>
     [Fact]
