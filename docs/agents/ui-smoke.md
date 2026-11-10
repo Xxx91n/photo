@@ -22,7 +22,7 @@
   是否算数由用户裁定。
 - **macOS 提权按钮**：按 #32 裁定接受为残留（CLI 等价命令已验证）。
 - **未知态的超时变体没有实机帧（#206）**：#206 轮诱发的是 spawn 失败分支；超时、无权限
-  两变体与它共用同一处 Unknown 赋值和同一呈现（`windows.rs` 探针三分支）。无权限变体有 CI 守护
+  两变体与它共用同一处 Unknown 赋值和同一呈现（`windows.rs` 探针三分支）。无权限变体有 CI 测试
   `sc_query_access_denied_is_unknown_not_uninstalled`，按钮 fail-closed 有
   `unknown_is_fail_closed_for_buttons`；超时变体无专设单测，判第 9 项时别把本轮帧当成它的证据。
 - **Windows 验证机的 UAC 同意框只能人点（#30）**：consent.exe 以 SYSTEM 完整性跑，UAC 框按设计
