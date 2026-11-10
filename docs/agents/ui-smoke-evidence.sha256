@@ -44,10 +44,11 @@
 #   PhotoPrivacyCleaner；改用 New-Service 之后变成 PhotoPrivacy Cleaner，和 Core
 #   分支一样了。票面验的是 binPath / AUTO_START / LocalSystem，不验显示名，
 #   这处差异列进交付说明，不藏着。
-#   本机两种运行时复跑都过了。远端 CI 那边：windows-service-verify.yml 的
-#   pull_request 路径确实列了这两个脚本，PR 里会触发；但那个 job 四步全写
-#   `shell: pwsh`（Core），跑不到 5.1 那条分支，5.1 修没修好靠本机复跑证明。
-#   本票没推送、没建 PR，远端那次要等推送后才跑。
+#   本机两种运行时复跑都过了。推送建 PR 之后远端已经复跑过（PR #273 的 checks
+#   全绿）：CI、Windows 服务验证、Coverage 都通过；Windows 服务验证那一次跑的就是
+#   这份脚本，结论行同样是 PASS=21 FAIL=0。要留意那个 job 四步全写
+#   `shell: pwsh`（Core），跑不到 5.1 那条分支——5.1 修没修好靠上面本机复跑证明，
+#   远端 CI 只保证 Core 没坏。具体 run id 见 PR #273 的评论（写在这里会随下次推送过期）。
 # 授权：票面标签是 ready-for-human。用户 2026-11-10 在本票窗口明确批准由 agent 走桌面
 #   截图通道代跑（原话「你来做，你可以识别屏幕，产物用CI出」），并批准在这台机器上
 #   装/卸 PhotoPrivacyCleaner 服务。票面标签和验收标准都没改，跟 #88 / #125 / #156
