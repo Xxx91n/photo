@@ -280,7 +280,7 @@ fi
 
 # ---------- 6. 日志和审计同会话 ----------
 AUDIT_TS="$(sed -n 's/.*"timestamp_utc":"\([^"]*\)".*/\1/p' "$AUDIT_HIT" | head -n 1)"
-WORKER_LOG="$(sudo ls -t "$INSTALL_DIR"/logs/worker-*.log 2>/dev/null | head -n 1 || true)"
+WORKER_LOG="$(sudo sh -c 'ls -t /opt/photoprivacy/logs/worker-*.log 2>/dev/null | head -n 1')"
 WORKER_START=""
 if [[ -n "$WORKER_LOG" ]]; then
   WORKER_START="$(sudo grep -h 'Application started' "$WORKER_LOG" | tail -n 1 | awk '{print $1" "$2}')"
