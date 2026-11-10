@@ -10,7 +10,7 @@
 # 核对方法（Git Bash）：
 #   cd /c/Users/Administrator/photo-smoke-30/evidence
 #   sha256sum -c /c/photo-t30/docs/agents/ui-smoke-evidence.sha256
-# 输出里 11 条 "improperly formatted" 都是空行，不是失败；40 行的 `<hash>  <file>: OK`
+# 输出里 11 条 "improperly formatted" 都是空行，不是失败；41 行的 `<hash>  <file>: OK`
 # 才是结论（全部 OK 退出码才是 0）。目录删了就只剩哈希，内容没法再看——这个缺口跟前几轮一样，大家已经认了。
 # 下面逐条写清楚每个文件是什么、哪一刻、哪条通道留的。
 #
@@ -54,8 +54,8 @@
 #   `STATE : 4 RUNNING`、sc qc `START_TYPE : 2 AUTO_START`、`SERVICE_START_NAME : LocalSystem`、
 #   binPath 指向包内 Worker + `--mode service --config`（b1-sc-query-qc-after.txt）；
 #   Worker 在 Session 0（b1-worker-session0.txt，PID 6316）。
-#   第一次装失败留了当时的命令头（b1-install-attempt1-failed.txt，14:54，里面只有那行命令，
-#   报错正文当时没落盘）：界面拉起的后台 Worker 占着同一份审计目录，服务 Worker 撞单写者门
+#   第一次装失败留的是当时的时间+通道注释头（b1-install-attempt1-failed.txt，14:54，里面只有那一行
+#   注释，输出正文当时没落盘）：界面拉起的后台 Worker 占着同一份审计目录，服务 Worker 撞单写者门
 #   让位退出（#162 形态，Service 日志里那句 "held by another worker; yielding" 在
 #   C:\ProgramData\PhotoPrivacy\logs\worker-20261110.log 14:54:19 那条）；先结束那个后台 Worker
 #   再装就成。验启停前先结束后台 Worker 这条前置，ui-smoke 服务模式节原本就写着。
@@ -66,7 +66,7 @@
 #   通道说明：装/卸走脚本通道（登记 ServicePipeInstallerSid），跟块 2 的界面按钮通道分开算，没混。
 # 块 1-3 生命周期 harness（补充证据，不在票面硬性要求里）：通过（2026-11-10 14:59–15:00）
 #   verify-harness/ + b1-verify-console.txt：仓库 scripts/verify-windows-service.ps1 当天跑了三遍，
-#   每遍 `CONCLUSION: PASS=21 FAIL=0`；收下的目录是最后一遍的（每遍覆盖同一目录），最后一遍
+#   前两遍没留档（控制台编码弄坏过一次退出码行）；收下的是最后一遍：`CONCLUSION: PASS=21 FAIL=0`、
 #   `HARNESS_EXIT=0`。含 SCM 注册、Running、Session 0 Worker、管道 Ping、停启循环、卸载、
 #   注册表清理、无孤儿进程、缺服务卸载回归。该脚本自带装/卸，跑完自己清干净。
 #   一处小毛病如实说：这一轮收下的 verify-harness/00-env.txt 是坏的（whoami 走了 Git Bash 的
@@ -79,16 +79,20 @@
 #   explorer 实测 `elevated=0 elevationType=3 integrityRID=8192`（b2-41-token-check-session.txt），
 #   说明登录时 FilterAdministratorToken=1 生效了。之后再去读注册表，这个值已经是 0——镜像的
 #   启动流程在登录之后把它压回去（18:23 那轮同样如此），当轮会话的令牌不受影响。被测 UI 是
-#   explorer 的子进程，启动后实测同一个令牌形态（那行只在窗口日志里，没单独落盘，如实说明）。
+#   explorer 的子进程，同一会话里重拉一次留了令牌帧：`elevated=0 elevationType=3
+#   integrityRID=8192`（b2-43-token-check-ui.txt，00:42 补拍；那次只验证令牌，没重新装服务）。
 #   b2-29-service-page-pre.png：非提权界面停在服务页「未安装」。
-#   点「安装」→ consent.exe 弹出同意框（Windows PowerShell，是/否按钮）。同意框的整屏帧共三个：
-#   b2-30-consent-cancel-branch.png（取消分支那一次）、b2-31-consent-success-1.png 和
-#   b2-32-consent-success-2.png（成功分支的两次：先登记安装者 SID，再 sc create）。
+#   点「安装」→ consent.exe 弹出同意框。同意框的整屏帧共三个：
+#   b2-30-consent-cancel-branch.png（取消分支那一次，00:18 弹出，Windows PowerShell）、
+#   b2-31-consent-success-1.png（成功分支第一次，Windows PowerShell，登记安装者 SID）和
+#   b2-32-consent-success-2.png（成功分支第二次，标题是「服务控制管理器配置工具」，即 sc.exe 建服务）。
+#   b2-26-set-uac-policy.inf 是入库时从当时实际用的 set-uac-policy-cpba4.inf 复制过来的副本
+#   （文件 mtime 是复制时间 00:29，内容就是那四个值）。
 #   同意框为什么用户点：consent.exe 以 SYSTEM 完整性运行，UAC 框本身按设计拒绝程序输入
 #   （UIPI），agent 的点击进不去，只能人点。值 2 时同意框还会落到安全桌面（20:03 那次探测
 #   b2-probe-uac-desktop.txt：consent 在场、整屏截图「句柄无效」）；值 4 时它渲染在普通桌面，
 #   能截到帧——上面三张框帧就是这么来的。点击由用户执行，用户已在窗口内批准这种分工。
-# 块 2-2 取消分支：通过（2026-11-11 00:25–00:26）
+# 块 2-2 取消分支：通过（同意框 00:18 弹出、00:25 点「否」、00:26 出结果）
 #   用户点「否」→ b2-34-cancel-banner.png：琥珀色「已取消」横幅（不是红字「失败」），正文是
 #   `Unable to register the service pipe ACL for the installing user (elevation was cancelled);
 #   the service was not installed`；状态行保持「未安装」，按钮组没翻转。
@@ -155,7 +159,7 @@ fc7de1f850002b44df5342ef856843eb360267e04cc85897bae5de312bf48b0a  verify-harness
 f5c8b6d52d0519971ce2ad5389e3d4abb6f5eee44759cd2bf4122138b4824227  verify-harness/07-uninstall-absent.txt
 963c2459f7fe3113a481de678540ef3fd727058a98e03476a00f4c62d9088cfc  verify-harness/summary.txt
 
-# ---- 块 2：UAC 同意框帧 + 两分支结果（12 个文件）----
+# ---- 块 2：UAC 同意框帧 + 两分支结果（13 个文件）----
 
 8b2a80fec7843a1b24c18dd3a654fddd40af0a665655e0e93d441265edea8043  b2-29-service-page-pre.png
 a62f8e0dc8cf24cf4a77094f8e5cb0623c7a74a488e427195f53b0f6b94b1375  b2-30-consent-cancel-branch.png
@@ -168,6 +172,7 @@ bbb5f789945edb2992662a83d7b020d1031407f2bc1d0fa5a0a2d4c8ba7cfc5a  b2-35-no-repea
 be28276253616fa5696367f3ba5afc3102a71d070417a94dd5f93af0ee32dd98  b2-37-sc-after-ui-install.txt
 abe33b5b490f400bb80fccad0c3d6aff9103a22d457df80973c8473533aba441  b2-40-consent-capture-log.txt
 317619258bd26595a1457fcf5a0aac6a39f1e8f2456d0cc7b952642e7644a018  b2-probe-uac-desktop.txt
+8e66ff88ab3e3470b83ecc9c43f3d9010727ffd34f930aae0d009dbcc99c1777  b2-43-token-check-ui.txt
 cf4a9935da1ea7449c890a23af7e8c459f36bc97c652ad74badf82244cc11f18  b2-03-abandoned-credential-route.png
 
 # ---- 本票同一轮里做废的前两次尝试留下的收尾记录（3 个文件；没单独入过库，留在这里备查）----
