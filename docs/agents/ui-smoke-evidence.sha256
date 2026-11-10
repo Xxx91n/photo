@@ -6,7 +6,8 @@
 # 环境：WSL2，MATE 1.26.1 + GDK_BACKEND=x11 + WSLg/Xephyr 1360x900。
 # MATE/X11：四个同意、四个取消均由 agent 操作并目检通过。
 # 生命周期：lifecycle PASS52 FAIL0 exit0；账号清理完成。
-# 30-install-cancel-* 是 LXDE 取消显示 Failed 的未修复对照，不算 MATE/X11 通过项，不声称所有代理通过。
+# 30-install-cancel-* 是 LXDE 取消显示 Failed 的失败记录（未修复），不算 MATE/X11 通过项，
+# 不声称所有代理通过。
 # 早期失败尝试（10/20/30/31/40/50）、准备与收尾（55/60/61）、诊断日志都在清单内；
 # review-* 是目检用裁图，原始整屏都在；其余限制见 ui-smoke.md #4。
 # 共 157 个文件；前 112 条按路径排序，末尾 45 条是补录，顺序不作保证。
@@ -154,7 +155,7 @@ e74f8b4abe2eb2829f1669934f1b029fba9c8f0c5603f973a28841b6f3881707  diagnostic-mat
 f883644c3d426731a03a412fd10bf73eb97fb9a71b1c708a2bbcddb92fb969c0  diagnostic-native-gnome-photoprivacy-ui.log
 68e9f2ad0e782bfff281931e3eebf41d98b28a4e3a74d7ca9f82fea5205853a5  diagnostic-native-gnome-polkit-agent.log
 0d31ee1117dcd1cc365129587aeb71d822053333c7e986ded1e01b99995423b2  diagnostic-native-gnome-xephyr.log
-4633236e2e6d9289dcf020e8483d52c98e52f4e104f53fa8ae1a687d3e1565d3  lifecycle-scripts.json
+0bcd906d2a30a57aedb06898f8a7f0f26fb862270cdc2106d06b2a58d2ad3bec  lifecycle-scripts.json
 6f748c3cd02a858c087697c3afac639205c62b7b206558bd40d1bcbd98165a5c  openbox.log
 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  photoprivacy-ui.log
 6319c5d118d462516aa9338698367524af5466edaf3a16dfb0f787307c7b76ce  polkit-agent.log
