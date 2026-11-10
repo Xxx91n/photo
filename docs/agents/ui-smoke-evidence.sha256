@@ -108,3 +108,54 @@ c320c0b6d599cdb0576955f72c225fc2af34408536af1868194ec81737530703  S7-01-uninstal
 b108ef92288b640140fccc21bb0e3fba49db5c3d726e48682521eb7c021c1bf0  S7-02-uninstalled-ui.png
 d6f891aa5c3527e71ceb328162f2eceae45579ea27c990f38f60bcbce3508201  S7-after-uninstall.txt
 708b65e75327b6424b2514968046ab4117226198fa160ffdcde1c4a34a4e2aec  S-final-cleanup.txt
+# ─── L2 组实机证据 SHA256 清单 — #2 Linux systemd ExifTool+UDS 全链路（2026-11-10，Linux 实机：Ubuntu CVM）───
+#
+# 产物：Release run 42674901152 / ref main / head 2b2fceb / version 0.0.0-verify3 的
+# release-linux-x64 artifact（linux-x64 job success；本地零编译，产物经 gh run download 取回）。
+# 实机 = 腾讯云 Ubuntu CVM（systemd 259 为 PID 1，perl 5.40.1 在位，GUI 用户 ubuntu）。
+# 通道：sudo ./scripts/verify-systemd-service.sh --release-dir <产物> --evidence-dir <目录>，
+# 最终一轮 PASS=52 FAIL=0（安装→注册→常驻→日志→socket/权限组边界→停止/启动→卸载→清理全过）。
+# 丢照片清洗：带 EXIF（Artist/Model/GPS）的 sample.jpg 投入 hot 目录 → 元数据清空、
+# 原件进 bak/sample.jpg.bak（元数据保留）、审计出 file_processing_succeeded 条目（L2-97）。
+# 环境备注：验证机 /usr/bin/test 为 coreutils-from-uutils（uutils 版 test -r 不认补充组，
+# 首轮 2 个 FAIL 系该缺陷误报；bash 内建 test 与实际 cat 读取均通过，末轮全绿）。
+# UI 按钮交互（第 3/4/8 项）：Xvfb 虚拟显示 + xdotool 模拟点击安装/停止/启动/卸载按钮，
+# 每步截图留证；polkit 免交互规则让 pkexec 无密码通过。
+# 第 9 项（日志页审计条目）：UI 打开日志页，丢照片触发清洗，截图确认日志页渲染了服务审计条目。
+# 图片与文本取证不入库，只存于验证机目录 /home/ubuntu/photo-verify/evidence/（32 个文件）。
+#
+# 校验（验证机 bash，从证据目录开始）：
+#   cd /home/ubuntu/photo-verify/evidence && grep -E '^[0-9a-f]{64}  L2-' <仓库>/docs/agents/ui-smoke-evidence.sha256 | sha256sum -c -
+# 期望：32 行全部 ': OK'、退出码 0。
+2b8b24c6f898a59f2fc535fc7d48cb14b49caacf8c999e1fd7ff97de3823f78c  L2-00-env.txt
+fb02db08918a0ec6a2e4e5f407fb23d047ca496115f9ed302bd2fc803ffa0057  L2-00-negative-gui-user-empty.txt
+5ee70525087e6d347df89def66ed6973314dc9490f5a08c9fca5947039ffe502  L2-00-negative-socket-group-empty.txt
+0ea840d53b841c255f1685f418e23327b6bf6b0431a4b3b81c2dc8c17569991b  L2-00-negative-socket-group-same.txt
+def7ee0c588b26792000de3b5a9642a171ddb9af40e1304a160306e8891572e7  L2-01-staging.txt
+5f7fa558e6594ae5fc249edda3e534b72d37493a41d5753a7428b0b031162bb5  L2-02-install.txt
+2fe609f2c080efaaf13d41b740900d2a46131692b14dbb16a0f8204863def5b9  L2-03-systemctl-after-install.txt
+8364d4092b48a315a538837b32b1c7f66774a7a80b4121ba944e517c3a679f36  L2-04-restart.txt
+350d6833a83f1d1b78e368cebcb67f8370b7d3c55f0c5c0bc31c531f97f792b4  L2-05-logs.txt
+7b0df7d0d140d3371b8e3833daa181d67d39f2ec8b0a09231da195e55a3b6555  L2-06-socket.txt
+a4122dac810ecca87b563825b7ea5cdc5089e7c3e3ab15bff4f614d8cae8a1af  L2-07-stop.txt
+a4122dac810ecca87b563825b7ea5cdc5089e7c3e3ab15bff4f614d8cae8a1af  L2-08-start.txt
+a4122dac810ecca87b563825b7ea5cdc5089e7c3e3ab15bff4f614d8cae8a1af  L2-09-uninstall.txt
+7ecd074f57ef2bbafd269f1ef9d590a446294fa3dbb0831793b066c155fcb4a2  L2-10-final.txt
+1ababccc1fdc53952c75e3ff607184338e883f1d199b815e62ddb18ac93988c0  L2-97-photo-clean-evidence.txt
+04fc75a86010fe6a025753577f9b9d481a82aa9e67e402475e962e7352397198  L2-summary.txt
+df1f6df29c4ba145a2f05273af8d44eae8a3826ff019bcb24e94c16a1b4a5501  L2-ui-probe-pre-install.json
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  L2-ui-probe-pre-install.txt
+7a8100844305dbd947ec81925babfe8121f02a2fe36f29f5b714931dcd848324  L2-ui-probe-running.json
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  L2-ui-probe-running.txt
+ed4eecb4388e445f7eaaa4bfcda7aaaf0b2b8aa676431335c9a2637657de54cf  L2-ui-probe-stopped.json
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  L2-ui-probe-stopped.txt
+df1f6df29c4ba145a2f05273af8d44eae8a3826ff019bcb24e94c16a1b4a5501  L2-ui-probe-uninstalled.json
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  L2-ui-probe-uninstalled.txt
+dffd24905db99b54ab9789265f418b0f70ae1df637ff08f5b89a42bea1827f95  L2-12-ui-before-install.png
+422f8d2ddd2a8c2160c983493864d452e3c773ee7d66b639351d1cb3e6902f73  L2-13-ui-after-install.png
+9930a4201366e7fd9c6780172793e1b27996d4e17048c5c9e0fbb3aeb136f28b  L2-14-ui-stopped.png
+ae09243b04387ee860b66aa34ad248e5a6ad43f94de69fd080508fd12e58816e  L2-15-ui-after-start.png
+8906c07ea8a1d1b475dd36ce5417a589f5e922b4744445a2e86d5e776e0a7575  L2-16-ui-after-uninstall.png
+4d02fad8769995ed7e8d82b230322d6e56b8d199d543eed0f88b1d990b284004  L2-17-ui-button-evidence.txt
+2fc540889788676ce1bd08b168334b2bd6c1e5803b75e48821b68436a3be0599  L2-18-ui-logs-page.png
+5153f8937e53d540087a14cc2770b9d5f8f3a1ec7897b4e46a45b925f8e8c96d  L2-19-ui-logs-evidence.txt
