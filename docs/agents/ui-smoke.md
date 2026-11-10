@@ -17,9 +17,8 @@
   不判字形质量，不据此记失败。升级 gpui 的 Windows 文本系统版本后先复验 ar 帧，再考虑撤销本条。
 - **停服务时的 `Pipe is broken` 噪声（#37）**：ExifTool 已死时停机拆 stdin 会抛这个 IO 异常，
   属预期，代码已降 Debug；真实失败看其他异常或退出码非 0。
-- **Linux 提权弹窗未实测**：UI 安装/启停命令本身走 pkexec 实测过，但交互式 polkit 认证弹窗
-  没覆盖过（验证机配置了免交互规则）。要补真弹窗得有带 polkit 认证代理的 Linux 桌面，
-  是否算数由用户裁定。
+- **Linux 提权弹窗**：#4 已在 WSL2 + MATE 认证代理的 X11 桌面验过四种操作的同意/取消分支，
+  详见下方本轮记录；不能推广为所有认证代理都通过。LXDE `lxpolkit` 的取消分支仍显示失败，未修复。
 - **macOS 提权按钮**：按 #32 裁定接受为残留（CLI 等价命令已验证）。
 - **Windows 验证机的 UAC 同意框只能人点（#30）**：consent.exe 以 SYSTEM 完整性跑，UAC 框按设计
   拒绝程序输入（UIPI），agent 点不进去。`ConsentPromptBehaviorAdmin=2` 时框还落在安全桌面，
@@ -165,6 +164,54 @@ macOS 侧的服务页探测项（S1/S3/S6/S7 等）不以人工读屏为准，�
 
 WSLg 环境备注：gpui 的 Wayland 后端不出窗，清空 `WAYLAND_DISPLAY` 强制 X11 后端；
 WSL VM 空闲约 8 s 会回收，验证期间用常驻进程保活。
+
+#### #4 本轮提权弹窗验证（2026-11-11，WSL2 GUI）
+
+用户指定由 agent 在 WSL2 GUI 操作、查看截图，不由用户代点。首次验证，非 PR 返修；
+起始基准固定为 `0453da224a0145789b80bb8a29d812bd39cb1473`，独立分支 `verify/4-wsl2-polkit`。
+前置服务页代码和 Linux 生命周期证据已分别由 #74、#272 合入此基线；本轮不核销 #206 的 Windows 项。
+
+- **产物**：Release run `42767568814` 的 `release-linux-x64`，head
+  `d1e30d8a52566609330eb32e70b4348d0ffcb2af`，版本 `0.1.0-preview`。此 head 到起始基准的
+  `ui/`、`src/`、`config/`、发布脚本、Linux 安装/验证脚本无差异。只下载远端产物，本机未编译。
+- **桌面**：Ubuntu WSL2 + WSLg，Xephyr 展示独立的 1360×900 X11 桌面，Openbox 管窗口；
+  MATE polkit `1.26.1-4build3`，`GDK_BACKEND=x11`。这是实际显示的桌面，不是 Xvfb 或伪造认证框。
+  点击由 `xdotool` 发给真实按钮，`scrot` 保存整屏；agent 查看全部结果帧和八张弹窗的汇总图。
+- **身份与权限**：临时账号 `pp4verify` 需要密码认证；旧账号的免认证规则未修改，也不适用于它。
+  UI 的实际 UID/EUID 为 1002，`CapEff=0`；`polkit-journal.log` 记录了真实认证及一次性授权。
+- **运行库**：发布 UI 需要 GLIBC 2.43，WSL 原库为 2.39。仅在测试进程的私有挂载空间中使用
+  已校验的 Ubuntu `libc6 2.43-2ubuntu2`；UI、Worker、安装脚本均未改动，系统库仍为 2.39。
+  认证代理使用系统原库。生命周期探针也在同样的私有运行库环境运行。
+
+| 操作 | 同意后的结果 | 取消后的结果 | 证据前缀（同意 / 取消） |
+|---|---|---|---|
+| 安装 | 通过：`Success`，服务 active/enabled，PID 4077 | 通过：`Cancelled`，仍未安装 | `59-install-approve` / `58-install-cancel` |
+| 启动 | 通过：`Success`，服务 active，新 PID 3641 | 通过：`Cancelled`，仍已停止 | `54-start-approve` / `53-start-cancel` |
+| 停止 | 通过：`Success`，服务 inactive，PID 0 | 通过：`Cancelled`，仍运行，PID 2680 不变 | `52-stop-approve` / `51-stop-cancel` |
+| 卸载 | 通过：`Success`，unit 删除、未安装 | 通过：`Cancelled`，unit 保留、仍已停止 | `57-uninstall-approve` / `56-uninstall-cancel` |
+
+八个分支执行于 01:42–01:44（UTC+8）；每个前缀都配有 `-before`、`-prompt`、`-result` 的
+原始整屏 PNG 和同刻 JSON，JSON 记录 UTC 时间、服务状态、进程及窗口。取消前后状态字段逐项相同，
+结果横幅是 `Cancelled / Elevation was cancelled`，不是 `Failed`。原始图不裁剪、不改字。
+准备卸载时另做了一次正常停止；安装复测结束后再从界面停止、卸载。
+
+**命令通道**：01:45，真实 GUI 账号运行
+`wsl.exe -d Ubuntu -u pp4verify --exec python3 /mnt/c/photo-verify/issue4-harness.py`；
+辅助脚本经该账号的 `sudo` 调用未修改的 `scripts/verify-systemd-service.sh`，不是 root 伪填 `SUDO_USER`。
+结果 `PASS=52 FAIL=0`、`HARNESS_EXIT=0`，含四态 UI/CLI 对照、IPC、权限、重启和卸载清理。
+`getfacl` 未安装的诊断行仅说明未采集 ACL 文本；权限断言及真实 GUI 用户读写检查均通过。
+
+**未通过的对照，不隐去**：此前 LXDE `lxpolkit 0.5.5` 中点击取消，界面显示
+`Failed / Not authorized`（`30-install-cancel-*`），本轮未修复，不计入上表的通过项；
+不能把全部 127 退出码改成取消，否则会把真实未授权错误也吞掉。GTK3 自动选择显示后端的尝试
+还出现过代理崩溃或嵌套桌面中没有弹窗；最终明确固定 X11。另有一张预备弹窗在查看期间超时，
+最终八分支改为连续截图和点击后重测。macOS 按 #32 裁定不复测。
+
+**收尾**：01:49，临时账号、密码及私有运行库已删除；原有三个服务目录的 inode/权限、权限组和
+polkit 规则校验恢复，服务未安装、socket 和 Worker 无残留。新装的图形工具保留，未升级系统库。
+证据实物位于 `C:\photo-verify\issue4-wsl2\evidence\`，85 个文件的哈希记入
+`docs/agents/ui-smoke-evidence.sha256`；原图和日志未上传。旧轮清单从起始基准的 git 历史取回。
+本轮证明上述 MATE/X11 环境可用，不表示 LXDE 取消问题已解决，也不宣布整个跨平台需求完成。
 
 ### 连接失败三态（#169，3 项）
 
