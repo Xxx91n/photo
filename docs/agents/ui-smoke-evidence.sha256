@@ -1,161 +1,293 @@
-# #154 阿语字形根因探针证据 SHA256 清单 — #154（2026-11-04，Windows DirectWrite 探针取证）
+# 本轮截图和命令输出的 SHA256 清单 — #3 服务模式功能测试（2026-11-10，Windows 实机）
 #
-# 本轮不是 release 构建取证：定位走「最小探针 + OS API」路径，Add-Type 内存编译、本地零编译、
-# 不涉仓库构建；探针在取证机 Windows Server 2022（10.0.20348，zh-CN 区域）上复刻
-# gpui-pre-windows 0.3.10 DirectWriteState::layout_line 的调用序列
-# （CreateTextFormat("Microsoft YaHei UI", locale=zh-CN) → CreateTextLayout(∞,∞) → Draw
-# + 自定义 IDWriteTextRenderer 截获 glyph run）。
-# 五组探针：A=ar 文案 status.configure_watch_folder（gpui 现场，13 run 全部 bidiLevel=1、
-# 基线原点递减、阿语码位字形≠cmap 即已整形）；B='العربية' 字面（票面 What-to-build #1，1 run bidiLevel=1）；
-# C=英文对照（bidiLevel=0、起点 x=0，LTR 不受影响）；
-# D=同一阿语文案的有限宽度布局（4000×100），供 hitTestTextPosition 视觉序取证
-# （逻辑位 0 → x=237.74 行右端，逻辑位 42 → x=30.06 行左端，DWrite 视觉序正确）；
-# E=阿语+拉丁+数字混排（正确视觉序应为右端阿语 level1、左端拉丁 level0）。
-# 全部 run 的 clusterMap 严格 1:1（无连字/合并簇），字形变形以「阿语码位 emitted ≠ cmap 默认字形」为准。
-# UI 观感帧：2026-11-04 起改用本票自取的当前 main 帧（三张，见下）——不再只沿用
-# #113 第二轮产物（photo-smoke-113r2\evidence\ 的 K2-locale-ar.png 等，
-# 锚仍可从 git show 4db2583:docs/agents/ui-smoke-evidence.sha256 取回，作历史参照）。
-# 帧的产物：Release run [41854940207](https://github.com/Xxx91n/photo/actions/runs/41854940207)
-# / ref main / head b72d4896 / version 0.1.0-verify154 / create_release=false 的
-# release-win-x64 artifact（win-x64 job success；test/linux-x64/linux-arm64/osx-x64 亦
-# success，仅 osx-arm64 一腿 cancelled 故 run 总结论 failure——与 Windows 产物无关；本地零编译）。
-# 二进制实测：PhotoPrivacy.exe sha256 07E8B25B…（33107115 B）；
-# 包内 config/config.json 与 config.sample.json 逐字节相同
-# （sha256 C1371F77…），取证前出厂原样、取证后逐字节还原回该哈希。
-# 取证方式：ui.locale=ar 待机态双击级启动，整屏 Graphics.CopyFromScreen；
-# 三帧 = 总览（琥珀待机提示）/ 规则页长文案 / 配置页长文案，启动即出页用 --open-page。
-# 图片与文本取证不入库，只存于取证机目录
-#   C:\Users\Administrator\photo-smoke-154\evidence\（7 个文件）。
-# 本清单给这些一次性证据一个可校验的锚：当下能证明它们存在且内容未被事后替换；
-# 目录被清理后只剩哈希本身，无法再复现其中内容——这是已接受的缺口，不是遗漏。#
-# 旧轮不再逐条收录（同一路径一个锚只装「当前一轮」，旧条目留着会让 sha256sum -c 恒红）：
-#   · #31 轮 26 个文件（photo-smoke-31\evidence\）：      git show 389f6bf:docs/agents/ui-smoke-evidence.sha256
-#   · S5r3 9 个文件（photo-smoke-85head\evidence3\）：   git show 1880b670:docs/agents/ui-smoke-evidence.sha256
-#   · S5r2 10 个文件（photo-smoke-85head\evidence\）：   git show 592a7d2:docs/agents/ui-smoke-evidence.sha256
-#   · S5r1 12 个文件（photo-smoke-85\evidence\）：       git show 8a56a7e:docs/agents/ui-smoke-evidence.sha256
-#   · #88 轮 6 个文件（photo-smoke-88\evidence\）：      git show 5298b64:docs/agents/ui-smoke-evidence.sha256
-#   · M 组 21 个文件（pp-ac2-verify\evidence\）：        git show 9acb72f:docs/agents/ui-smoke-evidence.sha256
+# 这一份只装本票这一轮留下的证据。旧的两轮按规矩从 git 历史取，不在本文件里：
+#   - #154 探针 + S267 组（2026-11-04/05）：`git show 0323243f:docs/agents/ui-smoke-evidence.sha256`
+#   - #2 的 L2 组（2026-11-10，Linux systemd 实机，32 个文件）：`git show faf24b55:docs/agents/ui-smoke-evidence.sha256`
+#     （PR #272 把这组追加在老清单后面；本票把整轮换掉时它随之退出本文件，
+#     内容没丢，git 历史里能找到，证据实物在 Linux 验证机 /home/ubuntu/photo-verify/evidence/）
+# 对应的老图各自还在原来那台机器的老目录里。图片和文本证据都不入库，只放在
+#   C:\Users\Administrator\photo-smoke-3\evidence\
+# 有了这份清单，随时能核对这些文件还在、内容没被人事后换过。
+# 目录要是删了，就只剩哈希，内容没法再看一遍——这个缺口大家已经认了，不算漏项。
+# 连拍的中间帧只留看得懂内容的几张，其余删了；下面逐张写清楚每张是什么。
 #
-# （合并勘误，2026-11-05 #58 窗口：#154 轮整文件替换把原 L/M 两组条目撤下——L 组已按
-#  #389f6bf 指针归档（即上行「#31 轮」），M 组漏列，上行补 M 组指针，两组条目原文均可从
-#  git show 9acb72f 取回。同轮：多组共存后各组校验命令须按组内文件名前缀过滤——K154 组
-#  原 `grep -vE '^(#|$)'` 会把其他组条目也喂进本目录校验而恒红，改为按 K154 前缀过滤；
-#  条目本身一字未动。）
+# ---------------------------------------------------------------------------
+# 这一轮是怎么跑的
+# ---------------------------------------------------------------------------
+# 包：Release run 42674901152（ref main，head 2b2fceb9，version 0.0.0-verify3，
+#   create_release=false）出的 release-win-x64，本机没编译，包全部来自远端 CI。
+#   PhotoPrivacy.exe sha256 b2f36317af1c0d6a2bac9af458b43c41b7ec941d41659e37956bc35d2c649c76
+#   PhotoPrivacyWorker.exe sha256 3ff3c39391d96d59d336c629cf8a0521dea7ab1996048469e1768fb20c831fe1
+#   包内出厂 config.json sha256 1643bd31c1210d4204d91125ea38cd3fcf58348f2c375dc611d9a28e7bc757c1
+#   前两次触发 Release（42673916946 / 42674427231）在 Actions 那边连 job 都没建起来就判失败，
+#   第三次才把包出来。开工时本票起点是 0323243f，出包时远端 main 已经被 #271 推到
+#   2b2fceb9；文档要求留证据前先核对 head，所以用的是当时最新的 main。
+# 界面这边：整屏截图用 ImageGrab（跟 Graphics.CopyFromScreen 一样），点鼠标用
+#   SetCursorPos + mouse_event。把窗口置顶、点一下、等一会儿、截图，都放在同一个
+#   进程里一次做完。工具放在 photo-smoke-3\tools\ui_tool.py，不入库。
+# 命令行这边：scripts/verify-windows-service.ps1 在本票这一轮里跑了好几遍，都是当轮的
+#   尝试，不是历史一轮：
+#   - 远端 CI run 42679959499（windows-service-verify，head 2b2fceb9）→ PASS=21 FAIL=0；
+#   - 本机实机用和 CI 同款的 7.6.9 Core 便携运行时 → PASS=21 FAIL=0；
+#   - 本机自带的 5.1 第一次跑挂在「带空格路径的 sc.exe create」，3 条 FAIL 后中断
+#     （script-channel/ 里的失败记录照原样留着）；
+#   - 用户裁定把脚本顺手改了，改完又在 5.1 和 7.6.9 Core 各复跑一遍，两次都是
+#     PASS=21 FAIL=0、退出码 0（script-channel-51-fixed/ 与 script-channel-core-fixed/）。
+# 脚本改了什么（用户 2026-11-10 裁定「顺手改了」）：
+#   install-service.ps1 的 install 分支原来按运行时分叉，Desktop（5.1）走
+#   `sc.exe create`，把带空格的 binPath 传给原生程序会被重新拆词，服务注册不上。
+#   改成两种运行时都用 New-Service（5.1 也有），直接写 SCM。
+#   verify-windows-service.ps1 读 ServicePipeName 时原来直接 `.属性`，值还没写进来
+#   会在 5.1 抛「找不到属性」中断整轮；改成先看 PSObject.Properties 再取值。
+#   这两处改的是跨平台能不能跑通，装/卸/校验的步骤没动。有一处行为变化要如实说：
+#   原来 5.1 走 `sc.exe create`、没带 DisplayName，服务的显示名就是服务名
+#   PhotoPrivacyCleaner；改用 New-Service 之后变成 PhotoPrivacy Cleaner，和 Core
+#   分支一样了。票面验的是 binPath / AUTO_START / LocalSystem，不验显示名，
+#   这处差异列进交付说明，不藏着。
+#   本机两种运行时复跑都过了。推送建 PR 之后远端已经复跑过（PR #273 的 checks
+#   全绿）：CI、Windows 服务验证、Coverage 都通过；Windows 服务验证那一次跑的就是
+#   这份脚本，结论行同样是 PASS=21 FAIL=0。要留意那个 job 四步全写
+#   `shell: pwsh`（Core），跑不到 5.1 那条分支——5.1 修没修好靠上面本机复跑证明，
+#   远端 CI 只保证 Core 没坏。具体 run id 见 PR #273 的评论（写在这里会随下次推送过期）。
+# 授权：票面标签是 ready-for-human。用户 2026-11-10 在本票窗口明确批准由 agent 走桌面
+#   截图通道代跑（原话「你来做，你可以识别屏幕，产物用CI出」），并批准在这台机器上
+#   装/卸 PhotoPrivacyCleaner 服务。票面标签和验收标准都没改，跟 #88 / #125 / #156
+#   是同款先例（那三张票也是 ready-for-human，由用户在实现窗口批准 agent 代跑）。
+#   没有证据的地方一律不填通过。
 #
-# 校验（在取证机的 **WSL bash** 里跑——cmd/PowerShell 没有 grep/sha256sum；从仓库根开始，
-# 清单在仓库里、证据在取证目录，两者不同目录，所以必须先 grep 出清单再进证据目录喂给
-# sha256sum——反过来 cd 进证据目录就找不到这份清单了；路径用 WSL 的 /mnt/c 形态）：
-#   cd /mnt/c/<仓库根> && grep -E '^[0-9a-f]{64}  K154' docs/agents/ui-smoke-evidence.sha256 \
-#     | (cd /mnt/c/Users/Administrator/photo-smoke-154/evidence && sha256sum -c -)
-# 期望：7 行全部 ': OK'、退出码 0、stderr 无 improperly formatted 警告。
+# ---------------------------------------------------------------------------
+# 界面 8 项，一项一项说（按 docs/agents/ui-smoke.md「服务模式（Windows，8 项）」）
+# 档位按文档「怎么记结果」填：通过 / 失败 / 未测 / 不迁移（裁决）。
+# ---------------------------------------------------------------------------
+# S1 通过。2026-11-10 桌面截图：状态行「未安装」，启动/停止/卸载三个钮灰着，「安装」蓝色可点；
+#   同刻 sc query 回 1060。S1-01-not-installed.png / S1-01-sc-query.txt
+# S2 通过（成功和失败两种都点了）。点「安装」→ 绿框「成功 Operation succeeded」、
+#   状态 未安装→已停止、按钮翻转（安装灰、启动/刷新可点、卸载红钮亮）；同刻 sc query
+#   STATE 1 STOPPED，sc qc 显示 binPath 引号层级正确、AUTO_START、LocalSystem。
+#   失败那次：把包内 PhotoPrivacyWorker.exe 移走再点「安装」→ 红字「失败
+#   PhotoPrivacyWorker must exist next to the UI to install the service」，状态保持未安装，
+#   sc query 仍 1060；随后把 exe 放回并核对哈希没变。
+#   S2-01-install-clicked.png / S2-01-sc-after-install.txt / S2-02-installed-settled.png /
+#   S2-03-install-failed-no-worker.png / S2-03-sc-still-absent.txt
+# S3 通过。按文档要求先结束后台 Worker、只留 UI（S3-00-cleared-background-worker.txt），
+#   再点「启动」→ 状态「运行中」+ 绿点 + 绿框成功；sc query STATE 4 RUNNING，
+#   Worker 进程在 Services 会话 0、NT AUTHORITY\SYSTEM。
+#   S3-01-start-clicked.png / S3-01-sc-running.txt
+# S4 通过。判的依据是连接态和 IPC：服务运行中重启 UI（总览页）显示
+#   「已连接 · PhotoPrivacyCleaner.Service.f7005641011F13ABBDEFF937AD5A3431 · 服务模式」，
+#   Worker 卡片显示 服务模式 / service / 服务 IPC=可达 / 协议 v1；进程侧只剩 1 个
+#   Services 会话 Worker，UI 没拉起后台 Worker。票面样例写的是不带后缀的
+#   「PhotoPrivacyCleaner.Service」，本帧端点名后面多了一串随机字符（#7 命名熵，
+#   服务管道通告名）。用户 2026-11-10 裁定这处字样差异「不管」，按连接态和 IPC 判通过。
+#   这一帧的连接态是「安装者 SID 已登记」之后的正常样子（界面安装创建服务之前会先
+#   登记，见收尾段），不是没登记 SID 时的回退样子——真没登记的话，服务管道 DACL
+#   会回退到只认创建者，这个桌面会话根本连不上，S4 的「服务 IPC=可达」也就不成立。
+#   S4-01-restarted-overview.png / S4-01-process-and-sc.txt
+# S5 通过。配置页把「监控目录」改成私有 hot 目录，连着拍了几张，抓到绿字
+#   「已保存 · Worker 已重载」；随后投进这个新目录的样本被服务 Worker 清洗，日志页
+#   出了新条目。有实物的是这三样：S5-06-saved-worker-reloaded.png（绿字那张）、
+#   S8-01-audit-jsonl.txt 里 sample-live-2.jpg 的 file_processing_succeeded /
+#   wipe_result=Cleaned_Modified（审计路径正指向新目录 photo-smoke-3\hot）、
+#   S8-01-logs-page.png 的 Cleaned 条目，S8-01-processed-ndjson.txt 也记下同一路径。
+#   本轮没把 config.json 的内容另存成证据文件，也没有给落盘计时，所以不写「秒级落盘」、
+#   不写样本前后字节数——那些数字只在终端打印过，没留下当轮证据，按票面规矩不算。
+#   几张 S5 截图各是什么：S5-00b-config-page.png 是空监控目录的配置页；
+#   S5-01-config-saved.png 是第一次填完路径；S5-02-saved-banner.png 是下面说的那次
+#   操作失误（路径拼成两段、Worker 拒绝重载）；S5-03-config-saved-clean.png 是清空后
+#   重填、右上角「保存中…」；S5-06-saved-worker-reloaded.png 是最后成功的绿字提示。
+#   照实记一处我自己操作上的错：中途一次粘贴时旧值没清干净，路径被拼成两段，Worker 报
+#   ReloadConfig failed（S5-02-saved-banner.png，ProgramData 服务日志里也有那条 WARN，
+#   里面能看到拼坏的路径原文）。那次输进去的配置值本身就是坏的，是我截图时操作出了错，
+#   不拿来判这一项；改成连续退格清空后重做的那一轮，才拿来判 S5。
+#   这一处操作失误也列进交付说明。
+# S6 通过。点「停止」→ 状态回「已停止」+ 绿框成功；sc query STATE 1 STOPPED，
+#   tasklist 里 PhotoPrivacyWorker.exe 已无。S6-01-stop-clicked.png / S6-01-sc-stopped.txt /
+#   S6-00-service-page.png / S6-02-stopped-settled.png
+# S7 通过（两个分支都跑了，2026-11-10 用户裁定「跑」）。
+#   已停止态：点「卸载」→ 状态回「未安装」、按钮组回到 S1 的样子、绿框成功；
+#   sc query 回 1060，只剩 UI 进程。S7-01-uninstall-clicked.png / S7-01-sc-uninstalled.txt
+#   运行态：S7R-00-running-page.png 是「运行中」的服务页，「卸载」按钮灰着；
+#   在那个位置点一下（S7R-01-uninstall-clicked-while-running.png）状态仍是「运行中」、
+#   卸载钮仍灰、没有新的成功或失败横幅，同刻 sc query 仍 STATE 4 RUNNING
+#   （S7R-01-sc-still-running.txt）。票面写的「运行态点卸载无动作」成立。
+#   随后停止、卸载（S7R-02-stop.png / S7R-03-uninstall.png），收尾见 S-final-cleanup.txt。
+# S8 通过（2026-11-10 用户裁定「补啊，直接补」，补了一轮实机，见 S8R-* 证据）。
+#   上一轮为什么缺：从出厂空 hot_folder 起步，服务 Worker 停在待机分支，那条分支
+#   不写 service_started 事件（src/PhotoPrivacy.Core/Worker/MetadataCleanerWorker.cs
+#   里 service_started 写在「启用监控」之后）。历史 #88 轮的做法是装服务前先把
+#   hot_folder 设好，服务一启动就开始盯着监控目录。这轮照着做，前置条件造对了。
+#   这轮日志页（S8R-04-logs-service-started.png）6 条：
+#     04:33:47 Service started mode=live / ExifTool started
+#     04:34:15 Service started mode=live / 04:34:17 ExifTool started
+#     04:34:30 Cleaned attempt=1;wipe_result=Cleaned_Modified / 04:34:31 Skipped
+#   三处同刻（逐条对照见 S8R-06-correlation.txt）：
+#   - Service started：日志页 04:34:15 = 审计 20:34:15.366 UTC
+#     = ProgramData 服务日志 04:34:15.286 Application started。
+#   - Cleaned：日志页 04:34:30 = 审计 20:34:30.592 file_processing_succeeded
+#     = processed.ndjson 20:34:30.593 同一路径。
+#   - 投放的样本被清洗：投放前记在 S8R-03-sample-before.txt，投放后由日志页
+#     Cleaned 条目与审计成功事件共同证明。不写前后字节数——投放后的数字只在
+#     终端打印过，没另存成当轮证据，按票面规矩不填（和上面 S5 同一条规矩）。
+#   跟后台模式的区分看连接态（这一轮是服务运行中点的启动，S4 已留服务模式帧）。
+#   票面「与 _audit 审计文件、ProgramData 服务日志同刻对得上」这句，本轮能核到的
+#   是：Service started 那条三处同刻（日志页 / 审计 / ProgramData 的
+#   Application started）；Cleaned 那条在日志页 / 审计 / processed.ndjson 同刻。
+#   ProgramData 那份是 Serilog 写的进程日志，只记服务进程启停、告警和错误，
+#   不记逐条 Cleaned，逐条文件事件走审计 JSONL，日志页读的也是这份（页脚写着
+#   「来自每日 JSONL 的审计尾部」）。所以 ProgramData 侧对得上的是服务启动
+#   那一刻，Cleaned 逐条在 ProgramData 里没有对应行。这是产品的分工，补实机
+#   也补不出来。历史 #156 那轮判 S8 通过时，ProgramData 侧
+#   同样只有 Application started（S8-01-correlation.txt 第 7 行），本轮照同一个
+#   办法判。票面那句话按字面看只覆盖一半，这个事实照实留着，不冒充
+#   「两边都逐条对上了」。
+#   S8-01-correlation.txt 是补测前那一轮的当轮观察（那时确实没有 service_started），
+#   保留原文没改；两份文本为什么不一样，见 S8R-07-about-old-correlation.txt。
+#   证据：S8R-01-install.png / S8R-01-sc.txt / S8R-02-start.png / S8R-02-sc.txt /
+#   S8R-03-sample-before.txt / S8R-04-logs-service-started.png /
+#   S8R-05-audit-jsonl.txt / S8R-05-processed-ndjson.txt /
+#   S8R-05-programdata-service-log.txt / S8R-06-correlation.txt /
+#   S8R-07-about-old-correlation.txt
 #
-# 备注（2026-11-04 23:05）：K154-00 的探针输出结束（原 786 行）之后被平台 AIGC 水印钩子
-# 在文件尾追加「AI生成」字样——平台交付物水印的预期行为，按平台规范保留、不予清除；
-# K154-00 的锚定值覆盖**加水印后**的整个文件。若日后 -c 失红且 diff 确认差异只在
-# 文尾水印段（平台对同一文件再次盖印），按新内容重算哈希、更新本行并在备注记一笔；
-# 探针有效载荷（码点/字形/原点数据）不因尾部追加而变化。
+# ---------------------------------------------------------------------------
+# 命令行这边和收尾
+# ---------------------------------------------------------------------------
+# 跑成的几次，最后一行都是 `CONCLUSION: PASS=21 FAIL=0`：
+#   ci-script-channel/summary.txt（远端 CI）、script-channel-pwsh/summary.txt（本机实机）、
+#   script-channel-51-fixed/summary.txt（5.1 修好之后）、
+#   script-channel-core-fixed/summary.txt（Core 复跑，确认没改坏）。
+# 退出码 0 也留了当轮证据，票面要求的就是这一条：
+#   script-channel-pwsh/exit-code.txt、script-channel-51-fixed/exit-code.txt、
+#   script-channel-core-fixed/exit-code.txt 都直写 EXITCODE=0；
+#   ci-script-channel/exit-code.txt 记的是远端 CI 脚本步骤 success（脚本 exit 1 会让
+#   步骤判失败，所以 success 等于退出码 0），连 run id、步骤号、起止时间一起记下。
+#   script-channel/ 是本票这一轮里 5.1 第一次跑挂那次的记录，留着说明改之前什么样。
+# 收尾（S-final-cleanup.txt）：sc query 回 1060；ServicePipeInstallerSid /
+#   ServicePipeAllowedSids / ServicePipeName 三个值都不存在；无残留 UI/Worker/ExifTool
+#   进程；config.json 与出厂 config.sample.json 逐字节相同（1643bd31…）。
+#   临时测试账户：本轮压根没建，所以没有要删的。用户 2026-11-10 裁定「满足」，
+#   这一项按裁决结清，不再列进待拍板。
+# 这台机器的提权情况：EnableLUA=0，登录的是 Administrator，本身就有管理员权限，
+#   所以不会弹 UAC 同意框。S2 里装服务这一步是真跑过的：界面在创建服务之前先登记
+#   安装者 SID（#200 之后的行为，写不进就不装），再用 sc.exe 建服务，binPath 和
+#   注册进 SCM 都核过。「点安装弹 UAC、点同意 / 点取消」这两种情况本轮没测，
+#   用户 2026-11-10 裁定「那就不管了」，按裁决结清（那两条本来也归 #30 / #206）。
+# 还要说清一点：两条通道都会把安装者 SID 写进注册表。命令行这边走
+#   install-service.ps1，界面这边走服务页按钮（#200 之后，创建服务之前先落登记）。
+#   区别在授权集合：脚本能带 -AuthorizedUsers 授权多个账户，界面只登记安装者自己。
+#   两轮分开跑，各自收尾干净，没混着用。
+#
+# ---------------------------------------------------------------------------
+# 怎么核对哈希
+# ---------------------------------------------------------------------------
+# 在这台机器的 bash 里跑：
+#   cd /c/Users/Administrator/photo-smoke-3/evidence && \
+#     grep -vE '^(#|$)' /c/photo-t3/docs/agents/ui-smoke-evidence.sha256 | sha256sum -c -
+# 期望：下面每一行都回 ': OK'，退出码 0。
+#
 
-24074035d96d13ae0173279aff6822e025eec40d5c7034fc9df7eb085fcb35ed  K154-00-probe-result.txt
-e54cde08e0b58258521877ab0f2f4f4b8a7322820f554a24c6563f096ec8c9bd  K154-01-ar-probe.cs
-1ff8c6ff762db40c75b8ff8f280a1e268d35fe618d06a6762b75334bb4dbc943  K154-02-run-probe.ps1
-a676a8a446111c5e44db354a3798066dcfd0422c8246b5150d53a401bbac2430  K154-03-upstream-0310-0311.diff
-e24888abe032523320c4873e737e3531d36944111ff4654fb623ba62610f9cb2  K154-04-overview-ar-hint.png
-9490b630b3d9eb71f53496707da74c37f8ceec457ef4581f6db11f9dc6134afc  K154-05-rules-ar-longtext.png
-70cc79977dde2369b83234e6f966a9742277b9e0073abbed75e2813558e7e3f4  K154-06-config-ar-longtext.png
+# ---- S8/S7 补测（2026-11-10 用户裁定后）（16 个文件）----
+78e325e2e46f2e88dc22023dffe0d4773bab556e0c2c90153d300a7f483c4e89  S7R-00-running-page.png
+f376bad4a2070b1ede504c76a77049b646781c17409fc6d787a9cb57d8b69739  S7R-01-sc-still-running.txt
+35ab01e83d7665c7e4bb3c036556caf552e9a4675f8e727b27a4e79ddf187c64  S7R-01-uninstall-clicked-while-running.png
+3e866da7137c07555e261c7379299b90d19d001cbccae26ac6f2a1f3d8065c4a  S7R-02-stop.png
+f590d2270081e7713f25919483ba208cd03aa1f8805a1e1faf8cb504c3f8ed6f  S7R-03-uninstall.png
+533cc167e6dc76d7d9f5f1e02229d0ba26a5d8dbcd1dd2bd51eab5dbc0ad2640  S8R-01-install.png
+858492f70fd6b2f2fc23104ee1894b179ab0a7574036f1a4a499fba5eecedc96  S8R-01-sc.txt
+f376bad4a2070b1ede504c76a77049b646781c17409fc6d787a9cb57d8b69739  S8R-02-sc.txt
+e399edcc3cd0ee5346dd2cc9ea5c1ac1e93eb255aa265abc204895daeb782414  S8R-02-start.png
+f33e4c653017dba47f6378f4bc6bfa75fd71a75ea9d60de2c777c0ad5a07b180  S8R-03-sample-before.txt
+2a5dc9c2f3eaec8ce990925433da95f5f21f7d2888e66f01c1d8c17e27f63705  S8R-04-logs-service-started.png
+388fc9a2a9d847b5daaebd1221e07b3e7bf0f298a0310fa481a2dc5225f1847b  S8R-05-audit-jsonl.txt
+3d5f4eac349da2a69f2b9a6e9fddb99f880026f8e88ee6a10e0a0f2119e3eb0b  S8R-05-processed-ndjson.txt
+9925ef809b3f634ef3a8bb2ad659ff061a6bd4c67556fa094d3f2328fa8a1600  S8R-05-programdata-service-log.txt
+952cd591100a538ba50acb3db7cec880ea114ef10a5591838a624f871a4b04dd  S8R-06-correlation.txt
+042be13762fa57021156cceb895f3aef760f343c3f9c0710219fb05ace8d8748  S8R-07-about-old-correlation.txt
 
-# ─── S267 组实机证据 SHA256 清单 — #58 S2/S6/S7（2026-11-05，Windows 实机：服务页 UI 安装/停止/卸载）───
-#
-# （2026-11-09 #254：该轮的说明性记录已随 ui-smoke.md 历史清理移入 git 历史，本段上下文
-#  与哈希条目保留原样，逐项现象描述可从 #254 之前的 ui-smoke.md 版本取回。）
-#
-# 产物：Release run 41882966311 / ref main / head 9acb72f / version 0.1.0-verify58s /
-# create_release=false 的 release-win-x64（head = #58 窗口记录的起始基准，本地零编译）。
-# 二进制实测（S0-artifact.txt）：PhotoPrivacy f10ef2bb… / PhotoPrivacyWorker 742b4e04…；
-# config.json 与 sample 逐字节相同（出厂空串，全程未动）。
-# 实机 = Windows 桌面（用户 Administrator，EnableLUA=0）；取证通道 = agent 桌面截图 +
-# SetCursorPos/mouse_event（#125/#88 先例），工具 photo-smoke-58\tools\winshot.ps1
-# （PowerShell/.NET 实现；「位置重设+点击+等待+截屏」单进程原子轮，做法见 ui-smoke.md「留证据的方法」）。
-# 图片与文本取证不入库，只存于取证机目录 C:\Users\Administrator\photo-smoke-58\evidence\（22 个文件）。
-#
-# 校验（在取证机的 **WSL bash** 里跑，同 K154 组口径——cmd/PowerShell 没有 grep/sha256sum，
-# bash 下 cd Windows 形态路径会当相对目录失败，必须用 /mnt/c 形态；
-# S267 组与 K154 组证据目录不同，分别校验）：
-#   cd /mnt/c/<仓库根> && grep -E '^[0-9a-f]{64}  S[^U]' docs/agents/ui-smoke-evidence.sha256 \
-#     | (cd /mnt/c/Users/Administrator/photo-smoke-58/evidence && sha256sum -c -)
-# 期望：22 行全部 ': OK'、退出码 0。
-# （过滤用 `S[^U]`：M 组的 SUMMARY.txt 也以 S 开头，` S` 会把它误吸进本目录校验；
-#  M 组条目已按上方指针归档，保留 `[^U]` 以防后续同前缀文件名再入清单。）
+# ---- 界面 8 项截图与同刻命令输出（29 个文件）----
+49e3715670346329a403c0eb313a86e5e7ac1fbdfba53dc048ad226347a2c0ce  S-final-cleanup.txt
+25ac3ef7189c8cea24cdea6039b9d25a45feea4bef5d1bfe20957e29441296a1  S1-01-not-installed.png
+914b0382453ec331c4b961ce12194eef62d8d4b163cf406a95ecd7c67a3e21a4  S1-01-sc-query.txt
+1ed9e0fd42656b1a43edee2fe85de2afa55b54dfb912770f7e60b8f8dfe3a3ea  S2-01-install-clicked.png
+88bc8fbdaafb6a8bd5f7a5ac770c88fb303d3543ca43d44a81df0e6abf164665  S2-01-sc-after-install.txt
+d08588a2fe979fbed69c78ea0f05bf0b1e156e102d93fc6b8a7456e2446fa69d  S2-02-installed-settled.png
+77c88f32921a761e5d0a7788861625d1caf30167cd8984d5f2898a350999353e  S2-03-install-failed-no-worker.png
+028c71e8978d153654b4be3034cc239b4bd9f4a2fb41b575337b085c18b11985  S2-03-sc-still-absent.txt
+3413702a725161b29dea292c90cec8f5936118066a80f0e7d131c839940b9ffa  S3-00-cleared-background-worker.txt
+cb5b7b02acf5f30ab341e70d23829dc3b1dac9aba5acada47fc0aedaabbef720  S3-01-sc-running.txt
+73ed7516f50722a7f13ccaf2e516cc4bc1afb93d3e459413912c19f8020fca6b  S3-01-start-clicked.png
+376fa33e676b39671cf893ab57721bd1007dc15fe9d080c4e63662421b85ffc4  S4-01-process-and-sc.txt
+6367d3a25c94246cc41876eda4c71755e6bf130d93c5a43a2b3202b01aa9d090  S4-01-restarted-overview.png
+6b3e0b4ee9074e63f5601b24f1c79b5dab156193494b8f13f66d21a6e7c35304  S5-00b-config-page.png
+db5d216ae0f0218cb5343b174a59e98ed8352476730938cafbf383a299c6f5da  S5-01-config-saved.png
+57b53daa59c5f8e182fb3c41a7bedeb2691135b5742e88ddfd6f7585b2a8cdf5  S5-02-saved-banner.png
+ed304b3b971fe2282459c79f59f8c3405566ee23aeb369f18fe55e3d70abdc3f  S5-03-config-saved-clean.png
+205b453ef5ae87d0b2618bca172efcd2ed77d859075afa66033824cd1bed2d42  S5-06-saved-worker-reloaded.png
+07c3a1ce825bd554978abd709fd1a57205b3539b28bcf684bf68e1428a27c8ec  S6-00-service-page.png
+435719bbd6feaa46da384d4f70642414a81dbc6a7f11a37e2cd5c4922624e112  S6-01-sc-stopped.txt
+966863f980ff7a520b5db31ca4dbfa08ae63c987ab02b3dd541738543afad93a  S6-01-stop-clicked.png
+e5956ab1c4bf1f8b078484b5063761d0837ef7c4c6aa2173cfe4bcde6013fd83  S6-02-stopped-settled.png
+0e65ade6f6f4b342844ee1e566e49b4a4daa5e2ab536f1dde06604fa686c7bd6  S7-01-sc-uninstalled.txt
+ad46a80e22af4815293cea65bcf8574e852e2664a70b4d95bc9fe4775b9aed56  S7-01-uninstall-clicked.png
+ba74f930f21fb1873ba02a5ec92f994c4bcdb7da9a752c350cac1fb9c2d21de8  S8-01-audit-jsonl.txt
+2eef77eb1c8f657d15b1868ca69d6b4ef789351dcb3628f115bc09a7b2be95ff  S8-01-correlation.txt
+cf0b07944e254472e5d0aa635af5c45207ffa3f8b73f67d6bdacae6ae93ed841  S8-01-logs-page.png
+b2eb3d054cb2add42f57b80d3f0c488955a02bc9ea95cec74cfff0a8615b5a0c  S8-01-processed-ndjson.txt
+2dab3caa896b26d83520fa7aa06d087680b8d29c2a32e91ddab38c30ac0d3da4  S8-01-programdata-service-log.txt
 
-d192fded81b42a8751dfbaf2a9a5a89ca42918d1790c059420c6637d57d314b0  S0-artifact.txt
-c01a8ee3e71f27f98756c720770089a6852117a8280786dc19c6017569829176  S0-pre-env.txt
-84cba81b66b0939066e30b8030cd98d967a5923ff46371f4213a8f68ca502a85  S2-00-launch-overview.png
-a535e367f3e18e0c0a5c12e0edbdcdde20c8df8808d6892b7808b0267c749c30  S2-01-service-page-notinstalled.png
-fcec3227d9589af074fffd0c5738cd05e4c4cbbbf428c8581287df52e8bac295  S2-02-service-page.png
-36c255b8a9bac9899049a6c990e5b67dd61844d5f0aabbc95560c4d69be59434  S2-03-install-failed-no-worker.png
-d5e85695f9ab23e7fbbb3df468b79ad4faba6ce0252ef688d44ef27fa8aa8b47  S2-04-install-clicked.png
-6a9f05bedf2c1cf36fd1526283fd18e753dd15136e5b5d41a2b622573319e148  S2-after-install.txt
-9b2bce699fd26683ad844117b12b3cbb261d356516d18ffb54dae5988533d23c  S6-00-start-clicked.png
-bf98579f34f8dd1f3bc46166b8b9faffd7d59a40eada54dde8b150dab7c5e102  S6-01b-start-conflict-failed1053.png
-89bee43cde700a4f9b4b40bd776e016923178c75f3fc1419c585a81e3e202130  S6-03-start-clicked2.png
-3d08eb4422b6f6c6031eb5000bb8da831eab16222bd62168a47fa12896c75e42  S6-04-running-ui.png
-039fcca65dbfee9a0861815ff92e4341ac029de9e547c47593ce363a6879fa6b  S6-05-stop-clicked.png
-91b0bfe63ef9755432f75919452d925d52b555622f97d743ae9cb0d73358f70b  S6-06-stopped-ui.png
-034814111edf4306c21bc96d92c38a82b65e5b8412d79e9d859b5077894071b4  S6-after-stop.txt
-9ca350e6a462bbac90b646a636298f924121366cad953b519af84474054de29e  S6-pre-running.txt
-b6f96eeee05c41ec734c993c6ecc248890c0be6cdd140b51f7fbd887529b52fd  S6-pre-running2.txt
-e5cb574308a12c040d4a2e4db2446175492db0cc92a49fc05c32fcc90e7ab07b  S6-pre-running3.txt
-c320c0b6d599cdb0576955f72c225fc2af34408536af1868194ec81737530703  S7-01-uninstall-clicked.png
-b108ef92288b640140fccc21bb0e3fba49db5c3d726e48682521eb7c021c1bf0  S7-02-uninstalled-ui.png
-d6f891aa5c3527e71ceb328162f2eceae45579ea27c990f38f60bcbce3508201  S7-after-uninstall.txt
-708b65e75327b6424b2514968046ab4117226198fa160ffdcde1c4a34a4e2aec  S-final-cleanup.txt
-# ─── L2 组实机证据 SHA256 清单 — #2 Linux systemd ExifTool+UDS 全链路（2026-11-10，Linux 实机：Ubuntu CVM）───
-#
-# 产物：Release run 42674901152 / ref main / head 2b2fceb / version 0.0.0-verify3 的
-# release-linux-x64 artifact（linux-x64 job success；本地零编译，产物经 gh run download 取回）。
-# 实机 = 腾讯云 Ubuntu CVM（systemd 259 为 PID 1，perl 5.40.1 在位，GUI 用户 ubuntu）。
-# 通道：sudo ./scripts/verify-systemd-service.sh --release-dir <产物> --evidence-dir <目录>，
-# 最终一轮 PASS=52 FAIL=0（安装→注册→常驻→日志→socket/权限组边界→停止/启动→卸载→清理全过）。
-# 丢照片清洗：带 EXIF（Artist/Model/GPS）的 sample.jpg 投入 hot 目录 → 元数据清空、
-# 原件进 bak/sample.jpg.bak（元数据保留）、审计出 file_processing_succeeded 条目（L2-97）。
-# 环境备注：验证机 /usr/bin/test 为 coreutils-from-uutils（uutils 版 test -r 不认补充组，
-# 首轮 2 个 FAIL 系该缺陷误报；bash 内建 test 与实际 cat 读取均通过，末轮全绿）。
-# UI 按钮交互（第 3/4/8 项）：Xvfb 虚拟显示 + xdotool 模拟点击安装/停止/启动/卸载按钮，
-# 每步截图留证；polkit 免交互规则让 pkexec 无密码通过。
-# 第 9 项（日志页审计条目）：UI 打开日志页，丢照片触发清洗，截图确认日志页渲染了服务审计条目。
-# 图片与文本取证不入库，只存于验证机目录 /home/ubuntu/photo-verify/evidence/（32 个文件）。
-#
-# 校验（验证机 bash，从证据目录开始）：
-#   cd /home/ubuntu/photo-verify/evidence && grep -E '^[0-9a-f]{64}  L2-' <仓库>/docs/agents/ui-smoke-evidence.sha256 | sha256sum -c -
-# 期望：32 行全部 ': OK'、退出码 0。
-2b8b24c6f898a59f2fc535fc7d48cb14b49caacf8c999e1fd7ff97de3823f78c  L2-00-env.txt
-fb02db08918a0ec6a2e4e5f407fb23d047ca496115f9ed302bd2fc803ffa0057  L2-00-negative-gui-user-empty.txt
-5ee70525087e6d347df89def66ed6973314dc9490f5a08c9fca5947039ffe502  L2-00-negative-socket-group-empty.txt
-0ea840d53b841c255f1685f418e23327b6bf6b0431a4b3b81c2dc8c17569991b  L2-00-negative-socket-group-same.txt
-def7ee0c588b26792000de3b5a9642a171ddb9af40e1304a160306e8891572e7  L2-01-staging.txt
-5f7fa558e6594ae5fc249edda3e534b72d37493a41d5753a7428b0b031162bb5  L2-02-install.txt
-2fe609f2c080efaaf13d41b740900d2a46131692b14dbb16a0f8204863def5b9  L2-03-systemctl-after-install.txt
-8364d4092b48a315a538837b32b1c7f66774a7a80b4121ba944e517c3a679f36  L2-04-restart.txt
-350d6833a83f1d1b78e368cebcb67f8370b7d3c55f0c5c0bc31c531f97f792b4  L2-05-logs.txt
-7b0df7d0d140d3371b8e3833daa181d67d39f2ec8b0a09231da195e55a3b6555  L2-06-socket.txt
-a4122dac810ecca87b563825b7ea5cdc5089e7c3e3ab15bff4f614d8cae8a1af  L2-07-stop.txt
-a4122dac810ecca87b563825b7ea5cdc5089e7c3e3ab15bff4f614d8cae8a1af  L2-08-start.txt
-a4122dac810ecca87b563825b7ea5cdc5089e7c3e3ab15bff4f614d8cae8a1af  L2-09-uninstall.txt
-7ecd074f57ef2bbafd269f1ef9d590a446294fa3dbb0831793b066c155fcb4a2  L2-10-final.txt
-1ababccc1fdc53952c75e3ff607184338e883f1d199b815e62ddb18ac93988c0  L2-97-photo-clean-evidence.txt
-04fc75a86010fe6a025753577f9b9d481a82aa9e67e402475e962e7352397198  L2-summary.txt
-df1f6df29c4ba145a2f05273af8d44eae8a3826ff019bcb24e94c16a1b4a5501  L2-ui-probe-pre-install.json
-e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  L2-ui-probe-pre-install.txt
-7a8100844305dbd947ec81925babfe8121f02a2fe36f29f5b714931dcd848324  L2-ui-probe-running.json
-e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  L2-ui-probe-running.txt
-ed4eecb4388e445f7eaaa4bfcda7aaaf0b2b8aa676431335c9a2637657de54cf  L2-ui-probe-stopped.json
-e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  L2-ui-probe-stopped.txt
-df1f6df29c4ba145a2f05273af8d44eae8a3826ff019bcb24e94c16a1b4a5501  L2-ui-probe-uninstalled.json
-e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  L2-ui-probe-uninstalled.txt
-dffd24905db99b54ab9789265f418b0f70ae1df637ff08f5b89a42bea1827f95  L2-12-ui-before-install.png
-422f8d2ddd2a8c2160c983493864d452e3c773ee7d66b639351d1cb3e6902f73  L2-13-ui-after-install.png
-9930a4201366e7fd9c6780172793e1b27996d4e17048c5c9e0fbb3aeb136f28b  L2-14-ui-stopped.png
-ae09243b04387ee860b66aa34ad248e5a6ad43f94de69fd080508fd12e58816e  L2-15-ui-after-start.png
-8906c07ea8a1d1b475dd36ce5417a589f5e922b4744445a2e86d5e776e0a7575  L2-16-ui-after-uninstall.png
-4d02fad8769995ed7e8d82b230322d6e56b8d199d543eed0f88b1d990b284004  L2-17-ui-button-evidence.txt
-2fc540889788676ce1bd08b168334b2bd6c1e5803b75e48821b68436a3be0599  L2-18-ui-logs-page.png
-5153f8937e53d540087a14cc2770b9d5f8f3a1ec7897b4e46a45b925f8e8c96d  L2-19-ui-logs-evidence.txt
+# ---- 远端 CI 脚本通道（run 42679959499）（10 个文件）----
+27a854121cf5d14ffcbaa9bbcb627aff3240f078a0f2d3ba0ad24d293ab7c84a  ci-script-channel/00-env.txt
+e1fb83fee109825c83aec82b946647eadda058da2649f940e6a59dc2dfb477d7  ci-script-channel/01-install.txt
+3e2a41523201ca417aa11fd29f624d97b6672af1e704dad7704564d6677e9187  ci-script-channel/02-service-status.txt
+3ac42014c4ebd07aba3f954799128710419725901706f5a67c3e0d39b8417d64  ci-script-channel/03-pipe-response.txt
+4341951242a9e5d65cfe277d1302be09690e1b5d00f25a1c4e4a564343f90fed  ci-script-channel/04-service-log.txt
+e40d364c8aef4ca10e3a9755158e02e597a7a5555d208aeb5bc8767e44674695  ci-script-channel/05-stop-start.txt
+31c639e9e97910536abd880ee52a7ac1e52908266a2e47a28982072532e39bf8  ci-script-channel/06-uninstall.txt
+24f8cc3fae7d90381b267347a695f97fe81123b170b1a4eac1adf2e07e48fe97  ci-script-channel/07-uninstall-absent.txt
+1fb214983bf997cef72ca2d348d6db5d48eb0f65bcbe72ea838d7712fa3bac22  ci-script-channel/exit-code.txt
+33cae696d7afa0b544d1ee550379f95f48e29cab93906b0d98b518e0120f96e7  ci-script-channel/summary.txt
+
+# ---- 本机实机脚本通道（7.6.9 Core，和 CI 同款）（11 个文件）----
+09b5cedcdc3e9861fcc2b2b9ac89215cf5f789f1def2e6ce7b67cce9adc0b397  script-channel-pwsh/00-env.txt
+e1fb83fee109825c83aec82b946647eadda058da2649f940e6a59dc2dfb477d7  script-channel-pwsh/01-install.txt
+4ceb1ac0f3be4eb16f50cc7c1a6b488898df2512fa09eebe444a863200abdf87  script-channel-pwsh/02-service-status.txt
+3ac42014c4ebd07aba3f954799128710419725901706f5a67c3e0d39b8417d64  script-channel-pwsh/03-pipe-response.txt
+11f5e4a693545fe3369092bd344452fc79f897e99a3355db47c089d8c10bed59  script-channel-pwsh/04-service-log.txt
+e40d364c8aef4ca10e3a9755158e02e597a7a5555d208aeb5bc8767e44674695  script-channel-pwsh/05-stop-start.txt
+31c639e9e97910536abd880ee52a7ac1e52908266a2e47a28982072532e39bf8  script-channel-pwsh/06-uninstall.txt
+24f8cc3fae7d90381b267347a695f97fe81123b170b1a4eac1adf2e07e48fe97  script-channel-pwsh/07-uninstall-absent.txt
+f24dea7055777e12e5b669870fc01e25f20f154801413e7a05027562d03f3145  script-channel-pwsh/console.txt
+8efcc4eaec7535b3e290f60b8d9061f57d9a0eb336c33425622c0b5b1269b663  script-channel-pwsh/exit-code.txt
+49e56e2ab3ffbcc201db3ff2ef3696edba012f4bc796041fda6b032b572841e2  script-channel-pwsh/summary.txt
+
+# ---- 脚本修好之后本机 5.1 复跑（11 个文件）----
+14160e50c0b21eb5f5d54dbd5567fcd5f6d96eca3f7acded049ee1493d083c0a  script-channel-51-fixed/00-env.txt
+4445c3d347da1353f5d7b6a2e3b0d899e9313ce4665ed3a185a492079855ddbe  script-channel-51-fixed/01-install.txt
+dca02a3b60bc5d76056c1fa4d0071565a40b42c4077a2511c4ed7b7a753c7fb6  script-channel-51-fixed/02-service-status.txt
+0a0b2a924ebb2e0c761ca82aa747130857d7780a2c89c7f385b062567ab83b34  script-channel-51-fixed/03-pipe-response.txt
+59aaefcdc5a8a938020886a91bd4496012648d99f79a82f9738ef02f12ec85e7  script-channel-51-fixed/04-service-log.txt
+1556b9a2a8e60b43425438f78409c9281552c12dcf9e015eb8d2bf6635b971f3  script-channel-51-fixed/05-stop-start.txt
+fb29f2e80f3aa41bc6efac73dc1f2d69a4d8d908ede007f04ba7ea723b30a4a5  script-channel-51-fixed/06-uninstall.txt
+0f029a35c7a7d677905bcc01dbe3d9da9354be1ae4c45a0e8791736ca32c9150  script-channel-51-fixed/07-uninstall-absent.txt
+3b1d71102d7ca97da259857872be8902c90e2ef3562b13d6d786b4edd3cb35c0  script-channel-51-fixed/console.txt
+446dd23c8d8002d16ed8a4f1708350a6c108b1c9600f699f894f7aa2733fc948  script-channel-51-fixed/exit-code.txt
+d2339edf2345dd932f21b2dea3d8aaf66c3faf2c2298def12b37c4959b38fbb2  script-channel-51-fixed/summary.txt
+
+# ---- 脚本修好之后本机 Core 复跑（确认没改坏）（11 个文件）----
+09b5cedcdc3e9861fcc2b2b9ac89215cf5f789f1def2e6ce7b67cce9adc0b397  script-channel-core-fixed/00-env.txt
+e1fb83fee109825c83aec82b946647eadda058da2649f940e6a59dc2dfb477d7  script-channel-core-fixed/01-install.txt
+b87e55a824ad8c99651e0d7329677e494e97486cfb36f474cbd51e5d4ee32d4d  script-channel-core-fixed/02-service-status.txt
+3ac42014c4ebd07aba3f954799128710419725901706f5a67c3e0d39b8417d64  script-channel-core-fixed/03-pipe-response.txt
+11f5e4a693545fe3369092bd344452fc79f897e99a3355db47c089d8c10bed59  script-channel-core-fixed/04-service-log.txt
+e40d364c8aef4ca10e3a9755158e02e597a7a5555d208aeb5bc8767e44674695  script-channel-core-fixed/05-stop-start.txt
+31c639e9e97910536abd880ee52a7ac1e52908266a2e47a28982072532e39bf8  script-channel-core-fixed/06-uninstall.txt
+24f8cc3fae7d90381b267347a695f97fe81123b170b1a4eac1adf2e07e48fe97  script-channel-core-fixed/07-uninstall-absent.txt
+bd20f6baff3a7b2ffe24981cfaacaa3b485f3ea47b198a9305f7fce7737e91db  script-channel-core-fixed/console.txt
+469429ddb77898589f7e48ba964d37d80dcb23c0670acdc71e608060a10b55e8  script-channel-core-fixed/exit-code.txt
+f8eea7130073a5d4d0fff794f74fae6e05e1d8c7ad007822258657ad08cb0a45  script-channel-core-fixed/summary.txt
+
+# ---- 本轮里 5.1 第一次跑挂的记录（说明改之前什么样）（5 个文件）----
+14160e50c0b21eb5f5d54dbd5567fcd5f6d96eca3f7acded049ee1493d083c0a  script-channel/00-env.txt
+1d99772c70283978eb2df2ed326d03cef2437481dcfbb2f824ad84ebc248f6f8  script-channel/01-install.txt
+794a1f9a088c788a28fd0f29eda2bb16fc9b1960dd357b374ad27556e8da4803  script-channel/02-service-status.txt
+459083085f65b1fbcfc8e789f31d4e51fc979148f0e6da042c1613664442155e  script-channel/console.txt
+dd724ac1ac2cf8b861c309b7b4684604c52b3eec494e38f3dfed7ff209c9dae7  script-channel/summary.txt

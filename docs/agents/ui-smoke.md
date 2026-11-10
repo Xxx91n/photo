@@ -47,8 +47,9 @@
      逐语言验证要么每切一次重新标定，要么手改 `config.json` 的 `ui.locale` 靠热重载切语言、
      只点固定的第一项回概览。
 5. **服务验证前置**：装/卸载服务用 `scripts/install-service.ps1`（安装时登记 `ServicePipeInstallerSid`）。
-   注意服务页「安装」按钮走裸 `sc.exe`，不写这个注册表值——UI 安装的服务在非提权桌面会话
-   连不上服务管道（#70 预设回退，Worker 日志有 WARN）。对比验证时两条通道别混用。
+   服务页「安装」按钮也会在创建服务之前登记安装者 SID（#200 之后的行为，写不进就不装），
+   但它只登记安装者自己，不像脚本能带 `-AuthorizedUsers` 授权多个账户。
+   对比验证时两条通道别混用——授权集合不一样，混着验分不清是哪条链的结果。
 6. **收尾**：服务卸载（`sc query` 回 1060）、`ServicePipeInstallerSid` 随卸载清除、
    无残留 UI/Worker 进程、`config.json` 逐字节还原出厂、临时测试账户删除。
 
