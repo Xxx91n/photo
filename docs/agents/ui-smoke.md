@@ -169,7 +169,7 @@ WSL VM 空闲约 8 s 会回收，验证期间用常驻进程保活。
 
 用户指定由 agent 在 WSL2 GUI 操作、查看截图，不由用户代点。首次验证，非 PR 返修；
 起始基准固定为 `0453da224a0145789b80bb8a29d812bd39cb1473`，独立分支 `verify/4-wsl2-polkit`。
-前置服务页代码和 Linux 生命周期证据已分别由 #74、#272 合入此基线；本轮不核销 #206 的 Windows 项。
+前置服务页代码和 Linux 生命周期证据已分别由 #74、#272 合入此基线；本轮不确认 #206 的 Windows 项。
 
 - **产物**：Release run `42767568814` 的 `release-linux-x64`，head
   `d1e30d8a52566609330eb32e70b4348d0ffcb2af`，版本 `0.1.0-preview`。此 head 到起始基准的
@@ -190,28 +190,34 @@ WSL VM 空闲约 8 s 会回收，验证期间用常驻进程保活。
 | 停止 | 通过：`Success`，服务 inactive，PID 0 | 通过：`Cancelled`，仍运行，PID 2680 不变 | `52-stop-approve` / `51-stop-cancel` |
 | 卸载 | 通过：`Success`，unit 删除、未安装 | 通过：`Cancelled`，unit 保留、仍已停止 | `57-uninstall-approve` / `56-uninstall-cancel` |
 
-八个分支执行于 01:42–01:44（UTC+8）；每个前缀都配有 `-before`、`-prompt`、`-result` 的
-原始整屏 PNG 和同刻 JSON，JSON 记录 UTC 时间、服务状态、进程及窗口。取消前后状态字段逐项相同，
-结果横幅是 `Cancelled / Elevation was cancelled`，不是 `Failed`。原始图不裁剪、不改字。
-准备卸载时另做了一次正常停止；安装复测结束后再从界面停止、卸载。
+八个分支执行于 01:42–01:44（UTC+8），编号是执行顺序所以不连续；这八个前缀各自都配有
+`-before`、`-prompt`、`-result` 的原始整屏 PNG 和同刻 JSON，JSON 记录 UTC 时间、服务状态、
+进程及窗口。取消前后状态字段逐项相同，结果横幅是 `Cancelled / Elevation was cancelled`，
+不是 `Failed`。原始图不裁剪、不改字。准备卸载时另做了一次正常停止；安装复测结束后再从界面
+停止、卸载。这两步以及早期失败尝试的帧、诊断日志也一并留在清单里，不和上面八个分支混着算。
 
 **命令通道**：01:45，真实 GUI 账号运行
 `wsl.exe -d Ubuntu -u pp4verify --exec python3 /mnt/c/photo-verify/issue4-harness.py`；
 辅助脚本经该账号的 `sudo` 调用未修改的 `scripts/verify-systemd-service.sh`，不是 root 伪填 `SUDO_USER`。
 结果 `PASS=52 FAIL=0`、`HARNESS_EXIT=0`，含四态 UI/CLI 对照、IPC、权限、重启和卸载清理。
 `getfacl` 未安装的诊断行仅说明未采集 ACL 文本；权限断言及真实 GUI 用户读写检查均通过。
+所跑两个脚本取自本分支工作区，哈希见证据里的 `lifecycle-scripts.json`；安装脚本与发布包内
+那份相同，验证脚本是仓库工具、基线到本提交没有改动。
 
-**未通过的对照，不隐去**：此前 LXDE `lxpolkit 0.5.5` 中点击取消，界面显示
-`Failed / Not authorized`（`30-install-cancel-*`），本轮未修复，不计入上表的通过项；
-不能把全部 127 退出码改成取消，否则会把真实未授权错误也吞掉。GTK3 自动选择显示后端的尝试
-还出现过代理崩溃或嵌套桌面中没有弹窗；最终明确固定 X11。另有一张预备弹窗在查看期间超时，
-最终八分支改为连续截图和点击后重测。macOS 按 #32 裁定不复测。
+**LXDE 取消分支：失败（未修复）**：此前在 LXDE `lxpolkit 0.5.5` 中点击取消，界面显示
+`Failed / Not authorized`（`30-install-cancel-*`）。按 ui-smoke 的档位，这条记「失败」，
+不能算「未测」，也不能并进上表说取消都已通过。127 同时代表未授权等真实错误，不能一律
+当成取消来吞掉；怎么区分要另定，本轮没改产品代码。GTK3 自动选择显示后端的尝试还出现过
+代理崩溃或嵌套桌面中没有弹窗，最终明确固定 X11。另有一张预备弹窗在查看期间超时，最终八分支
+改为连续截图和点击后重测。macOS 按 #32 裁定不复测。
 
 **收尾**：01:49，临时账号、密码及私有运行库已删除；原有三个服务目录的 inode/权限、权限组和
 polkit 规则校验恢复，服务未安装、socket 和 Worker 无残留。新装的图形工具保留，未升级系统库。
-证据实物位于 `C:\photo-verify\issue4-wsl2\evidence\`，85 个文件的哈希记入
-`docs/agents/ui-smoke-evidence.sha256`；原图和日志未上传。旧轮清单从起始基准的 git 历史取回。
-本轮证明上述 MATE/X11 环境可用，不表示 LXDE 取消问题已解决，也不宣布整个跨平台需求完成。
+证据实物位于 `C:\photo-verify\issue4-wsl2\evidence\`，全部 157 个文件的哈希记入
+`docs/agents/ui-smoke-evidence.sha256`，其中 `review-*` 是目检用裁图、原始整屏都在；原图和
+日志未上传。旧轮清单从起始基准的 git 历史取回。
+本轮证明上述 MATE/X11 环境可用；LXDE 取消仍是失败，原票不能据此按字面整票关闭，
+整个跨平台需求也没有完成。
 
 ### 连接失败三态（#169，3 项）
 
