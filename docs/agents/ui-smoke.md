@@ -137,7 +137,7 @@
 2. 安装：点「安装」→ 绿字成功横幅、状态行 未安装→已停止、按钮组翻转；同刻 `sc query`
    STATE 1 STOPPED、`sc qc` 的 binPath/AUTO_START/LocalSystem 正确。失败分支：移走包内
    `PhotoPrivacyWorker.exe` 再点安装 → 红字报具体原因、状态行保持未安装。
-   取消分支（#30 取证、#206 登记）：UAC 真生效且界面非提权的机器上点「安装」、同意框点「否」
+   取消分支（#30 留下证据、#206 登记）：UAC 真生效且界面非提权的机器上点「安装」、同意框点「否」
    → 琥珀色「已取消」横幅（不是红字「失败」）、状态行保持未安装、10 秒采样无第二次弹框。
    框帧与结果帧在 #30 轮清单（`git show 0453da2:docs/agents/ui-smoke-evidence.sha256`
    的 b2-30/b2-34/b2-35 + b2-no-repeat-watch.txt）；#206 轮复核该清单 42/42 OK。
