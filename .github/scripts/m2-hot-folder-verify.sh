@@ -144,7 +144,8 @@ fi
 perl "$EXIF" -s -Artist -Model -GPSLatitude -GPSLongitude "$WORK/$SAMPLE" > "$EVIDENCE_DIR/03-before-exif.txt" 2>&1 || true
 if ! grep -q 'TestUser' "$EVIDENCE_DIR/03-before-exif.txt" \
   || ! grep -q 'TestCam' "$EVIDENCE_DIR/03-before-exif.txt" \
-  || ! grep -q 'GPS Latitude' "$EVIDENCE_DIR/03-before-exif.txt"; then
+  || ! grep -q 'GPSLatitude' "$EVIDENCE_DIR/03-before-exif.txt" \
+  || ! grep -q 'GPSLongitude' "$EVIDENCE_DIR/03-before-exif.txt"; then
   cat "$EVIDENCE_DIR/03-before-exif.txt" >> "$RESULT" || true
   fail "样本 EXIF 未写全（Artist/Model/GPS 至少一项缺失）"
 fi
@@ -189,7 +190,7 @@ if [[ ! -f "$HOT/$SAMPLE" ]]; then
   fail "hot 目录里找不到清洗后的 $SAMPLE"
 fi
 perl "$EXIF" -s -Artist -Model -GPSLatitude -GPSLongitude "$HOT/$SAMPLE" > "$EVIDENCE_DIR/06-after-exif.txt" 2>&1 || true
-if grep -Eq 'TestUser|TestCam|GPS Latitude|GPS Longitude' "$EVIDENCE_DIR/06-after-exif.txt"; then
+if grep -Eq 'TestUser|TestCam|GPSLatitude|GPSLongitude' "$EVIDENCE_DIR/06-after-exif.txt"; then
   cat "$EVIDENCE_DIR/06-after-exif.txt" >> "$RESULT" || true
   fail "hot 文件仍有 Artist/Model/GPS 元数据"
 fi
@@ -200,7 +201,7 @@ BACKUP="$(sudo find /var/lib/photoprivacy -type f -name "${SAMPLE}*" 2>/dev/null
 if [[ -n "$BACKUP" ]]; then
   printf '%s\n' "$BACKUP" > "$EVIDENCE_DIR/08-backup-path.txt"
   perl "$EXIF" -s -Artist -Model -GPSLatitude -GPSLongitude "$BACKUP" > "$EVIDENCE_DIR/09-backup-exif.txt" 2>&1 || true
-  if grep -Eq 'TestUser|TestCam|GPS Latitude' "$EVIDENCE_DIR/09-backup-exif.txt"; then
+  if grep -Eq 'TestUser|TestCam|GPSLatitude|GPSLongitude' "$EVIDENCE_DIR/09-backup-exif.txt"; then
     rec PASS "备份文件保留原始元数据（$BACKUP）"
   else
     rec FAIL "备份文件存在但原始元数据缺失（$BACKUP）"
