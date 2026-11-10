@@ -185,11 +185,15 @@ else
 fi
 
 # ---------- 5. 清洗后 EXIF + 备份 ----------
-if [[ ! -f "$HOT/$SAMPLE" ]]; then
+if ! sudo test -f "$HOT/$SAMPLE"; then
   capture 06-hot-missing.txt sudo sh -c "find /var/lib/photoprivacy -name 'M2-sample*' -print"
   fail "hot 目录里找不到清洗后的 $SAMPLE"
 fi
-perl "$EXIF" -s -Artist -Model -GPSLatitude -GPSLongitude "$HOT/$SAMPLE" > "$EVIDENCE_DIR/06-after-exif.txt" 2>&1 || true
+if ! sudo cp -f "$HOT/$SAMPLE" "$EVIDENCE_DIR/06-hot-after.jpg"; then
+  fail "复制清洗后的 $SAMPLE 到证据目录失败"
+fi
+sudo chown "$RUNNER_USER" "$EVIDENCE_DIR/06-hot-after.jpg" 2>/dev/null || true
+perl "$EXIF" -s -Artist -Model -GPSLatitude -GPSLongitude "$EVIDENCE_DIR/06-hot-after.jpg" > "$EVIDENCE_DIR/06-after-exif.txt" 2>&1 || true
 if grep -Eq 'TestUser|TestCam|GPSLatitude|GPSLongitude' "$EVIDENCE_DIR/06-after-exif.txt"; then
   cat "$EVIDENCE_DIR/06-after-exif.txt" >> "$RESULT" || true
   fail "hot 文件仍有 Artist/Model/GPS 元数据"
@@ -200,7 +204,11 @@ capture 07-hot-after.txt sudo ls -la "$HOT/$SAMPLE"
 BACKUP="$(sudo find /var/lib/photoprivacy -type f -name "${SAMPLE}*" 2>/dev/null | grep -v "^${HOT}/${SAMPLE}$" | head -n 1 || true)"
 if [[ -n "$BACKUP" ]]; then
   printf '%s\n' "$BACKUP" > "$EVIDENCE_DIR/08-backup-path.txt"
-  perl "$EXIF" -s -Artist -Model -GPSLatitude -GPSLongitude "$BACKUP" > "$EVIDENCE_DIR/09-backup-exif.txt" 2>&1 || true
+  if ! sudo cp -f "$BACKUP" "$EVIDENCE_DIR/09-backup.jpg"; then
+    fail "复制备份文件到证据目录失败（$BACKUP）"
+  fi
+  sudo chown "$RUNNER_USER" "$EVIDENCE_DIR/09-backup.jpg" 2>/dev/null || true
+  perl "$EXIF" -s -Artist -Model -GPSLatitude -GPSLongitude "$EVIDENCE_DIR/09-backup.jpg" > "$EVIDENCE_DIR/09-backup-exif.txt" 2>&1 || true
   if grep -Eq 'TestUser|TestCam|GPSLatitude|GPSLongitude' "$EVIDENCE_DIR/09-backup-exif.txt"; then
     rec PASS "备份文件保留原始元数据（$BACKUP）"
   else
