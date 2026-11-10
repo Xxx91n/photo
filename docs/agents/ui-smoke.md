@@ -59,7 +59,7 @@
 7. **非提权启动的前置（这台验证机，#30）**：内置 Administrator 默认不在管理员批准模式，
    镜像启动还会把 `FilterAdministratorToken` 压回 0，只写注册表活不过重启。要验非提权启动，
    先把 UAC 的值经 `secedit /configure` 写进本地安全策略库再重启（要留同意框帧的把
-   `ConsentPromptBehaviorAdmin` 设成 4，值 2 会去安全桌面）；重启后别只看注册表读数，
+   `ConsentPromptBehaviorAdmin` 设成 4，`PromptOnSecureDesktop` 设成 0；值 2 会去安全桌面）；重启后别只看注册表读数，
    用进程令牌核对被测 UI 是 `elevated=0 / elevationType=3 / integrityRID=8192` 才算数。
    收尾把策略库、注册表和窗口站/桌面 DACL 都恢复原值——`EnableLUA` 改回 0 同样要再重启才生效，
    什么时候重启用由账户持有人定。

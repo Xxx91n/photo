@@ -10,7 +10,7 @@
 # 核对方法（Git Bash）：
 #   cd /c/Users/Administrator/photo-smoke-30/evidence
 #   sha256sum -c /c/photo-t30/docs/agents/ui-smoke-evidence.sha256
-# 输出里 11 条 "improperly formatted" 都是空行，不是失败；41 行的 `<hash>  <file>: OK`
+# 输出里 11 条 "improperly formatted" 都是空行，不是失败；42 行的 `<hash>  <file>: OK`
 # 才是结论（全部 OK 退出码才是 0）。目录删了就只剩哈希，内容没法再看——这个缺口跟前几轮一样，大家已经认了。
 # 下面逐条写清楚每个文件是什么、哪一刻、哪条通道留的。
 #
@@ -54,6 +54,9 @@
 #   `STATE : 4 RUNNING`、sc qc `START_TYPE : 2 AUTO_START`、`SERVICE_START_NAME : LocalSystem`、
 #   binPath 指向包内 Worker + `--mode service --config`（b1-sc-query-qc-after.txt）；
 #   Worker 在 Session 0（b1-worker-session0.txt，PID 6316）。
+#   「STOPPED 到 RUNNING」的字面对应：装前是 sc query 1060（未安装）；脚本 New-Service 创建后
+#   先显示 Get-Service 的 `Stopped`（b1-install-output.txt 里那张表），Start-Service 之后 sc query
+#   是 `STATE : 4 RUNNING`（b1-sc-query-qc-after.txt）。创建和启动之间那一瞬的 sc query 没单独抓。
 #   第一次装失败留的是当时的时间+通道注释头（b1-install-attempt1-failed.txt，14:54，里面只有那一行
 #   注释，输出正文当时没落盘）：界面拉起的后台 Worker 占着同一份审计目录，服务 Worker 撞单写者门
 #   让位退出（#162 形态，Service 日志里那句 "held by another worker; yielding" 在
@@ -71,7 +74,7 @@
 #   注册表清理、无孤儿进程、缺服务卸载回归。该脚本自带装/卸，跑完自己清干净。
 #   一处小毛病如实说：这一轮收下的 verify-harness/00-env.txt 是坏的（whoami 走了 Git Bash 的
 #   /usr/bin/whoami，三行报错），环境信息以 b1-verify-console.txt 和其它文件为准。
-# 块 2-1 从界面点「安装」弹出 UAC 同意框（票面第 2 条前半）：通过（2026-11-11 00:2x；同一台机临时开 UAC，是否接受这个环境安排由用户裁决）
+# 块 2-1 从界面点「安装」弹出 UAC 同意框（票面第 2 条前半）：通过（2026-11-11 00:18–00:26；同一台机临时开 UAC，是否接受这个环境安排由用户裁决）
 #   环境：同一台验证机调到 UAC 真生效——内置 Administrator 默认不在管理员批准模式，所以先把
 #   EnableLUA/FilterAdministratorToken/ConsentPromptBehaviorAdmin 经 secedit 写进本地安全策略库
 #   （b2-26-set-uac-policy.inf，四个值依次是 EnableLUA=1、FilterAdministratorToken=1、
@@ -114,7 +117,9 @@
 # 收尾：通过（2026-11-11 00:28；早前的临时账户/窗口站恢复见 b2-24）
 #   本轮界面装完后用包内脚本卸载，输出在 b2-42-uninstall-output.txt（00:28 那次）；
 #   随后的检查在 b2-38-cleanup.txt：sc query 回 1060、三个注册表值都空、
-#   无 PhotoPrivacy 进程；config.json 哈希仍是 1643bd31…。
+#   无 PhotoPrivacy 进程；config.json 哈希仍是 1643bd31…。最后为拍令牌帧重开的 UI 关掉后，
+#   又跑了一次末态检查：sc query 回 1060、注册表三值空、进程 0、config 还是出厂哈希
+#   （b2-44-final-state.txt，00:44）。
 #   b2-39-env-restore.txt：UAC 四个值经 secedit + 注册表恢复原值 0/0/0/0（EnableLUA 改回 0
 #   要下次重启才生效，已告知用户）；窗口站/桌面 DACL 本轮没动（临时账户和它的 ACL 已在
 #   20:5x 那轮清理，b2-24-env-restore.txt 有记录）。
@@ -181,10 +186,11 @@ cf4a9935da1ea7449c890a23af7e8c459f36bc97c652ad74badf82244cc11f18  b2-03-abandone
 aa36240d0da5af0463ddca0faa53eb13cadae474d1e69c7ef86d13f595cafd8a  b2-23-cleanup.txt
 992666911236569aa6d13ee357f83225da5630f52478dfd2a4d0efe0c73a407d  b2-24-env-restore.txt
 
-# ---- 本轮收尾 + 环境证据（5 个文件）----
+# ---- 本轮收尾 + 环境证据（6 个文件）----
 
 150825c95fbf8b13114cff5782c07ec1f029587f134da46ac5de143fa44457d0  b2-38-cleanup.txt
 5acd1e5896f6a23c156e5b4c7f843db10f59575f95e6aa7ca393f2e7b6ce4d70  b2-39-env-restore.txt
 ca89b06f2f4fb48eb3f296eb01bb839e1948558e17d5b7bb79e6f66dab0129e4  b2-26-set-uac-policy.inf
 fbcd7ce0eb1dbb0196eab1fe825af518d84d6a123094bf6cc809e99db3fe44d6  b2-42-uninstall-output.txt
 9f224325a5f802acf8322e0c53e7d738170f3bb1261065db32c39c77b76bb2a4  b2-41-token-check-session.txt
+37ee21d400f63b94d241eb8ebb6d9bb8109a3b04a588c0b165d7132109f637a5  b2-44-final-state.txt
