@@ -21,6 +21,10 @@
   没覆盖过（验证机配置了免交互规则）。要补真弹窗得有带 polkit 认证代理的 Linux 桌面，
   是否算数由用户裁定。
 - **macOS 提权按钮**：按 #32 裁定接受为残留（CLI 等价命令已验证）。
+- **Windows 验证机的 UAC 同意框只能人点（#30）**：consent.exe 以 SYSTEM 完整性跑，UAC 框按设计
+  拒绝程序输入（UIPI），agent 点不进去。`ConsentPromptBehaviorAdmin=2` 时框还落在安全桌面，
+  普通会话截不到（截图报「句柄无效」）；改成 4 时框渲染在普通桌面，能截到整屏帧——但点击仍要人来做。
+  留证据时把框帧和点完的结果帧都存上，谁点的写清楚。
 
 ## 留证据的方法（agent 桌面截图通道）
 
@@ -52,6 +56,13 @@
    对比验证时两条通道别混用——授权集合不一样，混着验分不清是哪条链的结果。
 6. **收尾**：服务卸载（`sc query` 回 1060）、`ServicePipeInstallerSid` 随卸载清除、
    无残留 UI/Worker 进程、`config.json` 逐字节还原出厂、临时测试账户删除。
+7. **非提权启动的前置（这台验证机，#30）**：内置 Administrator 默认不在管理员批准模式，
+   镜像启动还会把 `FilterAdministratorToken` 压回 0，只写注册表活不过重启。要验非提权启动，
+   先把 UAC 的值经 `secedit /configure` 写进本地安全策略库再重启（要留同意框帧的把
+   `ConsentPromptBehaviorAdmin` 设成 4，`PromptOnSecureDesktop` 设成 0；值 2 会去安全桌面）；重启后别只看注册表读数，
+   用进程令牌核对被测 UI 是 `elevated=0 / elevationType=3 / integrityRID=8192` 才算数。
+   收尾把策略库、注册表和窗口站/桌面 DACL 都恢复原值——`EnableLUA` 改回 0 同样要再重启才生效，
+   什么时候重启用由账户持有人定。
 
 ## 冒烟步骤
 
