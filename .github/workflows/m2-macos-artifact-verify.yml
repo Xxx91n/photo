@@ -83,6 +83,12 @@ jobs:
             exit 1
           fi
 
+          ARTIFACT_STATE="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RELEASE_RUN_ID/artifacts" --jq ".artifacts[] | select(.name == \"${{ matrix.artifact }}\") | .expired")"
+          if [[ "$ARTIFACT_STATE" != "false" ]]; then
+            echo "release artifact ${{ matrix.artifact }} is missing or expired in run $RELEASE_RUN_ID; dispatch with a different release_run_id." >&2
+            exit 1
+          fi
+
           gh run download "$RELEASE_RUN_ID" -R "$GITHUB_REPOSITORY" -n "${{ matrix.artifact }}" -D "$ARTIFACT_DIR"
           TARBALL="$(find "$ARTIFACT_DIR" -maxdepth 1 -name '*.tar.gz' -print -quit)"
           if [[ -z "$TARBALL" ]]; then

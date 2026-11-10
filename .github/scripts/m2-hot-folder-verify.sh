@@ -52,6 +52,12 @@ SOCKET="/Library/Application Support/photoprivacy/worker.sock"
 EXIF="${RELEASE_DIR}/ExifTool/exiftool"
 SAMPLE="M2-sample.jpg"
 
+cleanup() {
+  sudo launchctl unload -w "$PLIST" >/dev/null 2>&1 || true
+  sudo rm -f "$PLIST"
+}
+trap cleanup EXIT
+
 mkdir -p "$EVIDENCE_DIR"
 RESULT="$EVIDENCE_DIR/result.txt"
 : > "$RESULT"
@@ -119,7 +125,9 @@ fi
 rec PASS "内置 ExifTool 可运行（$(tr -d '\r\n' < "$EVIDENCE_DIR/00-exiftool-version.txt")）"
 
 # ---------- 1. staging + install ----------
-capture 00-staging.txt sudo bash -c "mkdir -p '$INSTALL_DIR' && cp -R '$RELEASE_DIR/.' '$INSTALL_DIR/' && chmod +x '$INSTALL_DIR/PhotoPrivacyWorker' '$INSTALL_DIR/PhotoPrivacy'"
+capture 00-staging.txt sudo mkdir -p "$INSTALL_DIR"
+capture 00-staging.txt sudo cp -R "$RELEASE_DIR/." "$INSTALL_DIR/"
+capture 00-staging.txt sudo chmod +x "$INSTALL_DIR/PhotoPrivacyWorker" "$INSTALL_DIR/PhotoPrivacy"
 if [[ ! -f "$INSTALL_DIR/PhotoPrivacyWorker" ]]; then
   fail "staging 失败：$INSTALL_DIR/PhotoPrivacyWorker 不存在"
 fi
@@ -204,7 +212,9 @@ AUDIT_HIT="$EVIDENCE_DIR/05-audit-hit.jsonl"
 : > "$AUDIT_HIT"
 deadline=$((SECONDS + 180))
 while (( SECONDS < deadline )); do
-  sudo sh -c "cat /var/log/photoprivacy/audit-*.jsonl 2>/dev/null | grep -E 'M2-sample|file_processing_succeeded' > '$AUDIT_HIT'" || true
+  sudo sh -c 'cat /var/log/photoprivacy/audit-*.jsonl 2>/dev/null' \
+    | grep 'file_processing_succeeded' \
+    | grep 'M2-sample' > "$AUDIT_HIT" || true
   if grep -q 'file_processing_succeeded' "$AUDIT_HIT"; then
     break
   fi
@@ -270,7 +280,7 @@ fi
 
 # ---------- 6. 日志和审计同会话 ----------
 AUDIT_TS="$(sed -n 's/.*"timestamp_utc":"\([^"]*\)".*/\1/p' "$AUDIT_HIT" | head -n 1)"
-WORKER_LOG="$(sudo sh -c "ls -t '$INSTALL_DIR'/logs/worker-*.log 2>/dev/null | head -n 1")"
+WORKER_LOG="$(sudo ls -t "$INSTALL_DIR"/logs/worker-*.log 2>/dev/null | head -n 1 || true)"
 WORKER_START=""
 if [[ -n "$WORKER_LOG" ]]; then
   WORKER_START="$(sudo grep -h 'Application started' "$WORKER_LOG" | tail -n 1 | awk '{print $1" "$2}')"
