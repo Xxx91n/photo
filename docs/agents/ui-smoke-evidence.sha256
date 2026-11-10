@@ -54,9 +54,11 @@
 #   `STATE : 4 RUNNING`、sc qc `START_TYPE : 2 AUTO_START`、`SERVICE_START_NAME : LocalSystem`、
 #   binPath 指向包内 Worker + `--mode service --config`（b1-sc-query-qc-after.txt）；
 #   Worker 在 Session 0（b1-worker-session0.txt，PID 6316）。
-#   第一次装失败照原样留档（b1-install-attempt1-failed.txt，14:54）：界面拉起的后台 Worker 占着
-#   同一份审计目录，服务 Worker 撞单写者门让位退出（#162 形态）；先结束那个后台 Worker 再装就成。
-#   验启停前先结束后台 Worker 这条前置，ui-smoke 服务模式节原本就写着。
+#   第一次装失败留了当时的命令头（b1-install-attempt1-failed.txt，14:54，里面只有那行命令，
+#   报错正文当时没落盘）：界面拉起的后台 Worker 占着同一份审计目录，服务 Worker 撞单写者门
+#   让位退出（#162 形态，Service 日志里那句 "held by another worker; yielding" 在
+#   C:\ProgramData\PhotoPrivacy\logs\worker-20261110.log 14:54:19 那条）；先结束那个后台 Worker
+#   再装就成。验启停前先结束后台 Worker 这条前置，ui-smoke 服务模式节原本就写着。
 # 块 1-2 界面服务页状态翻转（票面第 1 条后半）：通过（2026-11-10 14:52–14:57）
 #   b1-01-not-installed.png（「未安装」，启动/停止/卸载禁用、安装可点）
 #   → 脚本装完之后 b1-02-running.png（3 秒轮询翻成「运行中」绿点，按钮组翻转）
@@ -69,10 +71,11 @@
 #   注册表清理、无孤儿进程、缺服务卸载回归。该脚本自带装/卸，跑完自己清干净。
 #   一处小毛病如实说：这一轮收下的 verify-harness/00-env.txt 是坏的（whoami 走了 Git Bash 的
 #   /usr/bin/whoami，三行报错），环境信息以 b1-verify-console.txt 和其它文件为准。
-# 块 2-1 从界面点「安装」弹出 UAC 同意框（票面第 2 条前半）：通过（2026-11-11 00:2x）
+# 块 2-1 从界面点「安装」弹出 UAC 同意框（票面第 2 条前半）：通过（2026-11-11 00:2x；同一台机临时开 UAC，是否接受这个环境安排由用户裁决）
 #   环境：同一台验证机调到 UAC 真生效——内置 Administrator 默认不在管理员批准模式，所以先把
 #   EnableLUA/FilterAdministratorToken/ConsentPromptBehaviorAdmin 经 secedit 写进本地安全策略库
-#   （b2-26-set-uac-policy.inf，值 1/1/4/0）再重启。重启后当轮会话拿到的是分割令牌：
+#   （b2-26-set-uac-policy.inf，四个值依次是 EnableLUA=1、FilterAdministratorToken=1、
+#   ConsentPromptBehaviorAdmin=4、PromptOnSecureDesktop=0）再重启。重启后当轮会话拿到的是分割令牌：
 #   explorer 实测 `elevated=0 elevationType=3 integrityRID=8192`（b2-41-token-check-session.txt），
 #   说明登录时 FilterAdministratorToken=1 生效了。之后再去读注册表，这个值已经是 0——镜像的
 #   启动流程在登录之后把它压回去（18:23 那轮同样如此），当轮会话的令牌不受影响。被测 UI 是
@@ -91,8 +94,9 @@
 #   the service was not installed`；状态行保持「未安装」，按钮组没翻转。
 #   b2-35-no-repeat-10s.png + b2-no-repeat-watch.txt：之后 10 秒每 0.5 秒采样，consent.exe 一直 0、
 #   sc query 一直 1060——这 10 秒里没有再弹（观察窗就是 10 秒，如实写；代码侧取消后没有自动重试）。
-#   另记一次（20:0x）：同意框放着没人点，约 2 分钟 UAC 自己超时，界面同样落到「已取消」，
-#   说明超时和拒绝走同一条取消语义（那次的结果帧已随中间帧清掉，只留文字记录）。
+#   另记一次（2026-11-10 20:13–20:16 那轮，值 2）：同意框放着没人点，约 2 分钟 UAC 自己超时，
+#   界面同样落到「已取消」，说明超时和拒绝走同一条取消语义（那轮的第 120 秒采样日志当时被
+#   后一次卸载等待覆盖了，结果帧也随中间帧清掉，只留这段文字）。
 # 块 2-3 成功分支：通过（2026-11-11 00:26–00:28）
 #   用户连点两次「是」（先登记安装者 SID，再 sc create）→ b2-36-success-stopped.png：
 #   绿色「成功」横幅、状态行「已停止」、安装禁用/卸载可点（界面通道只 create 不 start，
@@ -110,10 +114,11 @@
 #   b2-39-env-restore.txt：UAC 四个值经 secedit + 注册表恢复原值 0/0/0/0（EnableLUA 改回 0
 #   要下次重启才生效，已告知用户）；窗口站/桌面 DACL 本轮没动（临时账户和它的 ACL 已在
 #   20:5x 那轮清理，b2-24-env-restore.txt 有记录）。
-#   早前一轮的卸载与现场清理：b2-22-uninstalled-clean.png、b2-23-cleanup.txt（那一轮当时
-#   界面/后台 Worker 还在跑，所以进程数不为 0；零进程是 b2-24 的 procs_after_close=0）。
-# 整票结论：通过。两块都有当轮证据；补充说明同一台机器是调到 UAC 真生效来验的（没换机器），
-#   同意框帧和点框动作分工如上。是否认可这个环境安排由用户拍板，票面标签没改。
+#   本票里做废的前两次尝试留下的卸载与现场清理：b2-22-uninstalled-clean.png、b2-23-cleanup.txt
+#   （那一轮当时界面/后台 Worker 还在跑，所以进程数不为 0；零进程是 b2-24 的 procs_after_close=0）。
+# 整票结论：通过。两块都有当轮证据——块 1 的帧和命令输出分属两次安装（时间线第 1 条），
+#   块 2 是同一台机临时调到 UAC 真生效来验的（没换机器）；同意框帧和点框动作的分工如上。
+#   这两个安排是否认可由用户拍板，票面标签没改。
 #
 # 两条试过但放弃的路线（记录在案，别再走）：
 #   - 临时管理员账户 + CreateProcessWithLogonW 在本会话拉起 UI：令牌能拿到 Medium，但 gpui 起不来，
@@ -124,7 +129,7 @@
 #
 # ---------------------------------------------------------------------------
 
-# ---- 块 1：脚本装服务 + 界面翻转（12 个文件）----
+# ---- 块 1：脚本装服务 + 界面翻转（11 个文件）----
 
 e783d4f39da0b3508ccf61a787b4cf9ca854789957cd87a8a9473a068dabead1  b1-01-not-installed.png
 1da473572491a369b2041387f24ac66fb0cf0271fbeaf01f03a1b53620da9db8  b1-02-running.png
@@ -171,9 +176,9 @@ cf4a9935da1ea7449c890a23af7e8c459f36bc97c652ad74badf82244cc11f18  b2-03-abandone
 aa36240d0da5af0463ddca0faa53eb13cadae474d1e69c7ef86d13f595cafd8a  b2-23-cleanup.txt
 992666911236569aa6d13ee357f83225da5630f52478dfd2a4d0efe0c73a407d  b2-24-env-restore.txt
 
-# ---- 本轮收尾 + 环境证据（4 个文件）----
+# ---- 本轮收尾 + 环境证据（5 个文件）----
 
-c49519417bbb5302a1bf8af86420f1ed151f9636f7ad6c7d9941b6c50f15f68f  b2-38-cleanup.txt
+150825c95fbf8b13114cff5782c07ec1f029587f134da46ac5de143fa44457d0  b2-38-cleanup.txt
 5acd1e5896f6a23c156e5b4c7f843db10f59575f95e6aa7ca393f2e7b6ce4d70  b2-39-env-restore.txt
 ca89b06f2f4fb48eb3f296eb01bb839e1948558e17d5b7bb79e6f66dab0129e4  b2-26-set-uac-policy.inf
 fbcd7ce0eb1dbb0196eab1fe825af518d84d6a123094bf6cc809e99db3fe44d6  b2-42-uninstall-output.txt
