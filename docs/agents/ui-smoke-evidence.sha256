@@ -1,4 +1,4 @@
-# 本轮证据清单 — #30 Windows 服务安装实机验证（含提权 UAC 流）（2026-11-10，Windows 实机）
+# 本轮证据清单 — #30 Windows 服务安装实机验证（含提权 UAC 流）（2026-11-10/11，Windows 实机）
 
 #
 # 这一份只装本票这一轮的证据。旧的几轮按规矩从 git 历史取，不在本文件里：
@@ -7,8 +7,11 @@
 #   - #2 的 L2 组（2026-11-10，Linux systemd）：`git show faf24b55:docs/agents/ui-smoke-evidence.sha256`
 # 证据实物不入库，放在
 #   C:\Users\Administrator\photo-smoke-30\evidence\
-# 核对方法：在这个目录里跑 `sha256sum -c C:\photo-t30\docs\agents\ui-smoke-evidence.sha256`
-# （仓库 clone 在哪就指到哪）。目录删了就只剩哈希，内容没法再看——这个缺口跟前几轮一样，大家已经认了。
+# 核对方法（Git Bash）：
+#   cd /c/Users/Administrator/photo-smoke-30/evidence
+#   sha256sum -c /c/photo-t30/docs/agents/ui-smoke-evidence.sha256
+# 输出里 9 条 "improperly formatted" 是注释和空行，不是失败；40 行的 `<hash>  <file>: OK`
+# 才是结论（全部 OK 退出码才是 0）。目录删了就只剩哈希，内容没法再看——这个缺口跟前几轮一样，大家已经认了。
 # 下面逐条写清楚每个文件是什么、哪一刻、哪条通道留的。
 #
 # ---------------------------------------------------------------------------
@@ -20,89 +23,102 @@
 #   PhotoPrivacy.exe sha256 3f17614b53162854870ce39372a984baa5d902b46b6aa4f4b00a5ae1f7bdbf25
 #   PhotoPrivacyWorker.exe sha256 d51d93d9c89628b6c9fb57b2431860e6747d419d9afa016fba35eed247eb668c
 #   包内出厂 config.json 与 config.sample.json 逐字节相同，sha256 1643bd31…（b1-package-sha256.txt）；
-#   取证前后都是这个哈希，没动过配置。
+#   本轮前后都是这个哈希，没动过配置。
 # 界面：整屏截图用 Graphics.CopyFromScreen（BitBlt 已合成桌面），点击用 SetCursorPos + mouse_event，
-#   工具在 photo-smoke-30\tools\pp-ui.ps1（不入库）。置顶→点击→等待→截图收在同一进程里。
-# 命令行：scripts/install-service.ps1 全程用包内那份；生命周期 harness 用仓库 scripts/verify-windows-service.ps1。
-# 授权：票面标签是 ready-for-human。用户 2026-11-10 在本票窗口明确批准由 agent 代跑（原话大意
-#   「全都给你做，本机环境临时改了后面恢复」），并批准临时改 UAC 注册表/策略、临时建测试账户、
-#   装/卸 PhotoPrivacyCleaner 服务。票面标签和验收标准没改。跟 #88 / #125 / #156 / #3 是同款先例。
+#   工具在 photo-smoke-30\tools\pp-ui.ps1（不入库）。
+# 命令行：scripts/install-service.ps1 全程用包内那份；生命周期 harness 用仓库
+#   scripts/verify-windows-service.ps1。
+# 授权：票面标签是 ready-for-human。用户 2026-11-10 在本票窗口明确批准由 agent 代跑
+#   （原话大意「全都给你做，本机环境临时改了后面恢复」），并批准临时改 UAC 注册表/策略、
+#   临时建测试账户、装/卸 PhotoPrivacyCleaner 服务。同意框由用户手动点（agent 点不了，原因见块 2-1）。
+#   票面标签和验收标准没改。跟 #88 / #125 / #156 / #3 是同款先例。
 #
-# 时间线要坦白的两点：
+# 时间线要坦白的三点：
 #   1) 块 1 的界面帧（b1-01/02/03，14:52–14:57）和命令输出不是同一刻——第一次装的时候成功行是
 #      Write-Host 输出的，PS 5.1 的 `2>&1` 管道抓不到，文件里缺了「Installed and started …」这句。
 #      当天 21:13 用 `*>` 全流重跑了一遍脚本通道补上（包、脚本、路径都没变），界面三帧保留第一次的
 #      实拍（那时界面确实是未安装→运行中→未安装翻的）。b1-install-output.txt 是 21:13 那次的原始输出。
-#   2) 块 2 中途出过一次「用户顺手点了同意框」的安装（20:43 之前），当时没留到同意框帧，只留了结果帧
-#      b2-08-interim-accidental-success.png。这一轮的有效依据是后来的干净一遍：b2-19 → 用户连点两次
-#      「是」→ b2-20/b2-21。b2-08 只作过程记录。
+#   2) 块 2 先跑过两轮不完整的：20:21–20:43 那轮（同意框是值 2，落在安全桌面，只留到结果帧）和
+#      一次用户顺手点掉的安装。那两轮的结果帧已被 2026-11-11 00:2x 这轮完整的替掉，这里只在文字里
+#      交代，不占清单。20:03 那次探测（b2-probe-uac-desktop.txt）也是验值 2 时的记录。
+#   3) 2026-11-11 00:01 重启后屏幕分辨率从 1920x1026 变成 1344x756，界面窗口重新摆到
+#      [170,0] 1000x740；坐标跟早前几轮不同，帧里的位置以当轮为准。
 #
 # ---------------------------------------------------------------------------
 # 逐项结论（按 docs/agents/ui-smoke.md「怎么记结果」的档位填）
 # ---------------------------------------------------------------------------
-# 块 1-1 脚本装服务（票面第 1 条前半）：通过
-#   装前 sc query 1060（b1-sc-query-before.txt）；包内 install-service.ps1 打出
+# 块 1-1 脚本装服务（票面第 1 条前半）：通过（2026-11-10 14:52–21:13）
+#   装前 sc query 1060（b1-sc-query-before.txt，14:52）；包内 install-service.ps1 打出
 #   「Installed and started PhotoPrivacyCleaner (service pipe ACL: 1 authorized SID(s))」
-#   （b1-install-output.txt，2026-11-10 21:13，通道：本机管理员 PowerShell 跑包内脚本）；
-#   同刻 sc query `STATE : 4 RUNNING`、sc qc `START_TYPE : 2 AUTO_START`、
-#   `SERVICE_START_NAME : LocalSystem`、binPath 指向包内 Worker + `--mode service --config`，都对
-#   （b1-sc-query-qc-after.txt）；Worker 在 Session 0（b1-worker-session0.txt，PID 6316）。
-# 块 1-2 界面服务页状态翻转（票面第 1 条后半）：通过
-#   b1-01-not-installed.png（14:52，界面「未安装」，启动/停止/卸载禁用、安装可点）
-#   → 脚本装完之后 b1-02-running.png（14:56，3 秒轮询翻成「运行中」绿点，按钮组翻转）
-#   → 脚本卸载后 b1-03-back-not-installed.png（14:57，回「未安装」）。
+#   （b1-install-output.txt，21:13，通道：本机管理员 PowerShell 跑包内脚本）；同刻 sc query
+#   `STATE : 4 RUNNING`、sc qc `START_TYPE : 2 AUTO_START`、`SERVICE_START_NAME : LocalSystem`、
+#   binPath 指向包内 Worker + `--mode service --config`（b1-sc-query-qc-after.txt）；
+#   Worker 在 Session 0（b1-worker-session0.txt，PID 6316）。
+#   第一次装失败照原样留档（b1-install-attempt1-failed.txt，14:54）：界面拉起的后台 Worker 占着
+#   同一份审计目录，服务 Worker 撞单写者门让位退出（#162 形态）；先结束那个后台 Worker 再装就成。
+#   验启停前先结束后台 Worker 这条前置，ui-smoke 服务模式节原本就写着。
+# 块 1-2 界面服务页状态翻转（票面第 1 条后半）：通过（2026-11-10 14:52–14:57）
+#   b1-01-not-installed.png（「未安装」，启动/停止/卸载禁用、安装可点）
+#   → 脚本装完之后 b1-02-running.png（3 秒轮询翻成「运行中」绿点，按钮组翻转）
+#   → 脚本卸载后 b1-03-back-not-installed.png（回「未安装」）。
 #   通道说明：装/卸走脚本通道（登记 ServicePipeInstallerSid），跟块 2 的界面按钮通道分开算，没混。
-# 块 1-3 生命周期 harness（补充证据，不在票面硬性要求里）：通过
-#   verify-harness/ + b1-verify-console.txt：仓库 scripts/verify-windows-service.ps1 跑了三遍
-#   （第一遍控制台重定向编码弄坏了退出码行，后两遍干净），每遍 `CONCLUSION: PASS=21 FAIL=0`，
-#   最后一遍 `HARNESS_EXIT=0`。含 SCM 注册、Running、Session 0 Worker、管道 Ping、停启循环、
-#   卸载、注册表清理、无孤儿进程、缺服务卸载回归。它自带装/卸，跑完自己清干净。
-# 块 2-1 从界面点「安装」弹 UAC 同意框（票面第 2 条前半）：通过
-#   环境：同一台验证机，先把 UAC 调到真生效（不是换机器）：内置 Administrator 默认不是管理员批准模式，
-#   而且镜像的启动流程会把写进注册表的值压回 0；把 FilterAdministratorToken 等值经 secedit 写进
-#   本地安全策略库（b2-26-set-uac-policy.inf；b2-27-secpol-after-configure.inf 是配置完导出的策略，
-#   三个值 4,1 / 4,2 / 4,1）再重启，当轮会话的令牌才真正分割：
-#   explorer（启用时的父进程，被测 UI 是它的子进程）实测 `elevated=0 elevationType=3
-#   integrityRID=8192`（b2-28-token-check-session.txt；boot 18:23，此文件 21:17 取，注册表那几行
-#   显示 0/0/0/0 是因为 21:11 已经恢复环境，令牌到下次登录才变）；被测 UI 进程当时的输出同样是
-#   `elevated=0 elevationType=3 integrityRID=8192`（该行只在窗口日志里，没单独落盘，如实说明）。
-#   b2-19-service-page-again.png：这一遍的非提权界面停在服务页「未安装」。
-#   点「安装」弹出 UAC 同意框：b2-probe-uac-desktop.txt（12 秒探测，consent.exe 在场，
-#   整屏截图全程「句柄无效」、前台桌面查不到）——同意框落在安全桌面。
-#   限制：安全桌面按设计不允许普通会话截屏/注入，同意框本身留不下整屏帧；两个分支的「一张整屏截图」
-#   留的是点完之后界面的结果帧（b2-15 / b2-20），现象写在各条里。同意框由用户手动点击
-#   （用户已批准这种分工）；如果要求同意框本身留帧，得用远程客户端截图或拍照，需要用户另裁。
-# 块 2-2 取消分支：通过（结果侧）
-#   用户点「否」→ b2-15-after-no.png：琥珀色「已取消」横幅（不是红字「失败」），正文是
+# 块 1-3 生命周期 harness（补充证据，不在票面硬性要求里）：通过（2026-11-10 14:59–15:00）
+#   verify-harness/ + b1-verify-console.txt：仓库 scripts/verify-windows-service.ps1 当天跑了三遍，
+#   每遍 `CONCLUSION: PASS=21 FAIL=0`；收下的目录是最后一遍的（每遍覆盖同一目录），最后一遍
+#   `HARNESS_EXIT=0`。含 SCM 注册、Running、Session 0 Worker、管道 Ping、停启循环、卸载、
+#   注册表清理、无孤儿进程、缺服务卸载回归。该脚本自带装/卸，跑完自己清干净。
+#   一处小毛病如实说：这一轮收下的 verify-harness/00-env.txt 是坏的（whoami 走了 Git Bash 的
+#   /usr/bin/whoami，三行报错），环境信息以 b1-verify-console.txt 和其它文件为准。
+# 块 2-1 从界面点「安装」弹出 UAC 同意框（票面第 2 条前半）：通过（2026-11-11 00:2x）
+#   环境：同一台验证机调到 UAC 真生效——内置 Administrator 默认不在管理员批准模式，镜像启动
+#   还会把 FilterAdministratorToken 压回 0；把 EnableLUA/FilterAdministratorToken/
+#   ConsentPromptBehaviorAdmin 经 secedit 写进本地安全策略库（b2-26-set-uac-policy.inf，
+#   值 1/1/4/0；重启后注册表读数 EnableLUA=1、FilterAdministratorToken=0（被启动流程压回）、
+#   ConsentPromptBehaviorAdmin=4、PromptOnSecureDesktop=0，这行是当时窗口里的读数，没单独落盘）再重启，
+#   当轮会话的令牌才真正分割：explorer 实测 `elevated=0 elevationType=3 integrityRID=8192`
+#   （b2-41-token-check-session.txt；被测 UI 是 explorer 的子进程，启动后实测同一个令牌形态，
+#   那行只在窗口日志里，如实说明）。b2-29-service-page-pre.png：非提权界面停在服务页「未安装」。
+#   点「安装」→ consent.exe 弹出同意框（Windows PowerShell，是/否按钮）。两张同意框的整屏帧：
+#   b2-30-consent-cancel-branch.png（取消分支那一次）、b2-31-consent-success-1.png 和
+#   b2-32-consent-success-2.png（成功分支的两次：先登记安装者 SID，再 sc create）。
+#   同意框为什么用户点：consent.exe 以 SYSTEM 完整性运行，UAC 框本身按设计拒绝程序输入
+#   （UIPI），agent 的点击进不去，只能人点。值 2 时同意框还会落到安全桌面（20:03 那次探测
+#   b2-probe-uac-desktop.txt：consent 在场、整屏截图「句柄无效」）；值 4 时它渲染在普通桌面，
+#   能截到帧——本轮两张框帧就是这么来的。点击由用户执行，用户已在窗口内批准这种分工。
+# 块 2-2 取消分支：通过（2026-11-11 00:25–00:26）
+#   用户点「否」→ b2-34-cancel-banner.png：琥珀色「已取消」横幅（不是红字「失败」），正文是
 #   `Unable to register the service pipe ACL for the installing user (elevation was cancelled);
 #   the service was not installed`；状态行保持「未安装」，按钮组没翻转。
-#   b2-16-no-repeat-10s.png + b2-no-repeat-watch.txt：之后 10 秒每 0.5 秒采样，consent.exe 一直 0、
-#   sc query 一直 1060——这段时间内没有第二次弹窗（观察窗就是 10 秒，如实写；代码侧取消后无自动重试）。
-#   另记一次：同意框放着没人点，约 2 分钟 UAC 自己超时，界面同样落到「已取消」，
-#   说明超时和拒绝走同一条取消语义（该次的结果帧已随中间帧清掉，只留文字记录）。
-# 块 2-3 成功分支：通过（结果侧）
-#   用户连点两次「是」（先登记安装者 SID，再 sc create）→ b2-20-success-stopped.png：
+#   b2-35-no-repeat-10s.png + b2-no-repeat-watch.txt：之后 10 秒每 0.5 秒采样，consent.exe 一直 0、
+#   sc query 一直 1060——这 10 秒里没有再弹（观察窗就是 10 秒，如实写；代码侧取消后没有自动重试）。
+#   另记一次（20:0x）：同意框放着没人点，约 2 分钟 UAC 自己超时，界面同样落到「已取消」，
+#   说明超时和拒绝走同一条取消语义（那次的结果帧已随中间帧清掉，只留文字记录）。
+# 块 2-3 成功分支：通过（2026-11-11 00:26–00:28）
+#   用户连点两次「是」（先登记安装者 SID，再 sc create）→ b2-36-success-stopped.png：
 #   绿色「成功」横幅、状态行「已停止」、安装禁用/卸载可点（界面通道只 create 不 start，
 #   所以是「已停止」不是「运行中」，跟设计一致）。
-#   b2-21-sc-after-ui-install.txt（20:43）：sc query `STATE : 1 STOPPED`（WIN32_EXIT_CODE 1077 未启动）、
+#   b2-37-sc-after-ui-install.txt：sc query `STATE : 1 STOPPED`（WIN32_EXIT_CODE 1077 未启动）、
 #   sc qc 的 binPath/AUTO_START/LocalSystem 正确、`ServicePipeInstallerSid=S-1-5-21-…-500`
 #   （界面通道装之前会经提权 PowerShell 先登记安装者 SID，#200 之后的行为）。
-#   两次同意框的出现靠等待循环观察与用户确认（b2-25-uninstall-wait.txt 是**卸载**那一次的等待记录，
-#   不是这一条的；这一条没有单独的同刻轮询日志，如实说明）。
-# 收尾：通过
-#   b2-22-uninstalled-clean.png：界面点「卸载」（同意框点「是」）后回到「未安装」。
-#   b2-23-cleanup.txt：sc query 回 1060、三个注册表值都空、无 PhotoPrivacy 进程；
-#   包内 config.json 哈希仍是 1643bd31…（出厂原样）。
-#   b2-24-env-restore.txt：窗口站/桌面 DACL 还原成原始 SDDL；UAC 四个注册表值经 secedit + 注册表
-#   恢复到原值 0/0/0/0（EnableLUA 改回 0 要下次重启才生效，已告知用户）；临时账户 pp-t30-ua、
-#   它的 profile、C:\Users\Public 的探针脚本都删了。
+#   b2-40-consent-capture-log.txt：两次同意框出现的进程记录（pid 2240、2572，各自留帧）。
+# 收尾：通过（2026-11-11 00:28；早前的临时账户/窗口站恢复见 b2-24）
+#   本轮界面装完后用包内脚本卸载（b2-38-cleanup.txt 之前的 uninstall 输出在
+#   b1-uninstall-output.txt 的 21:13 段之外单独跑了一次，见 00:28 记录）：sc query 回 1060、
+#   三个注册表值都空、无 PhotoPrivacy 进程；config.json 哈希仍是 1643bd31…。
+#   b2-39-env-restore.txt：UAC 四个值经 secedit + 注册表恢复原值 0/0/0/0（EnableLUA 改回 0
+#   要下次重启才生效，已告知用户）；窗口站/桌面 DACL 本轮没动（临时账户和它的 ACL 已在
+#   20:5x 那轮清理，b2-24-env-restore.txt 有记录）。
+#   早前一轮的卸载与现场清理：b2-22-uninstalled-clean.png、b2-23-cleanup.txt（那一轮当时
+#   界面/后台 Worker 还在跑，所以进程数不为 0；零进程是 b2-24 的 procs_after_close=0）。
+# 整票结论：通过。两块都有当轮证据；补充说明同一台机器是调到 UAC 真生效来验的（没换机器），
+#   同意框帧和点框动作分工如上。是否认可这个环境安排由用户拍板，票面标签没改。
 #
 # 两条试过但放弃的路线（记录在案，别再走）：
 #   - 临时管理员账户 + CreateProcessWithLogonW 在本会话拉起 UI：令牌能拿到 Medium，但 gpui 起不来，
 #     panic `Error creating drop target helper (0x80070005)`——COM 拖放助手只认交互用户。
 #   - 手工受限令牌（CreateRestrictedToken LUA_TOKEN + IL 压到 8192）：UI 能起、点安装确实弹框，
-#     但弹的是**凭据框**（标准用户语义，b2-03-abandoned-credential-route.png），consent.exe 跑在
-#     SYSTEM 完整性，高完整性 shell 的点击和 Esc 都被 UIPI 挡住。
+#     但弹的是**凭据框**（标准用户语义，b2-03-abandoned-credential-route.png），consent.exe
+#     在 SYSTEM 完整性，点击和 Esc 都被 UIPI 挡住。
 #
 # ---------------------------------------------------------------------------
 
@@ -116,9 +132,9 @@ e783d4f39da0b3508ccf61a787b4cf9ca854789957cd87a8a9473a068dabead1  b1-01-not-inst
 2d6ba882367746c43f269d6c4ea64c94c17237cc2786c01a3783127907418a66  b1-install-output.txt
 637bfb175cbaef5488753bdf37f2648b97ba11709743833dc77cb399a6593aae  b1-sc-query-qc-after.txt
 5d29f49f4d5416a25af90ded4e5c49a6ee56836e925c88e3a80783dc0fddfdd1  b1-worker-session0.txt
-bed405388f61afa50d2ca1e2baf38957cc1b56dc42acc8965f3a530132aa3565  b1-uninstall-output.txt
+fbcd7ce0eb1dbb0196eab1fe825af518d84d6a123094bf6cc809e99db3fe44d6  b1-uninstall-output.txt
 20e4a65197079520c0fe8a09dbcc44fdea4e5b51b60cbfadb730704a91f0989d  b1-post-uninstall.txt
-410b07405c91357459061fd6c2737a1c9a572d6037651d4a0c3e73b536834998  b1-install-attempt1-single-writer.txt
+410b07405c91357459061fd6c2737a1c9a572d6037651d4a0c3e73b536834998  b1-install-attempt1-failed.txt
 55a01ee5622212f48bb710396119b0fccc6d81dd56c620f37f86c0ce5600e75d  b1-verify-console.txt
 
 # ---- 块 1：生命周期 harness（9 个文件）----
@@ -133,24 +149,30 @@ fc7de1f850002b44df5342ef856843eb360267e04cc85897bae5de312bf48b0a  verify-harness
 f5c8b6d52d0519971ce2ad5389e3d4abb6f5eee44759cd2bf4122138b4824227  verify-harness/07-uninstall-absent.txt
 963c2459f7fe3113a481de678540ef3fd727058a98e03476a00f4c62d9088cfc  verify-harness/summary.txt
 
-# ---- 块 2：界面点安装的 UAC 两分支 + 环境证据（10 个文件）----
+# ---- 块 2：UAC 同意框帧 + 两分支结果（12 个文件）----
 
-ffc247fa7bc1e1797bd24ced1940ac6ac132142a338a870789010862d128192e  b2-19-service-page-again.png
-cf4a9935da1ea7449c890a23af7e8c459f36bc97c652ad74badf82244cc11f18  b2-03-abandoned-credential-route.png
-0a3cf0f275cd6051bfca30f37ecbc1971f20a2c3ab79bce28f6113d97676b884  b2-08-interim-accidental-success.png
-dc6d0b6c3bd25b7363f52a4a9f81d37da994b7e45606ce66f8734a323d756445  b2-15-after-no.png
-ebdbd7c8908f590d34e739a303742550fdf4003cacac577dbbdf8220e9123ecb  b2-16-no-repeat-10s.png
-b089c0940b326362c620223fc92735490f31cd7f4fee966b5ed9090aa528aeb5  b2-no-repeat-watch.txt
+8b2a80fec7843a1b24c18dd3a654fddd40af0a665655e0e93d441265edea8043  b2-29-service-page-pre.png
+a62f8e0dc8cf24cf4a77094f8e5cb0623c7a74a488e427195f53b0f6b94b1375  b2-30-consent-cancel-branch.png
+8bbe1edcbf33e1ff2685c665a7f632da131a974e421d66fdafe9ee75fe938618  b2-31-consent-success-1.png
+ad75bb25fbef9fb7e3eb55238fb45a690082b5fcaf8ffc53b83e6de0b4077098  b2-32-consent-success-2.png
+ffb8722f1d2a3fab563930ec1bfc3af60961f6569509d25130c5820bd121951e  b2-34-cancel-banner.png
+bbb5f789945edb2992662a83d7b020d1031407f2bc1d0fa5a0a2d4c8ba7cfc5a  b2-35-no-repeat-10s.png
+04affa5bcc2aaa147e5e1e3abd2d052ea052366c3efe631f700f51fc460d9343  b2-no-repeat-watch.txt
+0971644b5355f1ee90d87b418ba2f7e08c7d9fb2053f44d60284cfea3c154ea9  b2-36-success-stopped.png
+be28276253616fa5696367f3ba5afc3102a71d070417a94dd5f93af0ee32dd98  b2-37-sc-after-ui-install.txt
+abe33b5b490f400bb80fccad0c3d6aff9103a22d457df80973c8473533aba441  b2-40-consent-capture-log.txt
 317619258bd26595a1457fcf5a0aac6a39f1e8f2456d0cc7b952642e7644a018  b2-probe-uac-desktop.txt
-716dcd0bd4352a0d6db530a039ecf3438b5db9b20dbd1a68acc2c2e77100d088  b2-20-success-stopped.png
-1bc79656a7c1ccd308c642d84bb91e206af4ae5d9107f3c6eb918d4bcc6597e1  b2-21-sc-after-ui-install.txt
-02ce3fb5114a4c880215fb86d84053a99cab102843c3f6aaddf80d1225da74d6  b2-25-uninstall-wait.txt
+cf4a9935da1ea7449c890a23af7e8c459f36bc97c652ad74badf82244cc11f18  b2-03-abandoned-credential-route.png
 
-# ---- 收尾：卸载 + 环境恢复（6 个文件）----
+# ---- 早前一轮的收尾与环境恢复（3 个文件，过程记录）----
 
 8e19152f98ec6893a450f72860b2490fb782ca8ee6fb4408f28f6330df7a8468  b2-22-uninstalled-clean.png
 aa36240d0da5af0463ddca0faa53eb13cadae474d1e69c7ef86d13f595cafd8a  b2-23-cleanup.txt
 992666911236569aa6d13ee357f83225da5630f52478dfd2a4d0efe0c73a407d  b2-24-env-restore.txt
-34d72f4e394807076400b8efe82a6f985744e4463f60cc99ceeb9de5364ca2e3  b2-26-set-uac-policy.inf
-aea5d1c176f48eff79cecbfc161fbbf40f5fd3f4930228fb16456dbc3e5f7425  b2-27-secpol-after-configure.inf
-a154a47d4ed42ecaaaa8a4b3300d8537f78e5e5dc738bdfff231eef0fba3ea01  b2-28-token-check-session.txt
+
+# ---- 本轮收尾 + 环境证据（4 个文件）----
+
+c49519417bbb5302a1bf8af86420f1ed151f9636f7ad6c7d9941b6c50f15f68f  b2-38-cleanup.txt
+5acd1e5896f6a23c156e5b4c7f843db10f59575f95e6aa7ca393f2e7b6ce4d70  b2-39-env-restore.txt
+ca89b06f2f4fb48eb3f296eb01bb839e1948558e17d5b7bb79e6f66dab0129e4  b2-26-set-uac-policy.inf
+9f224325a5f802acf8322e0c53e7d738170f3bb1261065db32c39c77b76bb2a4  b2-41-token-check-session.txt
