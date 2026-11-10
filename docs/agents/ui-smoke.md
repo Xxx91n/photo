@@ -17,9 +17,12 @@
   不判字形质量，不据此记失败。升级 gpui 的 Windows 文本系统版本后先复验 ar 帧，再考虑撤销本条。
 - **停服务时的 `Pipe is broken` 噪声（#37）**：ExifTool 已死时停机拆 stdin 会抛这个 IO 异常，
   属预期，代码已降 Debug；真实失败看其他异常或退出码非 0。
-- **Linux 提权弹窗未实测**：UI 安装/启停命令本身走 pkexec 实测过，但交互式 polkit 认证弹窗
-  没覆盖过（验证机配置了免交互规则）。要补真弹窗得有带 polkit 认证代理的 Linux 桌面，
-  是否算数由用户裁定。
+- **Linux 提权弹窗已实测（#206）**：Xvfb 虚拟显示 + polkit-gnome 认证代理 + 独立 logind 会话里
+  走通了真实交互弹窗（安装/启停/卸载 + Escape 取消分支），证据见下方 L 组 polkit 分支。
+  两个环境坑：取消语义跟认证代理有关——polkit-gnome 的 Escape 走 dismissed、pkexec 退出 126；
+  lxpolkit 的 Cancel 按钮走 cancel 信号、报 127（Not authorized），UI 会按失败分型显示。
+  云镜像还把 polkit-agent-helper-1 的 setuid 位摘掉了，密码送不进 PAM（auth.log 报
+  conversation failed），取证前先补回 u+s。
 - **macOS 提权按钮**：按 #32 裁定接受为残留（CLI 等价命令已验证）。
 - **Windows 验证机的 UAC 同意框只能人点（#30）**：consent.exe 以 SYSTEM 完整性跑，UAC 框按设计
   拒绝程序输入（UIPI），agent 点不进去。`ConsentPromptBehaviorAdmin=2` 时框还落在安全桌面，
@@ -165,6 +168,23 @@ macOS 侧的服务页探测项（S1/S3/S6/S7 等）不以人工读屏为准，�
 
 WSLg 环境备注：gpui 的 Wayland 后端不出窗，清空 `WAYLAND_DISPLAY` 强制 X11 后端；
 WSL VM 空闲约 8 s 会回收，验证期间用常驻进程保活。
+#### Linux polkit 交互弹窗（#206，2026-11-11 实测）
+环境：Ubuntu 26.04 CVM + Xvfb :99（1280x800x24）+ polkit-gnome 认证代理 + 独立 SSH logind
+会话（session scope）+ 会话 dbus；polkit 免交互规则当轮停用，弹窗为真实交互认证。
+包：Release run 42865294855（ref main，head 0453da2）出的 release-linux-x64，本机未编译。
+1. 安装弹窗：点「安装」→ polkit 认证弹窗出现（身份下拉 + 密码框 + Cancel/Authenticate），
+   截图 L3-01；输密码回车 → 服务 active+enabled、Worker 进程启动、UI 绿字
+   systemd service installed（L3-03）。
+2. 取消分支：弹窗出现后按 Escape → pkexec 退出码 126（Request dismissed）→ UI 反馈行
+   warning 色 Elevation was cancelled（L3-02），服务保持未安装（is-active inactive、
+   unit 不存在），不重复弹窗。
+3. 停止/启动/卸载弹窗：三个操作各自弹窗认证后生效——停止 → inactive（L3-04/L3-05）；
+   启动 → active、新 MainPID（L3-08/L3-09）；卸载 → unit 删除、not-found（L3-06/L3-07）。
+4. 取消语义边界：pkexec 手册定义 126=用户关掉认证框、127=未授权/出错；实测 polkit-gnome
+   的 Escape 走 126，lxpolkit 的 Cancel 按钮走 127——UI 只把 126 分型为取消，127 按失败
+   显示，与代码注释（unix.rs：只有 126 是用户取消）一致。
+证据清单与哈希：docs/agents/ui-smoke-evidence.sha256（实物在验证机
+/home/ubuntu/photo-verify/evidence-206/）。
 
 ### 连接失败三态（#169，3 项）
 
