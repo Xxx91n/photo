@@ -1,8 +1,11 @@
 # 本轮截图和命令输出的 SHA256 清单 — #3 服务模式功能测试（2026-11-10，Windows 实机）
 #
-# 这一份只装本票这一轮留下的证据。上一轮（#154 探针 + S267 组，2026-11-04/05）的清单
-# 用 `git show 0323243f:docs/agents/ui-smoke-evidence.sha256` 取回，对应的老图还在
-# 这台机器上各自的老目录里。图片和文本证据都不入库，只放在
+# 这一份只装本票这一轮留下的证据。旧的两轮按规矩从 git 历史取，不在本文件里：
+#   - #154 探针 + S267 组（2026-11-04/05）：`git show 0323243f:docs/agents/ui-smoke-evidence.sha256`
+#   - #2 的 L2 组（2026-11-10，Linux systemd 实机，32 个文件）：`git show faf24b55:docs/agents/ui-smoke-evidence.sha256`
+#     （PR #272 把这组追加在老清单后面；本票把整轮换掉时它随之退出本文件，
+#     内容没丢，git 历史里能找到，证据实物在 Linux 验证机 /home/ubuntu/photo-verify/evidence/）
+# 对应的老图各自还在原来那台机器的老目录里。图片和文本证据都不入库，只放在
 #   C:\Users\Administrator\photo-smoke-3\evidence\
 # 有了这份清单，随时能核对这些文件还在、内容没被人事后换过。
 # 目录要是删了，就只剩哈希，内容没法再看一遍——这个缺口大家已经认了，不算漏项。
