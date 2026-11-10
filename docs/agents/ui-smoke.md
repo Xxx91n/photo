@@ -21,6 +21,10 @@
   没覆盖过（验证机配置了免交互规则）。要补真弹窗得有带 polkit 认证代理的 Linux 桌面，
   是否算数由用户裁定。
 - **macOS 提权按钮**：按 #32 裁定接受为残留（CLI 等价命令已验证）。
+- **未知态的超时变体没有实机帧（#206）**：#206 轮诱发的是 spawn 失败分支；超时、无权限
+  两变体与它共用同一处 Unknown 赋值和同一呈现（`windows.rs` 探针三分支）。无权限变体有 CI 守护
+  `sc_query_access_denied_is_unknown_not_uninstalled`，按钮 fail-closed 有
+  `unknown_is_fail_closed_for_buttons`；超时变体无专设单测，判第 9 项时别把本轮帧当成它的证据。
 - **Windows 验证机的 UAC 同意框只能人点（#30）**：consent.exe 以 SYSTEM 完整性跑，UAC 框按设计
   拒绝程序输入（UIPI），agent 点不进去。`ConsentPromptBehaviorAdmin=2` 时框还落在安全桌面，
   普通会话截不到（截图报「句柄无效」）；改成 4 时框渲染在普通桌面，能截到整屏帧——但点击仍要人来做。
@@ -124,7 +128,7 @@
    退出、无残留——实机证据还没补（自动化侧已由待机用例断言 `StopAsync` 在预算内完成），
    没补前不记通过。
 
-### 服务模式（Windows，8 项）
+### 服务模式（Windows，9 项）
 
 注意：UI 启动会拉起后台 Worker；服务已装且未运行时点「启动」，服务 Worker 会触发单写者门
 让位退出，UI 报「服务启动超时」（#162 形态）。验启动/停止前先结束后台 Worker、只留 UI。
@@ -133,6 +137,10 @@
 2. 安装：点「安装」→ 绿字成功横幅、状态行 未安装→已停止、按钮组翻转；同刻 `sc query`
    STATE 1 STOPPED、`sc qc` 的 binPath/AUTO_START/LocalSystem 正确。失败分支：移走包内
    `PhotoPrivacyWorker.exe` 再点安装 → 红字报具体原因、状态行保持未安装。
+   取消分支（#30 取证、#206 登记）：UAC 真生效且界面非提权的机器上点「安装」、同意框点「否」
+   → 琥珀色「已取消」横幅（不是红字「失败」）、状态行保持未安装、10 秒采样无第二次弹框。
+   框帧与结果帧在 #30 轮清单（`git show 0453da2:docs/agents/ui-smoke-evidence.sha256`
+   的 b2-30/b2-34/b2-35 + b2-no-repeat-watch.txt）；#206 轮复核该清单 42/42 OK。
 3. 启动：点「启动」→ 状态变运行中，`sc query` STATE 4 RUNNING，服务 Worker 进程在 Services 会话。
 4. 服务运行中重启 UI → 总览连接态「已连接 · PhotoPrivacyCleaner.Service · 服务模式」，
    Worker 卡片服务 IPC=可达，UI 未拉起后台 Worker。
@@ -143,6 +151,12 @@
    Running 分支）。
 8. 服务日志通道：日志页实时出 `Service started`/`Cleaned` 等条目，与 `_audit` 审计文件、
    ProgramData 服务日志同刻对得上；与后台模式的区分看连接态显示。
+9. 未知态：探针给不出结论（spawn 失败/超时/wait 失败）时状态行琥珀点「未知」，
+   安装/启动/停止/卸载全禁用、只有刷新可点；不得谎报「未安装」或「已停止」。
+   复现：把 UI 挂起放进 ActiveProcessLimit=1 的 Job 对象再放行（#206 轮
+   launch-in-job.ps1，写后读回校验），子进程 spawn 被配额挡掉（os error 1816）探针落 Unknown；
+   同刻不受限 shell 的 `sc query` 作真值对拍，点禁用按钮应无响应；杀掉 Job 内 UI 正常拉起
+   应回真实状态。证据与边界（超时变体未实机诱发）见 #206 轮清单 u1-round-notes.txt。
 
 macOS 侧的服务页探测项（S1/S3/S6/S7 等）不以人工读屏为准，以 `scripts/verify-launchd-service.sh`
 对拍为准：`ui_probe_report` 以 GUI 用户语境跑 `PhotoPrivacy --service-probe-report`，与 CLI
