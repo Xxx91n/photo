@@ -25,10 +25,6 @@
   UAC 同意框落在安全桌面，`PromptOnSecureDesktop=0` 也压不住——普通会话截不到也点不进去
   （截图报「句柄无效」）。同意框只能由人点；agent 留的是点完之后的界面整屏帧和命令输出。
   要连同意框本身留帧，得用远程客户端截图或拍照，别指望桌面截图通道。
-- **Windows 验证机的批准模式被启动流程重置（#30）**：镜像每次启动会把
-  `FilterAdministratorToken` 压回 0，单写注册表活不过重启；要验非提权启动，得把值先写进
-  本地安全策略库（`secedit /configure`），重启后马上用进程令牌核对
-  `elevated=0 / elevationType=3 / integrityRID=8192`，别只看注册表读数。收尾记得两者都恢复。
 
 ## 留证据的方法（agent 桌面截图通道）
 
@@ -60,6 +56,12 @@
    对比验证时两条通道别混用——授权集合不一样，混着验分不清是哪条链的结果。
 6. **收尾**：服务卸载（`sc query` 回 1060）、`ServicePipeInstallerSid` 随卸载清除、
    无残留 UI/Worker 进程、`config.json` 逐字节还原出厂、临时测试账户删除。
+7. **非提权启动的前置（这台验证机，#30）**：内置 Administrator 默认不在管理员批准模式，
+   镜像启动还会把 `FilterAdministratorToken` 压回 0，只写注册表活不过重启。要验非提权启动，
+   先把 UAC 的值经 `secedit /configure` 写进本地安全策略库再重启；重启后别只看注册表读数，
+   用进程令牌核对被测 UI 是 `elevated=0 / elevationType=3 / integrityRID=8192` 才算数。
+   收尾把策略库、注册表和窗口站/桌面 DACL 都恢复原值——`EnableLUA` 改回 0 同样要再重启才生效，
+   什么时候重启用由账户持有人定。
 
 ## 冒烟步骤
 
