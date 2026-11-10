@@ -154,7 +154,8 @@
 9. 未知态：探针给不出结论（spawn 失败/超时/wait 失败）时状态行琥珀点「未知」，
    安装/启动/停止/卸载全禁用、只有刷新可点；不得谎报「未安装」或「已停止」。
    复现：把 UI 挂起放进 ActiveProcessLimit=1 的 Job 对象再放行（#206 轮
-   launch-in-job.ps1，写后读回校验），子进程 spawn 被配额挡掉（os error 1816）探针落 Unknown；
+   launch-in-job.ps1，工具不入库、当轮在证据目录旁的 tools\，写后读回校验），子进程 spawn
+   被配额挡掉（os error 1816）探针落 Unknown；
    同刻不受限 shell 的 `sc query` 作真值对拍，点禁用按钮应无响应；杀掉 Job 内 UI 正常拉起
    应回真实状态。证据与边界（超时变体未实机诱发）见 #206 轮清单 u1-round-notes.txt。
 
