@@ -34,8 +34,18 @@ public static class WipeStrategyResolver
         ["heic"] = WipeFormatFamily.Heic, ["heif"] = WipeFormatFamily.Heic,
         ["hif"] = WipeFormatFamily.Heic, ["avif"] = WipeFormatFamily.Heic,
 
-        // PNG
+        // PNG / WebP（issue #8：WebP 实测 -all= 往返安全，ICC 保留与 PNG 同引擎）
         ["png"] = WipeFormatFamily.Png, ["apng"] = WipeFormatFamily.Png,
+        ["webp"] = WipeFormatFamily.Png,
+        // GIF（issue #8：部分清理——Comment/XMP/ICC 可删；C2PA/PlainText/MIDI 删不掉，
+        // 命令与 PNG 同款，禁止塞 -jumbf:all= 装作删 C2PA；见研究文档 §3.3 与
+        // GifC2paPreservationTests）
+        ["gif"] = WipeFormatFamily.Png,
+
+        // PSD（issue #8：部分清理——EXIF/XMP/IPTC/ICC（IRB 内）可删；版权/URL/分辨率/
+        // 打印参数/缩略图/图层内容删不掉；命令与 PNG 同款，42 图层真实样本实测图层段
+        // 字节级不变；见研究文档 §3.4）
+        ["psd"] = WipeFormatFamily.Png,
 
         // MOV/MP4
         ["mov"] = WipeFormatFamily.Video, ["mp4"] = WipeFormatFamily.Video,
@@ -68,6 +78,29 @@ public static class WipeStrategyResolver
 
         var key = ext.StartsWith('.') ? ext[1..] : ext;
         return ExtensionFamilyMap.TryGetValue(key, out var family) ? family : WipeFormatFamily.Unknown;
+    }
+
+    /// <summary>
+    /// 「部分清理」标注（issue #8 拍板：删不掉的尾巴要在审计里如实写明，不许谎报清干净）。
+    /// 返回 null 表示该格式按宽线属清得干净的族，无需标注。新增部分清理格式时必须同步此表。
+    /// </summary>
+    public static string? PartialCleanNote(string filePath)
+    {
+        var ext = Path.GetExtension(filePath);
+        if (string.IsNullOrEmpty(ext))
+        {
+            return null;
+        }
+
+        var key = (ext.StartsWith('.') ? ext[1..] : ext).ToLowerInvariant();
+        return key switch
+        {
+            "gif" => "部分清理：C2PA(JUMBF)、Plain Text、MIDI 块保留（ExifTool 删不掉）",
+            "psd" => "部分清理：版权标记、URL、分辨率、打印参数、缩略图、图层内容保留",
+            "mov" or "mp4" or "m4v" or "qt" or "3gp" or "3g2"
+                => "部分清理：官方说明 Most top-level metadata is removed，编码器指纹等部分顶层元数据保留",
+            _ => null,
+        };
     }
 
 }
