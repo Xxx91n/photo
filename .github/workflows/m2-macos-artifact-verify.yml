@@ -1,15 +1,30 @@
 name: M2 macOS artifact verify
 
-# 一次性验证（#2 macOS 半边）：不编译，直接下载 Release run 42674901152 的 osx 产物，
-# 用 2b2fceb 的 verify-launchd-service.sh 跑 launchd 生命周期 + UI 探测 + 截图，
-# 再补 hot 目录清洗、EXIF 前后对比、审计对账。
-# 本 workflow 只存在于临时分支 verify/m2-macos-artifact-2b2fceb，不合并进 main。
+# M2 = GitHub issue #2 macOS half evidence group.
+# Verifies an exact release artifact on macOS runners; no build.
+# Manual dispatch can point at another release run. The pull_request trigger
+# exercises this harness when the harness itself changes.
+# The defaults pin the #2 evidence release (run 42674901152 / 2b2fceb / 0.0.0-verify3).
 
 on:
-  push:
-    branches:
-      - "verify/m2-macos-artifact-2b2fceb"
   workflow_dispatch:
+    inputs:
+      release_run_id:
+        description: "Release workflow run ID"
+        required: true
+        default: "42674901152"
+      release_head:
+        description: "Expected release head SHA"
+        required: true
+        default: "2b2fceb94adac7b3aaa095524d043c6713c1d6bc"
+      release_version:
+        description: "Expected release version"
+        required: true
+        default: "0.0.0-verify3"
+  pull_request:
+    paths:
+      - ".github/workflows/m2-macos-artifact-verify.yml"
+      - ".github/scripts/m2-hot-folder-verify.sh"
 
 permissions:
   contents: read
@@ -32,15 +47,22 @@ jobs:
             artifact: release-osx-arm64
     env:
       GH_TOKEN: ${{ github.token }}
-      RELEASE_RUN_ID: "42674901152"
-      RELEASE_HEAD: "2b2fceb"
-      RELEASE_VERSION: "0.0.0-verify3"
+      RELEASE_RUN_ID: ${{ inputs.release_run_id || '42674901152' }}
+      RELEASE_HEAD: ${{ inputs.release_head || '2b2fceb94adac7b3aaa095524d043c6713c1d6bc' }}
+      RELEASE_VERSION: ${{ inputs.release_version || '0.0.0-verify3' }}
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
 
-      - name: Download release artifact (no build)
+      - name: Check out release source for verify scripts
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_head || '2b2fceb94adac7b3aaa095524d043c6713c1d6bc' }}
+          path: release-src
+          persist-credentials: false
+
+      - name: Download exact release artifact (no build)
         shell: bash
         run: |
           set -euo pipefail
@@ -53,24 +75,37 @@ jobs:
             echo "ARTIFACT_DIR=$ARTIFACT_DIR"
           } >> "$GITHUB_ENV"
           mkdir -p "$ARTIFACT_DIR" "$RELEASE_DIR" "$EVIDENCE_ROOT/lifecycle" "$EVIDENCE_ROOT/hot-folder"
+
+          ACTUAL_HEAD="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RELEASE_RUN_ID" --jq .head_sha)"
+          SRC_HEAD="$(git -C release-src rev-parse HEAD)"
+          if [[ "$ACTUAL_HEAD" != "$RELEASE_HEAD" || "$SRC_HEAD" != "$RELEASE_HEAD" ]]; then
+            echo "release identity mismatch: run=$ACTUAL_HEAD src=$SRC_HEAD expected=$RELEASE_HEAD" >&2
+            exit 1
+          fi
+
           gh run download "$RELEASE_RUN_ID" -R "$GITHUB_REPOSITORY" -n "${{ matrix.artifact }}" -D "$ARTIFACT_DIR"
           TARBALL="$(find "$ARTIFACT_DIR" -maxdepth 1 -name '*.tar.gz' -print -quit)"
           if [[ -z "$TARBALL" ]]; then
             TARBALL="$(find "$ARTIFACT_DIR" -name '*.tar.gz' -print -quit)"
           fi
           test -n "$TARBALL"
+          case "$(basename "$TARBALL")" in
+            *"$RELEASE_VERSION"*) ;;
+            *) echo "release version mismatch: $(basename "$TARBALL") does not contain $RELEASE_VERSION" >&2; exit 1 ;;
+          esac
           tar -xzf "$TARBALL" -C "$RELEASE_DIR"
           test -f "$RELEASE_DIR/PhotoPrivacyWorker"
           test -f "$RELEASE_DIR/PhotoPrivacy"
           test -f "$RELEASE_DIR/config/config.json"
           test -f "$RELEASE_DIR/ExifTool/exiftool"
           mkdir -p "$RELEASE_DIR/scripts"
-          cp scripts/verify-launchd-service.sh scripts/capture-ui-service-page.sh "$RELEASE_DIR/scripts/"
+          cp release-src/scripts/verify-launchd-service.sh release-src/scripts/capture-ui-service-page.sh "$RELEASE_DIR/scripts/"
           find "$RELEASE_DIR/scripts" -type f -name '*.sh' -exec chmod +x {} +
           chmod +x "$RELEASE_DIR/PhotoPrivacyWorker" "$RELEASE_DIR/PhotoPrivacy" || true
           {
             echo "release run: $RELEASE_RUN_ID"
-            echo "head: $RELEASE_HEAD"
+            echo "release head (API): $ACTUAL_HEAD"
+            echo "release source head: $SRC_HEAD"
             echo "version: $RELEASE_VERSION"
             echo "artifact: ${{ matrix.artifact }}"
             echo "tarball: $TARBALL"
@@ -101,7 +136,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          bash .github/scripts/m2-hot-folder-verify.sh "$RELEASE_DIR" "$EVIDENCE_ROOT/hot-folder"
+          bash .github/scripts/m2-hot-folder-verify.sh \
+            --gui-user "$USER" \
+            "$RELEASE_DIR" \
+            "$EVIDENCE_ROOT/hot-folder"
 
       - name: Flatten evidence for M2 manifest
         if: always()
@@ -135,7 +173,9 @@ jobs:
           {
             echo "### M2 macOS artifact verify (${{ matrix.rid }})"
             echo ""
-            echo "- release run: $RELEASE_RUN_ID / head $RELEASE_HEAD / version $RELEASE_VERSION"
+            echo "- release run: $RELEASE_RUN_ID"
+            echo "- release head: $RELEASE_HEAD"
+            echo "- release version: $RELEASE_VERSION"
             echo "- artifact: ${{ matrix.artifact }}"
             echo "- evidence artifact: M2-macos-${{ matrix.rid }}"
             echo ""
