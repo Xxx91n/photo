@@ -205,14 +205,14 @@ BACKUP="$(sudo find /var/lib/photoprivacy -type f -name "${SAMPLE}*" 2>/dev/null
 if [[ -n "$BACKUP" ]]; then
   printf '%s\n' "$BACKUP" > "$EVIDENCE_DIR/08-backup-path.txt"
   if ! sudo cp -f "$BACKUP" "$EVIDENCE_DIR/09-backup.jpg"; then
-    fail "复制备份文件到证据目录失败（$BACKUP）"
+    fail "复制备份文件到证据目录失败（${BACKUP}）"
   fi
   sudo chown "$RUNNER_USER" "$EVIDENCE_DIR/09-backup.jpg" 2>/dev/null || true
   perl "$EXIF" -s -Artist -Model -GPSLatitude -GPSLongitude "$EVIDENCE_DIR/09-backup.jpg" > "$EVIDENCE_DIR/09-backup-exif.txt" 2>&1 || true
   if grep -Eq 'TestUser|TestCam|GPSLatitude|GPSLongitude' "$EVIDENCE_DIR/09-backup-exif.txt"; then
-    rec PASS "备份文件保留原始元数据（$BACKUP）"
+    rec PASS "备份文件保留原始元数据（${BACKUP}）"
   else
-    rec FAIL "备份文件存在但原始元数据缺失（$BACKUP）"
+    rec FAIL "备份文件存在但原始元数据缺失（${BACKUP}）"
   fi
 else
   rec INFO "未找到 M2-sample 的备份文件（默认落点 ${HOT}/bak）"
@@ -225,9 +225,9 @@ else
   rec FAIL "清洗后服务不再运行"
 fi
 if [[ -S "$SOCKET" ]]; then
-  rec PASS "清洗后服务 UDS 仍在（$SOCKET）"
+  rec PASS "清洗后服务 UDS 仍在（${SOCKET}）"
 else
-  rec FAIL "清洗后服务 UDS 不见了（$SOCKET）"
+  rec FAIL "清洗后服务 UDS 不见了（${SOCKET}）"
 fi
 
 # ---------- 7. 日志留证 ----------

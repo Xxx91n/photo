@@ -103,6 +103,31 @@ jobs:
           set -euo pipefail
           bash .github/scripts/m2-hot-folder-verify.sh "$RELEASE_DIR" "$EVIDENCE_ROOT/hot-folder"
 
+      - name: Flatten evidence for M2 manifest
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          FLAT="$RUNNER_TEMP/M2-flat-${{ matrix.rid }}"
+          rm -rf "$FLAT"
+          mkdir -p "$FLAT"
+          EVIDENCE_ROOT="${EVIDENCE_ROOT:-}"
+          if [[ -n "$EVIDENCE_ROOT" && -d "$EVIDENCE_ROOT" ]]; then
+            cd "$EVIDENCE_ROOT"
+            find . -type f -print0 | while IFS= read -r -d '' f; do
+              rel="${f#./}"
+              name="M2-${{ matrix.rid }}-${rel//\//-}"
+              cp "$f" "$FLAT/$name"
+            done
+          fi
+          (
+            cd "$FLAT"
+            find . -maxdepth 1 -type f ! -name 'M2-*.sha256' -print \
+              | sed 's#^\./##' | sort | while IFS= read -r n; do
+                shasum -a 256 "$n"
+              done
+          ) > "$FLAT/M2-${{ matrix.rid }}.sha256"
+
       - name: Publish summary
         if: always()
         shell: bash
@@ -130,7 +155,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: M2-macos-${{ matrix.rid }}
-          path: ${{ runner.temp }}/M2-macos-${{ matrix.rid }}
+          path: ${{ runner.temp }}/M2-flat-${{ matrix.rid }}
           if-no-files-found: warn
           overwrite: true
           retention-days: 14
