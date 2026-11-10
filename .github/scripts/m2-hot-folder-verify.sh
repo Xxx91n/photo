@@ -113,9 +113,24 @@ mkdir -p "$WORK"
 if ! printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2n0sAAAAASUVORK5CYII=' | base64 -D > "$WORK/pixel.png"; then
   fail "base64 生成 PNG 失败"
 fi
-if ! sips -s format jpeg "$WORK/pixel.png" --out "$WORK/$SAMPLE" > "$EVIDENCE_DIR/02-sips.txt" 2>&1; then
-  cat "$EVIDENCE_DIR/02-sips.txt" >> "$RESULT" || true
-  fail "sips 生成 JPEG 失败"
+# 实测：sips 把 1x1 PNG 直接转 JPEG 会产出 ExifTool 判为 Corrupted 的文件。
+# 先放大到 64x64；仍不可解析就退回系统自带图片。
+sips -z 64 64 "$WORK/pixel.png" --out "$WORK/pixel64.png" >> "$EVIDENCE_DIR/02-sips.txt" 2>&1 || true
+SYSTEM_IMG="$(find "/System/Library/Desktop Pictures" /System/Library/CoreServices -maxdepth 2 -type f \( -iname '*.heic' -o -iname '*.jpg' -o -iname '*.png' \) -print -quit 2>/dev/null || true)"
+make_sample() {
+  local src="$1"
+  rm -f "$WORK/$SAMPLE"
+  sips -s format jpeg "$src" --out "$WORK/$SAMPLE" >> "$EVIDENCE_DIR/02-sips.txt" 2>&1 || return 1
+  perl "$EXIF" -s "$WORK/$SAMPLE" >/dev/null 2>&1 || return 1
+  return 0
+}
+if ! make_sample "$WORK/pixel64.png"; then
+  if [[ -n "$SYSTEM_IMG" ]] && make_sample "$SYSTEM_IMG"; then
+    :
+  else
+    cat "$EVIDENCE_DIR/02-sips.txt" >> "$RESULT" || true
+    fail "sips 生成的 JPEG 无法被 ExifTool 解析（64x64 与系统图片回退均失败）"
+  fi
 fi
 if ! perl "$EXIF" -overwrite_original \
   -Artist=TestUser \
