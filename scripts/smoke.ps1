@@ -2,12 +2,15 @@
 # Launch the built Worker DLL directly instead of triggering a project rebuild,
 # capture worker stdout/stderr into temp files, and print both tails on exit so
 # failures (e.g. empty output) are diagnosable at the point of failure.
+# -WorkerPath 直接指定 Worker 可执行文件（发布链单文件 exe 或 DLL），跳过本地 DLL 探测：
+# 没有本地构建、只用 CI 发布产物验证时走这条路（#6）。
 param(
   [Parameter(Mandatory = $true)][string]$HotFolder,
   [Parameter(Mandatory = $true)][string]$AuditFolder,
   [string]$ConfigPath = "",
   [string]$DryRun = "true",
-  [string]$ExifToolPath = ""
+  [string]$ExifToolPath = "",
+  [string]$WorkerPath = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -16,7 +19,14 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 
 Write-Host "Smoke test start"
 
-function Get-WorkerDllPath {
+function Get-WorkerPath {
+  # 显式给了 -WorkerPath 就只认它（存在即用，exe/dll 都行）；否则回退 DLL 探测。
+  if (-not [string]::IsNullOrWhiteSpace($WorkerPath)) {
+    if (-not (Test-Path $WorkerPath)) {
+      throw "WorkerPath not found: $WorkerPath"
+    }
+    return (Resolve-Path $WorkerPath).Path
+  }
   $candidates = @(
     [System.IO.Path]::Combine($repoRoot, "src", "PhotoPrivacy.Worker", "bin", "Debug", "net10.0", "PhotoPrivacyWorker.dll"),
     [System.IO.Path]::Combine($repoRoot, "src", "PhotoPrivacy.Worker", "bin", "Release", "net10.0", "PhotoPrivacyWorker.dll")
@@ -42,10 +52,11 @@ function Write-WorkerTails([string]$StdoutPath, [string]$StderrPath) {
   Write-Host (Get-OutputTail $StderrPath)
 }
 
-$workerDll = Get-WorkerDllPath
+$workerTarget = Get-WorkerPath
+$isDll = $workerTarget.EndsWith(".dll", [System.StringComparison]::OrdinalIgnoreCase)
 $dryRunEnabled = $DryRun -match '^(1|true|yes|on)$'
 
-$workerArgString = '--mode cli --hot-folder "' + $HotFolder + '" --audit-folder "' + $AuditFolder + '" --once true --dry-run ' + $dryRunEnabled.ToString()
+$workerArgString = '--mode cli --hot-folder "' + $HotFolder + '" --audit-folder "' + $AuditFolder + '" --once true --dry-run ' + $dryRunEnabled.ToString().ToLowerInvariant()
 if (-not [string]::IsNullOrWhiteSpace($ConfigPath)) {
   $workerArgString += ' --config "' + $ConfigPath + '"'
 }
@@ -53,13 +64,20 @@ if (-not [string]::IsNullOrWhiteSpace($ExifToolPath)) {
   $workerArgString += ' --exiftool-path "' + $ExifToolPath + '"'
 }
 
+Write-Host ("Smoke worker args: " + $workerArgString)
+
 $outFile = Join-Path ([System.IO.Path]::GetTempPath()) ("photo-smoke-stdout-" + [Guid]::NewGuid().ToString("N") + ".log")
 $errFile = Join-Path ([System.IO.Path]::GetTempPath()) ("photo-smoke-stderr-" + [Guid]::NewGuid().ToString("N") + ".log")
 
 try {
   # Redirect to files, never to unread pipes: worker output can exceed the 4KB pipe buffer
   # and would deadlock the worker on stdout writes (root cause).
-  $proc = Start-Process -FilePath "dotnet" -ArgumentList ('"' + $workerDll + '" ' + $workerArgString) -WorkingDirectory $repoRoot -NoNewWindow -PassThru -RedirectStandardOutput $outFile -RedirectStandardError $errFile
+  # DLL 走 dotnet 宿主；发布链单文件 exe 自带运行时，直接启动。
+  if ($isDll) {
+    $proc = Start-Process -FilePath "dotnet" -ArgumentList ('"' + $workerTarget + '" ' + $workerArgString) -WorkingDirectory $repoRoot -NoNewWindow -PassThru -RedirectStandardOutput $outFile -RedirectStandardError $errFile
+  } else {
+    $proc = Start-Process -FilePath $workerTarget -ArgumentList $workerArgString -WorkingDirectory $repoRoot -NoNewWindow -PassThru -RedirectStandardOutput $outFile -RedirectStandardError $errFile
+  }
   $null = $proc.Handle # force handle acquisition: ExitCode is null otherwise
   $proc.WaitForExit()
   if ($proc.ExitCode -ne 0) {
