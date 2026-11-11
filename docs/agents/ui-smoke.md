@@ -200,8 +200,9 @@ WSL VM 空闲约 8 s 会回收，验证期间用常驻进程保活。
    的 Escape 退出 126（Request dismissed）。UI 只把 126 分型为取消，127 按失败显示，与代码
    注释（unix.rs：只有 126 是用户取消）一致。注意区分：UI 流程里有一次点 Cancel 后弹窗不关、
    pkexec 挂到 60 秒超时（UI 显示超时失败）——那次是超时分支，不是 127 分支的验证。
-证据清单与哈希：docs/agents/ui-smoke-evidence.sha256（实物在验证机
-/home/ubuntu/photo-verify/evidence-206/）。
+证据清单与哈希：当轮记在 docs/agents/ui-smoke-evidence.sha256（该清单现只装 #5 轮，当轮哈希从
+git 历史取：`git show f715c53de409f3e66e8d06004d6964868cda6826:docs/agents/ui-smoke-evidence.sha256`；
+实物在验证机 /home/ubuntu/photo-verify/evidence-206/）。
 
 #### #4 本轮提权弹窗验证（2026-11-11，WSL2 GUI）
 
@@ -252,8 +253,9 @@ WSL VM 空闲约 8 s 会回收，验证期间用常驻进程保活。
 **收尾**：01:49，临时账号、密码及私有运行库已删除；原有三个服务目录的 inode/权限、权限组和
 polkit 规则校验恢复，服务未安装、socket 和 Worker 无残留。新装的图形工具保留，未升级系统库。
 证据实物位于 `C:\photo-verify\issue4-wsl2\evidence\`，#4 这 157 个文件的哈希和 #206 的
-11 个 L3 文件哈希记在同一份 `docs/agents/ui-smoke-evidence.sha256` 里。其中 `review-*` 是
-目检裁图，对应的原始整屏也在这个目录里；这些实物都没有上传。旧轮清单从 git 历史取回。
+11 个 L3 文件哈希当轮记在 `docs/agents/ui-smoke-evidence.sha256`（该清单现只装 #5 轮，从 git 历史取：
+`git show f715c53de409f3e66e8d06004d6964868cda6826:docs/agents/ui-smoke-evidence.sha256`）。其中 `review-*` 是
+目检裁图，对应的原始整屏也在这个目录里；这些实物都没有上传。
 本轮证明上述 MATE/X11 环境可用；原票不能据此按字面整票关闭，整个跨平台需求也没有完成。
 
 #### #5 后台 Worker（--mode background）实机验证（2026-11-11，Windows）
