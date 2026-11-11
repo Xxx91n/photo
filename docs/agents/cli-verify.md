@@ -71,7 +71,10 @@ shutting down`，与审计 jsonl 的 UTC 时刻逐秒吻合（`service_started`
   ```json
   {"event_type":"file_processing_succeeded","level":"INFO","timestamp_utc":"2026-11-11T21:15:19.7107796+00:00","task_id":"f90a232998964b35ac4e7dc925553e23","source_path_masked":"C:\\photo-t6-verify\\runs\\smoke2\\hot\\photo.jpg","source_path_hash":"65905FBB081152A4","message":"attempt=1;wipe_result=Cleaned_Modified","data":null,"diagnostic_mode":false}
   ```
-- `processed.ndjson` 增长一行（同路径记录，`v` 2）。
+- `processed.ndjson` 增长一行，原文：
+  ```json
+  {"key":"C:\\photo-t6-verify\\runs\\smoke2\\hot\\photo.jpg","ts":"2026-11-11T21:15:19.7113821\u002B00:00","v":2}
+  ```
 - 原件进备份镜像：`hot\bak\photo.jpg.bak`（5.7 kB），处理后快照确认 Make、
   Camera Model Name、Artist、Date/Time Original、XMP Creator 全部还在。
 - 原地文件被真清洗：`hot\photo.jpg`（2.6 kB），上述五个字段全部消失
@@ -100,14 +103,14 @@ Release 配置）：
 要补本机原样一轮，需发版机按 `docs/release-runbook.md` 由人执行
 `scripts/release-readiness.ps1`；补跑前本项维持「未测」。
 
-## 收口阶段修订（同日，code-review 后）
+## 评审后修订（同日）
 
 - smoke.ps1 本轮顺带把 `--dry-run` 的布尔值统一为小写输出（原先 `ToString()` 出
   `True`）。两种写法解析等价：Worker 的 `ParseBool` 先走 `bool.TryParse`
   （.NET 语义本身不分大小写），1/yes/on 再按 `OrdinalIgnoreCase` 比对
   （`src/PhotoPrivacy.Core/Worker/MetadataCleanerWorker.cs`），改动只为对齐票面
   样例 `--dry-run true` 的小写形态。
-- 启动调用收拢：DLL/exe 两分支合并为一次 `Start-Process`（只差 FilePath 与参数
-  前缀，重定向等参数不再重复）。收口后用同参数复跑一轮 dry-run 确认行为不变：
+- 启动调用合并：DLL/exe 两分支合并为一次 `Start-Process`（只差 FilePath 与参数
+  前缀，重定向等参数不再重复）。改完后用同参数复跑一轮 dry-run 确认行为不变：
   `Smoke test start` → `Smoke worker args: … --dry-run true` → `Smoke test done`，
   无 `Worker CLI failed`，输出存仓外 `runs/smoke1/recheck-output.txt`。
