@@ -200,8 +200,9 @@ WSL VM 空闲约 8 s 会回收，验证期间用常驻进程保活。
    的 Escape 退出 126（Request dismissed）。UI 只把 126 分型为取消，127 按失败显示，与代码
    注释（unix.rs：只有 126 是用户取消）一致。注意区分：UI 流程里有一次点 Cancel 后弹窗不关、
    pkexec 挂到 60 秒超时（UI 显示超时失败）——那次是超时分支，不是 127 分支的验证。
-证据清单与哈希：docs/agents/ui-smoke-evidence.sha256（实物在验证机
-/home/ubuntu/photo-verify/evidence-206/）。
+证据清单与哈希：当轮记在 docs/agents/ui-smoke-evidence.sha256（该清单现只装 #5 轮，当轮哈希从
+git 历史取：`git show f715c53de409f3e66e8d06004d6964868cda6826:docs/agents/ui-smoke-evidence.sha256`；
+实物在验证机 /home/ubuntu/photo-verify/evidence-206/）。
 
 #### #4 本轮提权弹窗验证（2026-11-11，WSL2 GUI）
 
@@ -252,9 +253,39 @@ WSL VM 空闲约 8 s 会回收，验证期间用常驻进程保活。
 **收尾**：01:49，临时账号、密码及私有运行库已删除；原有三个服务目录的 inode/权限、权限组和
 polkit 规则校验恢复，服务未安装、socket 和 Worker 无残留。新装的图形工具保留，未升级系统库。
 证据实物位于 `C:\photo-verify\issue4-wsl2\evidence\`，#4 这 157 个文件的哈希和 #206 的
-11 个 L3 文件哈希记在同一份 `docs/agents/ui-smoke-evidence.sha256` 里。其中 `review-*` 是
-目检裁图，对应的原始整屏也在这个目录里；这些实物都没有上传。旧轮清单从 git 历史取回。
+11 个 L3 文件哈希当轮记在 `docs/agents/ui-smoke-evidence.sha256`（该清单现只装 #5 轮，从 git 历史取：
+`git show f715c53de409f3e66e8d06004d6964868cda6826:docs/agents/ui-smoke-evidence.sha256`）。其中 `review-*` 是
+目检裁图，对应的原始整屏也在这个目录里；这些实物都没有上传。
 本轮证明上述 MATE/X11 环境可用；原票不能据此按字面整票关闭，整个跨平台需求也没有完成。
+
+#### #5 后台 Worker（--mode background）实机验证（2026-11-11，Windows）
+
+首次验证，非 PR 返修；起始基准 `f715c53de409f3e66e8d06004d6964868cda6826`，独立分支
+`verify/5-background-worker-smoke`。包：Release run `43008869529`（ref main，head 同基准，
+0.1.0-preview，create_release=false）出的 `release-win-x64`，本机未编译。出厂 config 唯一差异
+`watch.hot_folder`；Worker 手动以独立控制台拉起，停机走 CTRL_BREAK（IPC `Shutdown` 仅 CLI 可用）。
+
+1. 拉起与连接：通过 —— Worker 独立进程盯文件夹、无 UI、服务未安装（`sc query` 1060、注册表无键）；
+   UI 启动后状态栏绿点「已连接 · PhotoPrivacyCleaner.Background · 后台模式」，Worker 卡片
+   服务 IPC=不可达（非服务模式）、ExifTool 13.61，无警告横幅、无分类文案；全轮只有一个 Worker
+   进程（UI 未再拉第二个）。证据 `v5-worker-launch.txt` / `v5-01-ui-connected.png` /
+   `v5-after-ui-start.txt`。
+2. 清理链路：通过 —— 目录外备好带全套 EXIF（Artist/DateTimeOriginal/Make/Model/GPS）的 sample2
+   拷入 → 同刻审计 `file_processing_succeeded attempt=1;wipe_result=Cleaned_Modified`、
+   `processed.ndjson` 1→2 行、原件进 `hot\bak\`（五项元数据全保留）、清洗后主文件 exiftool
+   读回为空；UI 日志页同刻出 Cleaned 条目（本地尾部 + IPC 回填）。ExifTool stay_open 长驻
+   （启动后仅拉起一次，非每文件 spawn）。证据 `v5-drop2.txt` / `v5-02-ui-logpage.png`。
+3. 退出干净：通过 —— CTRL_BREAK 后 1.2 s 进程退出（10 s 预算内）、无 Worker/exiftool 孤儿；
+   UI 日志收到 `service_stopped / worker stopped`，总览转「重连中」+ 分类文案
+   「连接 Worker 失败：…(os error 2)」，与 #169 断连语义一致。证据 `v5-stop.txt` /
+   `v5-03-ui-after-worker-stop.png` / `v5-04-ui-overview-disconnected.png`。
+
+边界与未测：sample1 首轮直接建在监控目录后补写元数据，补写被 `already_processed` 跳过——属预期
+（已处理路径状态记忆），标准链路以 sample2 为准；待机态首次配置引导 4 项、连接失败三态第 1/2 项、
+托盘组（含待机退出第 6 项）不在本票范围，未测；Worker 控制台窗口是手动启动通道，不是 UI 产物；
+关 UI 主窗口 = 驻守（#59 设计），收尾用 taskkill 结束；连接失败三态第 3 项只验了断开方向
+（Worker 停 → 报错），「放回 Worker 拉起 → 状态回已连接」的恢复方向未测。逐文件时刻与通道见
+仓外实物目录的 `v5-round-notes.txt`，哈希与找回方式见 `ui-smoke-evidence.sha256`。
 
 ### 连接失败三态（#169，3 项）
 
