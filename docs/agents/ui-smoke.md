@@ -17,8 +17,12 @@
   不判字形质量，不据此记失败。升级 gpui 的 Windows 文本系统版本后先复验 ar 帧，再考虑撤销本条。
 - **停服务时的 `Pipe is broken` 噪声（#37）**：ExifTool 已死时停机拆 stdin 会抛这个 IO 异常，
   属预期，代码已降 Debug；真实失败看其他异常或退出码非 0。
-- **Linux 提权弹窗**：#4 已在 WSL2 + MATE 认证代理的 X11 桌面验过四种操作的同意/取消分支，
-  详见下方本轮记录；不能推广为所有认证代理都通过。LXDE `lxpolkit` 的取消分支仍显示失败，未修复。
+- **Linux 提权弹窗已实测（#206、#4）**：polkit-gnome（#206，Xvfb + 独立 logind 会话）和
+  MATE（#4，WSL2 + X11 桌面）都走通了真实交互弹窗，四个操作的同意/取消分支各有当轮证据。
+  取消语义跟认证代理有关：polkit-gnome 的 Escape 走 dismissed、pkexec 退出 126；lxpolkit
+  的 Cancel/Escape 报 127（Not authorized），UI 按失败显示——这是已知失败，没修，别当成取消。
+  #206 还记了两种环境坑：云镜像摘掉 polkit-agent-helper-1 的 setuid 位；lxpolkit 点 Cancel
+  后弹窗不关、pkexec 挂到 60 秒超时。详见下方两节，别把不同代理的结果混着算。
 - **macOS 提权按钮**：按 #32 裁定接受为残留（CLI 等价命令已验证）。
 - **Windows 验证机的 UAC 同意框只能人点（#30）**：consent.exe 以 SYSTEM 完整性跑，UAC 框按设计
   拒绝程序输入（UIPI），agent 点不进去。`ConsentPromptBehaviorAdmin=2` 时框还落在安全桌面，
@@ -164,6 +168,25 @@ macOS 侧的服务页探测项（S1/S3/S6/S7 等）不以人工读屏为准，�
 
 WSLg 环境备注：gpui 的 Wayland 后端不出窗，清空 `WAYLAND_DISPLAY` 强制 X11 后端；
 WSL VM 空闲约 8 s 会回收，验证期间用常驻进程保活。
+#### Linux polkit 交互弹窗（#206，2026-11-11 实测）
+环境：Ubuntu 26.04 CVM + Xvfb :99（1280x800x24）+ polkit-gnome 认证代理 + 独立 SSH logind
+会话（session scope）+ 会话 dbus；polkit 免交互规则当轮停用，弹窗为真实交互认证。
+包：Release run 42865294855（ref main，head 0453da2）出的 release-linux-x64，本机未编译。
+1. 安装弹窗：点「安装」→ polkit 认证弹窗出现（身份下拉 + 密码框 + Cancel/Authenticate），
+   截图 L3-01；输密码回车 → 服务 active+enabled、Worker 进程启动、UI 绿字
+   systemd service installed（L3-03）。
+2. 取消分支：弹窗出现后按 Escape → pkexec 退出码 126（Request dismissed）→ UI 反馈行
+   warning 色 Elevation was cancelled（L3-02），服务保持未安装（is-active inactive、
+   unit 不存在），不重复弹窗。
+3. 停止/启动/卸载弹窗：三个操作各自弹窗认证后生效——停止 → inactive（L3-04/L3-05）；
+   启动 → active、新 MainPID（L3-08/L3-09）；卸载 → unit 删除、not-found（L3-06/L3-07）。
+4. 取消语义边界：pkexec 手册定义 126=用户关掉认证框、127=未授权/出错。实测（pkexec true
+   直接调用，lxpolkit 代理）：Cancel 点击与 Escape 都退出 127（Not authorized）；polkit-gnome
+   的 Escape 退出 126（Request dismissed）。UI 只把 126 分型为取消，127 按失败显示，与代码
+   注释（unix.rs：只有 126 是用户取消）一致。注意区分：UI 流程里有一次点 Cancel 后弹窗不关、
+   pkexec 挂到 60 秒超时（UI 显示超时失败）——那次是超时分支，不是 127 分支的验证。
+证据清单与哈希：docs/agents/ui-smoke-evidence.sha256（实物在验证机
+/home/ubuntu/photo-verify/evidence-206/）。
 
 #### #4 本轮提权弹窗验证（2026-11-11，WSL2 GUI）
 
@@ -204,19 +227,18 @@ WSL VM 空闲约 8 s 会回收，验证期间用常驻进程保活。
 所跑两个脚本取自本分支工作区，哈希见证据里的 `lifecycle-scripts.json`；安装脚本与发布包内
 那份相同，验证脚本是仓库工具、起始基准到本提交没有改动。
 
-**LXDE 取消分支：失败（未修复）**：此前在 LXDE `lxpolkit 0.5.5` 中点击取消，界面显示
-`Failed / Not authorized`（`30-install-cancel-*`）。按 ui-smoke 的档位，这条记「失败」，
-不能算「未测」，也不能并进上表说取消都已通过。pkexec 以 127 退出同时代表未授权等真实错误，
-不能一律当成取消来吞掉；怎么区分要另定，本轮没改产品代码。GTK3 自动选择显示后端的尝试还
-出现过代理崩溃或嵌套桌面中没有弹窗，最终明确固定 X11。`50-stop-cancel` 那张弹窗在查看时
-等到超时，后来把停止重跑成 `51/52` 两轮。同一操作的同意和取消两轮，弹窗内容一样，截出来的
-整屏 PNG 可能逐字节相同；每轮各自的截图时间在对应 JSON 里。macOS 按 #32 裁定不复测。
+**LXDE 取消分支：失败（未修复）**：`30-install-cancel-*` 记录的是 lxpolkit 点取消后显示
+`Failed / Not authorized`，跟 #206 记的 127 行为一致。按 ui-smoke 的档位记「失败」，不能
+算「未测」，也不能并进上表说取消都已通过。127 不能一律当取消，怎么区分要另定，本轮没改
+产品代码。GTK3 自动选后端时还出现过代理崩溃或弹窗不出，最终固定 X11；`50-stop-cancel`
+那张弹窗在查看时超时，停止重跑成 `51/52`。同一操作两轮弹窗内容一样，整屏 PNG 可能逐字节
+相同，截图时间看各自 JSON。macOS 按 #32 裁定不复测。
 
 **收尾**：01:49，临时账号、密码及私有运行库已删除；原有三个服务目录的 inode/权限、权限组和
 polkit 规则校验恢复，服务未安装、socket 和 Worker 无残留。新装的图形工具保留，未升级系统库。
-证据实物位于 `C:\photo-verify\issue4-wsl2\evidence\`，全部 157 个文件的哈希记入
-`docs/agents/ui-smoke-evidence.sha256`。其中 `review-*` 是目检裁图，对应的原始整屏也在这个
-目录里；这些实物都没有上传。旧轮清单从起始基准的 git 历史取回。
+证据实物位于 `C:\photo-verify\issue4-wsl2\evidence\`，#4 这 157 个文件的哈希和 #206 的
+11 个 L3 文件哈希记在同一份 `docs/agents/ui-smoke-evidence.sha256` 里。其中 `review-*` 是
+目检裁图，对应的原始整屏也在这个目录里；这些实物都没有上传。旧轮清单从 git 历史取回。
 本轮证明上述 MATE/X11 环境可用；原票不能据此按字面整票关闭，整个跨平台需求也没有完成。
 
 ### 连接失败三态（#169，3 项）

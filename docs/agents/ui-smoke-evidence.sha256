@@ -1,6 +1,6 @@
-# 本轮证据清单 — #4 WSL2 真实 GUI 验证；日期：2026-11-11 UTC+8。
-# 证据实物根路径：C:/photo-verify/issue4-wsl2/evidence；未上传，删除后无法从哈希还原。
-# 起始基准：0453da224a0145789b80bb8a29d812bd39cb1473；本清单只存当前轮。
+# 证据清单 — #4 WSL2 真实 GUI 验证 + #206 Linux polkit 验证（两轮同一次合并落入）。
+# #4 实物：C:/photo-verify/issue4-wsl2/evidence；未上传，删除后无法从哈希还原。
+# 起始基准：0453da224a0145789b80bb8a29d812bd39cb1473；本清单含两轮，旧轮从 git 历史取。
 # 旧轮找回：git show 0453da224a0145789b80bb8a29d812bd39cb1473:docs/agents/ui-smoke-evidence.sha256
 # 包：Release run 42767568814 / head d1e30d8a52566609330eb32e70b4348d0ffcb2af / linux-x64；本地未编译。
 # 环境：WSL2，MATE 1.26.1 + GDK_BACKEND=x11 + WSLg/Xephyr 1360x900。
@@ -10,8 +10,9 @@
 # 不声称所有代理通过。
 # 早期失败尝试（10/20/30/31/40/50）、准备与收尾（55/60/61）、诊断日志都在清单内；
 # review-* 是目检用裁图，原始整屏都在；其余限制见 ui-smoke.md #4。
-# 共 157 个文件；前 112 条按路径排序，末尾 45 条是补录，顺序不作保证。
-# 验证命令：node C:/photo-verify/issue4-check-evidence.cjs
+# 共 168 条哈希：#4 的 157 个文件 + #206 的 11 个 L3 文件。前 112 条按路径排序，
+# 之后 45 条是 #4 补录，最后是 #206 组，顺序不作保证。
+# #4 验证命令：node C:/photo-verify/issue4-check-evidence.cjs（只核 #4 的 157 条）
 # 或在实物目录内执行：sha256sum --check C:/photo-t4/docs/agents/ui-smoke-evidence.sha256
 4294de1c2d6f61045991abf8feca7dfee7df05ed6c11bbf3951fcd3eceec8552  01-baseline.png
 8c99b218d7c7a2032b1895aa83a952223a39d0f1adeb6bfdbf28b98b2193d94e  02-service-page.png
@@ -170,3 +171,19 @@ bccdf39eddd93ea4c8de599db60a457cb2a404fc13eec3343cd4fbd314488b0d  review-59-inst
 f6cdb4a7ce28209c82b8c0b0ca46cd3eb93a2f42ee75a154e3c23384327e4b4d  review-all-auth-dialogs.png
 13f3b5888e960d5cfde7761c8059f307366e1d7c07fdb298c48a6a320725559f  test-account-creation.log
 0d31ee1117dcd1cc365129587aeb71d822053333c7e986ded1e01b99995423b2  xephyr.log
+# ---- #206 L3 组（与 #4 同一次合并落入，两份记录都保留）----
+# 实物在验证机 /home/ubuntu/photo-verify/evidence-206/；该轮包为 Release run 42865294855
+# （head 0453da2，version 0.0.0-verify206）。环境为 Ubuntu 26.04 CVM + Xvfb + polkit-gnome
+# + 独立 logind 会话；两处环境坑（helper 的 setuid 位、lxpolkit 点 Cancel 挂到 60 秒超时）
+# 见 ui-smoke.md 的 #206 小节。核对方法仍在实物机执行 sha256sum -c。
+3043a84d2d466f8076b604c417de30a9b8ea17f5f64ca8e6c3f8817aa1e1e889  L3-00-ui-before.png
+55656825b4a324465079ee15e2fdce6d5b0b72ec647d65f033e44bd1e1d797b0  L3-01-polkit-dialog.png
+b892882f3aae0509dbede1bbe9b04a26504ccbfa6ef6d1c0003eb67ad85ce4ae  L3-02-after-cancel.png
+19e0058c9b2fb77a18215b688d365385fb1d50d41f44368aec400651f1032450  L3-03-after-authenticate.png
+3f4d841530ce6fe61dca09e6e2a17fc084054a43eb06b7105f153732cd663630  L3-04-stop-dialog.png
+2f588a54a88889588374d13ebe79def5971566da8b70cd42d3c891febbfb3754  L3-05-after-stop.png
+07cf676c2a33f7681daea5b76cc9d32612bacba568f1976cea6ee075468d43d5  L3-06-uninstall-dialog.png
+bc7cc5e024fe15511d95e0806269da315b21e5f8fe085dbcfc7992221ce082b4  L3-07-after-uninstall.png
+18cf9c10518635c9b5b20c195d5967681247a23bf3bc03e283c9a3b49462ed87  L3-08-start-dialog.png
+bac060bd399f6f601f2fb0a4aab147034115644db21d6dc9f0e995f472a516bd  L3-09-after-start.png
+08321421c04e83c3cc4ffc853ab43a0fc7a789dd5aeece9eda28e23b129e015c  L3-00-evidence-notes.txt
