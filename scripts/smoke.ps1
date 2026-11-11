@@ -73,11 +73,9 @@ try {
   # Redirect to files, never to unread pipes: worker output can exceed the 4KB pipe buffer
   # and would deadlock the worker on stdout writes (root cause).
   # DLL 走 dotnet 宿主；发布链单文件 exe 自带运行时，直接启动。
-  if ($isDll) {
-    $proc = Start-Process -FilePath "dotnet" -ArgumentList ('"' + $workerTarget + '" ' + $workerArgString) -WorkingDirectory $repoRoot -NoNewWindow -PassThru -RedirectStandardOutput $outFile -RedirectStandardError $errFile
-  } else {
-    $proc = Start-Process -FilePath $workerTarget -ArgumentList $workerArgString -WorkingDirectory $repoRoot -NoNewWindow -PassThru -RedirectStandardOutput $outFile -RedirectStandardError $errFile
-  }
+  $launchPath = if ($isDll) { "dotnet" } else { $workerTarget }
+  $launchArgs = if ($isDll) { '"' + $workerTarget + '" ' + $workerArgString } else { $workerArgString }
+  $proc = Start-Process -FilePath $launchPath -ArgumentList $launchArgs -WorkingDirectory $repoRoot -NoNewWindow -PassThru -RedirectStandardOutput $outFile -RedirectStandardError $errFile
   $null = $proc.Handle # force handle acquisition: ExitCode is null otherwise
   $proc.WaitForExit()
   if ($proc.ExitCode -ne 0) {

@@ -47,7 +47,25 @@ Smoke test done
 2026-11-12，本机 + CI 产物。造图：System.Drawing 生成 320x240 JPEG，用产物内置
 ExifTool 13.61 写入 `EXIF:Make/Model/DateTimeOriginal/Artist` 与 `XMP:Creator`
 （处理前快照确认全部在位，文件 5.7 kB）。`scripts/smoke.ps1 -DryRun false` 跑完
-退出码 0（输出同上格式，`--dry-run false`）。当轮核对：
+退出码 0，当轮控制台输出原文：
+
+```
+Smoke test start
+Smoke worker args: --mode cli --hot-folder "...\smoke2\hot" --audit-folder "...\smoke2\audit" --once true --dry-run false
+----- worker stdout (tail) -----
+[INF] Application started. Press Ctrl+C to shut down.
+[INF] Hosting environment: Production
+[INF] Content root path: C:\photo-t6
+[INF] Application is shutting down...
+Smoke framework: net10.0
+Smoke test done
+```
+
+日志与审计对得上：Worker 日志（`logs/worker-20261112.log`，本地产物不提交）当轮
+`05:15:17.070 +08:00 Application started` → `05:15:21.829 +08:00 Application is
+shutting down`，与审计 jsonl 的 UTC 时刻逐秒吻合（`service_started`
+21:15:17.189Z、`file_processing_succeeded` 21:15:19.710Z、`service_stopped`
+21:15:21.909Z，均 +8h 即本地 05:15:17 / 05:15:19 / 05:15:21）。当轮核对：
 
 - 审计 `audit-2026-11-12.jsonl` 出现成功事件（原文）：
   ```json
@@ -75,9 +93,21 @@ Release 配置）：
   `scripts/publish-app.ps1`（`-Zip true`），Publish 与 Verify structure 两步均过
   （产物结构含 `PhotoPrivacy.exe`、`PhotoPrivacyWorker.exe`、
   `config/config.sample.json`）；首跑因 GitHub artifact 服务端故障（上传返回
-  HTML 错误页）失败在 Upload artifact 步，`--failed` 重跑后全绿。
+  HTML 错误页）失败在 Upload artifact 步，`--failed` 重跑后全部通过。
 - `[4/4] force-kill cleanup gate`：`release-readiness.ps1` 默认不跑
   （`-IncludeForceKillCheck false`），本轮同样未跑，与本项无关。
 
 要补本机原样一轮，需发版机按 `docs/release-runbook.md` 由人执行
 `scripts/release-readiness.ps1`；补跑前本项维持「未测」。
+
+## 收口阶段修订（同日，code-review 后）
+
+- smoke.ps1 本轮顺带把 `--dry-run` 的布尔值统一为小写输出（原先 `ToString()` 出
+  `True`）。两种写法解析等价：Worker 的 `ParseBool` 先走 `bool.TryParse`
+  （.NET 语义本身不分大小写），1/yes/on 再按 `OrdinalIgnoreCase` 比对
+  （`src/PhotoPrivacy.Core/Worker/MetadataCleanerWorker.cs`），改动只为对齐票面
+  样例 `--dry-run true` 的小写形态。
+- 启动调用收拢：DLL/exe 两分支合并为一次 `Start-Process`（只差 FilePath 与参数
+  前缀，重定向等参数不再重复）。收口后用同参数复跑一轮 dry-run 确认行为不变：
+  `Smoke test start` → `Smoke worker args: … --dry-run true` → `Smoke test done`，
+  无 `Worker CLI failed`，输出存仓外 `runs/smoke1/recheck-output.txt`。
