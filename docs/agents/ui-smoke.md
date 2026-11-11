@@ -17,14 +17,12 @@
   不判字形质量，不据此记失败。升级 gpui 的 Windows 文本系统版本后先复验 ar 帧，再考虑撤销本条。
 - **停服务时的 `Pipe is broken` 噪声（#37）**：ExifTool 已死时停机拆 stdin 会抛这个 IO 异常，
   属预期，代码已降 Debug；真实失败看其他异常或退出码非 0。
-- **Linux 提权弹窗已实测（#206）**：Xvfb 虚拟显示 + polkit-gnome 认证代理 + 独立 logind 会话里
-  走通了真实交互弹窗（安装/启停/卸载 + Escape 取消分支），证据见下方 L 组 polkit 分支。
-  两个环境坑：取消语义跟认证代理有关——polkit-gnome 的 Escape 走 dismissed、pkexec 退出 126；
-  lxpolkit 的 Cancel/Escape 走 cancel 信号、报 127（Not authorized，pkexec true 直接调用实测），
-  UI 会按失败分型显示。UI 流程里另有一次点 Cancel 后弹窗不关、pkexec 挂到 60 秒超时
-  （UI 显示超时失败）——那是另一次调用，不验证 127 分支，别混读。
-  云镜像还把 polkit-agent-helper-1 的 setuid 位摘掉了，密码送不进 PAM（auth.log 报
-  conversation failed），取证前先补回 u+s。
+- **Linux 提权弹窗已实测（#206、#4）**：polkit-gnome（#206，Xvfb + 独立 logind 会话）和
+  MATE（#4，WSL2 + X11 桌面）都走通了真实交互弹窗，四个操作的同意/取消分支各有当轮证据。
+  取消语义跟认证代理有关：polkit-gnome 的 Escape 走 dismissed、pkexec 退出 126；lxpolkit
+  的 Cancel/Escape 报 127（Not authorized），UI 按失败显示——这是已知失败，没修，别当成取消。
+  #206 还记了两种环境坑：云镜像摘掉 polkit-agent-helper-1 的 setuid 位；lxpolkit 点 Cancel
+  后弹窗不关、pkexec 挂到 60 秒超时。详见下方两节，别把不同代理的结果混着算。
 - **macOS 提权按钮**：按 #32 裁定接受为残留（CLI 等价命令已验证）。
 - **Windows 验证机的 UAC 同意框只能人点（#30）**：consent.exe 以 SYSTEM 完整性跑，UAC 框按设计
   拒绝程序输入（UIPI），agent 点不进去。`ConsentPromptBehaviorAdmin=2` 时框还落在安全桌面，
@@ -189,6 +187,59 @@ WSL VM 空闲约 8 s 会回收，验证期间用常驻进程保活。
    pkexec 挂到 60 秒超时（UI 显示超时失败）——那次是超时分支，不是 127 分支的验证。
 证据清单与哈希：docs/agents/ui-smoke-evidence.sha256（实物在验证机
 /home/ubuntu/photo-verify/evidence-206/）。
+
+#### #4 本轮提权弹窗验证（2026-11-11，WSL2 GUI）
+
+用户指定由 agent 在 WSL2 GUI 操作、查看截图，不由用户代点。首次验证，非 PR 返修；
+起始基准固定为 `0453da224a0145789b80bb8a29d812bd39cb1473`，独立分支 `verify/4-wsl2-polkit`。
+前置服务页代码和 Linux 生命周期证据已分别由 #74、#272 合入此基线；本轮不确认 #206 的 Windows 项。
+
+- **产物**：Release run `42767568814` 的 `release-linux-x64`，head
+  `d1e30d8a52566609330eb32e70b4348d0ffcb2af`，版本 `0.1.0-preview`。此 head 到起始基准的
+  `ui/`、`src/`、`config/`、发布脚本、Linux 安装/验证脚本无差异。只下载远端产物，本机未编译。
+- **桌面**：Ubuntu WSL2 + WSLg，Xephyr 展示独立的 1360×900 X11 桌面，Openbox 管窗口；
+  MATE polkit `1.26.1-4build3`，`GDK_BACKEND=x11`。这是实际显示的桌面，不是 Xvfb 或伪造认证框。
+  点击由 `xdotool` 发给真实按钮，`scrot` 保存整屏；agent 查看全部结果帧和八张弹窗的汇总图。
+- **身份与权限**：临时账号 `pp4verify` 需要密码认证；旧账号的免认证规则未修改，也不适用于它。
+  UI 的实际 UID/EUID 为 1002，`CapEff=0`；`polkit-journal.log` 记录了真实认证及一次性授权。
+- **运行库**：发布 UI 需要 GLIBC 2.43，WSL 原库为 2.39。仅在测试进程的私有挂载空间中使用
+  已校验的 Ubuntu `libc6 2.43-2ubuntu2`；UI、Worker、安装脚本均未改动，系统库仍为 2.39。
+  认证代理使用系统原库。生命周期探针也在同样的私有运行库环境运行。
+
+| 操作 | 同意后的结果 | 取消后的结果 | 证据前缀（同意 / 取消） |
+|---|---|---|---|
+| 安装 | 通过：`Success`，服务 active/enabled，PID 4077 | 通过：`Cancelled`，仍未安装 | `59-install-approve` / `58-install-cancel` |
+| 启动 | 通过：`Success`，服务 active，新 PID 3641 | 通过：`Cancelled`，仍已停止 | `54-start-approve` / `53-start-cancel` |
+| 停止 | 通过：`Success`，服务 inactive，PID 0 | 通过：`Cancelled`，仍运行，PID 2680 不变 | `52-stop-approve` / `51-stop-cancel` |
+| 卸载 | 通过：`Success`，unit 删除、未安装 | 通过：`Cancelled`，unit 保留、仍已停止 | `57-uninstall-approve` / `56-uninstall-cancel` |
+
+八个分支执行于 01:42–01:44（UTC+8），编号是执行顺序所以不连续；这八个前缀各自都配有
+`-before`、`-prompt`、`-result` 的原始整屏 PNG 和同刻 JSON，JSON 记录 UTC 时间、服务状态、
+进程及窗口。取消前后状态字段逐项相同，结果横幅是 `Cancelled / Elevation was cancelled`，
+不是 `Failed`。原始图不裁剪、不改字。准备卸载时另做了一次正常停止；安装复测结束后再从界面
+停止、卸载。这两步以及早期失败尝试的帧、诊断日志也一并留在清单里，不和上面八个分支混着算。
+
+**命令通道**：01:45，真实 GUI 账号运行
+`wsl.exe -d Ubuntu -u pp4verify --exec python3 /mnt/c/photo-verify/issue4-harness.py`；
+辅助脚本经该账号的 `sudo` 调用未修改的 `scripts/verify-systemd-service.sh`，不是 root 伪填 `SUDO_USER`。
+结果 `PASS=52 FAIL=0`、`HARNESS_EXIT=0`，含四态 UI/CLI 对照、IPC、权限、重启和卸载清理。
+`getfacl` 未安装的诊断行仅说明未采集 ACL 文本；权限断言及真实 GUI 用户读写检查均通过。
+所跑两个脚本取自本分支工作区，哈希见证据里的 `lifecycle-scripts.json`；安装脚本与发布包内
+那份相同，验证脚本是仓库工具、起始基准到本提交没有改动。
+
+**LXDE 取消分支：失败（未修复）**：`30-install-cancel-*` 记录的是 lxpolkit 点取消后显示
+`Failed / Not authorized`，跟 #206 记的 127 行为一致。按 ui-smoke 的档位记「失败」，不能
+算「未测」，也不能并进上表说取消都已通过。127 不能一律当取消，怎么区分要另定，本轮没改
+产品代码。GTK3 自动选后端时还出现过代理崩溃或弹窗不出，最终固定 X11；`50-stop-cancel`
+那张弹窗在查看时超时，停止重跑成 `51/52`。同一操作两轮弹窗内容一样，整屏 PNG 可能逐字节
+相同，截图时间看各自 JSON。macOS 按 #32 裁定不复测。
+
+**收尾**：01:49，临时账号、密码及私有运行库已删除；原有三个服务目录的 inode/权限、权限组和
+polkit 规则校验恢复，服务未安装、socket 和 Worker 无残留。新装的图形工具保留，未升级系统库。
+证据实物位于 `C:\photo-verify\issue4-wsl2\evidence\`，#4 这 157 个文件的哈希和 #206 的
+11 个 L3 文件哈希记在同一份 `docs/agents/ui-smoke-evidence.sha256` 里。其中 `review-*` 是
+目检裁图，对应的原始整屏也在这个目录里；这些实物都没有上传。旧轮清单从 git 历史取回。
+本轮证明上述 MATE/X11 环境可用；原票不能据此按字面整票关闭，整个跨平台需求也没有完成。
 
 ### 连接失败三态（#169，3 项）
 

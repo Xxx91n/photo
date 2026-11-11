@@ -1,53 +1,181 @@
-# 本轮证据清单 — #206 Linux pkexec 交互弹窗取证（2026-11-11，Linux 实机）
-#
-# 这一份只装本票这一轮的证据。旧的几轮按规矩从 git 历史取，不在本文件里：
-#   - #30 Windows 服务安装实机验证（2026-11-10/11）：`git show 0453da2:docs/agents/ui-smoke-evidence.sha256`
-#   - #3 服务模式 8 项（2026-11-10）：`git show d1e30d8:docs/agents/ui-smoke-evidence.sha256`
-#   - #2 的 L2 组（2026-11-10，Linux systemd）：`git show faf24b55:docs/agents/ui-smoke-evidence.sha256`
-# 证据实物不入库，放在验证机
-#   /home/ubuntu/photo-verify/evidence-206/
-# 核对方法（验证机上）：
-#   cd /home/ubuntu/photo-verify/evidence-206
-#   sha256sum -c /home/ubuntu/photo/docs/agents/ui-smoke-evidence.sha256
-# 全部 OK 退出码才是 0。目录删了就只剩哈希，内容没法再看——这个缺口跟前几轮一样，大家已经认了。
-#
-# ---------------------------------------------------------------------------
-# 这一轮是怎么跑的
-# ---------------------------------------------------------------------------
-# 包：Release run 42865294855（ref main，head 0453da2，version 0.0.0-verify206，
-#   create_release=false，没发 Release）出的 release-linux-x64，本机没编译，
-#   包全部来自远端 CI。解到 /home/ubuntu/photo-verify/evidence-206/release-linux-x64。
-#   包内出厂 config.json 与 config.sample.json 逐字节相同（sha256 1643bd31…），
-#   本轮前后都是这个哈希，没动过配置。
-# 环境：Ubuntu 26.04 CVM + Xvfb :99（1280x800x24）+ polkit-gnome 认证代理
-#   （policykit-1-gnome 0.105-8build1）+ 独立 SSH logind 会话（session scope）+ 会话 dbus。
-#   polkit 免交互规则 49-photoprivacy.rules 当轮停用（改名 .disabled，收尾恢复），
-#   弹窗为真实交互认证，不是免交互放行。
-# 界面：整屏截图用 scrot，点击/键入用 xdotool（坐标经 tesseract OCR 标定）。
-# 环境坑（判结果前先看）：
-#   1. 云镜像把 /usr/lib/polkit-1/polkit-agent-helper-1 的 setuid 位摘掉了，
-#      密码送不进 PAM（auth.log 报 conversation failed），取证前补回 u+s。
-#   2. 取消语义跟认证代理有关：polkit-gnome 的 Escape 走 dismissed、pkexec 退出 126；
-#      lxpolkit 的 Cancel 按钮走 cancel 信号、报 127（Not authorized）。UI 只把 126
-#      分型为取消（unix.rs：只有 126 是用户取消），127 按失败显示——与代码注释一致。
-#   3. lxpolkit 的 Cancel 点了以后弹窗不关、pkexec 挂着等 60 秒超时；本轮成功/取消
-#      分支全部用 polkit-gnome 代理取证。
-#
-# ---------------------------------------------------------------------------
-# 逐条证据
-# ---------------------------------------------------------------------------
-# L3-00-ui-before.png        2026-11-11 01:41  UI 启动首帧（服务页，未安装态）
-# L3-01-polkit-dialog.png    2026-11-11 03:06  点「安装」后的 polkit 认证弹窗（身份下拉+密码框+Cancel/Authenticate）
-# L3-02-after-cancel.png     2026-11-11 02:29  弹窗 Escape 取消后：UI 反馈行 warning 色 Elevation was cancelled，服务保持未安装
-# L3-03-after-authenticate.png 2026-11-11 03:06 弹窗输密码回车后：服务 active+enabled、UI 绿字 systemd service installed
-# L3-04-stop-dialog.png      2026-11-11 03:08  点「停止」后的 polkit 认证弹窗
-# L3-05-after-stop.png       2026-11-11 03:08  认证后：is-active inactive、UI 显示 systemd service stopped
-# L3-06-uninstall-dialog.png 2026-11-11 03:09  点「卸载」后的 polkit 认证弹窗
-# L3-07-after-uninstall.png  2026-11-11 03:09  认证后：unit 删除、not-found、UI 显示 systemd service uninstalled
-# L3-08-start-dialog.png     2026-11-11 03:11  点「启动」后的 polkit 认证弹窗
-# L3-09-after-start.png      2026-11-11 03:11  认证后：服务回 active、新 MainPID、UI 显示 systemd service started
-# L3-00-evidence-notes.txt   2026-11-11 03:13  本轮环境与逐分支结果记录（含 pkexec true 取消对照：Escape→126）
-#
+# 证据清单 — #4 WSL2 真实 GUI 验证 + #206 Linux polkit 验证（两轮同一次合并落入）。
+# #4 实物：C:/photo-verify/issue4-wsl2/evidence；未上传，删除后无法从哈希还原。
+# 起始基准：0453da224a0145789b80bb8a29d812bd39cb1473；本清单含两轮，旧轮从 git 历史取。
+# 旧轮找回：git show 0453da224a0145789b80bb8a29d812bd39cb1473:docs/agents/ui-smoke-evidence.sha256
+# 包：Release run 42767568814 / head d1e30d8a52566609330eb32e70b4348d0ffcb2af / linux-x64；本地未编译。
+# 环境：WSL2，MATE 1.26.1 + GDK_BACKEND=x11 + WSLg/Xephyr 1360x900。
+# MATE/X11：四个同意、四个取消均由 agent 操作并目检通过。
+# 生命周期：lifecycle PASS52 FAIL0 exit0；账号清理完成。
+# 30-install-cancel-* 是 LXDE 取消显示 Failed 的失败记录（未修复），不算 MATE/X11 通过项，
+# 不声称所有代理通过。
+# 早期失败尝试（10/20/30/31/40/50）、准备与收尾（55/60/61）、诊断日志都在清单内；
+# review-* 是目检用裁图，原始整屏都在；其余限制见 ui-smoke.md #4。
+# 共 168 条哈希：#4 的 157 个文件 + #206 的 11 个 L3 文件。前 112 条按路径排序，
+# 之后 45 条是 #4 补录，最后是 #206 组，顺序不作保证。
+# #4 验证命令：node C:/photo-verify/issue4-check-evidence.cjs（只核 #4 的 157 条）
+# 或在实物目录内执行：sha256sum --check C:/photo-t4/docs/agents/ui-smoke-evidence.sha256
+4294de1c2d6f61045991abf8feca7dfee7df05ed6c11bbf3951fcd3eceec8552  01-baseline.png
+8c99b218d7c7a2032b1895aa83a952223a39d0f1adeb6bfdbf28b98b2193d94e  02-service-page.png
+336d2f04e5d61c8046de8dadd0378d73d52c8fdcbcc025c0315a466b7ae210dd  10-install-cancel-before.json
+8c99b218d7c7a2032b1895aa83a952223a39d0f1adeb6bfdbf28b98b2193d94e  10-install-cancel-before.png
+35549f52d3dd6cdfe12b84c2e11bd33a24219d5b321ebab396501997dade5126  10-install-cancel-no-dialog.json
+ac0cabb559888a26a361e1877057ca2be9ffe56c81bca63752c0674c5dd66beb  10-install-cancel-no-dialog.png
+753d7a95d47611ee5906ae24e2f1b1ac2e94302e6673feb1fb3cbd8ff74c8e1b  20-install-cancel-before.json
+8c99b218d7c7a2032b1895aa83a952223a39d0f1adeb6bfdbf28b98b2193d94e  20-install-cancel-before.png
+f2d29d81858f2c530b213deaaa4dbe9f1a68e856c3aac09087cf595d4a6269d7  20-install-cancel-no-dialog.json
+ac0cabb559888a26a361e1877057ca2be9ffe56c81bca63752c0674c5dd66beb  20-install-cancel-no-dialog.png
+18f9845cb4c1f627ce3b28c782d1b2f7cffe2f5f2ae863610c2e2c805edbd21e  30-install-cancel-before.json
+8c99b218d7c7a2032b1895aa83a952223a39d0f1adeb6bfdbf28b98b2193d94e  30-install-cancel-before.png
+787cd40981a50ef6079e947d4cdbe61fad214a8ba3d86fdbce3fb5df4295fbfb  30-install-cancel-prompt.json
+61981bcea15403a1022f74a9b4be5426594eb31d7503fa3c3ca3e5c495428bd6  30-install-cancel-prompt.png
+5a973247bdadc2a3759e42933c5717ab1f5c9c101a29fd89ad569ee861a8c5a4  30-install-cancel-result.json
+ac0cabb559888a26a361e1877057ca2be9ffe56c81bca63752c0674c5dd66beb  30-install-cancel-result.png
+4b63f162522417f6dcbd087ad6d61e2b77470811d172478f5c7137b7d295d00f  31-install-approve-before.json
+ac0cabb559888a26a361e1877057ca2be9ffe56c81bca63752c0674c5dd66beb  31-install-approve-before.png
+c66b97fe8fd8ff3ed5cfccf067ed3b93374e48546c751fc60a078902b30cfa1f  31-install-approve-prompt.json
+61981bcea15403a1022f74a9b4be5426594eb31d7503fa3c3ca3e5c495428bd6  31-install-approve-prompt.png
+3862d0c91d731b4b6e3941e332154498c4657b6f3381ebf4f05232f86a197ff2  31-install-approve-result.json
+4f316e1aa2a234bf41e3186074cf4294492f6f8b84a9685cbac2b4717e9b7175  31-install-approve-result.png
+12341396d94d2d0e38b345fb6d722129bcbebae1957aab8ccad46dd2ad5d885e  40-stop-cancel-before.json
+8ce532d0d17bd2a6ca31acc6a5700a2f6a8c989ec6ed3b91f978203a566d0836  40-stop-cancel-before.png
+9526793b837e2da90fb525f3ad2493a246f57074acec500c7779b3b4b127dbfc  40-stop-cancel-no-dialog.json
+db85cf33717da71734ce7751f5b11899458c212a4a4653a3f8511cf98e307113  40-stop-cancel-no-dialog.png
+264a032b62773f8e6fe13400dc82d21c7003e1d4f920e7e3c03dbe60a433fb44  50-stop-cancel-before.json
+8ce532d0d17bd2a6ca31acc6a5700a2f6a8c989ec6ed3b91f978203a566d0836  50-stop-cancel-before.png
+31f0c63037969129f1b72618dfd7cf54d56bc27e989575caf6f1656e614bcf60  50-stop-cancel-prompt.json
+cfaf00a54ac4000bfc356db6b43f2802103810920e27117906a0254fe4cb3594  50-stop-cancel-prompt.png
+7d1beb752fd0f4057c6b577d4cbc9c34f8cecbf0d6471663cd4d1656d70ce2b6  51-stop-cancel-before.json
+ba0e2b0627381970556d1501c7b1cbc51b99a34c25c799224a9401198a82161b  51-stop-cancel-before.png
+b68c432bc274e535f7065700c96455cc10f188bf7cebc0632aa20bc45c57819b  51-stop-cancel-prompt.json
+cfaf00a54ac4000bfc356db6b43f2802103810920e27117906a0254fe4cb3594  51-stop-cancel-prompt.png
+25268422baa2e6c35d214031a9f2c4d71bbb1c91ef516390895fa5660fc09d1a  51-stop-cancel-result.json
+f4529cec7200a16925380eb7b0db87a906600025537911db2385dffcdab709f1  51-stop-cancel-result.png
+a15c764f39e9a62da45f22266c58ef11a48a7ee71bbedf3e442bb9a71029e223  52-stop-approve-before.json
+f4529cec7200a16925380eb7b0db87a906600025537911db2385dffcdab709f1  52-stop-approve-before.png
+d0aaddebe7303bbc3743a3a929e0e564d77ee336c20570f6c90461547ae31f68  52-stop-approve-prompt.json
+cfaf00a54ac4000bfc356db6b43f2802103810920e27117906a0254fe4cb3594  52-stop-approve-prompt.png
+40e091e0cc931c2b3868952b3588de0fe7c4e095e4121c7aa56be8f935fd834d  52-stop-approve-result.json
+b69de1f7eeeb0cd9a244cf7e8239581b8eae500e81650fab0173da535a467f27  52-stop-approve-result.png
+64b8316fc9d8c065781c6f33669b326b7dcbe9f1cf735aa07b5ff76670aa8c65  53-start-cancel-before.json
+b69de1f7eeeb0cd9a244cf7e8239581b8eae500e81650fab0173da535a467f27  53-start-cancel-before.png
+55814573782856a20b1912992fcd65d128b5bec7e4ddf2364d83b7ec9f17d368  53-start-cancel-prompt.json
+748ad551b190a99dde3346af918283f85b21cf96c731ea7b5033bf1ae1d8d5a2  53-start-cancel-prompt.png
+baf9e4e698c04da896db587a5388c8e5425c34a222e6830d2c1b21a4352a6954  53-start-cancel-result.json
+6f68e73c3ec7462491330c5c36fb4ec22b23396997a2b0b101bf68b35cb329e5  53-start-cancel-result.png
+5fc0025989cd76e71b2b0b8d726feb2cc9609bc53f88bffc3e0f725a63571786  54-start-approve-before.json
+6f68e73c3ec7462491330c5c36fb4ec22b23396997a2b0b101bf68b35cb329e5  54-start-approve-before.png
+b4bad1bdeaeebd195ad01d42c8348bcb428a3fddb8e3ed633fdf918715a8eeb3  54-start-approve-prompt.json
+748ad551b190a99dde3346af918283f85b21cf96c731ea7b5033bf1ae1d8d5a2  54-start-approve-prompt.png
+176aa6e73ddc70b5174478a953ce33570d2a5f53d7a5a4f4cabe2ec0b950f488  54-start-approve-result.json
+59be0a05f5b386779874cfe36aba616b46849419cb8cbb70f1e161f4543f7d04  54-start-approve-result.png
+57ac562a3c88cf7f58f3381d1a8a630ec6997a958939ec52b25787b64509a028  56-uninstall-cancel-before.json
+b69de1f7eeeb0cd9a244cf7e8239581b8eae500e81650fab0173da535a467f27  56-uninstall-cancel-before.png
+1465001bc34071ba505fa7f83333bec127f853e6e44cea9abe6e7f3d0a216464  56-uninstall-cancel-prompt.json
+1eba3eef3703bde6f19fcc921b8a77ded0e990ac0bd30c9b16e0f0bc502050ae  56-uninstall-cancel-prompt.png
+a9acd7829bca9cace3e33577571d767416b93dec2ee30c78813cfaf4f39f1ad6  56-uninstall-cancel-result.json
+3da0ae220c666fd9b9a9401c0cd90d9d3e22ffbb2d25bd03eede7f712cc1964b  56-uninstall-cancel-result.png
+d1a5bd4bd9b5a4e9ea8672a7de8cf6379ea25c47fb0884dbf7c60c5fe59d6b2f  57-uninstall-approve-before.json
+3da0ae220c666fd9b9a9401c0cd90d9d3e22ffbb2d25bd03eede7f712cc1964b  57-uninstall-approve-before.png
+280d294590855e8d42d3e0a838faa19e36dffcc2bf8ee655e0aebac5c521a681  57-uninstall-approve-prompt.json
+1eba3eef3703bde6f19fcc921b8a77ded0e990ac0bd30c9b16e0f0bc502050ae  57-uninstall-approve-prompt.png
+65824ce7f6fae702a79957eb9d9155bac54b43eb96f61a1a7eeab7eb0f08c067  57-uninstall-approve-result.json
+c12524eb01d2ab2dddca3ac7d94be429a7aef199adbc3c1f43204bdb6e6a4536  57-uninstall-approve-result.png
+d98443d01bf35aa034fcca4a5c0e188d50461c128f34ed05362d6af1bc1cb190  58-install-cancel-before.json
+c12524eb01d2ab2dddca3ac7d94be429a7aef199adbc3c1f43204bdb6e6a4536  58-install-cancel-before.png
+8bd6c5f57bcf7386c3d93ba4ac0cbda167b5c092e9bcb0d6d6955b991e19e7f6  58-install-cancel-prompt.json
+f9c0a400e210f67e801aa7952e3881e7e78125648b7e8ae8a2b6496f1c19b7d5  58-install-cancel-prompt.png
+98d1aa673aa7c15ebbddf2cd192163776db95673d0f196835d57954c8e560c15  58-install-cancel-result.json
+aa22733666c13b0aa39407b983627027671ec200d55de83e66e2b1c2712104fb  58-install-cancel-result.png
+0f1208faececd30801a95807597abab567329ed16bb21558cfb54ef0c229eb44  59-install-approve-before.json
+aa22733666c13b0aa39407b983627027671ec200d55de83e66e2b1c2712104fb  59-install-approve-before.png
+4a4b4a8bf96dbc5c67fd5f9acfdbf26c0834dec0c4dc136a0402d400c57dd6dc  59-install-approve-prompt.json
+f9c0a400e210f67e801aa7952e3881e7e78125648b7e8ae8a2b6496f1c19b7d5  59-install-approve-prompt.png
+df0b3359c4f707ee2951cac80964c7649f4b1faca7aa6029569c466ae111007a  59-install-approve-result.json
+4f316e1aa2a234bf41e3186074cf4294492f6f8b84a9685cbac2b4717e9b7175  59-install-approve-result.png
+1d174f179ed197452acdf90255c295d6f4927f2569ba55e44e39cfd49387223e  batch-assertions.json
+b474bc3b16f666f38b5348ece9237b927cc921c8e43ce51909e1c5d24bf23ad3  cleanup.json
+0f206cfd0b51f8ff0614e680f39caefb44348e3af489b1dbf4f99e8a66a4c136  diagnostic-original-runtime.log
+89ecc6d4d8b091a5114a75a5173de58dae38840d70605a2c236f043a636af313  environment.json
+d2f80d7cb4af1191b783020c3371ade49f39cc8462c6ed1cba0850a0170595af  lifecycle-console.txt
+1f3fff769c7781aabfdf0797d51c848fd239b9a39620b296bbd29b677702df34  lifecycle-run.json
+d38ace12e87b8e6962970d5f4763d7c0692e363bc04a884284215986b6958825  lifecycle/00-env.txt
+fb02db08918a0ec6a2e4e5f407fb23d047ca496115f9ed302bd2fc803ffa0057  lifecycle/00-negative-gui-user-empty.txt
+5ee70525087e6d347df89def66ed6973314dc9490f5a08c9fca5947039ffe502  lifecycle/00-negative-socket-group-empty.txt
+0ea840d53b841c255f1685f418e23327b6bf6b0431a4b3b81c2dc8c17569991b  lifecycle/00-negative-socket-group-same.txt
+7a29caaaa31d7bcc2deb58d1d58075ff0b22a458651222a87877d9e9dfbb526d  lifecycle/01-staging.txt
+37aa84e6198c02d8ced6b18c2870cda58151bc22250aee49f847df7c0d258cd4  lifecycle/02-install.txt
+69e2fb222ca1321eb2518e8cbfe3b5933c7821e60eea86ab164816a609e17b1a  lifecycle/03-systemctl-after-install.txt
+1a07fd3d8ba0ba9ea4badaaf36c09660c00b6dad8298c5ed33e763e04a486619  lifecycle/04-restart.txt
+3cc2975232fdb9bff4ac53fde76c9785b78cf675ca125c4da061e3f4d3430462  lifecycle/05-logs.txt
+035695f092b275a28ece2afe6bf5ca525d63cda1dca377033ce616a01b1418a2  lifecycle/06-socket.txt
+a4122dac810ecca87b563825b7ea5cdc5089e7c3e3ab15bff4f614d8cae8a1af  lifecycle/07-stop.txt
+a4122dac810ecca87b563825b7ea5cdc5089e7c3e3ab15bff4f614d8cae8a1af  lifecycle/08-start.txt
+a4122dac810ecca87b563825b7ea5cdc5089e7c3e3ab15bff4f614d8cae8a1af  lifecycle/09-uninstall.txt
+79d3c61c4521516be14cec3179326e5d92492e89834ce48e66f449f0141c0183  lifecycle/10-final.txt
+d8a9a3d2884bb823cf883be6ad2c303347b4444e1543eddf4b571e4544e2544c  lifecycle/summary.txt
+df1f6df29c4ba145a2f05273af8d44eae8a3826ff019bcb24e94c16a1b4a5501  lifecycle/ui-probe-pre-install.json
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  lifecycle/ui-probe-pre-install.txt
+f83d6b2295f07ac76801a5ab12aa4b930f3e8756c59de3dd958de03cac6e9c6d  lifecycle/ui-probe-running.json
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  lifecycle/ui-probe-running.txt
+ed4eecb4388e445f7eaaa4bfcda7aaaf0b2b8aa676431335c9a2637657de54cf  lifecycle/ui-probe-stopped.json
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  lifecycle/ui-probe-stopped.txt
+df1f6df29c4ba145a2f05273af8d44eae8a3826ff019bcb24e94c16a1b4a5501  lifecycle/ui-probe-uninstalled.json
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  lifecycle/ui-probe-uninstalled.txt
+7b03af0e5fc9304fb9951c9541ab51910990be9c633c1d817369ebb5a16c7861  polkit-journal.log
+70187f8bade1ec68e8807eab8054bb30cc1c5d12c6d689ccfead0a4103a9161c  runtime-integrity.json
+d31daefc60b3c6e498ff59c585fe6024d14fe1b3069185150a7cece92a21bad8  runtime.json
+8013e186a4c0ff4c427f222f9488451166379d23346b10b5551027169303ff3a  ui-process-identity.json
+fc8f82e42a9e5e5000b164b22251129f1be0c1cbd0aebd11a1039b2ba6ba6692  visual-review.json
+d76b9b0376343a54ca33e3727c777a88139e9d387aeddc1a491e550214e44d0d  55-stop-prepare-uninstall-before.json
+59be0a05f5b386779874cfe36aba616b46849419cb8cbb70f1e161f4543f7d04  55-stop-prepare-uninstall-before.png
+c1723be42b5cd47ed7366ef37ccddc812d1dc4521dfb832ba2819e8f99a707cf  55-stop-prepare-uninstall-prompt.json
+cfaf00a54ac4000bfc356db6b43f2802103810920e27117906a0254fe4cb3594  55-stop-prepare-uninstall-prompt.png
+d41fd7e5741ca92c16d3151df2ccec00035c6c6d85f50a335491a934921ee964  55-stop-prepare-uninstall-result.json
+b69de1f7eeeb0cd9a244cf7e8239581b8eae500e81650fab0173da535a467f27  55-stop-prepare-uninstall-result.png
+0750e054816a0fddc69b6af50b160250ec6ff79c2d868fba7a1dc4b713d54fc3  60-stop-cleanup-before.json
+4f316e1aa2a234bf41e3186074cf4294492f6f8b84a9685cbac2b4717e9b7175  60-stop-cleanup-before.png
+3748708ba620ba2ab38b1bed515da6e8b18452136eef03a20eeac201664424d8  60-stop-cleanup-prompt.json
+cfaf00a54ac4000bfc356db6b43f2802103810920e27117906a0254fe4cb3594  60-stop-cleanup-prompt.png
+9cfe3bdeb3641660e3fda6731d346063369b98efa0c1efea85427d5817fbd2c7  60-stop-cleanup-result.json
+b69de1f7eeeb0cd9a244cf7e8239581b8eae500e81650fab0173da535a467f27  60-stop-cleanup-result.png
+b4e39472c12b9ac4854302db12e77aa3933fa35763810b13d601c05d0b95f864  61-uninstall-cleanup-before.json
+b69de1f7eeeb0cd9a244cf7e8239581b8eae500e81650fab0173da535a467f27  61-uninstall-cleanup-before.png
+a349ff2d33452c2b133adf7f83d267451afb3aa8763e95d1ca003a923ab19fab  61-uninstall-cleanup-prompt.json
+1eba3eef3703bde6f19fcc921b8a77ded0e990ac0bd30c9b16e0f0bc502050ae  61-uninstall-cleanup-prompt.png
+b5eaee8a25c0e9571826cb5633fcccfb3ef2e2449213d7f0b63741fe0509e595  61-uninstall-cleanup-result.json
+c12524eb01d2ab2dddca3ac7d94be429a7aef199adbc3c1f43204bdb6e6a4536  61-uninstall-cleanup-result.png
+6f748c3cd02a858c087697c3afac639205c62b7b206558bd40d1bcbd98165a5c  diagnostic-lxpolkit-openbox.log
+f883644c3d426731a03a412fd10bf73eb97fb9a71b1c708a2bbcddb92fb969c0  diagnostic-lxpolkit-photoprivacy-ui.log
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  diagnostic-lxpolkit-polkit-agent.log
+0d31ee1117dcd1cc365129587aeb71d822053333c7e986ded1e01b99995423b2  diagnostic-lxpolkit-xephyr.log
+6f748c3cd02a858c087697c3afac639205c62b7b206558bd40d1bcbd98165a5c  diagnostic-mate-auto-backend-openbox.log
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  diagnostic-mate-auto-backend-photoprivacy-ui.log
+e74f8b4abe2eb2829f1669934f1b029fba9c8f0c5603f973a28841b6f3881707  diagnostic-mate-auto-backend-polkit-agent.log
+0d31ee1117dcd1cc365129587aeb71d822053333c7e986ded1e01b99995423b2  diagnostic-mate-auto-backend-xephyr.log
+6f748c3cd02a858c087697c3afac639205c62b7b206558bd40d1bcbd98165a5c  diagnostic-native-gnome-openbox.log
+f883644c3d426731a03a412fd10bf73eb97fb9a71b1c708a2bbcddb92fb969c0  diagnostic-native-gnome-photoprivacy-ui.log
+68e9f2ad0e782bfff281931e3eebf41d98b28a4e3a74d7ca9f82fea5205853a5  diagnostic-native-gnome-polkit-agent.log
+0d31ee1117dcd1cc365129587aeb71d822053333c7e986ded1e01b99995423b2  diagnostic-native-gnome-xephyr.log
+0bcd906d2a30a57aedb06898f8a7f0f26fb862270cdc2106d06b2a58d2ad3bec  lifecycle-scripts.json
+6f748c3cd02a858c087697c3afac639205c62b7b206558bd40d1bcbd98165a5c  openbox.log
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  photoprivacy-ui.log
+6319c5d118d462516aa9338698367524af5466edaf3a16dfb0f787307c7b76ce  polkit-agent.log
+0bfc045388d1b887818039726e370741d50308813ccb8f0ea0b0204d00fe6dbd  review-51-stop-cancel.png
+3e729e3fd191c0f953816a332f9dbb8654aeb0e9ad95d1809512c2256d9135d0  review-52-stop-approve.png
+bd7f9486135887baa65e9c989b46a722474c565532534397d61faf4655dff225  review-53-start-cancel.png
+6e497a6b8bb5a38d964d934ca1f99497c15ee077115bc679273315fc76f71ccf  review-54-start-approve.png
+13cbdd7777c99423dbc367a74b24dc52de28039d1610208c01e4c5561339912d  review-56-uninstall-cancel.png
+e78c1aa04309b1c4e4245cf7ddcd2c657c0684a75eaff495a1ca1de860f5192f  review-57-uninstall-approve.png
+d25ffd19d478b3fcc3ed62f1936a873302dab8839447c0bcb23d4d4b133a145c  review-58-install-cancel.png
+bccdf39eddd93ea4c8de599db60a457cb2a404fc13eec3343cd4fbd314488b0d  review-59-install-approve.png
+f6cdb4a7ce28209c82b8c0b0ca46cd3eb93a2f42ee75a154e3c23384327e4b4d  review-all-auth-dialogs.png
+13f3b5888e960d5cfde7761c8059f307366e1d7c07fdb298c48a6a320725559f  test-account-creation.log
+0d31ee1117dcd1cc365129587aeb71d822053333c7e986ded1e01b99995423b2  xephyr.log
+# ---- #206 L3 组（与 #4 同一次合并落入，两份记录都保留）----
+# 实物在验证机 /home/ubuntu/photo-verify/evidence-206/；该轮包为 Release run 42865294855
+# （head 0453da2，version 0.0.0-verify206）。环境为 Ubuntu 26.04 CVM + Xvfb + polkit-gnome
+# + 独立 logind 会话；两处环境坑（helper 的 setuid 位、lxpolkit 点 Cancel 挂到 60 秒超时）
+# 见 ui-smoke.md 的 #206 小节。核对方法仍在实物机执行 sha256sum -c。
 3043a84d2d466f8076b604c417de30a9b8ea17f5f64ca8e6c3f8817aa1e1e889  L3-00-ui-before.png
 55656825b4a324465079ee15e2fdce6d5b0b72ec647d65f033e44bd1e1d797b0  L3-01-polkit-dialog.png
 b892882f3aae0509dbede1bbe9b04a26504ccbfa6ef6d1c0003eb67ad85ce4ae  L3-02-after-cancel.png
