@@ -1,6 +1,8 @@
-# 证据清单 — #4 WSL2 真实 GUI 验证 + #206 Linux polkit 验证（两轮同一次合并落入）。
+# 证据清单 — #4 WSL2 真实 GUI 验证 + #206 Linux polkit 验证 + #206 Windows 取消/未知态（三轮同一次合并落入）。
 # #4 实物：C:/photo-verify/issue4-wsl2/evidence；未上传，删除后无法从哈希还原。
-# 起始基准：0453da224a0145789b80bb8a29d812bd39cb1473；本清单含两轮，旧轮从 git 历史取。
+# #206 Windows 实物：C:/Users/Administrator/photo-smoke-206/evidence（本轮 u1-* 11 条；
+#   在实物目录内跑 sha256sum -c 本清单，只有 u1-* 那 11 条出 OK，其余按缺失处理）。
+# 起始基准：0453da224a0145789b80bb8a29d812bd39cb1473；本清单含三轮，旧轮从 git 历史取。
 # 旧轮找回：git show 0453da224a0145789b80bb8a29d812bd39cb1473:docs/agents/ui-smoke-evidence.sha256
 # 包：Release run 42767568814 / head d1e30d8a52566609330eb32e70b4348d0ffcb2af / linux-x64；本地未编译。
 # 环境：WSL2，MATE 1.26.1 + GDK_BACKEND=x11 + WSLg/Xephyr 1360x900。
@@ -10,8 +12,8 @@
 # 不声称所有代理通过。
 # 早期失败尝试（10/20/30/31/40/50）、准备与收尾（55/60/61）、诊断日志都在清单内；
 # review-* 是目检用裁图，原始整屏都在；其余限制见 ui-smoke.md #4。
-# 共 168 条哈希：#4 的 157 个文件 + #206 的 11 个 L3 文件。前 112 条按路径排序，
-# 之后 45 条是 #4 补录，最后是 #206 组，顺序不作保证。
+# 共 179 条哈希：#4 的 157 个文件 + #206 Linux 的 11 个 L3 文件 + #206 Windows 的 11 个 u1 文件。
+# 前 112 条按路径排序，之后 45 条是 #4 补录，然后是 #206 Linux 组，最后是 #206 Windows 组，顺序不作保证。
 # #4 验证命令：node C:/photo-verify/issue4-check-evidence.cjs（只核 #4 的 157 条）
 # 或在实物目录内执行：sha256sum --check C:/photo-t4/docs/agents/ui-smoke-evidence.sha256
 4294de1c2d6f61045991abf8feca7dfee7df05ed6c11bbf3951fcd3eceec8552  01-baseline.png
@@ -187,3 +189,26 @@ bc7cc5e024fe15511d95e0806269da315b21e5f8fe085dbcfc7992221ce082b4  L3-07-after-un
 18cf9c10518635c9b5b20c195d5967681247a23bf3bc03e283c9a3b49462ed87  L3-08-start-dialog.png
 bac060bd399f6f601f2fb0a4aab147034115644db21d6dc9f0e995f472a516bd  L3-09-after-start.png
 08321421c04e83c3cc4ffc853ab43a0fc7a789dd5aeece9eda28e23b129e015c  L3-00-evidence-notes.txt
+# ---- #206 Windows 组（取消态 + 未知态，2026-11-11，Windows 实机；与上面两轮同一次合并落入）----
+# 第 1 条取消态：通过（引用 #30 证据，用户 2026-11-11 批准复用；本轮复核 #30 清单 42/42 OK，
+#   见 u1-t30-recheck.txt）。第 2 条未知态：通过（spawn 失败分支）＋未测（超时/无权限两变体）。
+#   未知态造法：Job ActiveProcessLimit=1 挡探针 spawn（os error 1816）；无权限变体有 CI 测试
+#   sc_query_access_denied_is_unknown_not_uninstalled，超时变体没专设单测。见 u1-round-notes.txt。
+# 逐文件时刻与通道（整屏截图均为 Graphics.CopyFromScreen）：
+#   u1-env.txt 01:18:35 / u1-job-launch.txt 01:25:19（读回 flags=8 active=1）/
+#   u1-00-overview-job.png 01:26（总览 os error 1816）/ u1-01-service-page-unknown.png 01:26 /
+#   u1-02-click-disabled-install.png 01:27 / u1-sc-query-contrast.txt 01:27:42（sc query 1060）/
+#   u1-normal-launch.txt 01:29:06（首启闪退记录）/ u1-03-normal-not-installed.png 01:30 /
+#   u1-cleanup.txt 01:32:07（进程 0、服务 1060、config 出厂哈希）/ u1-t30-recheck.txt 01:33:36 /
+#   u1-round-notes.txt（时间线、异常四条、逐项结论）
+ff26c9b779a0be85740a93d05ac38612f261ff1af740995237eaebc8da66a2fc  u1-env.txt
+f262560274f391d4d023d5ab6f5ae2eae69b183c725a4d108209747bfaa9dff6  u1-job-launch.txt
+7221f1c8ffa78be6523f45166c1b2e75c052fd671a29be673d9914752c38a8bf  u1-normal-launch.txt
+36b8197c02b52ccb584cbac310739acca700ee68101ac69dc7b514a8a48b0bc8  u1-cleanup.txt
+82deb75d343100b7261d2f638080cc26d6e872683fe916ab6684ddebda3291e9  u1-t30-recheck.txt
+95112374aa99e5a797e1ae7ee633038aecb72ff3b53e40b37bfb085f228bd138  u1-00-overview-job.png
+5e05dc439489176e793eb0bfee2f992f261ca3d9fcf30aabe1bec1a323ba4c11  u1-01-service-page-unknown.png
+e0f1037c0733e0ada18ec4ba4aa1727a15e474aaf54ab00b2aed428d55d67286  u1-02-click-disabled-install.png
+6ba833df5dd4ca60123b5880f963aa74eba26ab21a34c226ced6b6f8f0e8c074  u1-03-normal-not-installed.png
+5176730db36fdd6da501d3e888b43a86f9366fa905777832cfbb2305d6419ca5  u1-sc-query-contrast.txt
+6335d5611c1160bab8784a29ae4b7392870a1eeea4b659707108184e61ea3aa8  u1-round-notes.txt
