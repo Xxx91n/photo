@@ -114,3 +114,8 @@ Release 配置）：
   前缀，重定向等参数不再重复）。改完后用同参数复跑一轮 dry-run 确认行为不变：
   `Smoke test start` → `Smoke worker args: … --dry-run true` → `Smoke test done`，
   无 `Worker CLI failed`，输出存仓外 `runs/smoke1/recheck-output.txt`。
+- PR 审查返修（CodeRabbit）：`-WorkerPath` 的存在性检查与解析改用
+  `-LiteralPath`，避免产物路径里的 `[ ]` 被当通配符；脚本补 UTF-8 BOM（含中文
+  注释后 PSScriptAnalyzer 要求，与本仓其他 PS 脚本一致）。复验：用
+  `runs\recheck[1]\PhotoPrivacyWorker.exe` 这种带方括号的路径实跑一轮 dry-run
+  通过，输出存仓外 `runs/smoke1/literalpath-recheck.txt`。

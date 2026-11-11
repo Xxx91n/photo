@@ -1,4 +1,4 @@
-# DLL-first smoke (arc-recovery round 3).
+﻿# DLL-first smoke (arc-recovery round 3).
 # Launch the built Worker DLL directly instead of triggering a project rebuild,
 # capture worker stdout/stderr into temp files, and print both tails on exit so
 # failures (e.g. empty output) are diagnosable at the point of failure.
@@ -22,10 +22,11 @@ Write-Host "Smoke test start"
 function Get-WorkerPath {
   # 显式给了 -WorkerPath 就只认它（存在即用，exe/dll 都行）；否则回退 DLL 探测。
   if (-not [string]::IsNullOrWhiteSpace($WorkerPath)) {
-    if (-not (Test-Path $WorkerPath)) {
+    # -LiteralPath：路径里的 [ ] 等字符是通配符元字符，按字面处理，别让产物路径被展开。
+    if (-not (Test-Path -LiteralPath $WorkerPath)) {
       throw "WorkerPath not found: $WorkerPath"
     }
-    return (Resolve-Path $WorkerPath).Path
+    return (Resolve-Path -LiteralPath $WorkerPath).Path
   }
   $candidates = @(
     [System.IO.Path]::Combine($repoRoot, "src", "PhotoPrivacy.Worker", "bin", "Debug", "net10.0", "PhotoPrivacyWorker.dll"),
