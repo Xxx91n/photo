@@ -20,7 +20,9 @@
 - **Linux 提权弹窗已实测（#206）**：Xvfb 虚拟显示 + polkit-gnome 认证代理 + 独立 logind 会话里
   走通了真实交互弹窗（安装/启停/卸载 + Escape 取消分支），证据见下方 L 组 polkit 分支。
   两个环境坑：取消语义跟认证代理有关——polkit-gnome 的 Escape 走 dismissed、pkexec 退出 126；
-  lxpolkit 的 Cancel 按钮走 cancel 信号、报 127（Not authorized），UI 会按失败分型显示。
+  lxpolkit 的 Cancel/Escape 走 cancel 信号、报 127（Not authorized，pkexec true 直接调用实测），
+  UI 会按失败分型显示。UI 流程里另有一次点 Cancel 后弹窗不关、pkexec 挂到 60 秒超时
+  （UI 显示超时失败）——那是另一次调用，不验证 127 分支，别混读。
   云镜像还把 polkit-agent-helper-1 的 setuid 位摘掉了，密码送不进 PAM（auth.log 报
   conversation failed），取证前先补回 u+s。
 - **macOS 提权按钮**：按 #32 裁定接受为残留（CLI 等价命令已验证）。
@@ -180,9 +182,11 @@ WSL VM 空闲约 8 s 会回收，验证期间用常驻进程保活。
    unit 不存在），不重复弹窗。
 3. 停止/启动/卸载弹窗：三个操作各自弹窗认证后生效——停止 → inactive（L3-04/L3-05）；
    启动 → active、新 MainPID（L3-08/L3-09）；卸载 → unit 删除、not-found（L3-06/L3-07）。
-4. 取消语义边界：pkexec 手册定义 126=用户关掉认证框、127=未授权/出错；实测 polkit-gnome
-   的 Escape 走 126，lxpolkit 的 Cancel 按钮走 127——UI 只把 126 分型为取消，127 按失败
-   显示，与代码注释（unix.rs：只有 126 是用户取消）一致。
+4. 取消语义边界：pkexec 手册定义 126=用户关掉认证框、127=未授权/出错。实测（pkexec true
+   直接调用，lxpolkit 代理）：Cancel 点击与 Escape 都退出 127（Not authorized）；polkit-gnome
+   的 Escape 退出 126（Request dismissed）。UI 只把 126 分型为取消，127 按失败显示，与代码
+   注释（unix.rs：只有 126 是用户取消）一致。注意区分：UI 流程里有一次点 Cancel 后弹窗不关、
+   pkexec 挂到 60 秒超时（UI 显示超时失败）——那次是超时分支，不是 127 分支的验证。
 证据清单与哈希：docs/agents/ui-smoke-evidence.sha256（实物在验证机
 /home/ubuntu/photo-verify/evidence-206/）。
 
