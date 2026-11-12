@@ -323,7 +323,7 @@
       "family": "Família",
       "extensions": "Extensões",
       "enabled": "Ativado",
-      "strip_all": "Remover o máximo possível",
+      "strip_all": "Remover o máximo",
       "preserve_icc": "Preservar ICC",
       "strip_exif": "EXIF",
       "strip_xmp": "XMP",

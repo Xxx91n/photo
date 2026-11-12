@@ -391,8 +391,8 @@ mod tests {
     /// #289：rules.col.strip_all 是开关名（打开全删模式），不是清理结果的承诺；
     /// 任何语言都不得再用旧文案「全部清除」及其直译——视频按 ExifTool 官方说法
     /// 只删大部分顶层元数据，属部分清理（#268 定调）。
-    /// 断言用 trim 后全等而非 contains：es/ru 的新值本身含旧值为前缀子串
-    /// （"Borrar todo lo posible"、"Удалить всё, что можно"），contains 会误报。
+    /// 断言用 trim 后全等而非 contains：更长的诚实说法可能以旧词开头，
+    /// contains 会把合法文案误报成回退。
     #[test]
     fn strip_all_column_names_do_not_promise_a_full_wipe() {
         let banned = [
