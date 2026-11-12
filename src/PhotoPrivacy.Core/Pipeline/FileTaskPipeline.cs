@@ -351,7 +351,9 @@ public sealed class FileTaskPipeline
             return;
         }
 
-        string destination;
+        // destination 先按原名目标预置：目录创建就失败时事件里也有「打算写哪儿」可查
+        // （CodeRabbit #294 意见 4：quarantine_target 要记实际目标路径，不能记源路径）。
+        var destination = Path.Combine(_config.Quarantine.Directory, Path.GetFileName(failedFilePath));
         try
         {
             _fileOperations.EnsureDirectory(_config.Quarantine.Directory);
@@ -378,12 +380,13 @@ public sealed class FileTaskPipeline
         catch (Exception ex)
         {
             // 确实没隔离成（Move 落盘阶段失败）：单独记账，不回灌进擦除重试。
+            // quarantine_target 记实际选定（或预置的原名）目标路径，不记源路径（意见 4）。
             // file_quarantine_failed 自身的写入再失败也吞掉——报告通道失效时无更优解。
             try
             {
                 await _audit.WriteAsync(
                     new AuditEvent("file_quarantine_failed", AuditLevel.Error, DateTimeOffset.UtcNow, Guid.NewGuid().ToString("N"), sourcePath,
-                        $"quarantine_target={failedFilePath};{ex.Message}", null),
+                        $"quarantine_target={destination};{ex.Message}", null),
                     cancellationToken);
             }
             catch (OperationCanceledException)

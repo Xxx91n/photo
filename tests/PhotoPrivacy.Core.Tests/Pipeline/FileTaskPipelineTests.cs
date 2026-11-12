@@ -101,7 +101,9 @@ public sealed class FileTaskPipelineTests
         Assert.Contains(
             audit.Events,
             e => e.EventType == "file_quarantine_failed"
-                && e.Message.Contains("quarantine_target=", StringComparison.Ordinal));
+                && e.Message.Contains("quarantine_target=", StringComparison.Ordinal)
+                // CodeRabbit #294 意见 4：记的是实际隔离目标路径，不是待隔离文件的源路径。
+                && e.Message.Contains(Path.Combine(quarantine, "a.mp4"), StringComparison.Ordinal));
         Assert.Empty(fileOps.Moves);
     }
 
