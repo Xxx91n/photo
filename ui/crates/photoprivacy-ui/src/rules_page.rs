@@ -12,9 +12,9 @@ use photoprivacy_rules::{Family, Group, Notice, RulesEditor};
 
 const FAMILY_WIDTH: f32 = 90.;
 const EXTENSIONS_WIDTH: f32 = 170.;
-// #289：strip_all 列名改成「能删的都删」式说法后，十个语言里最长的文案
-// （pt「Remover o máximo possível」）在 10px 表头字号下超过原 54px 列宽，会截断；
-// 加宽到 88px，warning 列仍是 flex_1 弹性，吃下六列加宽的增量。
+// #289：strip_all 列名改成「能删的都删」式说法后，10px 表头字号下原来 54px 的列宽
+// 装不住最长的列名（现在最长的是 en「Strip all removable」），实机冒烟实测压到了
+// 相邻列；加宽到 88px，warning 列仍是 flex_1 弹性，吃下六列加宽的增量。
 const TOGGLE_WIDTH: f32 = 88.;
 const ROW_HEIGHT: f32 = 44.;
 
