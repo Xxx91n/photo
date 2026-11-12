@@ -323,7 +323,7 @@
       "family": "ファミリー",
       "extensions": "拡張子",
       "enabled": "有効",
-      "strip_all": "全削除",
+      "strip_all": "削れるだけ削る",
       "preserve_icc": "ICC 保持",
       "strip_exif": "EXIF",
       "strip_xmp": "XMP",

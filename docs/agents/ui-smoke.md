@@ -88,7 +88,7 @@
 
 1. 启动 UI，点导航 `Rules`。
 2. 检查：五族 × 六开关全部可见；PDF/EPS 行显示 `Caution`；专家开关只切换提示条，六开关本身始终可点。
-3. 点 JPEG 的 `Strip all`（默认 true → false）与 `EXIF`（默认 false → true），点 `Save`。
+3. 点 JPEG 的 `Strip all removable`（默认 true → false；#289 前旧名 `Strip all`）与 `EXIF`（默认 false → true），点 `Save`。
 4. 期望 `<exe dir>/config/rules.json` 含 30 个 `{family}_{group}` 布尔键：
    `jpeg_strip_all=false`、`jpeg_strip_exif=true`，其余族保持编码默认值。
 5. 关闭并重启 UI，再进 `Rules`：JPEG 两个开关保持第 3 步的值，且无加载告警、无「Unsaved changes」。

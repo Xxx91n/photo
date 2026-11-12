@@ -323,7 +323,7 @@
       "family": "Семейство",
       "extensions": "Расширения",
       "enabled": "Включено",
-      "strip_all": "Удалить всё",
+      "strip_all": "Удалить всё, что можно",
       "preserve_icc": "Сохранить ICC",
       "strip_exif": "EXIF",
       "strip_xmp": "XMP",

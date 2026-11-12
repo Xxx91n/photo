@@ -323,7 +323,7 @@
       "family": "Familie",
       "extensions": "Erweiterungen",
       "enabled": "Aktiviert",
-      "strip_all": "Alle löschen",
+      "strip_all": "Alles Entfernbare",
       "preserve_icc": "ICC erhalten",
       "strip_exif": "EXIF",
       "strip_xmp": "XMP",

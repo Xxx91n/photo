@@ -323,7 +323,7 @@
       "family": "패밀리",
       "extensions": "확장자",
       "enabled": "활성화",
-      "strip_all": "전체 삭제",
+      "strip_all": "지울 수 있는 건 모두",
       "preserve_icc": "ICC 보존",
       "strip_exif": "EXIF",
       "strip_xmp": "XMP",
