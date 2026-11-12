@@ -2631,10 +2631,17 @@ impl AppView {
         cx: &mut Context<Self>,
     ) -> Div {
         let tone = Self::tone_color(entry.tone, theme);
-        let copy_text = format!(
-            "[{}] {} {} {}",
-            entry.time_text, entry.display_event, entry.source_path_masked, entry.message
-        );
+        // #283：部分清理说明不进表格列，但复制要能拿到完整信息（说明可能被单行截断）。
+        let copy_text = match &entry.partial_note {
+            Some(note) => format!(
+                "[{}] {} {} {}\n{}",
+                entry.time_text, entry.display_event, entry.source_path_masked, entry.message, note
+            ),
+            None => format!(
+                "[{}] {} {} {}",
+                entry.time_text, entry.display_event, entry.source_path_masked, entry.message
+            ),
+        };
         let button_id = format!("copy-log-{entry_index}");
         let row_focus = self.log_copy_handle(entry_index, cx);
         div()
@@ -2680,12 +2687,34 @@ impl AppView {
                     .child(entry.source_path_masked.clone()),
             )
             .child(
+                // #283：部分清理族（GIF/PSD/视频）成功事件在消息列下方补一行说明，
+                // 让用户知道“清干净”其实是“还有残留”；普通事件只有 message 一行。
+                // 行高保持 40px：两行小字号文字在 uniform_list 固定行内纵向居中，
+                // 不破虚拟列表的等高假设。说明文案是 Worker 写进 data.partial_clean
+                // 的原文（单一来源在 WipeStrategyResolver.PartialCleanNote），不在这里
+                // 二次翻译。
                 div()
                     .flex_1()
-                    .truncate()
-                    .text_size(px(12.))
-                    .text_color(theme.text)
-                    .child(entry.message.clone()),
+                    .flex()
+                    .flex_col()
+                    .justify_center()
+                    .overflow_hidden()
+                    .child(
+                        div()
+                            .truncate()
+                            .text_size(px(12.))
+                            .text_color(theme.text)
+                            .child(entry.message.clone()),
+                    )
+                    .when_some(entry.partial_note.clone(), |el, note| {
+                        el.child(
+                            div()
+                                .truncate()
+                                .text_size(px(11.))
+                                .text_color(theme.text_faint)
+                                .child(note),
+                        )
+                    }),
             )
             .child(self.copy_button(
                 button_id,
@@ -3993,6 +4022,44 @@ mod tests {
             .unwrap();
         assert_eq!(page, Page::Logs, "复制按钮的 Enter 不应切换页面");
         assert_eq!(log_len, 1, "复制不应改动日志缓冲");
+    }
+
+    /// 带部分清理说明的日志行复制时说明也要能拿到（#283）：
+    /// GIF/PSD/视频成功事件在消息列下方补说明行，复制文本追加完整说明原文。
+    #[test]
+    fn copy_log_row_includes_partial_clean_note() {
+        let (mut cx, window) = setup();
+        let any_window: AnyWindowHandle = window.into();
+        let record = photoprivacy_logs::parse_line(
+            r#"{"event_type":"file_processing_succeeded","level":"INFO","timestamp_utc":"2026-11-12T01:02:03.0000000Z","source_path_masked":"C:/p.gif","message":"attempt=1;wipe_result=Cleaned_Modified","data":{"partial_clean":"部分清理：C2PA(JUMBF) 保留"}}"#,
+        )
+        .expect("带 partial_clean 的样例审计行应可解析");
+        window
+            .update(&mut cx, |view, _, _| {
+                view.log_state.borrow_mut().logs.push_batch(vec![record]);
+                view.rebuild_visible();
+            })
+            .unwrap();
+
+        // 与 tab_reaches_log_copy_button_and_enter_copies 同款导航：日志页 + 11 跳到首行复制按钮。
+        for _ in 0..4 {
+            press_tab(&mut cx, any_window, true);
+        }
+        press_activation_key(&mut cx, any_window, "enter");
+        draw(&mut cx, any_window);
+        for _ in 0..11 {
+            press_tab(&mut cx, any_window, true);
+        }
+        press_activation_key(&mut cx, any_window, "enter");
+        draw(&mut cx, any_window);
+
+        let clipboard = cx.read(|cx| cx.read_from_clipboard().and_then(|item| item.text()));
+        assert!(
+            clipboard
+                .as_ref()
+                .is_some_and(|text| text.contains("部分清理：C2PA(JUMBF) 保留")),
+            "剪贴板应包含部分清理说明，实际 {clipboard:?}"
+        );
     }
 
     /// 输入框的 FocusHandle 接管焦点态，且作为 tab stop 进出不陷获（AC2/AC4）。
