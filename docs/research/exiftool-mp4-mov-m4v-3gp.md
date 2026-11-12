@@ -226,7 +226,7 @@ ffmpeg -v error -i FILE -f null -     # 全量解码
 - **擦除**：exit 1，报 `Error: Can't yet handle movie fragments when writing`，`0 image files updated`。文件一个字节没动：9 个 mdat 载荷 md5 前后一致（`60781b03fcb7ab8ad6bfb4934724759d`）、114 个标签一行不少、顶层盒序不变，解码正常。
 - **按产品的块格式复验**：照 `ExifToolCommandBuilder.BuildWipeTaskBlock` 的真实内容（`-All=` / `-Time:All=` / `-overwrite_original` / 路径 / `-echo1` / `TASK_DONE_1` / `-execute`）喂给 `-stay_open True -@ -`，CI 产物那份 ExifTool 的 stdout 是 `TASK_DONE_1`、`0 image files updated`、`1 files weren't updated due to errors`、`{ready}`——**`{ready}` 照样到了**，错误只在 stderr；文件 md5 `1a8ab577…` 前后一致、大小 56,240 不变。同样的块喂 C2PA 样本是 `1 image files updated`、文件确实变小，说明块格式本身没问题。原始输出在仓外 `work-stayopen/result.json`。
 - **产品里会怎样（重要）**：`ExifToolBridge` 只拿 `{ready}` 当块结束（`OnStdoutLine` → `CompleteBlockJustEchoed` → `TrySetResult`），stderr 那句错误不会变成异常；`WipeMetadataAsync` 之后只看文件有没有变，没变就记一句诊断警告，最后**无条件 `return WipeResult.Cleaned_Modified`**（`ExifToolBridge.cs:402`、`:411`）。于是 `FileTaskPipeline` 会写 `file_processing_succeeded` 加 `partial_clean`，**文件其实一个字节没动，也不会进隔离区**。`file_processing_failed` 只在抛异常时才写，这条路径不抛。这一段是按代码路径推出来的，没有跑完整的 Worker 端到端；块协议的实测只证明了 `{ready}` 照样到、文件没动。
-- **结论**：单次命令行调用是 exit 1 的硬失败；产品的常驻通道按代码路径会把同一个文件**记成清理成功**，这是审计谎报，既不是「部分清理」也不是「清理失败」。本票只把证据和结论写清楚，**没改产品代码**——修 `ExifToolBridge` 让这类报错变成失败是另一个活，要另开票并经确认。升级 ExifTool 时要重看「写不了」这一条；修好之前，分片 MP4 先转成普通 MP4 再放进监控文件夹。
+- **结论**：单次命令行调用是 exit 1，直接报错；产品的常驻通道按代码路径会把同一个文件**记成清理成功**，这是审计谎报，既不是「部分清理」也不是「清理失败」。本票只把证据和结论写清楚，**没改产品代码**——修 `ExifToolBridge` 让这类报错变成失败是另一个活，要另开票并经确认。升级 ExifTool 时要重看「写不了」这一条；修好之前，分片 MP4 先转成普通 MP4 再放进监控文件夹。
 
 ### 12.4 MQV —— 品牌合规的构造样本能擦，设备直出的真样本没找到
 
