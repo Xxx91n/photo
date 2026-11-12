@@ -82,6 +82,7 @@ mod tests {
             display_event: "File detected".to_string(),
             source_path_masked: String::new(),
             message: message.to_string(),
+            partial_note: None,
             tone: EventTone::Info,
         }
     }
