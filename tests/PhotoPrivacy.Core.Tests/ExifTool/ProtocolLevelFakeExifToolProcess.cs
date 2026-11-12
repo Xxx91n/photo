@@ -90,6 +90,14 @@ internal sealed class ProtocolLevelFakeExifToolProcess : IExifToolProcess
     /// <summary>StartAsync 耗时注入，单位毫秒——用于拉开并发启动窗口。</summary>
     public int StartDelayMs { get; set; }
 
+    /// <summary>
+    /// 写盘块（含 <c>-overwrite_original</c>）的 ExifTool 每块汇总行注入（#288）：真实 ExifTool 对
+    /// 每个 <c>-execute</c> 块都打「N image files updated」/「N files weren't updated due to errors」
+    /// 这类汇总行（-q -q 下实测仍输出，#268）。按 ExifTool 语义在回显之后、<c>{ready}</c> 之前打出，
+    /// 不特判任何 marker 名字。
+    /// </summary>
+    public IReadOnlyList<string> WipeSummaryLines { get; init; } = [];
+
     /// <summary>StartAsync 并发进入峰值（>1 说明重启路径未持 _startLock）。</summary>
     public int MaxConcurrentStartCalls { get; private set; }
 
@@ -192,6 +200,14 @@ internal sealed class ProtocolLevelFakeExifToolProcess : IExifToolProcess
             if (isVersionBlock)
             {
                 EmitStdout(VersionText);
+            }
+
+            if (writesFile && WipeSummaryLines.Count > 0)
+            {
+                foreach (var summaryLine in WipeSummaryLines)
+                {
+                    EmitStdout(summaryLine);
+                }
             }
         }
 

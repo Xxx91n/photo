@@ -33,6 +33,69 @@ public sealed class FileTaskPipelineTests
     }
 
     [Fact]
+    public async Task HandleAsync_Should_Fail_And_Quarantine_Without_Retry_When_Bridge_Reports_Write_Error()
+    {
+        // #288：ExifTool 明确写不了（分片 MP4 即此形态）时，审计必须是 file_processing_failed，
+        // 绝不许 file_processing_succeeded；确定性错误重试必然同样失败，不进重试循环，
+        // 直接按设置进隔离区，且不写 processed 记录（下轮扫描不再走已处理挡板）。
+        var hot = Path.Combine(Path.GetTempPath(), "pp-ft-hot");
+        var quarantine = Path.Combine(hot, "_quarantine");
+        var cfg = AppConfig.Default with
+        {
+            Retry = AppConfig.Default.Retry with { MaxAttempts = 3, BackoffSeconds = [0, 0, 0] },
+            Quarantine = AppConfig.Default.Quarantine with { Directory = quarantine }
+        };
+
+        var ruleEngine = new RuleEngine(cfg);
+        var bridge = new WriteErrorBridge();
+        var fileOps = new InMemoryFileOperations();
+        var audit = new InMemoryAuditLogger();
+        var pipeline = new FileTaskPipeline(cfg, ruleEngine, bridge, fileOps, audit, new InMemoryProcessedRecordStore());
+
+        await pipeline.HandleAsync(Path.Combine(hot, "fragmented.mp4"), CancellationToken.None);
+
+        Assert.Equal(1, bridge.Calls);
+        Assert.DoesNotContain(audit.Events, e => e.EventType == "file_processing_succeeded");
+        Assert.DoesNotContain(audit.Events, e => e.EventType == "file_retry_scheduled");
+        Assert.Contains(
+            audit.Events,
+            e => e.EventType == "file_processing_failed"
+                && e.Message.Contains("wipe_result=Failed_WriteError", StringComparison.Ordinal));
+        Assert.Contains(audit.Events, e => e.EventType == "file_quarantined");
+        Assert.Contains(
+            fileOps.Moves,
+            m => m.Source == Path.Combine(hot, "fragmented.mp4")
+                && m.Destination == Path.Combine(quarantine, "fragmented.mp4"));
+    }
+
+    [Fact]
+    public async Task HandleAsync_Should_Fail_Without_Quarantine_When_Quarantine_Disabled()
+    {
+        // #288：隔离未启用时不挪文件（也无隔离事件），但失败审计照写——用户至少看得到失败。
+        var cfg = AppConfig.Default with
+        {
+            Retry = AppConfig.Default.Retry with { MaxAttempts = 1, BackoffSeconds = [0] },
+            Quarantine = AppConfig.Default.Quarantine with { Enabled = false }
+        };
+
+        var ruleEngine = new RuleEngine(cfg);
+        var bridge = new WriteErrorBridge();
+        var fileOps = new InMemoryFileOperations();
+        var audit = new InMemoryAuditLogger();
+        var pipeline = new FileTaskPipeline(cfg, ruleEngine, bridge, fileOps, audit, new InMemoryProcessedRecordStore());
+
+        await pipeline.HandleAsync(@"D:\hot\a.mp4", CancellationToken.None);
+
+        Assert.DoesNotContain(audit.Events, e => e.EventType == "file_processing_succeeded");
+        Assert.Contains(
+            audit.Events,
+            e => e.EventType == "file_processing_failed"
+                && e.Message.Contains("wipe_result=Failed_WriteError", StringComparison.Ordinal));
+        Assert.DoesNotContain(audit.Events, e => e.EventType == "file_quarantined");
+        Assert.Empty(fileOps.Moves);
+    }
+
+    [Fact]
     public async Task HandleAsync_Should_Skip_When_File_Is_InFlight()
     {
         var cfg = AppConfig.Default;
@@ -273,6 +336,26 @@ public sealed class FileTaskPipelineTests
         public Task<WipeResult> WipeMetadataAsync(string targetPath, CancellationToken cancellationToken)
         {
             throw new InvalidOperationException("fail");
+        }
+    }
+
+    private sealed class WriteErrorBridge : IExifToolBridge
+    {
+        public string VersionText => "test";
+
+        public int Calls { get; private set; }
+
+        /// <summary>版本解析在假件里无副作用：版本由构造参数直接给出。</summary>
+        public Task EnsureVersionAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task<WipeResult> WipeMetadataAsync(string targetPath, CancellationToken cancellationToken)
+        {
+            Calls++;
+            return Task.FromResult(WipeResult.Failed_WriteError);
         }
     }
 

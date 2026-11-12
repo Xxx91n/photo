@@ -247,6 +247,24 @@ public sealed class FileTaskPipeline
                             }
                             return;
 
+                        case WipeResult.Failed_WriteError:
+                            // #288：ExifTool 明确说写不了（「0 image files updated」+「files weren't
+                            // updated due to errors」，分片 MP4 即此形态）——文件一字未动，绝不许按
+                            // file_processing_succeeded 收场。确定性错误，重试必然同样失败，不进重试，
+                            // 直接按设置进隔离区；原文件保持未处理，不写 processed 记录。
+                            await _audit.WriteAsync(
+                                new AuditEvent(
+                                    "file_processing_failed",
+                                    AuditLevel.Error,
+                                    DateTimeOffset.UtcNow,
+                                    Guid.NewGuid().ToString("N"),
+                                    sourcePath,
+                                    "wipe_result=Failed_WriteError;exiftool_refused_to_write",
+                                    null),
+                                cancellationToken);
+                            await QuarantineAsync(target, sourcePath, cancellationToken);
+                            return;
+
                         default:
                             throw new InvalidOperationException($"Unexpected wipe result: {result}");
                     }
@@ -295,16 +313,7 @@ public sealed class FileTaskPipeline
                 }
             }
 
-            if (_config.Quarantine.Enabled)
-            {
-                _fileOperations.EnsureDirectory(_config.Quarantine.Directory);
-                var failedFilePath = target;
-                var destination = Path.Combine(_config.Quarantine.Directory, Path.GetFileName(failedFilePath));
-                _fileOperations.Move(failedFilePath, destination);
-                await _audit.WriteAsync(
-                    new AuditEvent("file_quarantined", AuditLevel.Warn, DateTimeOffset.UtcNow, Guid.NewGuid().ToString("N"), sourcePath, destination, null),
-                    cancellationToken);
-            }
+            await QuarantineAsync(target, sourcePath, cancellationToken);
         }
         finally
         {
@@ -316,6 +325,25 @@ public sealed class FileTaskPipeline
 
             ExitInflight(sourcePath);
         }
+    }
+
+    /// <summary>
+    /// 按设置把失败文件挪进隔离区并写 <c>file_quarantined</c> 审计事件；未启用隔离时只跳过。
+    /// 重试耗尽与 #288 的 ExifTool 写错误两条失败路径共用。
+    /// </summary>
+    private async Task QuarantineAsync(string failedFilePath, string sourcePath, CancellationToken cancellationToken)
+    {
+        if (!_config.Quarantine.Enabled)
+        {
+            return;
+        }
+
+        _fileOperations.EnsureDirectory(_config.Quarantine.Directory);
+        var destination = Path.Combine(_config.Quarantine.Directory, Path.GetFileName(failedFilePath));
+        _fileOperations.Move(failedFilePath, destination);
+        await _audit.WriteAsync(
+            new AuditEvent("file_quarantined", AuditLevel.Warn, DateTimeOffset.UtcNow, Guid.NewGuid().ToString("N"), sourcePath, destination, null),
+            cancellationToken);
     }
 
     /// <summary>
