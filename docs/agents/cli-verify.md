@@ -80,31 +80,53 @@ Smoke test done
 - 原地文件被真清洗：`hot\photo.jpg`（2.6 kB），上述五个字段全部消失
   （exiftool 处理后快照，仅剩结构类标签）。
 
-### 3. release-readiness.ps1 全链：未测（本机无法跑）；CI 等价证据已留，是否算数待裁决
+### 3. release-readiness.ps1 全链：通过
 
-按票面验收，本项要本机跑 `scripts/release-readiness.ps1` 并打出
-`Release readiness passed.`。这台机器没装 dotnet 和 cargo，脚本第 1 步
-`dotnet test` 就起不来，故本机未跑、此项不记通过。等价证据（同一 main
-`bdda51c`，同一 Release 配置，run 43169200573）：
+2026-11-12 傍晚，本机 + 本地工具链（.NET SDK 10.0.201、Rust `x86_64-pc-windows-gnu`、
+MinGW、Windows SDK 的 fxc.exe；本轮补装，见文末）。命令与当轮输出（按最终代码重跑的
+那轮，两轮均通过、退出码 0）：
 
-- `[1/3] dotnet test PhotoPrivacy.sln --configuration Release`（排除
-  Smoke/ExifTool 类别，与脚本一致）——`test` job 通过。
-- `[2/3] smoke test (dry-run)`——即上面第 1 项，通过。
-- `[3/3] publish app + worker`——`build (win-x64)` job 跑的就是
-  `scripts/publish-app.ps1`（`-Zip true`），Publish 与 Verify structure 两步均过，
-  产物结构含 `PhotoPrivacy.exe`、`PhotoPrivacyWorker.exe`、
-  `config/config.sample.json`、`ExifTool/exiftool.exe`。
-- `[4/4] force-kill cleanup gate`：`release-readiness.ps1` 默认不跑
-  （`-IncludeForceKillCheck false`）；单独跑也跑不了——runbook 第 6 条登记了
-  脚本取包路径（`publish\`）与产物目录（`release\`）不一致的历史问题，修复前跳过。
+```
+[1/3] dotnet test PhotoPrivacy.sln
+  已通过! - 失败: 0，通过: 322，已跳过: 0，总计: 322，持续时间: 42 s - PhotoPrivacy.Core.Tests.dll (net10.0)
+  已通过! - 失败: 0，通过: 197，已跳过: 0，总计: 197，持续时间: 4 m 54 s - PhotoPrivacy.IntegrationTests.dll (net10.0)
+[2/3] smoke test (dry-run)
+  Smoke test start
+  Smoke worker args: --mode cli --hot-folder "...\photo-release-smoke-...\hot" --audit-folder "...\audit" --once true --dry-run true
+  Smoke test done
+[3/3] publish app + worker
+  Downloading ExifTool 13.61 ...
+  ExifTool archive verified on attempt 1/3 (11205455 bytes)
+  Bundled ExifTool 13.61 -> C:\photo-t6b\release\win-x64\ExifTool
+  Package created: C:\photo-t6b\release\PhotoPrivacy-0.1.0-verify6c-win-x64.zip
+  Publish done: C:\photo-t6b\release\win-x64
+Release readiness passed.
+```
 
-要补本机原样一轮，需发版机按 `docs/release-runbook.md` 由人执行
-`scripts/release-readiness.ps1`；补跑前本项维持「未测」。
+脚本退出码 0。`[4/4] force-kill cleanup gate` 未跑：`release-readiness.ps1` 默认
+`-IncludeForceKillCheck false`，且 runbook 第 6 条登记了脚本取包路径（`publish\`）
+与产物目录（`release\`）不一致的历史问题，修复前跳过。
 
-## 脚本改动说明（前一轮引入，现役行为）
+首次跑通前修掉的四处（都在本 PR 里，原因见「脚本与测试改动说明」）：
+`release-readiness.ps1` 的 Windows 测试过滤、`publish-app.ps1` 的 5.1 stderr 兼容、
+`BackupMirrorLayoutTests` 的宿主前提判断、Smoke 发布测试的管道挂死与退役断言。
+
+## 脚本与测试改动说明
 
 - `scripts/smoke.ps1` 增加可选 `-WorkerPath`：显式给出时直接启动该可执行文件
   （发布链单文件 exe 或 DLL），`-LiteralPath` 按字面处理路径；不给该参数时仍走
   原 DLL-first 探测，`release-readiness.ps1` 等既有调用点不用改。
 - 同一脚本把 `--dry-run` 布尔值统一小写输出（Worker `ParseBool` 两种写法解析等价），
   并把 DLL/exe 两个启动分支合并为一次 `Start-Process`。
+- `scripts/release-readiness.ps1`：Windows 上 `dotnet test` 带与 ci.yml 相同的排过滤
+  （`WindowsServicePipeAclTests`、`ServicePipeNameEntropyTests` 在 Windows 上会挂死
+  测试宿主）；Linux/macOS 仍全量跑。
+- `scripts/publish-app.ps1`：`rustup`/`cargo`/`dotnet publish` 三处原生命令调用期间
+  临时放宽 `$ErrorActionPreference`（5.1 会把它们的 stderr 进度当终止错误）。
+- `tests/PhotoPrivacy.Core.Tests/Pipeline/BackupMirrorLayoutTests.cs`：保留名用例先判
+  宿主前提（部分 .NET/OS 会把 `CON.jpg` 归一成 `\\.\CON`），前提不成立时改钉安全退路
+  `_unsorted`，不再假装通过。
+- `tests/PhotoPrivacy.IntegrationTests/Smoke/ReleaseReadinessScriptValidationTests.cs`：
+  旧 Avalonia 托盘资产断言改成核验现役发布入口（与 release.yml 的 Verify structure
+  同一组文件）；子进程输出改经临时 .cmd 落文件再读，不再等管道 EOF（子进程再拉起的
+  常驻服务器会继承管道句柄，导致 ReadToEndAsync/WaitForExitAsync 永久挂起）。
