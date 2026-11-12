@@ -155,6 +155,73 @@ public sealed class FileTaskPipelineTests
     }
 
     [Fact]
+    public async Task HandleAsync_Should_Keep_Every_Original_When_Same_Name_Files_Quarantine_Concurrently()
+    {
+        // CodeRabbit #294 意见 3：不同源路径的 HandleAsync 可并发（_inflight 按源路径去重，
+        // 挡不住同名目标），若「File.Exists 选名」与「Move」不同锁，两侧并发都会选中同一隔离
+        // 目标，后一次 Move 先删后移把先前隔离的原件删掉——写错误分支无备份，丢了就没了。
+        // 选名+Move 串行化后，N 份同名原件必须全部保留、互不覆盖。
+        var root = Path.Combine(Path.GetTempPath(), "pp-ft-concurrent-" + Guid.NewGuid().ToString("N"));
+        var quarantine = Path.Combine(root, "_quarantine");
+        Directory.CreateDirectory(root);
+        var cfg = AppConfig.Default with
+        {
+            Retry = AppConfig.Default.Retry with { MaxAttempts = 1, BackoffSeconds = [0] },
+            Quarantine = AppConfig.Default.Quarantine with { Directory = quarantine }
+        };
+
+        try
+        {
+            var ruleEngine = new RuleEngine(cfg);
+            var bridge = new WriteErrorBridge();
+            var fileOps = new LocalFileOperations();
+            var audit = new InMemoryAuditLogger();
+            var pipeline = new FileTaskPipeline(cfg, ruleEngine, bridge, fileOps, audit, new InMemoryProcessedRecordStore());
+
+            const int fileCount = 6;
+            var files = new string[fileCount];
+            var contents = new byte[fileCount][];
+            for (var i = 0; i < fileCount; i++)
+            {
+                var dir = Path.Combine(root, "src-" + i);
+                Directory.CreateDirectory(dir);
+                files[i] = Path.Combine(dir, "clip.mp4");
+                contents[i] = [(byte)i, (byte)(i + 1), (byte)(i + 2)];
+                File.WriteAllBytes(files[i], contents[i]);
+            }
+
+            var tasks = new Task[fileCount];
+            for (var i = 0; i < fileCount; i++)
+            {
+                tasks[i] = pipeline.HandleAsync(files[i], CancellationToken.None);
+            }
+
+            await Task.WhenAll(tasks);
+
+            // 六份同名原件都要在隔离区，内容逐一保留，一个都不能少。
+            var quarantined = Directory.GetFiles(quarantine, "clip*.mp4");
+            Assert.Equal(fileCount, quarantined.Length);
+            var contentsInQuarantine = new List<byte[]>();
+            foreach (var path in quarantined)
+            {
+                contentsInQuarantine.Add(await File.ReadAllBytesAsync(path));
+            }
+
+            foreach (var expected in contents)
+            {
+                Assert.Contains(
+                    contentsInQuarantine,
+                    actual => actual.Length == expected.Length
+                        && actual.Zip(expected, (a, b) => a == b).All(x => x));
+            }
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task HandleAsync_Should_Fail_Without_Quarantine_When_Quarantine_Disabled()
     {
         // #288：隔离未启用时不挪文件（也无隔离事件），但失败审计照写——用户至少看得到失败。

@@ -17,6 +17,14 @@ public sealed class FileTaskPipeline
     private readonly HashSet<string> _inflight = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _gate = new();
 
+    /// <summary>
+    /// 隔离选名与落盘的串行闸（#288，CodeRabbit #294 意见 3）：不同源路径的 HandleAsync 可并发，
+    /// 两个同名文件同时进失败分支时，若「File.Exists 选名」与「Move」之间没锁，两侧都会选中
+    /// 同一隔离目标，后一次 Move 先删后移会丢掉先前隔离的原件。选名+Move 必须同锁串行，
+    /// 审计写锁外。
+    /// </summary>
+    private readonly object _quarantineGate = new();
+
     public FileTaskPipeline(
         AppConfig config,
         RuleEngine ruleEngine,
@@ -334,7 +342,9 @@ public sealed class FileTaskPipeline
     /// <c>file_quarantine_failed</c> 让失败看得见。隔离目标绝不覆盖已隔离文件（CodeRabbit #294
     /// 意见 2：LocalFileOperations.Move 目标存在会先删后移，同名隔离会丢先前隔离的原件，
     /// 且写错误分支没有备份、丢了就没了）：槽位被占时按备份侧车的既有模式另存
-    /// <c>名字.时间戳.扩展名</c>，同秒碰撞加 <c>-N</c> 序号。
+    /// <c>名字.时间戳.扩展名</c>，同秒碰撞加 <c>-N</c> 序号；选名与 Move 同持
+    /// <see cref="_quarantineGate"/>（意见 3：并发同名隔离下 File.Exists 选名与 Move 之间
+    /// 的 TOCTOU 窗口同效），审计写锁外。
     /// </summary>
     private async Task QuarantineAsync(string failedFilePath, string sourcePath, CancellationToken cancellationToken)
     {
@@ -346,17 +356,22 @@ public sealed class FileTaskPipeline
         try
         {
             _fileOperations.EnsureDirectory(_config.Quarantine.Directory);
-            var destination = Path.Combine(_config.Quarantine.Directory, Path.GetFileName(failedFilePath));
-            if (File.Exists(destination))
+            string destination;
+            lock (_quarantineGate)
             {
-                destination = BackupPathResolver.ResolveSidecarPath(
-                    destination,
-                    Path.GetExtension(failedFilePath),
-                    DateTimeOffset.UtcNow,
-                    File.Exists);
+                destination = Path.Combine(_config.Quarantine.Directory, Path.GetFileName(failedFilePath));
+                if (File.Exists(destination))
+                {
+                    destination = BackupPathResolver.ResolveSidecarPath(
+                        destination,
+                        Path.GetExtension(failedFilePath),
+                        DateTimeOffset.UtcNow,
+                        File.Exists);
+                }
+
+                _fileOperations.Move(failedFilePath, destination);
             }
 
-            _fileOperations.Move(failedFilePath, destination);
             await _audit.WriteAsync(
                 new AuditEvent("file_quarantined", AuditLevel.Warn, DateTimeOffset.UtcNow, Guid.NewGuid().ToString("N"), sourcePath, destination, null),
                 cancellationToken);
