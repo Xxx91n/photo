@@ -31,8 +31,8 @@ public sealed class WebpMetadataWipeTests : IntegrationTestBase
     /// 后按 RIFF 容器规范补 XMP chunk；这串字节是冻结样本，改动后前置自检会失败。
     /// </summary>
     private const string SampleWebpBase64 =
-        "UklGRgAABEZXRUJQVlA4WAoAAAAoAAAAAQAAAQAASUNDUEwCAAAAAAJMbGNtcwRAAABtbnRyUkdCIFhZWiAH6gALAAwACwAE" +
-        "AB5hY3NwTVNGVAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA9tYAAQAAAADTLWxjbXMAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" +
+        "UklGRkYEAABXRUJQVlA4WAoAAAAoAAAAAQAAAQAASUNDUEwCAAAAAAJMbGNtcwRAAABtbnRyUkdCIFhZWiAH6gALAAwADAAy" +
+        "AAxhY3NwTVNGVAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA9tYAAQAAAADTLWxjbXMAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" +
         "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAtkZXNjAAABCAAAADZjcHJ0AAABQAAAAEx3dHB0AAABjAAAABRjaGFkAAABoAAA" +
         "ACxyWFlaAAABzAAAABRiWFlaAAAB4AAAABRnWFlaAAAB9AAAABRyVFJDAAACCAAAACBnVFJDAAACCAAAACBiVFJDAAACCAAA" +
         "ACBjaHJtAAACKAAAACRtbHVjAAAAAAAAAAEAAAAMZW5VUwAAABoAAAAcAHMAUgBHAEIAIABiAHUAaQBsAHQALQBpAG4AAG1s" +
@@ -127,6 +127,8 @@ public sealed class WebpMetadataWipeTests : IntegrationTestBase
         Assert.True(data.Length >= 12, "文件短于 RIFF 头");
         Assert.Equal("RIFF"u8.ToArray(), data[..4]);
         Assert.Equal("WEBP"u8.ToArray(), data[8..12]);
+        // CodeRabbit #285：顶层 RIFF 尺寸必须等于文件字节数 - 8，样本头部损坏时 ExifTool 会容错读取，那不算正常 WebP 的证据。
+        Assert.Equal(data.Length - 8, BitConverter.ToInt32(data, 4)); // 小端
 
         var chunks = new Dictionary<string, byte[]>();
         var pos = 12;
