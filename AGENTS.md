@@ -30,6 +30,8 @@ PhotoPrivacy：批量清理照片/视频/文档隐私元数据的跨平台桌面
 
 Issues and specs live as GitHub issues, operated through the `gh` CLI. See `docs/agents/issue-tracker.md`.
 
+删文件、删机制、改文档章节时，先用 `gh search issues --state open "<被删的名字>"` 查还在引用它的票，同一批里改掉票面或关票，别让票面指向已经不存在的东西。
+
 ### Triage labels
 
 Five canonical triage roles map one-to-one to `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
