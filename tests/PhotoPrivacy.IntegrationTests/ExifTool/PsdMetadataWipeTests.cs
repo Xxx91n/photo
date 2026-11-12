@@ -113,8 +113,12 @@ public sealed class PsdMetadataWipeTests : IntegrationTestBase
             Assert.True(string.IsNullOrWhiteSpace(await RealExifToolFixture.ReadTextTagAsync(exifToolPath, target, "-XMP-dc:Title")),
                 "擦除后 XMP-dc:Title 还能读到");
 
-            // 部分清理承诺：IRB 标量与 ICC 原样保留（ICC 字节级不变）。
+            // 部分清理承诺：IRB 标量与 ICC 原样保留——四个保留类资源逐个比 payload
+            // （字节级不变；CodeRabbit #285 nitpick：只查 ID 列表会漏掉内容被改写的情况）。
             Assert.Equal(tagged.GetResource(ResourceIccProfile), wiped.GetResource(ResourceIccProfile));
+            Assert.Equal(tagged.GetResource(ResourceResolution), wiped.GetResource(ResourceResolution));
+            Assert.Equal(tagged.GetResource(ResourceCopyrightFlag), wiped.GetResource(ResourceCopyrightFlag));
+            Assert.Equal(tagged.GetResource(ResourceUrl), wiped.GetResource(ResourceUrl));
             Assert.Equal(
                 new[] { ResourceResolution, ResourceCopyrightFlag, ResourceUrl, ResourceIccProfile },
                 wiped.ResourceIds);
