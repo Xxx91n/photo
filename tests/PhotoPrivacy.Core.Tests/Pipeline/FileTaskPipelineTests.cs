@@ -190,11 +190,14 @@ public sealed class FileTaskPipelineTests
                 File.WriteAllBytes(files[i], contents[i]);
             }
 
-            var tasks = new Task[fileCount];
-            for (var i = 0; i < fileCount; i++)
+            // 假件全是同步完成，直接 for 里调 HandleAsync 会顺序跑完、锁从不见争用——
+            // 用 Barrier 让六次调用同一时刻才放行，真正并发进 QuarantineAsync（CodeRabbit #294 nitpick）。
+            using var startGate = new Barrier(fileCount);
+            var tasks = files.Select(file => Task.Run(async () =>
             {
-                tasks[i] = pipeline.HandleAsync(files[i], CancellationToken.None);
-            }
+                startGate.SignalAndWait();
+                await pipeline.HandleAsync(file, CancellationToken.None);
+            })).ToArray();
 
             await Task.WhenAll(tasks);
 
@@ -219,6 +222,90 @@ public sealed class FileTaskPipelineTests
         {
             Directory.Delete(root, recursive: true);
         }
+    }
+
+    [Fact]
+    public async Task HandleAsync_Should_Still_Quarantine_When_Failure_Audit_Write_Throws()
+    {
+        // CodeRabbit #294 意见 1 追评 A：审计通道失效（file_processing_failed 写抛）不得回灌进
+        // 擦除重试，也不得连坐数据安全动作——结论已定（失败），重擦无意义，隔离（数据安全）照做。
+        var hot = Path.Combine(Path.GetTempPath(), "pp-ft-hot");
+        var quarantine = Path.Combine(hot, "_quarantine");
+        var cfg = AppConfig.Default with
+        {
+            Retry = AppConfig.Default.Retry with { MaxAttempts = 3, BackoffSeconds = [0, 0, 0] },
+            Quarantine = AppConfig.Default.Quarantine with { Directory = quarantine }
+        };
+
+        var ruleEngine = new RuleEngine(cfg);
+        var bridge = new WriteErrorBridge();
+        var fileOps = new InMemoryFileOperations();
+        var audit = new InMemoryAuditLogger();
+        audit.ThrowOnEventTypes.Add("file_processing_failed");
+        var pipeline = new FileTaskPipeline(cfg, ruleEngine, bridge, fileOps, audit, new InMemoryProcessedRecordStore());
+
+        await pipeline.HandleAsync(Path.Combine(hot, "a.mp4"), CancellationToken.None);
+
+        Assert.Equal(1, bridge.Calls);
+        Assert.DoesNotContain(audit.Events, e => e.EventType == "file_retry_scheduled");
+        Assert.DoesNotContain(audit.Events, e => e.EventType == "file_processing_succeeded");
+        Assert.Contains(
+            fileOps.Moves,
+            m => m.Source == Path.Combine(hot, "a.mp4") && m.Destination == Path.Combine(quarantine, "a.mp4"));
+    }
+
+    [Fact]
+    public async Task HandleAsync_Should_Not_Report_Quarantine_Failed_When_Only_PostMove_Audit_Throws()
+    {
+        // CodeRabbit #294 意见 1 追评 B：Move 成功后 file_quarantined 审计写失败——文件其实
+        // 已安全隔离，绝不许谎报 file_quarantine_failed（事件缺席≠隔离失败），也不许回灌重试。
+        var hot = Path.Combine(Path.GetTempPath(), "pp-ft-hot");
+        var quarantine = Path.Combine(hot, "_quarantine");
+        var cfg = AppConfig.Default with
+        {
+            Retry = AppConfig.Default.Retry with { MaxAttempts = 3, BackoffSeconds = [0, 0, 0] },
+            Quarantine = AppConfig.Default.Quarantine with { Directory = quarantine }
+        };
+
+        var ruleEngine = new RuleEngine(cfg);
+        var bridge = new WriteErrorBridge();
+        var fileOps = new InMemoryFileOperations();
+        var audit = new InMemoryAuditLogger();
+        audit.ThrowOnEventTypes.Add("file_quarantined");
+        var pipeline = new FileTaskPipeline(cfg, ruleEngine, bridge, fileOps, audit, new InMemoryProcessedRecordStore());
+
+        await pipeline.HandleAsync(Path.Combine(hot, "a.mp4"), CancellationToken.None);
+
+        Assert.Equal(1, bridge.Calls);
+        Assert.DoesNotContain(audit.Events, e => e.EventType == "file_retry_scheduled");
+        Assert.DoesNotContain(audit.Events, e => e.EventType == "file_quarantine_failed");
+        Assert.Contains(
+            fileOps.Moves,
+            m => m.Source == Path.Combine(hot, "a.mp4") && m.Destination == Path.Combine(quarantine, "a.mp4"));
+    }
+
+    [Fact]
+    public async Task HandleAsync_Should_Propagate_Cancellation_Without_Misrecorded_Failure_Events()
+    {
+        // CodeRabbit #294 意见 1 追评 C：关停/取消不是失败——擦除中途取消（OCE）不得误记
+        // file_processing_failed / file_retry_scheduled，取消语义原样上抛。
+        var cfg = AppConfig.Default with
+        {
+            Retry = AppConfig.Default.Retry with { MaxAttempts = 3, BackoffSeconds = [0, 0, 0] }
+        };
+
+        var ruleEngine = new RuleEngine(cfg);
+        var bridge = new CanceledBridge();
+        var fileOps = new InMemoryFileOperations();
+        var audit = new InMemoryAuditLogger();
+        var pipeline = new FileTaskPipeline(cfg, ruleEngine, bridge, fileOps, audit, new InMemoryProcessedRecordStore());
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => pipeline.HandleAsync(@"D:\hot\a.mp4", CancellationToken.None));
+
+        Assert.DoesNotContain(audit.Events, e => e.EventType == "file_processing_failed");
+        Assert.DoesNotContain(audit.Events, e => e.EventType == "file_retry_scheduled");
+        Assert.Empty(fileOps.Moves);
     }
 
     [Fact]
@@ -421,6 +508,9 @@ public sealed class FileTaskPipelineTests
 
     private sealed class InMemoryFileOperations : IFileOperations
     {
+        // 并发用例（Barrier 放行）会同时写这些集合，加锁防 List 内部状态被打坏。
+        private readonly object _lock = new();
+
         public List<(string Source, string Destination)> Moves { get; } = [];
         public List<(string Source, string Destination, bool Overwrite)> Copies { get; } = [];
         public List<string> EnsuredDirectories { get; } = [];
@@ -430,7 +520,10 @@ public sealed class FileTaskPipelineTests
 
         public void EnsureDirectory(string path)
         {
-            EnsuredDirectories.Add(path);
+            lock (_lock)
+            {
+                EnsuredDirectories.Add(path);
+            }
         }
 
         public void Move(string source, string destination)
@@ -440,45 +533,80 @@ public sealed class FileTaskPipelineTests
                 throw new IOException("quarantine directory is not writable");
             }
 
-            Moves.Add((source, destination));
+            lock (_lock)
+            {
+                Moves.Add((source, destination));
+            }
         }
 
         public void Copy(string source, string destination, bool overwrite)
         {
-            Copies.Add((source, destination, overwrite));
+            lock (_lock)
+            {
+                Copies.Add((source, destination, overwrite));
+            }
         }
 
         public void AtomicCopy(string source, string destination, bool overwrite)
         {
-            Copies.Add((source, destination, overwrite));
+            lock (_lock)
+            {
+                Copies.Add((source, destination, overwrite));
+            }
         }
 
         public Task CopyAsync(string source, string destination, bool overwrite, CancellationToken cancellationToken)
         {
-            Copies.Add((source, destination, overwrite));
+            lock (_lock)
+            {
+                Copies.Add((source, destination, overwrite));
+            }
+
             return Task.CompletedTask;
         }
 
         public Task AtomicCopyAsync(string source, string destination, bool overwrite, CancellationToken cancellationToken)
         {
-            Copies.Add((source, destination, overwrite));
+            lock (_lock)
+            {
+                Copies.Add((source, destination, overwrite));
+            }
+
             return Task.CompletedTask;
         }
 
         public Task MoveAsync(string source, string destination, CancellationToken cancellationToken)
         {
-            Moves.Add((source, destination));
+            lock (_lock)
+            {
+                Moves.Add((source, destination));
+            }
+
             return Task.CompletedTask;
         }
     }
 
     private sealed class InMemoryAuditLogger : IAuditLogger
     {
+        private readonly object _lock = new();
+
         public List<AuditEvent> Events { get; } = [];
+
+        /// <summary>故障注入：写这些事件类型时抛（模拟审计通道失效），用于钉「审计失败不回灌重试、不谎报隔离失败」。</summary>
+        public HashSet<string> ThrowOnEventTypes { get; } = new(StringComparer.Ordinal);
 
         public ValueTask WriteAsync(AuditEvent auditEvent, CancellationToken cancellationToken)
         {
-            Events.Add(auditEvent);
+            if (ThrowOnEventTypes.Contains(auditEvent.EventType))
+            {
+                throw new IOException("audit sink unavailable");
+            }
+
+            lock (_lock)
+            {
+                Events.Add(auditEvent);
+            }
+
             return ValueTask.CompletedTask;
         }
     }
@@ -504,7 +632,10 @@ public sealed class FileTaskPipelineTests
     {
         public string VersionText => "test";
 
-        public int Calls { get; private set; }
+        private int _calls;
+
+        /// <summary>并发用例会同时调 WipeMetadataAsync，计数用 Interlocked 防丢。</summary>
+        public int Calls => Volatile.Read(ref _calls);
 
         public Task EnsureVersionAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
@@ -514,8 +645,24 @@ public sealed class FileTaskPipelineTests
 
         public Task<WipeResult> WipeMetadataAsync(string targetPath, CancellationToken cancellationToken)
         {
-            Calls++;
+            Interlocked.Increment(ref _calls);
             return Task.FromResult(WipeResult.Failed_WriteError);
+        }
+    }
+
+    private sealed class CanceledBridge : IExifToolBridge
+    {
+        public string VersionText => "test";
+
+        public Task EnsureVersionAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task<WipeResult> WipeMetadataAsync(string targetPath, CancellationToken cancellationToken)
+        {
+            throw new OperationCanceledException("shutting down mid-wipe");
         }
     }
 
