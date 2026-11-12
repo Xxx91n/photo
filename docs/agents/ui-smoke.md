@@ -17,10 +17,18 @@
   不判字形质量，不据此记失败。升级 gpui 的 Windows 文本系统版本后先复验 ar 帧，再考虑撤销本条。
 - **停服务时的 `Pipe is broken` 噪声（#37）**：ExifTool 已死时停机拆 stdin 会抛这个 IO 异常，
   属预期，代码已降 Debug；真实失败看其他异常或退出码非 0。
-- **Linux 提权弹窗已实测（#206、#4）**：polkit-gnome（#206，Xvfb + 独立 logind 会话）和
+- **Linux 提权弹窗已实测（#206、#4、#279）**：polkit-gnome（#206，Xvfb + 独立 logind 会话）和
   MATE（#4，WSL2 + X11 桌面）都走通了真实交互弹窗，四个操作的同意/取消分支各有当轮证据。
   取消语义跟认证代理有关：polkit-gnome 的 Escape 走 dismissed、pkexec 退出 126；lxpolkit
   的 Cancel/Escape 报 127（Not authorized），UI 按失败显示——这是已知失败，没修，别当成取消。
+  根因（#279 对照上游源码核实）：lxpolkit 的 `on_completed` 在「未授权且已取消」时直接
+  `g_simple_async_result_complete`、不 `set_error`，取消信息在认证代理层就丢了，应用侧无从恢复。
+  **支持口径（#279，用户裁决 2026-11-12）**：LXDE 算受限支持，应用侧不改代码——不把 127 当取消、
+  不靠界面状态猜（127 同时代表真未授权/程序不存在），`unix.rs` 的 126=取消、127=失败映射如实，
+  单测 `linux_pkexec_not_authorized_is_a_failure`、`linux_cancelled_pkexec_stays_cancelled` 锁死。
+  lxqt-policykit 与 polkit-kde-agent-1 同病；要正确的取消反馈只能换 polkit-gnome 或 MATE 代理。
+  已报上游 [lxde/lxsession#57](https://github.com/lxde/lxsession/issues/57)；Debian 侧同款缺陷
+  [#894746](https://bugs.debian.org/894746) 自 2018-04 挂起至今，对上游回音不抱高预期。
   #206 还记了两种环境坑：云镜像摘掉 polkit-agent-helper-1 的 setuid 位；lxpolkit 点 Cancel
   后弹窗不关、pkexec 挂到 60 秒超时。详见下方两节，别把不同代理的结果混着算。
 - **macOS 提权按钮**：按 #32 裁定接受为残留（CLI 等价命令已验证）。
