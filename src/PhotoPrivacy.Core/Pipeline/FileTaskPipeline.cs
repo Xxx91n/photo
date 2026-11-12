@@ -329,7 +329,12 @@ public sealed class FileTaskPipeline
 
     /// <summary>
     /// 按设置把失败文件挪进隔离区并写 <c>file_quarantined</c> 审计事件；未启用隔离时只跳过。
-    /// 重试耗尽与 #288 的 ExifTool 写错误两条失败路径共用。
+    /// 重试耗尽与 #288 的 ExifTool 写错误两条失败路径共用。终态收场：隔离自身的失败不向调用方
+    /// 抛——否则写错误分支会被拖进擦除重试（CodeRabbit #294 意见 1），单独落
+    /// <c>file_quarantine_failed</c> 让失败看得见。隔离目标绝不覆盖已隔离文件（CodeRabbit #294
+    /// 意见 2：LocalFileOperations.Move 目标存在会先删后移，同名隔离会丢先前隔离的原件，
+    /// 且写错误分支没有备份、丢了就没了）：槽位被占时按备份侧车的既有模式另存
+    /// <c>名字.时间戳.扩展名</c>，同秒碰撞加 <c>-N</c> 序号。
     /// </summary>
     private async Task QuarantineAsync(string failedFilePath, string sourcePath, CancellationToken cancellationToken)
     {
@@ -338,12 +343,38 @@ public sealed class FileTaskPipeline
             return;
         }
 
-        _fileOperations.EnsureDirectory(_config.Quarantine.Directory);
-        var destination = Path.Combine(_config.Quarantine.Directory, Path.GetFileName(failedFilePath));
-        _fileOperations.Move(failedFilePath, destination);
-        await _audit.WriteAsync(
-            new AuditEvent("file_quarantined", AuditLevel.Warn, DateTimeOffset.UtcNow, Guid.NewGuid().ToString("N"), sourcePath, destination, null),
-            cancellationToken);
+        try
+        {
+            _fileOperations.EnsureDirectory(_config.Quarantine.Directory);
+            var destination = Path.Combine(_config.Quarantine.Directory, Path.GetFileName(failedFilePath));
+            if (File.Exists(destination))
+            {
+                destination = BackupPathResolver.ResolveSidecarPath(
+                    destination,
+                    Path.GetExtension(failedFilePath),
+                    DateTimeOffset.UtcNow,
+                    File.Exists);
+            }
+
+            _fileOperations.Move(failedFilePath, destination);
+            await _audit.WriteAsync(
+                new AuditEvent("file_quarantined", AuditLevel.Warn, DateTimeOffset.UtcNow, Guid.NewGuid().ToString("N"), sourcePath, destination, null),
+                cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // 关停取消不得记成隔离失败——原样上抛，让取消语义回到调用方。
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // 终态收场：隔离失败只单独记账，不回灌进擦除重试；file_quarantined 事件缺席本身就是
+            // 「没隔离成」的信号，这里再给一条带原因的 Error 让用户看得见。
+            await _audit.WriteAsync(
+                new AuditEvent("file_quarantine_failed", AuditLevel.Error, DateTimeOffset.UtcNow, Guid.NewGuid().ToString("N"), sourcePath,
+                    $"quarantine_target={failedFilePath};{ex.Message}", null),
+                cancellationToken);
+        }
     }
 
     /// <summary>

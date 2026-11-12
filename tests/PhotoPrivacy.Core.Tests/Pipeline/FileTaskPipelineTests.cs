@@ -69,6 +69,92 @@ public sealed class FileTaskPipelineTests
     }
 
     [Fact]
+    public async Task HandleAsync_Should_Not_Enter_Retry_And_Report_Quarantine_Failure_Separately_When_Move_Fails()
+    {
+        // CodeRabbit #294 意见 1：隔离目录不可写/Move 失败时，异常不许掉进擦除重试的 catch
+        // ——写错误是确定性的，重试必然同样失败；且移动成功后重试还会再碰已移走的文件。
+        // 隔离是终态收场，失败单独落 file_quarantine_failed（Error），擦除结论保持不变。
+        var hot = Path.Combine(Path.GetTempPath(), "pp-ft-hot");
+        var quarantine = Path.Combine(hot, "_quarantine");
+        var cfg = AppConfig.Default with
+        {
+            Retry = AppConfig.Default.Retry with { MaxAttempts = 3, BackoffSeconds = [0, 0, 0] },
+            Quarantine = AppConfig.Default.Quarantine with { Directory = quarantine }
+        };
+
+        var ruleEngine = new RuleEngine(cfg);
+        var bridge = new WriteErrorBridge();
+        var fileOps = new InMemoryFileOperations { ThrowOnMove = true };
+        var audit = new InMemoryAuditLogger();
+        var pipeline = new FileTaskPipeline(cfg, ruleEngine, bridge, fileOps, audit, new InMemoryProcessedRecordStore());
+
+        await pipeline.HandleAsync(Path.Combine(hot, "a.mp4"), CancellationToken.None);
+
+        Assert.Equal(1, bridge.Calls);
+        Assert.DoesNotContain(audit.Events, e => e.EventType == "file_retry_scheduled");
+        Assert.DoesNotContain(audit.Events, e => e.EventType == "file_processing_succeeded");
+        Assert.Contains(
+            audit.Events,
+            e => e.EventType == "file_processing_failed"
+                && e.Message.Contains("wipe_result=Failed_WriteError", StringComparison.Ordinal));
+        Assert.DoesNotContain(audit.Events, e => e.EventType == "file_quarantined");
+        Assert.Contains(
+            audit.Events,
+            e => e.EventType == "file_quarantine_failed"
+                && e.Message.Contains("quarantine_target=", StringComparison.Ordinal));
+        Assert.Empty(fileOps.Moves);
+    }
+
+    [Fact]
+    public async Task HandleAsync_Should_Quarantine_Same_Name_To_Sidecar_Without_Overwriting_Previous_Original()
+    {
+        // CodeRabbit #294 意见 2：LocalFileOperations.Move 目标存在会先删后移——同名文件先后
+        // 隔离时，第二次会把第一次隔离的原件删掉，而写错误分支没有备份，丢了就没了。
+        // 隔离槽位被占时必须按侧车模式另存（名字.时间戳.扩展名），绝不覆盖。
+        var hot = Path.Combine(Path.GetTempPath(), "pp-ft-sidecar-" + Guid.NewGuid().ToString("N"));
+        var quarantine = Path.Combine(hot, "_quarantine");
+        Directory.CreateDirectory(hot);
+        var cfg = AppConfig.Default with
+        {
+            Retry = AppConfig.Default.Retry with { MaxAttempts = 1, BackoffSeconds = [0] },
+            Quarantine = AppConfig.Default.Quarantine with { Directory = quarantine }
+        };
+
+        try
+        {
+            var ruleEngine = new RuleEngine(cfg);
+            var bridge = new WriteErrorBridge();
+            var fileOps = new LocalFileOperations();
+            var audit = new InMemoryAuditLogger();
+            var pipeline = new FileTaskPipeline(cfg, ruleEngine, bridge, fileOps, audit, new InMemoryProcessedRecordStore());
+
+            var file = Path.Combine(hot, "clip.mp4");
+            File.WriteAllBytes(file, [1, 2, 3]);
+            await pipeline.HandleAsync(file, CancellationToken.None);
+
+            var originalSlot = Path.Combine(quarantine, "clip.mp4");
+            Assert.True(File.Exists(originalSlot), "第一次隔离应占用原名槽位");
+
+            File.WriteAllBytes(file, [4, 5, 6]);
+            await pipeline.HandleAsync(file, CancellationToken.None);
+
+            Assert.True(File.Exists(originalSlot), "同名第二次隔离绝不许删掉第一次隔离的原件");
+            var quarantined = Directory.GetFiles(quarantine);
+            Assert.Equal(2, quarantined.Length);
+            var sidecar = quarantined.Single(p => !string.Equals(p, originalSlot, StringComparison.OrdinalIgnoreCase));
+            var sidecarName = Path.GetFileName(sidecar);
+            Assert.StartsWith("clip.", sidecarName, StringComparison.OrdinalIgnoreCase);
+            Assert.EndsWith(".mp4", sidecarName, StringComparison.OrdinalIgnoreCase);
+            // 第二次隔离的是重建后的 [4,5,6]，不是第一次的 [1,2,3]——sidecar 装的是新原件。
+            Assert.Equal(new byte[] { 4, 5, 6 }, await File.ReadAllBytesAsync(sidecar));
+        }
+        finally
+        {
+            Directory.Delete(hot, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task HandleAsync_Should_Fail_Without_Quarantine_When_Quarantine_Disabled()
     {
         // #288：隔离未启用时不挪文件（也无隔离事件），但失败审计照写——用户至少看得到失败。
@@ -272,6 +358,9 @@ public sealed class FileTaskPipelineTests
         public List<(string Source, string Destination, bool Overwrite)> Copies { get; } = [];
         public List<string> EnsuredDirectories { get; } = [];
 
+        /// <summary>故障注入：Move 一律抛（模拟隔离目录不可写），用于钉「隔离失败不回灌重试」。</summary>
+        public bool ThrowOnMove { get; set; }
+
         public void EnsureDirectory(string path)
         {
             EnsuredDirectories.Add(path);
@@ -279,6 +368,11 @@ public sealed class FileTaskPipelineTests
 
         public void Move(string source, string destination)
         {
+            if (ThrowOnMove)
+            {
+                throw new IOException("quarantine directory is not writable");
+            }
+
             Moves.Add((source, destination));
         }
 
@@ -345,7 +439,6 @@ public sealed class FileTaskPipelineTests
 
         public int Calls { get; private set; }
 
-        /// <summary>版本解析在假件里无副作用：版本由构造参数直接给出。</summary>
         public Task EnsureVersionAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
         public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
