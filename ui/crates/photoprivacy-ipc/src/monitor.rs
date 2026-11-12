@@ -1,4 +1,4 @@
-use crate::client::{IpcClient, IpcError};
+use crate::client::{IpcClient, IpcError, is_endpoint_missing};
 use crate::endpoints::{Endpoint, WorkerMode};
 use crate::protocol::Status;
 use std::future::Future;
@@ -35,7 +35,7 @@ impl ConnectionState {
 
 /// 服务端点可达性：本版只区分「服务端点此刻能否连上」。
 ///
-/// 与 GLOSSARY 的 `Service State Probe`（三平台安装态枚举：NotInstalled/Stopped/Running）不是同一概念：
+/// 与三平台安装态枚举（NotInstalled/Stopped/Running）不是同一概念：
 /// 旧 UI 读 SCM/launchd/systemd 的安装态，完整探测归 #58；本票先保证 3s 拍与消费点在位，
 /// #58 接入安装态后再决定是本类型扩展还是另立类型。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -50,10 +50,10 @@ pub enum ServiceReachability {
 /// 处境给出各自的行动指引（找安装者加授权 vs 检查 Worker 安装），不再统一归到 os error 2。
 ///
 /// 三态互斥，按最近一次真实失败原因归类：服务端点权限拒绝优先（它是回落链的第一环，也是
-/// 未授权用户唯一正确的行动线索）；其次才是后台 Worker 启动未就绪（含 #163 单写者让位退出）
+/// 未授权用户唯一正确的行动线索）；其次才是后台 Worker 启动未就绪（含单写者让位退出）
 /// 与未找到可拉起的 Worker 程序。连接成功即清空（`apply_success`）；心跳失败不清——授权拒绝
-/// 是编排期事实，心跳掉线不推翻它。
-// Design(#82): 连接失败提示按三态分类呈现，不把授权拒绝混同为 Worker 缺失的 os error 2（#169 落地后关票，决策归档）。
+/// 是连接阶段事实，心跳掉线不推翻它。
+// 连接失败提示按三态分类呈现，不把授权拒绝混同为 Worker 缺失的 os error 2。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ConnectFailureCause {
     /// 服务端点存在但连接被服务管道 DACL 拒绝（未列入授权集合的账户，#1/#160）。
@@ -105,7 +105,7 @@ const BACKOFF_STEPS: [u64; 7] = [1, 2, 4, 8, 16, 32, 60];
 
 // 心跳退避与旧 UI 的 ConnectionStateService 逐步一致（1s→60s）；状态机 Connecting → Connected /
 // Reconnecting，Disconnected 只用于端点无法解析（任务永不启动）。
-// Design(#49): 退避序列与旧 UI 对齐并封顶 60s。
+// 退避序列与旧 UI 对齐并封顶 60s。
 pub fn next_backoff(current: Duration) -> Duration {
     let seconds = current.as_secs();
     let next = BACKOFF_STEPS
@@ -118,25 +118,27 @@ pub fn next_backoff(current: Duration) -> Duration {
 
 /// 心跳循环：成功每 1s 一次，失败按退避步进；状态经 `watch` 广播给 UI。
 ///
-/// 端点经 `resolve` 动态获取（#7）：服务管道随机化后服务重启会换名——失败时重解析，
-/// 否则永远重试旧名；后台端点静态，重解析是零成本恒等。初始端点在任务启动时解析一次，
-/// 心跳成功期不重解析（心跳零注册表读；服务模式下 1s 版本轮询与 3s 探测拍仍按拍重读，
-/// 见 ipc-contract 的登记）。
+/// 端点经 `resolve` 动态获取（#7）：服务管道随机化后服务重启会换名——端点不存在时把刚失败的
+/// 端点交给解析器重解析，否则永远重试旧名；后台端点静态，重解析是零成本恒等。
+/// 解析器返回下一次要试的端点（#7 残余⑤：通告名不存在时换静态名）。**只有端点不存在才换名**
+/// ——忙/超时说明端点还在，换名只会打开预蹲面；授权拒绝更要保留原端点与真实原因（#169）。
+/// 初始端点用连接编排已经连上的那个，心跳成功期不重解析（心跳零注册表读；服务模式下 1s 版本
+/// 轮询与 3s 探测拍仍按拍重读，见 ipc-contract 的登记）。
 /// 探针用 GetStatus 而非旧 UI 的 Ping：每跳顺带刷新协议版本、模式与 ExifTool 版本；代价是
 /// 「Ping 通但 GetStatus 失败」会被判为不可用（旧 UI 不用这些字段，所以只发 Ping）。
-// Design(#49): 心跳探针固定为 GetStatus，版本可见性优先于 Ping 的纯活性语义。
-// Design(#7): 心跳失败即重解析端点（服务重启换随机名后自愈）；解析器由调用方按模式注入。
+// 心跳探针固定为 GetStatus，版本可见性优先于 Ping 的纯活性语义。
+// 解析器按模式注入；失败时按刚失败的端点决定下一次尝试（#7 残余⑤）。
 pub fn spawn_monitor<F>(
     client: Arc<IpcClient>,
     resolve: F,
     tx: watch::Sender<ConnectionSnapshot>,
 ) -> tokio::task::JoinHandle<()>
 where
-    F: Fn() -> Endpoint + Send + 'static,
+    F: Fn(Option<&Endpoint>) -> Endpoint + Send + 'static,
 {
     tokio::spawn(async move {
         let mut backoff = HEARTBEAT_INTERVAL;
-        let mut endpoint = resolve();
+        let mut endpoint = resolve(None);
         loop {
             let started = Instant::now();
             let result = client.status(&endpoint).await;
@@ -146,13 +148,20 @@ where
                 Ok((status, protocol_version)) => {
                     backoff = HEARTBEAT_INTERVAL;
                     tx.send_modify(|snapshot| {
-                        apply_success(snapshot, &status, protocol_version, elapsed)
+                        apply_success(snapshot, &status, protocol_version, elapsed);
+                        // #7 残余⑤：失败换名后连上的可能是静态名，界面要显示当前真正
+                        // 连着的端点，而不是启动时那个陈旧通告名。
+                        snapshot.endpoint = Some(endpoint.display());
                     });
                     tokio::time::sleep(HEARTBEAT_INTERVAL).await;
                 }
                 Err(err) => {
-                    // #7：失败即重解析端点——服务模式拿到（可能的）新通告名；后台模式恒等。
-                    endpoint = resolve();
+                    // #7 残余⑤：只有「端点不存在」才换名（通告名 → 静态名，或换新通告名）。
+                    // 忙/超时说明端点还在，换名只会在健康服务慢一拍时打开预蹲面；授权拒绝
+                    // 更要保留原端点与真实原因（#169）。
+                    if is_endpoint_missing(&err) {
+                        endpoint = resolve(Some(&endpoint));
+                    }
                     backoff = next_backoff(backoff);
                     tx.send_modify(|snapshot| apply_failure(snapshot, &err));
                     tokio::time::sleep(backoff).await;
@@ -167,7 +176,7 @@ where
 /// 探针由调用方注入：生产用服务端点的连通性（短连接预算），安装态探测另经
 /// `photoprivacy-service` 的 `ServiceProbe`（SCM / launchctl / systemd）取得；只换探针，
 /// 不改节拍与快照字段。
-// Design(#49): 服务态轮询 3s 节拍与快照字段固定、探针注入可换；安装态探测已在 photoprivacy-service 落地（#58 收口）。
+// 服务态轮询 3s 节拍与快照字段固定、探针注入可换；安装态探测已在 photoprivacy-service 完成。
 pub async fn watch_service_reachability<F, Fut>(probe: F, tx: watch::Sender<ConnectionSnapshot>)
 where
     F: Fn() -> Fut,
@@ -254,6 +263,18 @@ fn apply_failure(snapshot: &mut ConnectionSnapshot, err: &IpcError) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 一个肯定不存在的端点（Windows 用管道名，Unix 用 socket 路径）：连接预算耗尽后
+    /// 报 `Connect` 层的「找不到」，驱动 #7 残余⑤ 的换名分支。
+    fn missing_endpoint(tag: &str) -> Endpoint {
+        if cfg!(windows) {
+            Endpoint::Pipe(format!("pp-t7-missing-{tag}"))
+        } else {
+            // 固定短目录：路径必须远低于 sun_path 上限，换机器/换 TMPDIR 也不能变成
+            // InvalidInput（那会被判成非「缺失」，测试反而失败）。
+            Endpoint::UnixSocket(std::path::PathBuf::from(format!("/tmp/pp-t7-{tag}.sock")))
+        }
+    }
 
     #[test]
     fn poll_rhythms_match_old_ui() {
@@ -437,7 +458,7 @@ mod tests {
         );
         assert_eq!(snapshot.connect_failure, None);
 
-        // 防：心跳掉线顺手清掉授权拒绝结论——os error 2 重新盖住「未被授权」，#169 回潮。
+        // 防：心跳掉线顺手清掉授权拒绝结论——os error 2 重新盖住「未被授权」。
         snapshot.connect_failure = Some(ConnectFailureCause::ServiceAccessDenied);
         apply_failure(&mut snapshot, &IpcError::Timeout);
         assert_eq!(
@@ -476,13 +497,11 @@ mod tests {
         let client = Arc::new(IpcClient::new());
         let handle = spawn_monitor(
             client,
-            move || {
+            move |_failed| {
                 let n = calls_for_resolve.fetch_add(1, Ordering::SeqCst);
-                // 不存在的端点：status() 必失败，驱动失败分支的重解析（Windows 上 UnixSocket
-                // 端点立即 InvalidInput，Unix 上 NotFound 耗尽连接预算，殊途同归）。
-                Endpoint::UnixSocket(std::path::PathBuf::from(format!(
-                    "/nonexistent/pp-t7-{n}.sock"
-                )))
+                // 不存在的端点：status() 必失败，驱动失败分支的重解析（Windows 是缺失的
+                // 管道名、Unix 是不存在的 socket 路径，最终都报连接层的「找不到」）。
+                missing_endpoint(&format!("resolve-{n}"))
             },
             tx,
         );
@@ -493,6 +512,51 @@ mod tests {
         assert!(
             resolved >= 3,
             "monitor must re-resolve endpoint on failure, got {resolved} resolve calls"
+        );
+
+        handle.abort();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn monitor_switches_to_fallback_after_stale_advertised_name_fails() {
+        // 防（#7 残余③/⑤）：UI 启动读到陈旧通告名时，第一次失败后必须换静态名再试；
+        // 否则每一拍都重试同一个陈旧名，服务明明在静态名上却永远连不上。
+        use std::sync::Mutex;
+
+        let stale = missing_endpoint("stale-advert");
+        let fallback = missing_endpoint("static-fallback");
+        let returned = Arc::new(Mutex::new(Vec::new()));
+        let returned_for_resolve = returned.clone();
+        let stale_for_resolve = stale.clone();
+        let fallback_for_resolve = fallback.clone();
+        let (tx, _rx) = watch::channel(ConnectionSnapshot::connecting());
+        let client = Arc::new(IpcClient::new());
+        let handle = spawn_monitor(
+            client,
+            move |failed| {
+                let next = match failed {
+                    None => stale_for_resolve.clone(),
+                    Some(failed) if failed == &stale_for_resolve => fallback_for_resolve.clone(),
+                    Some(_) => stale_for_resolve.clone(),
+                };
+                returned_for_resolve.lock().unwrap().push(next.clone());
+                next
+            },
+            tx,
+        );
+
+        // 至少跑过一轮「失败 → 解析下一次端点」。
+        tokio::time::sleep(Duration::from_secs(5)).await;
+        let returned = returned.lock().unwrap().clone();
+        assert_eq!(
+            returned.first(),
+            Some(&stale),
+            "首拍必须用解析出的通告名（{returned:?}）"
+        );
+        assert_eq!(
+            returned.get(1),
+            Some(&fallback),
+            "通告名一次失败后必须换静态名再试（{returned:?}）"
         );
 
         handle.abort();

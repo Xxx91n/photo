@@ -7,7 +7,7 @@
 //! 本 crate 不依赖 IPC，也不扩协议：服务安装/启停必须在没有 Worker 时也能工作，
 //! 所以提权动作由 UI 进程拉起平台辅助进程完成。
 //!
-//! 取舍判据见 #49（UI 侧服务层重写）与 GLOSSARY 的 Service State Probe / Elevation Verb。
+//! 取舍依据见词表里的提权说明。
 
 mod command;
 mod manager;

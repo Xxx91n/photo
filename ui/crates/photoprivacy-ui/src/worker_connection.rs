@@ -1,7 +1,8 @@
 use photoprivacy_ipc::{
     ConnectFailureCause, ConnectionSnapshot, ConnectionState, Endpoint, HostPlatform, IpcClient,
     IpcError, ProcessIdentityVerifier, ServerGuard, UnverifiablePolicy, WorkerMode, current_home,
-    current_platform, current_service_endpoint, is_service_access_denied, protocol::methods,
+    current_platform, current_service_endpoint, current_service_endpoint_after_failure,
+    current_service_endpoints, is_endpoint_missing, is_service_access_denied, protocol::methods,
     resolve_endpoint, service_pipe_endpoint_with_advertised, spawn_monitor,
     spawn_show_window_server, watch_service_reachability, watch_version,
 };
@@ -69,7 +70,8 @@ pub fn start(
 
     // 服务态 3s 拍：与连接编排并行起跑（旧 UI 的服务模式轮询同样独立于心跳）。
     // 短连接预算：服务未安装时不值得每拍耗满 700ms 的重试预算。
-    // #7：服务端点每拍动态解析（通告名优先、静态名兜底）——服务重启换随机名后探测不悬死。
+    // 服务端点每拍动态解析（通告名优先、静态名保底）——服务重启换随机名后探测不悬死；
+    // 通告名是陈旧值时这一拍也会落到静态名（#7 残余⑤）。
     if current_service_endpoint(current_platform(), current_home().as_deref()).is_some() {
         let probe_platform = current_platform();
         let probe_home = current_home();
@@ -77,8 +79,22 @@ pub fn start(
         runtime.spawn(watch_service_reachability(
             move || {
                 let probe = probe.clone();
-                let endpoint = probe_service_endpoint(probe_platform, probe_home.as_deref());
-                async move { probe.is_alive(&endpoint).await }
+                let endpoints = probe_service_endpoints(probe_platform, probe_home.as_deref());
+                async move {
+                    for endpoint in endpoints {
+                        match probe.request(&endpoint, methods::PING).await {
+                            Ok(_) => return true,
+                            // 授权拒绝是「端点存在」的证据（#169）：不再拿静态名兜底，
+                            // 否则可能连到同用户抢建的静态管道，把「未授权」报成「可达」。
+                            Err(err) if is_service_access_denied(&err) => return false,
+                            // 只在端点真的不存在时才试下一个候选（#7 残余⑤）；忙/超时
+                            // 说明端点还在，这一拍就按不可达收口，不换名。
+                            Err(err) if is_endpoint_missing(&err) => {}
+                            Err(_) => return false,
+                        }
+                    }
+                    false
+                }
             },
             snapshots.clone(),
         ));
@@ -89,6 +105,9 @@ pub fn start(
     let (guard, identity) = background_server_guard(&options);
     let client = Arc::new(with_optional_guard(IpcClient::new(), guard.as_ref()));
     let (endpoint_tx, endpoint_rx) = watch::channel(None);
+    // 版本轮询只看心跳已落定的端点：心跳换到静态名后，版本不再每秒先撞一次旧通告名
+    // （#7 残余⑤ 的稳态开销）。心跳还没推送时回退到当前候选。
+    let version_endpoint_rx = endpoint_rx.clone();
     let link = WorkerLink {
         client: client.clone(),
         endpoint: endpoint_rx,
@@ -106,7 +125,8 @@ pub fn start(
                     // 失败分类随快照广播，心跳连上时由 apply_success 清空。
                     snapshot.connect_failure = failure;
                 });
-                // 端点解析器（#7）：后台 = 静态契约名（恒等）；服务 = 动态解析（通告名优先、静态兜底），
+                // 端点解析器：后台 = 静态名称（恒等）；服务 = 动态解析（通告名优先、静态保底），
+                // 失败后按刚失败的端点换名（#7 残余⑤：陈旧通告名换静态名再试）。
                 // 解析结果推送 endpoint watch（backfill 每 5s 重试时重读，服务重启换名后自愈）。
                 // 心跳与版本轮询共用：服务重启换名后两者都不悬死在旧名。
                 let resolve = endpoint_resolver(
@@ -116,17 +136,52 @@ pub fn start(
                     endpoint.clone(),
                     endpoint_tx.clone(),
                 );
-                spawn_monitor(client, resolve.clone(), snapshots.clone());
+                spawn_monitor(client, resolve, snapshots.clone());
                 // 独立 1s 版本轮询：单独客户端避免与心跳的单飞锁互相拖慢；心跳退避不影响版本节拍。
                 // #7：版本轮询同样核验后台服务端身份（服务端点由 guard 作用域过滤，零行为变化）。
+                // 服务模式优先用心跳已经落定的端点（含残余⑤换到静态名）；心跳还没推送时按候选
+                // 顺序试（通告名 → 静态名）。这样陈旧通告名只在切换的那一拍出现一次，
+                // 不会每秒都先撞一次；授权拒绝不换名。
                 let version_client =
                     Arc::new(with_optional_guard(IpcClient::new(), guard.as_ref()));
-                let version_resolve = resolve;
+                let version_mode = mode;
+                let version_platform = current_platform();
+                let version_home = current_home();
+                let version_connected = endpoint.clone();
                 tokio::spawn(watch_version(
                     move || {
                         let client = version_client.clone();
-                        let endpoint = version_resolve();
-                        async move { client.exif_tool_version(&endpoint).await.ok() }
+                        let known_endpoint = version_endpoint_rx.borrow().clone();
+                        let mut endpoints = match version_mode {
+                            WorkerMode::Background => vec![version_connected.clone()],
+                            WorkerMode::Service => known_endpoint.into_iter().collect(),
+                        };
+                        if version_mode == WorkerMode::Service {
+                            // 心跳已落定的端点优先试；只有它不存在时才轮到候选（含重读
+                            // 通告名）——这样既不用每秒先撞一次旧名字，服务换名后也能在
+                            // 心跳下一拍之前靠版本轮询先发现。
+                            for candidate in
+                                current_service_endpoints(version_platform, version_home.as_deref())
+                            {
+                                if !endpoints.iter().any(|known| known.same_as(&candidate)) {
+                                    endpoints.push(candidate);
+                                }
+                            }
+                            if endpoints.is_empty() {
+                                endpoints.push(version_connected.clone());
+                            }
+                        }
+                        async move {
+                            for endpoint in endpoints {
+                                match client.exif_tool_version(&endpoint).await {
+                                    Ok(version) => return Some(version),
+                                    Err(err) if is_service_access_denied(&err) => return None,
+                                    Err(err) if is_endpoint_missing(&err) => {}
+                                    Err(_) => return None,
+                                }
+                            }
+                            None
+                        }
                     },
                     snapshots,
                 ));
@@ -146,33 +201,46 @@ pub fn start(
     link
 }
 
-/// 服务探测端点（#7）：每拍重解析——Windows 通告名优先、静态名兜底；解析不到的平台形态
+/// 服务探测端点：每拍重解析——Windows 通告名优先、静态名保底；解析不到的平台形态
 /// （mac 无 HOME，仅理论可达：探测任务仅在初始解析成功时起跑）退静态服务名（经
-/// service_pipe_endpoint_with_advertised 的单一出处派生，消除字面量重复——审查返修 n-R2），
+/// service_pipe_endpoint_with_advertised 的单一出处派生，消除字面量重复），
 /// 探测必然失败等价「服务不可达」，不产生误导性成功。
-fn probe_service_endpoint(platform: HostPlatform, home: Option<&Path>) -> Endpoint {
-    current_service_endpoint(platform, home)
-        .unwrap_or_else(|| service_pipe_endpoint_with_advertised(None))
+fn probe_service_endpoints(platform: HostPlatform, home: Option<&Path>) -> Vec<Endpoint> {
+    let endpoints = current_service_endpoints(platform, home);
+    if endpoints.is_empty() {
+        vec![service_pipe_endpoint_with_advertised(None)]
+    } else {
+        endpoints
+    }
 }
 
-/// 按模式构造端点解析器（#7）：后台 = 静态契约名（恒等返回）；服务 = 每次调用重读通告名
-/// （随机化后服务重启会换名），解析不到时退连接时的端点。服务模式解析结果推送 `endpoint_tx`
-/// （backfill 持 receiver 每 5s 重试时重读自愈）；同值不写——避免 1s 版本节拍制造稳定的
-/// watch 唤醒（与 watch_service_reachability 的同值抑制同口径）。
+/// 按模式构造端点解析器：后台 = 静态名称（恒等返回）；服务 = 失败时重读通告名
+/// （随机化后服务重启会换名）。初始端点直接用连接编排已经连上的那个——启动时再读一次
+/// 通告名只会在通告陈旧时把「已经连上的静态名」又覆盖回旧名。失败时把刚失败的端点交给它：
+/// 通告名失效换静态名，静态名兜底也失效时回到通告名（#7 残余⑤）。解析结果推送
+/// `endpoint_tx`（backfill 持 receiver 每 5s 重试时重读自愈）；同值不写——避免 1s 版本节拍
+/// 制造稳定的 watch 唤醒（与 watch_service_reachability 的同值抑制规则一致）。
 fn endpoint_resolver(
     mode: WorkerMode,
     platform: HostPlatform,
     home: Option<PathBuf>,
     connected: Endpoint,
     endpoint_tx: watch::Sender<Option<Endpoint>>,
-) -> impl Fn() -> Endpoint + Clone {
-    move || match mode {
+) -> impl Fn(Option<&Endpoint>) -> Endpoint + Clone {
+    move |failed| match mode {
         WorkerMode::Background => connected.clone(),
         WorkerMode::Service => {
-            let resolved = current_service_endpoint(platform, home.as_deref())
-                .unwrap_or_else(|| connected.clone());
+            let resolved = match failed {
+                Some(failed) => {
+                    current_service_endpoint_after_failure(platform, home.as_deref(), failed)
+                }
+                None => connected.clone(),
+            };
             endpoint_tx.send_if_modified(|current| {
-                if current.as_ref() == Some(&resolved) {
+                if current
+                    .as_ref()
+                    .is_some_and(|current| current.same_as(&resolved))
+                {
                     false
                 } else {
                     *current = Some(resolved.clone());
@@ -187,8 +255,8 @@ fn endpoint_resolver(
 /// 连接顺序与旧 UI `WorkerProcessManager.ConnectOrLaunchAsync` 对齐：服务端点优先，其次后台端点，
 /// 都不可用时启动后台 Worker 并轮询 5s。服务「已安装未运行」时本版会落到后台 Worker，而不是像旧 UI
 /// 停在服务壳；服务态本身由服务页独立探测。
-// Design(#82): 连接编排维持「服务端点优先、不可用回落后台 Worker」；同 config 双 Worker 并存的审计争用由 #162 单写者准入门兜底，编排预防归 #58。
-// Design(#82): 编排顺序与轮询预算不变，只把每一步的真实失败原因（服务端点 DACL 拒、后台拉起结果）带出给呈现层分类（#169 落地后关票，决策归档）。
+// 连接逻辑维持「服务端点优先、不可用回落后台 Worker」；同 config 双 Worker 并存的审计争用由单写者准入保底。
+// 连接顺序与轮询预算不变，只把每一步的真实失败原因（服务端点权限拒、后台拉起结果）带出给呈现层分类。
 async fn connect_worker(
     client: &IpcClient,
     options: &ConnectOptions,
@@ -196,8 +264,9 @@ async fn connect_worker(
 ) -> Option<(Endpoint, WorkerMode, Option<ConnectFailureCause>)> {
     let platform = current_platform();
     let home = current_home();
-    // #7：服务端点动态解析（通告名优先、静态名兜底）——随机化后的服务端点只有通告名可发现。
-    let service = current_service_endpoint(platform, home.as_deref());
+    // 服务端点候选（#7 残余⑤）：通告名优先、静态名兜底。授权拒绝就停——那是「端点存在但
+    // 当前账户不在授权集合」的证据，换静态名重试可能连到同用户抢建的管道，把真实原因盖掉。
+    let service = current_service_endpoints(platform, home.as_deref());
     let background = resolve_endpoint(platform, WorkerMode::Background, home.as_deref());
 
     // #169：探测不再把 IpcError 吞成 bool——服务端点被 DACL 拒（raw 5）本身即「端点存在且当前
@@ -205,25 +274,28 @@ async fn connect_worker(
     let mut service_access_denied = false;
     // #7 残余①：后台端点连上但对端不是期望 Worker 的原因（核验失败），供失败分类带出。
     let mut identity_failure: Option<String> = None;
-    for (mode, endpoint) in [
-        (WorkerMode::Service, service),
-        (WorkerMode::Background, background.clone()),
-    ] {
-        let Some(endpoint) = endpoint else {
-            continue;
-        };
+
+    for endpoint in service {
         match client.request(&endpoint, methods::PING).await {
-            Ok(_) => return Some((endpoint, mode, None)),
+            Ok(_) => return Some((endpoint, WorkerMode::Service, None)),
             Err(err) => {
-                if mode == WorkerMode::Service && is_service_access_denied(&err) {
+                if is_service_access_denied(&err) {
                     service_access_denied = true;
+                    break;
                 }
-                if mode == WorkerMode::Background {
-                    if let IpcError::ServerIdentity(reason) = &err {
-                        identity_failure = Some(reason.clone());
-                    }
+                // 只有端点真的不存在才试静态名（#7 残余⑤）；忙/超时说明通告端点还在，
+                // 换名只会在健康服务慢一拍时打开预蹲面。
+                if !is_endpoint_missing(&err) {
+                    break;
                 }
             }
+        }
+    }
+    if let Some(endpoint) = background.clone() {
+        match client.request(&endpoint, methods::PING).await {
+            Ok(_) => return Some((endpoint, WorkerMode::Background, None)),
+            Err(IpcError::ServerIdentity(reason)) => identity_failure = Some(reason),
+            Err(_) => {}
         }
     }
 
@@ -339,7 +411,7 @@ fn launch_background_worker(
     Ok((exit_slot, pid))
 }
 
-/// 后台 Worker 可执行文件名（与 `background_worker_command` 的钉死口径同源）。
+/// 后台 Worker 可执行文件名（与 `background_worker_command` 规则同源）。
 fn worker_binary_name() -> &'static str {
     if cfg!(windows) {
         "PhotoPrivacyWorker.exe"
@@ -364,10 +436,10 @@ fn expected_worker_image(options: &ConnectOptions) -> Option<PathBuf> {
     Some(background_worker_image(&worker))
 }
 
-/// 核验不了时的平台策略（#7 D2 / AC2）：macOS 首版无镜像回退（`LOCAL_PEEREPID` 只给 PID），
+/// 核验不了时的平台策略：macOS 首版无镜像回退（`LOCAL_PEEREPID` 只给 PID），
 /// 且该平台攻击者本可直接抢建 socket 阻断可用性，fail-closed 无净增益 → fail-open + warning；
-/// Windows/Linux 按 AC2 fail-closed（核验不了即拒该连接）。
-// Design(#7): 核验不了时的平台矩阵——Windows/Linux 按 AC2 fail-closed（核验不了即拒连），macOS 按 D2 fail-open + warning；服务管道不叠加（D3）。
+/// Windows/Linux 按 fail-closed（核验不了即拒该连接）。
+// 核验不了时的平台策略：Windows/Linux fail-closed（核验不了即拒连），macOS fail-open + warning；服务管道不叠加。
 fn unverifiable_policy(platform: HostPlatform) -> UnverifiablePolicy {
     match platform {
         HostPlatform::MacOs => UnverifiablePolicy::FailOpen,
@@ -494,7 +566,7 @@ mod tests {
 
     #[test]
     fn exited_worker_reports_its_code_for_single_writer_yield() {
-        // 防：#163 单写者让位（秒退、退出码 1）被 5s 轮询超时口径吞掉，用户只看到笼统的未就绪（#169）。
+        // 防：单写者让位（秒退、退出码 1）被 5s 轮询超时规则吞掉，用户只看到笼统的未就绪。
         let exit_slot = Arc::new(Mutex::new(Some(exit_status_with_code(1))));
         let launch = LaunchObservation {
             spawn_error: None,
@@ -623,7 +695,7 @@ mod tests {
         );
 
         assert_eq!(
-            resolve(),
+            resolve(None),
             Endpoint::Pipe("PhotoPrivacyCleaner.Background".into())
         );
         assert_eq!(*rx.borrow_and_update(), None);

@@ -16,6 +16,9 @@ public sealed class WipeStrategyResolverTests
     [InlineData("shot.cr3", WipeFormatFamily.Raw)]
     [InlineData("img.heic", WipeFormatFamily.Heic)]
     [InlineData("icon.png", WipeFormatFamily.Png)]
+    [InlineData("anim.webp", WipeFormatFamily.Png)]
+    [InlineData("loop.gif", WipeFormatFamily.Png)]
+    [InlineData("design.psd", WipeFormatFamily.Png)]
     [InlineData("clip.mov", WipeFormatFamily.Video)]
     [InlineData("doc.pdf", WipeFormatFamily.Pdf)]
     [InlineData("vector.eps", WipeFormatFamily.Eps)]
@@ -70,6 +73,31 @@ public sealed class WipeStrategyResolverTests
     {
         var result = WipeStrategyResolver.Resolve(@"C:\art\logo.eps");
         Assert.True(result.RequiresUserWarning);
+    }
+
+    [Fact]
+    public void Resolve_Gif_Uses_Png_Command_And_Never_Fakes_Jumbf_Deletion()
+    {
+        // 防的是：GIF 的 C2PA 在 ExifTool 13.61 删不掉（-jumbf:all= 实测 0 updated
+        // 静默不动）；若有人往 GIF 命令里塞 -jumbf:all= 装作删了 C2PA，审计就撒谎。
+        // 关联 issue #8。
+        var result = WipeStrategyResolver.Resolve(@"C:\photos\loop.gif");
+
+        Assert.Equal(WipeFormatFamily.Png, result.Family);
+        Assert.Equal("-all= --icc_profile:all", result.EffectiveArgs);
+        Assert.DoesNotContain("-jumbf", result.EffectiveArgs, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PartialCleanNote_Flags_Tails_For_Gif_Psd_Video_And_Null_For_Clean_Families()
+    {
+        // 防的是：宽线验收（issue #8）承诺「删不掉的尾巴在审计里如实写明」；新增部分
+        // 清理格式时若漏配标注，审计就会对用户谎报「已清干净」。关联 issue #8。
+        Assert.Contains("C2PA", WipeStrategyResolver.PartialCleanNote(@"C:\p\a.gif"), StringComparison.Ordinal);
+        Assert.Contains("图层", WipeStrategyResolver.PartialCleanNote(@"C:\p\a.psd"), StringComparison.Ordinal);
+        Assert.NotNull(WipeStrategyResolver.PartialCleanNote(@"C:\p\a.mp4"));
+        Assert.Null(WipeStrategyResolver.PartialCleanNote(@"C:\p\a.jpg"));
+        Assert.Null(WipeStrategyResolver.PartialCleanNote(@"C:\p\a.xyz"));
     }
 
     [Fact]

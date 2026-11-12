@@ -1,5 +1,3 @@
-using System.Text.Json;
-using System.Text.Encodings.Web;
 using System.Threading.Channels;
 
 namespace PhotoPrivacy.Core.Audit;
@@ -9,11 +7,6 @@ public sealed class JsonLineAuditLogger : IAuditLogger, IDisposable
     private const long MaxFileSizeBytes = 100 * 1024 * 1024; // 100MB
     private const int RetainedFileCountLimit = 31;
     private const int BatchSize = 64;
-
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        Encoder = JavaScriptEncoder.Create(System.Text.Unicode.UnicodeRanges.All)
-    };
 
     private readonly string _logDirectory;
     private readonly int _retainDays;
@@ -59,20 +52,7 @@ public sealed class JsonLineAuditLogger : IAuditLogger, IDisposable
         if (auditEvent.Level < _minimumWriteLevel)
             return ValueTask.CompletedTask;
 
-        var payload = new
-        {
-            event_type = auditEvent.EventType,
-            level = auditEvent.Level.ToString().ToUpperInvariant(),
-            timestamp_utc = auditEvent.TimestampUtc.ToUniversalTime().ToString("O"),
-            task_id = auditEvent.TaskId,
-            source_path_masked = PathMasker.Mask(auditEvent.SourcePath),
-            source_path_hash = PathMasker.StableHash(auditEvent.SourcePath),
-            message = auditEvent.Message,
-            data = auditEvent.Data,
-            diagnostic_mode = _diagnosticMode
-        };
-
-        var json = JsonSerializer.Serialize(payload, JsonOptions);
+        var json = AuditLineFormatter.Format(auditEvent, _diagnosticMode);
 
         if (_channel.Writer.TryWrite(json))
             return ValueTask.CompletedTask;
@@ -155,7 +135,7 @@ public sealed class JsonLineAuditLogger : IAuditLogger, IDisposable
 
     private string ResolveRolloverTarget()
     {
-        // Design(#208): 审计文件名按本地「今天」命名，与 IPC 回填、UI tail 同口径——UTC+8 00:00–07:59 时窗内不再把行写进「昨天」名文件。
+        // 审计文件名按本地「今天」命名，与 IPC 回填、UI tail 同一规则——UTC+8 00:00–07:59 时窗内不再把行写进「昨天」名文件。
         var baseName = AuditLogFileNames.BaseName(DateTime.Now);
         var baseTarget = Path.Combine(_logDirectory, baseName + ".jsonl");
 
@@ -208,19 +188,31 @@ public sealed class JsonLineAuditLogger : IAuditLogger, IDisposable
 
     public void CleanupExpired()
     {
-        // Design(#208): 清理仍按文件创建时间（UTC 表示）判龄、按 audit-*.jsonl 全局枚举计数，与文件名日期无关——本地命名统一后此判据不受影响；生命周期归 #41。
-        var cutoff = DateTime.UtcNow.AddDays(-_retainDays);
-        foreach (var file in Directory.EnumerateFiles(_logDirectory, "audit-*.jsonl"))
+        // 清理按文件创建时间（UTC 表示）判龄、按 audit-*.jsonl 全局枚举计数，与文件名日期无关。清理双闸=判龄删除 + 31 文件计数上限（分卷计入）；retain_days<=0 视为不做年龄清理，绝不因退化配置清空审计面（与 BackupRetentionService.DeleteExpiredTtl 的 <=0 保底一致）。
+        if (_retainDays > 0)
         {
-            if (File.GetCreationTimeUtc(file) < cutoff)
+            var cutoff = DateTime.UtcNow.AddDays(-_retainDays);
+            foreach (var file in Directory.EnumerateFiles(_logDirectory, "audit-*.jsonl"))
             {
-                File.Delete(file);
+                if (File.GetCreationTimeUtc(file) < cutoff)
+                {
+                    try
+                    {
+                        File.Delete(file);
+                    }
+                    catch
+                    {
+                        // 降级必须留下记录：单文件被占用/已消失不炸穿清理链，留待下个周期重试，失败以审计事件记录。
+                        TraceDeleteFailed(file);
+                    }
+                }
             }
         }
 
         EnforceRetainedFileCountLimit();
     }
 
+    // 31 文件计数上限（glob audit-*.jsonl，分卷计入）是磁盘占用保护的保底；到上限后最旧创建时间先删——即使文件仍在 retain_days 窗口内也会被淘汰，属记录在案的静默淘汰。
     private void EnforceRetainedFileCountLimit()
     {
         var files = Directory.EnumerateFiles(_logDirectory, "audit-*.jsonl")
@@ -232,8 +224,21 @@ public sealed class JsonLineAuditLogger : IAuditLogger, IDisposable
         {
             var oldest = files[0];
             files.RemoveAt(0);
-            try { oldest.Delete(); } catch { }
+            try { oldest.Delete(); } catch { TraceDeleteFailed(oldest.FullName); }
         }
+    }
+
+    // 降级必须留下记录：年龄闸与计数闸共用——删除失败以审计事件记录（Warn），留待下个清理周期重试。
+    private void TraceDeleteFailed(string path)
+    {
+        WriteAsync(new AuditEvent(
+            EventType: "audit_cleanup_delete_failed",
+            Level: AuditLevel.Warn,
+            TimestampUtc: DateTimeOffset.UtcNow,
+            TaskId: "audit",
+            SourcePath: Path.GetFileName(path),
+            Message: "audit cleanup: delete failed, will retry next cycle",
+            Data: null), CancellationToken.None);
     }
 
     public void Dispose()

@@ -1,0 +1,207 @@
+name: M2 macOS artifact verify
+
+# M2 = GitHub issue #2 macOS half evidence group.
+# Verifies an exact release artifact on macOS runners; no build.
+# Manual dispatch can point at another release run. The pull_request trigger
+# exercises this harness when the harness itself changes.
+# The defaults pin the #2 evidence release (run 42674901152 / 2b2fceb / 0.0.0-verify3).
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_run_id:
+        description: "Release workflow run ID"
+        required: true
+        default: "42674901152"
+      release_head:
+        description: "Expected release head SHA"
+        required: true
+        default: "2b2fceb94adac7b3aaa095524d043c6713c1d6bc"
+      release_version:
+        description: "Expected release version"
+        required: true
+        default: "0.0.0-verify3"
+  pull_request:
+    paths:
+      - ".github/workflows/m2-macos-artifact-verify.yml"
+      - ".github/scripts/m2-hot-folder-verify.sh"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  verify:
+    name: M2 macOS verify (${{ matrix.rid }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: osx-x64
+            os: macos-15-intel
+            artifact: release-osx-x64
+          - rid: osx-arm64
+            os: macos-latest
+            artifact: release-osx-arm64
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_RUN_ID: ${{ inputs.release_run_id || '42674901152' }}
+      RELEASE_HEAD: ${{ inputs.release_head || '2b2fceb94adac7b3aaa095524d043c6713c1d6bc' }}
+      RELEASE_VERSION: ${{ inputs.release_version || '0.0.0-verify3' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Check out release source for verify scripts
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_head || '2b2fceb94adac7b3aaa095524d043c6713c1d6bc' }}
+          path: release-src
+          persist-credentials: false
+
+      - name: Download exact release artifact (no build)
+        shell: bash
+        run: |
+          set -euo pipefail
+          EVIDENCE_ROOT="$RUNNER_TEMP/M2-macos-${{ matrix.rid }}"
+          RELEASE_DIR="$RUNNER_TEMP/M2-release-${{ matrix.rid }}"
+          ARTIFACT_DIR="$RUNNER_TEMP/M2-artifact-${{ matrix.rid }}"
+          {
+            echo "EVIDENCE_ROOT=$EVIDENCE_ROOT"
+            echo "RELEASE_DIR=$RELEASE_DIR"
+            echo "ARTIFACT_DIR=$ARTIFACT_DIR"
+          } >> "$GITHUB_ENV"
+          mkdir -p "$ARTIFACT_DIR" "$RELEASE_DIR" "$EVIDENCE_ROOT/lifecycle" "$EVIDENCE_ROOT/hot-folder"
+
+          ACTUAL_HEAD="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RELEASE_RUN_ID" --jq .head_sha)"
+          SRC_HEAD="$(git -C release-src rev-parse HEAD)"
+          if [[ "$ACTUAL_HEAD" != "$RELEASE_HEAD" || "$SRC_HEAD" != "$RELEASE_HEAD" ]]; then
+            echo "release identity mismatch: run=$ACTUAL_HEAD src=$SRC_HEAD expected=$RELEASE_HEAD" >&2
+            exit 1
+          fi
+
+          ARTIFACT_STATE="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RELEASE_RUN_ID/artifacts" --jq ".artifacts[] | select(.name == \"${{ matrix.artifact }}\") | .expired")"
+          if [[ "$ARTIFACT_STATE" != "false" ]]; then
+            echo "release artifact ${{ matrix.artifact }} is missing or expired in run $RELEASE_RUN_ID; dispatch with a different release_run_id." >&2
+            exit 1
+          fi
+
+          gh run download "$RELEASE_RUN_ID" -R "$GITHUB_REPOSITORY" -n "${{ matrix.artifact }}" -D "$ARTIFACT_DIR"
+          TARBALL="$(find "$ARTIFACT_DIR" -maxdepth 1 -name '*.tar.gz' -print -quit)"
+          if [[ -z "$TARBALL" ]]; then
+            TARBALL="$(find "$ARTIFACT_DIR" -name '*.tar.gz' -print -quit)"
+          fi
+          test -n "$TARBALL"
+          case "$(basename "$TARBALL")" in
+            *"$RELEASE_VERSION"*) ;;
+            *) echo "release version mismatch: $(basename "$TARBALL") does not contain $RELEASE_VERSION" >&2; exit 1 ;;
+          esac
+          tar -xzf "$TARBALL" -C "$RELEASE_DIR"
+          test -f "$RELEASE_DIR/PhotoPrivacyWorker"
+          test -f "$RELEASE_DIR/PhotoPrivacy"
+          test -f "$RELEASE_DIR/config/config.json"
+          test -f "$RELEASE_DIR/ExifTool/exiftool"
+          mkdir -p "$RELEASE_DIR/scripts"
+          cp release-src/scripts/verify-launchd-service.sh release-src/scripts/capture-ui-service-page.sh "$RELEASE_DIR/scripts/"
+          find "$RELEASE_DIR/scripts" -type f -name '*.sh' -exec chmod +x {} +
+          chmod +x "$RELEASE_DIR/PhotoPrivacyWorker" "$RELEASE_DIR/PhotoPrivacy" || true
+          {
+            echo "release run: $RELEASE_RUN_ID"
+            echo "release head (API): $ACTUAL_HEAD"
+            echo "release source head: $SRC_HEAD"
+            echo "version: $RELEASE_VERSION"
+            echo "artifact: ${{ matrix.artifact }}"
+            echo "tarball: $TARBALL"
+            echo "tarball sha256: $(shasum -a 256 "$TARBALL" | awk '{print $1}')"
+            echo "worker sha256: $(shasum -a 256 "$RELEASE_DIR/PhotoPrivacyWorker" | awk '{print $1}')"
+            echo "ui sha256: $(shasum -a 256 "$RELEASE_DIR/PhotoPrivacy" | awk '{print $1}')"
+            echo "--- env ---"
+            uname -a
+            sw_vers
+            echo "--- perl ---"
+            command -v perl || true
+            ls -l /usr/bin/perl 2>&1 || true
+            perl -v 2>&1 | head -3 || true
+            echo "--- bundled exiftool ---"
+            perl "$RELEASE_DIR/ExifTool/exiftool" -ver 2>&1 || true
+          } | tee "$EVIDENCE_ROOT/00-artifact.txt"
+
+      - name: Verify launchd lifecycle + UI probe + screenshots
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo bash "$RELEASE_DIR/scripts/verify-launchd-service.sh" \
+            --release-dir "$RELEASE_DIR" \
+            --evidence-dir "$EVIDENCE_ROOT/lifecycle" \
+            --ui-shots | tee "$EVIDENCE_ROOT/01-lifecycle-console.txt"
+
+      - name: Hot folder cleaning + audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash .github/scripts/m2-hot-folder-verify.sh \
+            --gui-user "$USER" \
+            "$RELEASE_DIR" \
+            "$EVIDENCE_ROOT/hot-folder"
+
+      - name: Flatten evidence for M2 manifest
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          FLAT="$RUNNER_TEMP/M2-flat-${{ matrix.rid }}"
+          rm -rf "$FLAT"
+          mkdir -p "$FLAT"
+          EVIDENCE_ROOT="${EVIDENCE_ROOT:-}"
+          if [[ -n "$EVIDENCE_ROOT" && -d "$EVIDENCE_ROOT" ]]; then
+            cd "$EVIDENCE_ROOT"
+            find . -type f -print0 | while IFS= read -r -d '' f; do
+              rel="${f#./}"
+              name="M2-${{ matrix.rid }}-${rel//\//-}"
+              cp "$f" "$FLAT/$name"
+            done
+          fi
+          (
+            cd "$FLAT"
+            find . -maxdepth 1 -type f ! -name 'M2-*.sha256' -print \
+              | sed 's#^\./##' | sort | while IFS= read -r n; do
+                shasum -a 256 "$n"
+              done
+          ) > "$FLAT/M2-${{ matrix.rid }}.sha256"
+
+      - name: Publish summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### M2 macOS artifact verify (${{ matrix.rid }})"
+            echo ""
+            echo "- release run: $RELEASE_RUN_ID"
+            echo "- release head: $RELEASE_HEAD"
+            echo "- release version: $RELEASE_VERSION"
+            echo "- artifact: ${{ matrix.artifact }}"
+            echo "- evidence artifact: M2-macos-${{ matrix.rid }}"
+            echo ""
+            echo "#### launchd lifecycle"
+            echo '```'
+            cat "$EVIDENCE_ROOT/lifecycle/summary.txt" 2>/dev/null || true
+            echo '```'
+            echo ""
+            echo "#### hot folder / audit"
+            echo '```'
+            cat "$EVIDENCE_ROOT/hot-folder/result.txt" 2>/dev/null || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: M2-macos-${{ matrix.rid }}
+          path: ${{ runner.temp }}/M2-flat-${{ matrix.rid }}
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 14

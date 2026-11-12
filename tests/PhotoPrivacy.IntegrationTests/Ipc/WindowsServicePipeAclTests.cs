@@ -8,7 +8,7 @@ using System.IO.Pipes;
 namespace PhotoPrivacy.IntegrationTests.Ipc;
 
 /// <summary>
-/// 行为测试：Windows 服务管道显式 DACL（#70，决策 #82 D3；#1 opt-in 授权集合扩展；#7 掩码拆位）。
+/// 行为测试：Windows 服务管道显式 DACL（#70，决策 #82 D3；#1 opt-in 授权集合扩展；#7 掩码按位去掉 0x4）。
 /// 覆盖四点：
 /// ① 显式 DACL 建例后，被授权 SID（安装者）客户端能完成连接与一次读写——这验证 DACL 权限位
 ///   覆盖细粒度请求掩码（#7 起客户端不再 GENERIC 打开，改请求 FILE_GENERIC_READ|WRITE 去位后的
@@ -17,12 +17,12 @@ namespace PhotoPrivacy.IntegrationTests.Ipc;
 ///   边界说明（如实登记）：本套测试的客户端与建例者同用户，证明不了「其他账户确实被拒」——
 ///   CurrentUserOnly 内核拒绝与 DACL 跨令牌 AccessCheck 都只在 Windows 实机上由人工 S4 复测覆盖；
 ///   这里证明的是回退路径与 DACL 建例路径不炸绑定、同用户往返不回归；
-/// ③ 安全描述符内容：每个授权 SID（#1 集合可含额外用户）各自读写掩码（#7 拆位：剥除
+/// ③ 安全描述符内容：每个授权 SID（#1 集合可含额外用户）各自读写掩码（#7 按位去掉 0x4：剥除
 ///   FILE_CREATE_PIPE_INSTANCE，仅 SYSTEM/Administrators 保留完全控制含该位）；
 /// ④ 授权集合解析（#1 opt-in）：集合注入时走集合 DACL；集合为空/全非法时回退安装者单值，
 ///   两者皆无时回退 CurrentUserOnly——未 opt-in 不扩权。
 /// 注入 `servicePipeAdvertiser`（#7）：本套 ServiceShared 用例全部注入通告器，监听走随机名路径
-/// （往返同时覆盖细粒度客户端对拆位 DACL 的可达性），且永不触碰真实注册表（含 elevated 运行）。
+/// （往返同时覆盖细粒度客户端对按位去掉 0x4 的 DACL 的可达性），且永不触碰真实注册表（含 elevated 运行）。
 /// 掩码常量断言全平台可跑（CI ubuntu 为主证据，见 ServiceClientAccessMask_Drops_CreatePipe_Instance_Bit）。
 ///
 /// CI 平台（如实登记，#9 起多平台矩阵）：test job 在 ubuntu/windows/macos 三平台跑。
@@ -100,7 +100,7 @@ public sealed class WindowsServicePipeAclTests
         await transport.ListenAsync(CancellationToken.None);
 
         // 走传输层客户端：服务模式客户端不带 CurrentUserOnly，AccessCheck 完全由 DACL 裁决
-        // （#7 起走细粒度掩码路径，对拆位 DACL 同构）。
+        // （#7 起走细粒度掩码路径，对按位去掉 0x4 的 DACL 同构）。
         await AssertRoundTripAsync(transport);
     }
 
@@ -130,7 +130,7 @@ public sealed class WindowsServicePipeAclTests
             return;
         }
 
-        // 防回潮：注册表出现非法 SID 字符串时抛异常炸绑定、服务起不来——必须与缺失同样走回退。
+        // 防老毛病再犯：注册表出现非法 SID 字符串时抛异常炸绑定、服务起不来——必须与缺失同样走回退。
         await using var transport = new NamedPipeIpcTransport(
             NewPipeName(), WindowsPipeAccessMode.ServiceShared, installerSidResolver: () => "not-a-sid",
             servicePipeAdvertiser: AdvertiseAlways);
@@ -260,7 +260,7 @@ public sealed class WindowsServicePipeAclTests
         var security = WindowsPipeNative.BuildServicePipeSecurity(new[] { new SecurityIdentifier(installerSid) });
         var rules = security.GetAccessRules(includeExplicit: true, includeInherited: false, targetType: typeof(SecurityIdentifier));
 
-        // 掩码与 WindowsServicePipeAcl 的常量同源：FILE_GENERIC_READ|WRITE 去位（#7 拆位）、FILE_ALL_ACCESS。
+        // 掩码与 WindowsServicePipeAcl 的常量同源：FILE_GENERIC_READ|WRITE 去位（#7 按位去掉 0x4）、FILE_ALL_ACCESS。
         const uint fileCreatePipeInstance = 0x00000004u;
         const uint fileGenericReadWrite = (0x00120089u | 0x00120116u) & ~fileCreatePipeInstance;
         const uint fileAllAccess = 0x001F01FFu;
@@ -295,7 +295,7 @@ public sealed class WindowsServicePipeAclTests
 
         Assert.Multiple(
             () => Assert.True(installerMask.HasValue, "installer ACE must exist"),
-            // #7 拆位：客户端细粒度掩码（0x12019B）所需全部语义位都在，但 0x4 不在；
+            // #7 按位去掉 0x4：客户端细粒度掩码（0x12019B）所需全部语义位都在，但 0x4 不在；
             // 特权账户（SYSTEM/Administrators）保留 FILE_ALL_ACCESS 含 0x4（服务自建 2..N 实例依赖，38142f9b 教训）。
             () => Assert.Equal(fileGenericReadWrite, installerMask.GetValueOrDefault()),
             () => Assert.Equal(0u, installerMask.GetValueOrDefault() & fileCreatePipeInstance),
@@ -315,7 +315,7 @@ public sealed class WindowsServicePipeAclTests
             return;
         }
 
-        // #1 opt-in：授权集合内每个 SID 各自一条读写 ACE（掩码与单 SID 路径同源，#7 拆位后同为去位掩码），
+        // #1 opt-in：授权集合内每个 SID 各自一条读写 ACE（掩码与单 SID 路径同源，#7 按位去掉 0x4 后同为去位掩码），
         // SYSTEM/Administrators 仍各一条完全控制——集合扩权不改变掩码与特权账户规则。
         var installerSid = WindowsIdentity.GetCurrent().User!.Value;
         var extraSid = new SecurityIdentifier("S-1-5-21-1-2-3-4");
@@ -363,7 +363,7 @@ public sealed class WindowsServicePipeAclTests
         Assert.Multiple(
             () => Assert.True(installerMask.HasValue, "installer ACE must exist"),
             () => Assert.Equal(fileGenericReadWrite, installerMask.GetValueOrDefault()),
-            // #7 拆位：集合内每个授权 SID 都不得拿回建实例权，特权账户保留（服务自建 2..N 实例依赖）。
+            // #7 按位去掉 0x4：集合内每个授权 SID 都不得拿回建实例权，特权账户保留（服务自建 2..N 实例依赖）。
             () => Assert.Equal(0u, installerMask.GetValueOrDefault() & fileCreatePipeInstance),
             () => Assert.Equal(0u, extraMask.GetValueOrDefault() & fileCreatePipeInstance),
             () => Assert.True(extraMask.HasValue, "extra allowed SID ACE must exist"),

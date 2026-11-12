@@ -136,7 +136,7 @@ impl AuditFeed {
 
     /// 设置 backfill 过滤水位；`None` = 不过滤（首启无水位语义不变）。
     /// 值由调用方决定：启动时来自持久化清空水位，清空时来自清空动作的时刻。
-    // Design(#209): backfill 只交付 timestamp_utc 严格大于清空水位的行——比较基准是
+    // backfill 只交付 timestamp_utc 严格大于清空水位的行——比较基准是
     // 行内绝对 UTC 时刻，与文件名日期、本地墙钟日期、分卷后缀全部无关。
     pub fn set_backfill_watermark(&mut self, watermark: Option<DateTime<Utc>>) {
         self.backfill_watermark = watermark;
@@ -160,7 +160,7 @@ impl AuditFeed {
     }
 
     /// 水位存在时，行必须带可解析的 `timestamp_utc` 且严格晚于水位；无时间戳的行
-    /// 无法自证晚于清空，按挡下处理（fail-closed）。无水位时全部放行。
+    /// 不能确认晚于清空，直接挡下。无水位时全部放行。
     fn is_after_backfill_watermark(&self, line: &str) -> bool {
         match self.backfill_watermark {
             None => true,
@@ -242,8 +242,8 @@ impl AuditFeed {
 }
 
 /// 旧 UI `AuditTailService.BuildAuditPath` 的等价实现（本地日期）。
-// Design(#41): tail 只认基础名 audit-<date>.jsonl，分卷 audit-<date>_N.jsonl 的行不进 tail——记录在案的接受行为，非缺陷；分卷与清理生命周期归 #41。
-// Design(#208): UI tail 按本地「今天」基础名读取，与写入端、IPC 回填同口径——统一基准前 UTC+8 00:00–07:59 时窗内写入端落昨天名、tail 找今天名，日志页恒空。
+// tail 只认基础名 audit-<date>.jsonl，超过 100MB 滚动产生的 audit-<date>_N.jsonl 分卷不进 tail——这是已知接受的行为。
+// UI tail 按本地「今天」基础名读取，与写入端、IPC 回填规则一致——统一前在 UTC+8 凌晨写入端落昨天名、tail 找今天名，会导致日志页一直是空的。
 pub fn audit_path(directory: &Path, day: NaiveDate) -> PathBuf {
     directory.join(format!("audit-{}.jsonl", day.format("%Y-%m-%d")))
 }
@@ -553,7 +553,7 @@ mod tests {
         let no_time = r#"{"event_type":"no_time"}"#;
         let delivered =
             feed.accept_backfill(&[before, at_watermark, after.clone(), no_time.to_string()]);
-        // 严格大于：与水位相等的行也挡；无时间戳的行无法自证晚于清空，一并挡下。
+        // 严格大于：与水位相等的行也挡；无时间戳的行不能确认晚于清空，一并挡下。
         assert_eq!(delivered, vec![after]);
     }
 

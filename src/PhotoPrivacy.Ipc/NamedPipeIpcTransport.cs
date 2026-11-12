@@ -28,7 +28,7 @@ public enum ServicePipeBindOutcome
     /// <summary>随机名绑定成功且已通告（HKLM\SOFTWARE\PhotoPrivacy\ServicePipeName）。</summary>
     RandomizedAdvertised = 1,
 
-    /// <summary>通告失败，回退静态名重绑：可用性优先（fail-safe，与 #70 的 SID 缺失回退同构），防抢占面回到 #7 前，CWE-732 拆位后的 DACL 仍生效。</summary>
+    /// <summary>通告失败，回退静态名重绑：可用性优先（fail-safe，与 #70 的 SID 缺失回退同构），防抢占面回到 #7 前，CWE-732 按位去掉 0x4 后的 DACL 仍生效。</summary>
     StaticFallback = 2,
 }
 
@@ -38,12 +38,13 @@ public enum ServicePipeBindOutcome
 /// 服务模式以授权 SID 集合的显式 DACL 认证（#70 安装者保底，#1 opt-in 扩展；
 /// managed NamedPipeServerStreamAcl.Create 建例，仅 Windows 宿主编译，
 /// 见 PhotoPrivacy.Ipc.csproj 的 PP_WINDOWS_HOST）；#7 起服务模式叠加两项 Hijack 加固：
-/// ① 授权用户掩码拆位（CWE-732，建例权仅授服务身份）+ 客户端细粒度打开；
+/// ① 授权用户掩码按位去掉 0x4（CWE-732，建例权仅授服务身份）+ 客户端细粒度打开；
 /// ② 命名熵（每次监听随机名 + 建例后 HKLM 通告，防静态名预蹲）；
 /// ③ 后台管道客户端核验服务端进程身份（#7 残余①：PID 优先 + 镜像回退，见
 /// <see cref="NamedPipeServerIdentity"/>，注入期望基准时生效）。
+/// 残余：授权集合的跨令牌验收归人工复测；熵与按位去掉 0x4 的代码位置见
+/// TryBindRandomizedServicePipe / ServerOptions / WindowsServicePipeAcl.ServiceClientAccessMask。
 /// </summary>
-// Design(#82): 服务模式管道以安装者 SID 显式 DACL 取代 CurrentUserOnly（fail-closed 回退 CurrentUserOnly），后台管道保持 CurrentUserOnly；授权集合 opt-in 扩展由 #1 落地（决策记录见该票），残余状态：集合跨令牌验收归人工复测、授权用户可建实例的加固已由 #7 拆位落地（熵与拆位的锚点见 TryBindRandomizedServicePipe / ServerOptions / WindowsServicePipeAcl.ServiceClientAccessMask）。
 public sealed class NamedPipeIpcTransport : IIpcTransport
 {
     /// <summary>有效管道名：服务模式监听后为「基名 + 随机后缀」（#7），其余为构造名。</summary>
@@ -114,9 +115,9 @@ public sealed class NamedPipeIpcTransport : IIpcTransport
     /// 可写——发现通道的完整性 ≥ 管道本体客户端集合）。通告失败（非 LocalSystem 服务账户/
     /// 注册表损坏）：随机名无人可发现，回退静态名重绑——可用性优先（fail-safe，与 #70 的
     /// SID 缺失回退 CurrentUserOnly 同构：保持服务、降安全、由宿主记 warning 观测），
-    /// 此时防抢占面回到 #7 前，但 CWE-732 拆位后的 DACL 仍生效。
+    /// 此时防抢占面回到 #7 前，但 CWE-732 按位去掉 0x4 后的 DACL 仍生效。
+    /// 后台管道保持静态名 + CurrentUserOnly；同用户抢先建实例的面由客户端核验服务端进程身份挡住（见类注释）。
     /// </summary>
-    // Design(#7): 服务管道名每次监听随机化并建例后通告，通告失败回退静态名；后台管道保持静态名 + CurrentUserOnly（同用户残余登记在 #7）。
     private void TryBindRandomizedServicePipe()
     {
         var baseName = _pipeName;
@@ -174,7 +175,7 @@ public sealed class NamedPipeIpcTransport : IIpcTransport
         cts.CancelAfter(timeout);
 #if PP_WINDOWS_HOST
         // 服务模式客户端（#7 / CWE-732）：细粒度掩码打开（不含 FILE_CREATE_PIPE_INSTANCE）——
-        // 与拆位后的服务端 DACL 同构，GENERIC 打开会因 0x4 位被整体拒绝；后台模式维持 GENERIC
+        // 与按位去掉 0x4 后的服务端 DACL 同构，GENERIC 打开会因 0x4 位被整体拒绝；后台模式维持 GENERIC
         // 路径（CurrentUserOnly 属主校验不变）。重试语义（ERROR_PIPE_BUSY / ERROR_FILE_NOT_FOUND）
         // 由 ConnectAsync 内部循环承担，与 GENERIC 路径同实现。交叉发布（非 Windows 宿主产出
         // win-x64）时此分支被编译排除，GENERIC 路径与 CurrentUserOnly 回退同域（同 #70 的
@@ -247,7 +248,7 @@ public sealed class NamedPipeIpcTransport : IIpcTransport
 
         // 解析同样纳入 PP_WINDOWS_HOST：交叉发布（非 Windows 宿主产出 win-x64）时原生建例
         // 分支已被编译排除，若仍解析会得到「无 CurrentUserOnly 也无 DACL」的管道；
-        // 守卫使该场景 fail-closed 回退 CurrentUserOnly。注入解析器可能返回非法 SID
+        // 检查使该场景 fail-closed 回退 CurrentUserOnly。注入解析器可能返回非法 SID
         // 字符串；注册表路径已在 WindowsServicePipeAcl 内校验过。
 #if PP_WINDOWS_HOST
         var sids = ParseSids(rawCollection);
@@ -342,7 +343,7 @@ public sealed class NamedPipeIpcTransport : IIpcTransport
     /// 服务模式显式 DACL 路径不带 CurrentUserOnly——CurrentUserOnly 的 DACL 只放行创建者，
     /// 会在内核层面挡住 DACL 已放行的桌面用户，二者互斥（#70）。
     /// </summary>
-    // Design(#7): IPC 认证以 OS 身份为边界——Windows 侧 CurrentUserOnly/授权 SID 集合 DACL、Unix 侧 SO_PEERCRED 比对；服务管道自 #7 起叠加命名熵与实例创建权拆位（防预蹲与授权用户建实例）；后台管道的同用户抢先建面由客户端核验服务端进程身份闭环（NamedPipeServerIdentity，PID 优先 + 镜像回退；Rust 产品客户端同构，见 ui/crates/photoprivacy-ipc/src/verify.rs）。
+    // IPC 认证以 OS 身份为边界——Windows 侧 CurrentUserOnly/授权 SID 集合 DACL、Unix 侧 SO_PEERCRED 比对；服务管道叠加命名熵与实例创建权按位去掉 0x4（防预蹲与授权用户建实例）；后台管道的同用户抢先建面由客户端核验服务端进程身份闭环（NamedPipeServerIdentity，PID 优先 + 镜像回退；Rust 产品客户端同构，见 ui/crates/photoprivacy-ipc/src/verify.rs）。
     private PipeOptions ServerOptions(bool isFirstInstance)
     {
         var options = PipeOptions.Asynchronous;

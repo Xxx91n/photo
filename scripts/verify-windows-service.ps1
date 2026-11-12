@@ -185,7 +185,7 @@ try {
     Rec "FAIL" ("worker ownership: WQL escape returned " + $wqlLiteral)
   }
 
-  # ---------- 0. 环境留证 ----------
+  # ---------- 0. 环境留证据 ----------
   Capture "00-env.txt" {
     [System.Environment]::OSVersion.VersionString
     whoami /all
@@ -279,13 +279,19 @@ try {
   }
 
   # ---------- 5. 命名管道 IPC 连通性测试 (验证 #70 修复的 DACL 与通信) ----------
-  # 等待服务建管道并通告注册表 ServicePipeName（或静态名兜底）
+  # 等待服务建管道并通告注册表 ServicePipeName（没有通告就走静态名）
   $pipeName = "PhotoPrivacyCleaner.Service"
   $regPath = "HKLM:\SOFTWARE\PhotoPrivacy"
   $pipeResolved = $false
   for ($i = 0; $i -lt 10; $i++) {
     if (Test-Path $regPath) {
-      $advertised = (Get-ItemProperty -Path $regPath -Name "ServicePipeName" -ErrorAction SilentlyContinue).ServicePipeName
+      # 用 PSObject.Properties 读，别直接 `.属性`：值还没写进来时在 Windows PowerShell 5.1
+      # 会抛「找不到属性」把整轮脚本中断。服务没通告管道名是正常情况，要当空值处理。
+      $regItem = Get-ItemProperty -Path $regPath -ErrorAction SilentlyContinue
+      $advertised = $null
+      if ($null -ne $regItem -and $regItem.PSObject.Properties.Name -contains "ServicePipeName") {
+        $advertised = $regItem.ServicePipeName
+      }
       if (-not [string]::IsNullOrWhiteSpace($advertised)) {
         $pipeName = $advertised
         $pipeResolved = $true

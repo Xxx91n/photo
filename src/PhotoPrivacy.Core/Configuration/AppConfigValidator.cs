@@ -53,7 +53,6 @@ public static class AppConfigValidator
     /// 代价：缺 ExifTool 的裸机在保存监控目录时才会被拒——该拒绝原因由 UI 常驻显示，
     /// 不随 3 s 过期消失（同票 UI 侧）。
     /// </summary>
-    // Design(#82): 空监控目录只跳过监控资源校验（ExifTool 及伴随目录、隔离/审计目录、备份目录冲突）；连接池不变量与禁用参数任何形态都 fail-closed。
     public static void Validate(AppConfig config)
     {
         // —— 无条件层 ——
@@ -87,7 +86,7 @@ public static class AppConfigValidator
             return;
         }
 
-        // 空串回落是 loader 层的责任（AppConfigLoader 已兜底），
+        // 空串回落是 loader 层的责任（AppConfigLoader 已补默认），
         // 这里做第二层保险并给出可读错误——空串一旦流到使用点，
         // Path.Combine("", 文件名) 会退化成相对路径，隔离/审计落进进程 CWD。
         if (string.IsNullOrWhiteSpace(config.Quarantine.Directory))
@@ -104,7 +103,7 @@ public static class AppConfigValidator
 
         if (!Path.IsPathFullyQualified(config.ExifTool.Path))
         {
-            // 前缀保留英文口径（smoke 断言与文档按此定位），后缀给出可执行指引：
+            // 前缀保留英文说法（smoke 断言与文档按此定位），后缀给出可执行指引：
             // 发布包内置 ExifTool 后，用户不需要自己找路径，报错必须说清两条出路。
             throw new AppConfigValidationException(
                 $"exiftool.path must be absolute（当前值：\"{config.ExifTool.Path}\"）。" +
@@ -214,11 +213,11 @@ public static class AppConfigValidator
     }
 
     /// <summary>
-    /// （不变量①④）：排除清单的可见性告警——「不识别≠静默」。
+    /// 不识别≠静默、降级必须留下可见记录：排除清单的可见性告警。
     /// <see cref="Validate"/> 承载 fail-closed 的硬拒路径；本方法承载「不阻断但必须可见」的软路径，
     /// 由 Worker 落结构化日志与 <c>config_warning</c> 审计事件。
     ///
-    /// 判定口径（匹配语义 = 纯文件名 glob，仅支持 <c>*</c> 与 <c>?</c>）：
+    /// 判定规则（匹配语义 = 纯文件名 glob，仅支持 <c>*</c> 与 <c>?</c>）：
     /// 1) 空串/空白——永远匹配不到任何非空文件名；
     /// 2) 含路径分隔符（<c>/</c> 或 <c>\</c>）——匹配对象是 <see cref="Path.GetFileName(string)"/>，
     ///    文件名里永远不含分隔符，用户按路径写排除规则必然静默失效；

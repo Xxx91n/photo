@@ -11,7 +11,7 @@ pub enum AuditLevel {
 }
 
 impl AuditLevel {
-    /// 未知/缺失级别按 INFO 处理，与旧 UI `ShouldInclude` 的兜底一致。
+    /// 未知/缺失级别按 INFO 处理，与旧 UI `ShouldInclude` 的退路处理一致。
     pub fn parse(text: &str) -> Self {
         match text.to_ascii_lowercase().as_str() {
             "debug" => Self::Debug,
@@ -90,6 +90,9 @@ pub struct AuditRecord {
     pub display_event: String,
     pub source_path_masked: String,
     pub message: String,
+    /// 部分清理说明（#283）：来自审计事件 `data.partial_clean`，
+    /// GIF/PSD/视频清理成功时由 Worker 写入；普通格式（如 JPEG）为 None。
+    pub partial_note: Option<String>,
     pub tone: EventTone,
 }
 
@@ -120,6 +123,22 @@ pub fn parse_line(line: &str) -> Option<AuditRecord> {
         .format("%H:%M:%S")
         .to_string();
 
+    let message = root
+        .get("message")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    // #283：部分清理说明在 `data.partial_clean`（字符串字典），不在 message 里。
+    // data 缺失/不是对象、键缺失/不是字符串时都回退 None，保持容错解析语义。
+    let partial_note = root
+        .get("data")
+        .and_then(Value::as_object)
+        .and_then(|data| {
+            data.get("partial_clean")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        });
+
     Some(AuditRecord {
         time_text,
         timestamp_utc,
@@ -131,11 +150,8 @@ pub fn parse_line(line: &str) -> Option<AuditRecord> {
             .and_then(Value::as_str)
             .unwrap_or_default()
             .to_string(),
-        message: root
-            .get("message")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string(),
+        message,
+        partial_note,
         tone: event_tone(event_type),
     })
 }
@@ -181,11 +197,28 @@ mod tests {
         assert_eq!(record.display_event, "Cleaned");
         assert_eq!(record.source_path_masked, r"C:\photos\a.jpg");
         assert_eq!(record.message, "cleaned");
+        assert_eq!(
+            record.partial_note, None,
+            "无 data 字段的行不应带部分清理说明"
+        );
         assert_eq!(record.tone, EventTone::Neutral);
         assert_eq!(record.time_text.len(), 8);
         assert_eq!(
             record.timestamp_utc,
             DateTime::parse_from_rfc3339("2026-10-27T01:02:03.0000000Z").expect("timestamp")
+        );
+    }
+
+    #[test]
+    fn parse_line_reads_partial_clean_note_from_data() {
+        // #283：GIF/PSD/视频成功事件带 data.partial_clean，日志页要能拿到说明；
+        // 防：字段名/层级漂移后说明读不到，日志页只显示 Cleaned，用户看不到残留提示。
+        let line = r#"{"event_type":"file_processing_succeeded","level":"INFO","timestamp_utc":"2026-11-12T01:02:03.0000000Z","source_path_masked":"C:\\photos\\a.gif","message":"attempt=1;wipe_result=Cleaned_Modified","data":{"partial_clean":"部分清理：C2PA(JUMBF) 保留"}}"#;
+        let record = parse_line(line).expect("valid audit line");
+        assert_eq!(record.display_event, "Cleaned");
+        assert_eq!(
+            record.partial_note.as_deref(),
+            Some("部分清理：C2PA(JUMBF) 保留")
         );
     }
 

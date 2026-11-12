@@ -73,11 +73,11 @@ async fn run_coordinator(
 ) {
     let mut feed = AuditFeed::new(directory);
     feed.start();
-    // Design(#209): 重启后的 backfill 由落盘清空水位过滤——用户清空后重启，历史行不回灌；
+    // 重启后的 backfill 由落盘清空水位过滤——用户清空后重启，历史行不重复显示；
     // 水位缺失或损坏按无水位处理（fail-open），首启语义不变。
     feed.set_backfill_watermark(watermark.load());
 
-    // Design(#49): 本地 tail 只走 1s 轮询（对齐旧 UI LoopAsync 的兜底节拍），不引入平台 FSW 依赖；
+    // 本地 tail 只走 1s 轮询（对齐旧 UI LoopAsync 的节奏），不引入平台文件监控依赖；
     // FSW 盲区由 IPC backfill 补齐（#57）。
     let mut ticker = tokio::time::interval(TAIL_POLL_INTERVAL);
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -90,9 +90,9 @@ async fn run_coordinator(
                 match command {
                     Some(LogCommand::Clear { generation: next }) => {
                         generation = next;
-                        // Design(#209): 清空 = 写入新水位（绝对 UTC 时刻，落盘 + 内存过滤）
+                        // 清空 = 写入新水位（绝对 UTC 时刻，落盘 + 内存过滤）
                         // + tail 推到文件末尾（既有 clear_view 语义）；落盘失败按 fail-open
-                        // 继续——本会话过滤仍生效，最坏重启回灌一次，与损坏水位同一兜底。
+                        // 继续——本会话过滤仍生效，最坏重启重新显示一次，与损坏水位同一保底处理。
                         let cleared_at = Utc::now();
                         let _ = watermark.save(cleared_at);
                         feed.set_backfill_watermark(Some(cleared_at));

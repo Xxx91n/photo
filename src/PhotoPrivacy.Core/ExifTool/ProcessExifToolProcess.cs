@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using Microsoft.Extensions.Logging;
+using PhotoPrivacy.Core.Runtime;
 
 namespace PhotoPrivacy.Core.ExifTool;
 
@@ -13,14 +15,32 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
     private string? _lastStderrLine;
     private int _exitSignaled;
 
+    /// <summary>
+    /// 停机拆卸闸（#37）：StopAsync 串行化——并发/重复进入只放第一遍做完整拆卸，后续立即返回。
+    /// 没有这道闸，两遍拆卸同时读到非 null 的 <c>_process</c> 会各自 Dispose 同一对象，
+    /// 第二遍抛 ObjectDisposedException 逃到停机路径变成 Warning 噪声。
+    /// StartAsync 重置为 0；拆卸中途失败也复位（rethrow 给调用方留痕，重试不被闸挡死）。
+    /// 同族竞态：ExifToolBridge._stdinGate 的 Dispose/Release（其 gate 所有权已随 #126 定下来）。
+    /// </summary>
+    private int _stopGate;
+
+    private readonly ILogger? _logger;
+
     public ProcessExifToolProcess()
-        : this(CreateDefaultProcessJobObject())
+        : this(logger: null)
     {
     }
 
     public ProcessExifToolProcess(IProcessJobObject jobObject)
     {
         _jobObject = jobObject;
+        _logger = null;
+    }
+
+    public ProcessExifToolProcess(ILogger? logger)
+    {
+        _jobObject = CreateDefaultProcessJobObject();
+        _logger = logger;
     }
 
     public static IProcessJobObject CreateDefaultProcessJobObject()
@@ -71,6 +91,8 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
         }
 
         Volatile.Write(ref _exitSignaled, 0);
+        // 重启复用同一实例（StopAsync → StartAsync）：重置停机闸，见 _stopGate 注释。
+        Volatile.Write(ref _stopGate, 0);
         _process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
         _process.Start();
         _jobObject.Assign(_process);
@@ -153,90 +175,146 @@ public sealed class ProcessExifToolProcess : IExifToolProcess
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        var stopped = Volatile.Read(ref _process);
-        if (stopped is null)
+        // 停机闸（#37）：并发/重复 StopAsync 只放第一遍做完整拆卸，后续立即返回。
+        // 拆卸是终态收尾（字段清 null、job object 释放），第二遍除了撞已 Dispose 的对象无事可做。
+        if (Interlocked.Exchange(ref _stopGate, 1) != 0)
         {
-            _jobObject?.Dispose();
-            _jobObject = null;
             return;
         }
 
-        // 1. Ask ExifTool to exit gracefully.
         try
         {
-            if (_stdin is not null)
+            var stopped = Volatile.Read(ref _process);
+            if (stopped is null)
             {
-                await _stdin.WriteAsync("-stay_open\nFalse\n-execute\n");
-                await _stdin.FlushAsync(CancellationToken.None);
+                _jobObject?.Dispose();
+                _jobObject = null;
+                Volatile.Write(ref _stopGate, 0);
+                return;
             }
+
+            // 1. Ask ExifTool to exit gracefully.
+            // 写入/flush 受同一 3 s 预算约束（CodeRabbit #228 二轮）：无令牌的 WriteAsync(string)
+            // 在对端不读且缓冲写满时会把停机吊死在强杀逻辑之前；先建 exitCts 再写，
+            // 写入、等待退出、强杀共享同一预算，被超时打断时 OCE 进分级留痕（Warning，真故障信号）。
+            using var exitCts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+            try
+            {
+                if (_stdin is not null)
+                {
+                    await _stdin.WriteAsync("-stay_open\nFalse\n-execute\n".AsMemory(), exitCts.Token);
+                    await _stdin.FlushAsync(exitCts.Token);
+                }
+            }
+            catch (Exception ex)
+            {
+                // 停机期 best-effort 写尾（#37）：进程已死/管道已断（Pipe is broken）是预期形态，
+                // 降 Debug 不进停机日志；其余异常同样不上抛（停机收尾语义不变）但留 Warning 痕，
+                // 不再无痕吞掉。
+                LogStdinTeardownFailure(ex, "asking ExifTool to exit");
+            }
+
+            // 2. Wait up to 3 s asynchronously, then force-kill.
+            //    Use a linked token so either the caller's timeout or our own fires first.
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(exitCts.Token, cancellationToken);
+            try
+            {
+                await stopped.WaitForExitAsync(linked.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                // Timed out or caller cancelled — force-kill the process.
+                try { stopped.Kill(entireProcessTree: true); } catch { /* already gone */ }
+            }
+
+            // 停机到此已确定进程没了。不依赖 Process.Exited 是否已派发（Dispose 之后它可能永远不会来）。
+            SignalExited(stopped);
+
+            // 3. Cancel the pump loops and wait with a short hard timeout.
+            if (_pumpCts is not null)
+            {
+                await _pumpCts.CancelAsync();
+            }
+
+            if (_stdoutPumpTask is not null)
+            {
+                try
+                {
+                    await _stdoutPumpTask.WaitAsync(TimeSpan.FromSeconds(1));
+                }
+                catch
+                {
+                    // timeout or cancellation — acceptable
+                }
+            }
+
+            if (_stderrPumpTask is not null)
+            {
+                try
+                {
+                    await _stderrPumpTask.WaitAsync(TimeSpan.FromSeconds(1));
+                }
+                catch
+                {
+                    // timeout or cancellation — acceptable
+                }
+            }
+
+            // 4. Dispose job object only after process has been stopped.
+            _jobObject?.Dispose();
+            _jobObject = null;
+
+            // 5. Clean up remaining resources.
+            // stdin StreamWriter.Dispose 在进程已死时会抛 IOException: Pipe is broken（#37；
+            // #31 轮 2026-11-04 实机观察，原记录已随 #254 移入 git 历史）——停机预期形态，降 Debug 不进停机日志；
+            // 其余异常留 Warning 后继续拆卸（停机收尾不阻断，与 StopBridgeAsync 同一处理方式）。
+            try
+            {
+                _stdin?.Dispose();
+            }
+            catch (Exception ex)
+            {
+                LogStdinTeardownFailure(ex, "disposing ExifTool stdin");
+            }
+
+            _pumpCts?.Dispose();
+            stopped.Dispose();
+
+            _stdin = null;
+            _pumpCts = null;
+            _process = null;
+            _stdoutPumpTask = null;
+            _stderrPumpTask = null;
+            _lastStderrLine = null;
         }
         catch
         {
-            // ignore — process may already be dead
+            // 拆卸中途失败：复位闸避免后续 StopAsync 被闸挡成静默空转；部分拆卸的对象态
+            // （已 Dispose 的 process/job、字段未清）不可完全恢复，重试可能仍失败——但每次
+            // 都带痕上抛由停机路径既有 catch 留 Warning，进程随 job object/进程退出收尾。
+            Volatile.Write(ref _stopGate, 0);
+            throw;
         }
+    }
 
-        // 2. Wait up to 3 s asynchronously, then force-kill.
-        //    Use a linked token so either the caller's timeout or our own fires first.
-        using var exitCts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(exitCts.Token, cancellationToken);
-        try
+    /// <summary>
+    /// 停机期 stdin 收尾异常分级（#37）：管道已断/对象已释放是预期形态，降 Debug 不进停机日志；
+    /// 其余异常留 Warning 痕——分级去重共用一个出口，不再无痕吞掉。
+    /// 留痕自身走 SafeLog.Try：日志器记录时抛错不得中断停机拆卸（CodeRabbit #228）。
+    /// </summary>
+    private void LogStdinTeardownFailure(Exception ex, string stage)
+    {
+        SafeLog.Try(() =>
         {
-            await stopped.WaitForExitAsync(linked.Token);
-        }
-        catch (OperationCanceledException)
-        {
-            // Timed out or caller cancelled — force-kill the process.
-            try { stopped.Kill(entireProcessTree: true); } catch { /* already gone */ }
-        }
-
-        // 停机到此已确定进程没了。不依赖 Process.Exited 是否已派发（Dispose 之后它可能永远不会来）。
-        SignalExited(stopped);
-
-        // 3. Cancel the pump loops and wait with a short hard timeout.
-        if (_pumpCts is not null)
-        {
-            await _pumpCts.CancelAsync();
-        }
-
-        if (_stdoutPumpTask is not null)
-        {
-            try
+            if (ex is IOException or ObjectDisposedException)
             {
-                await _stdoutPumpTask.WaitAsync(TimeSpan.FromSeconds(1));
+                _logger?.LogDebug(ex, "stdin already unavailable while {Stage} (expected during shutdown).", stage);
             }
-            catch
+            else
             {
-                // timeout or cancellation — acceptable
+                _logger?.LogWarning(ex, "Unexpected failure while {Stage}; continuing teardown.", stage);
             }
-        }
-
-        if (_stderrPumpTask is not null)
-        {
-            try
-            {
-                await _stderrPumpTask.WaitAsync(TimeSpan.FromSeconds(1));
-            }
-            catch
-            {
-                // timeout or cancellation — acceptable
-            }
-        }
-
-        // 4. Dispose job object only after process has been stopped.
-        _jobObject?.Dispose();
-        _jobObject = null;
-
-        // 5. Clean up remaining resources.
-        _stdin?.Dispose();
-        _pumpCts?.Dispose();
-        stopped.Dispose();
-
-        _stdin = null;
-        _pumpCts = null;
-        _process = null;
-        _stdoutPumpTask = null;
-        _stderrPumpTask = null;
-        _lastStderrLine = null;
+        });
     }
 
     /// <summary>

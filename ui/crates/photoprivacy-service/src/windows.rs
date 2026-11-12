@@ -169,13 +169,13 @@ const ADVERTISED_PIPE_VALUE: &str = "ServicePipeName";
 /// 提权脚本用的 PowerShell 注册表路径（与 `ACL_REGISTRY_SUBKEY` 指向同一位置）。
 const ACL_REGISTRY_KEY_PATH: &str = r"HKLM:\SOFTWARE\PhotoPrivacy";
 
-/// UI 安装链的安装者 SID 登记面（#200 落地，决策见 #82 D12）。
+/// UI 安装链的安装者 SID 登记面。
 ///
-/// Design(#82): 取「发起安装的 UI 进程令牌」的 `TokenUser`，不取提权后子进程令牌。
-/// 依据：`run_sc` 的提权走 runas，OTS（输入不同管理员凭据）时提权进程属于另一账户，而那不是
+/// 取「发起安装的 UI 进程令牌」的 `TokenUser`，不取提权后子进程令牌。
+/// 依据：`run_sc` 的提权走 runas，输入不同管理员凭据时提权进程属于另一账户，而那不是
 /// 安装者本人的桌面会话；UI 进程本身就是发起安装的交互用户，同账户 UAC 提权不改变 SID，
-/// 因此进程令牌 SID 即 #70 语义要求的安装者 SID，也就是 AC1 里「安装者本人的非提权桌面会话」。
-/// SID 解析失败时安装直接中止（#205 ④ 分型），不落「只能提权访问」的半成品服务。
+/// 因此进程令牌 SID 即安装者 SID，也就是安装者本人的非提权桌面会话。
+/// SID 解析失败时安装直接中止，不留下「只能提权访问」的半成品服务。
 pub trait InstallerSidRegistry: Send + Sync {
     /// 解析安装者 SID（`S-1-5-21-...`），失败时给出可展示原因（#205 ④ 失败分型）。
     fn installer_sid(&self) -> Result<String, String>;
@@ -341,7 +341,7 @@ fn current_process_user_sid() -> Result<String, String> {
             ));
         }
 
-        // SID 字符串上限 184 字符（is_sid_string 同口径），扫描加边界避免越界读。
+        // SID 字符串上限 184 字符（与 is_sid_string 规则一致），扫描加边界避免越界读。
         let mut len = 0usize;
         while len < 184 && *raw.add(len) != 0 {
             len += 1;
@@ -934,7 +934,7 @@ impl ServiceOps for WindowsOps {
 
         let mut create = self.run_sc(args.clone(), true);
         if create.exit_code == Some(1073) {
-            // 旧 UI 的竞态兜底：清理窗口里服务又被安装回来时，再删一次再 create。
+            // 旧 UI 的竞态处理：清理窗口里服务又被安装回来时，再删一次再 create。
             let retry = self.ensure_removed_before_install();
             if retry.status != ServiceCommandStatus::Success {
                 // 重试停/删失败或用户取消：服务没建成，本次写下的登记也必须撤回，
@@ -2014,7 +2014,7 @@ mod tests {
 
     #[test]
     fn install_failure_after_removal_retry_restores_the_registration() {
-        // 返修（PR #217 review）：1073 兜底重试里停/删失败也属「服务没建成」，
+        // 1073 重试里停/删失败也属「服务没建成」，
         // 本次写下的登记同样必须撤回，否则被装回来的服务会拿它当管道 ACL 来源。
         let previous_sid = "S-1-5-21-111111111-222222222-333333333-1002";
         let (ops, _, acl, _) = ops_with_acl(

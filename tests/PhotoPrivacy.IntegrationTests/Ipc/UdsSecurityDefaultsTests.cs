@@ -8,7 +8,7 @@ namespace PhotoPrivacy.IntegrationTests.Ipc;
 /// <list type="number">
 /// <item>
 /// <b>缺口 1</b>：<c>ListenAsync</c> 裸 <c>Directory.CreateDirectory(dir)</c> 按 umask 建 0755，
-/// 目录可被任意本地用户遍历（端点存在性/目录内容外泄）；靠「目录 0750 收口」的模型里等于一层防线被缺省值替换。
+/// 目录可被任意本地用户遍历（端点存在性/目录内容外泄）；靠「目录必须 0750」的模型里等于一层防线被缺省值替换。
 /// </item>
 /// <item>
 /// <b>缺口 2</b>：<c>PHOTOPRIVACY_SERVICE_GROUP</c> 缺失时回落 <c>photoprivacy</c>——正好是数据组名，
@@ -16,8 +16,8 @@ namespace PhotoPrivacy.IntegrationTests.Ipc;
 /// </item>
 /// </list>
 /// 主体断言真实行为（真实建目录、真实读文件模式、真实解析环境变量）：缺省值本身既是行为也是契约，
-/// 改回旧形态必红；末尾另留一道源码结构守卫（<see cref="ClassifySecurityDefaults"/>），
-/// 覆盖本机 umask / 注入路径恰好掩盖回潮的场景（developer 机器 umask 077 时 0755 行为用例可能假绿）。
+/// 改回旧形态必红；末尾另留一道源码结构检查（<see cref="ClassifySecurityDefaults"/>），
+/// 覆盖本机 umask / 注入路径恰好掩盖老毛病再犯的场景（developer 机器 umask 077 时 0755 行为用例可能假绿）。
 /// 程序集级 <c>DisableTestParallelization</c>（TestAssemblyConfig）保证环境变量注入不串扰其他用例。
 /// </summary>
 public sealed class UdsSecurityDefaultsTests
@@ -58,7 +58,7 @@ public sealed class UdsSecurityDefaultsTests
         }
     }
 
-    /// <summary>固定 uid 的伪造凭据策略：让白名单/拒绝分支可被判据而不是判本机身份。</summary>
+    /// <summary>固定 uid 的伪造凭据策略：让白名单/拒绝分支可按注入凭据判断而不是判本机身份。</summary>
     private sealed class FixedUidPolicy : UnixPeerCredentialPolicy
     {
         private readonly uint? _ownUid;
@@ -139,7 +139,7 @@ public sealed class UdsSecurityDefaultsTests
                 path, UnixSocketAccessMode.BackgroundOnly);
             await transport.ListenAsync(CancellationToken.None);
 
-            // 回潮形态：裸 CreateDirectory 按 umask（CI 常见 022）建成 0755——组与其他人可遍历。
+            // 老毛病形态：裸 CreateDirectory 按 umask（CI 常见 022）建成 0755——组与其他人可遍历。
             Assert.Equal(ExpectedDirectoryMode, File.GetUnixFileMode(dir));
             Assert.Equal(
                 UnixFileMode.UserRead | UnixFileMode.UserWrite,
@@ -151,7 +151,7 @@ public sealed class UdsSecurityDefaultsTests
         }
     }
 
-    /// <summary>缺口 1 分支二（服务模式）：兜底建目录同样 0750，socket 为 0660。</summary>
+    /// <summary>缺口 1 分支二（服务模式）：补建目录同样 0750，socket 为 0660。</summary>
     [Fact]
     public async Task Listen_Should_Create_Missing_Socket_Directory_As_0750_In_Service_Mode()
     {
@@ -207,7 +207,7 @@ public sealed class UdsSecurityDefaultsTests
                 path, UnixSocketAccessMode.BackgroundOnly);
             await transport.ListenAsync(CancellationToken.None);
 
-            // 回潮形态：无条件 chmod 会把安装器/运维收紧的目录（例如 0700 的取证目录）放宽。
+            // 老毛病形态：无条件 chmod 会把安装器/运维收紧的目录（例如 0700 的留证据目录）放宽。
             Assert.Equal(ExpectedDirectoryMode, File.GetUnixFileMode(dir));
         }
         finally
@@ -216,7 +216,7 @@ public sealed class UdsSecurityDefaultsTests
         }
     }
 
-    /// <summary>缺口 1 分支一（反向）：更紧的 0700 既存目录不得被兜底路径放宽到 0750。</summary>
+    /// <summary>缺口 1 分支一（反向）：更紧的 0700 既存目录不得被补建路径放宽到 0750。</summary>
     [Fact]
     public async Task Listen_Should_Preserve_A_Tighter_Existing_Socket_Directory_Mode()
     {
@@ -229,7 +229,7 @@ public sealed class UdsSecurityDefaultsTests
         var dir = Path.GetDirectoryName(path)!;
         try
         {
-            // 比 0750 更紧的既存目录（0700）：兜底路径不得把它放宽到 0750——
+            // 比 0750 更紧的既存目录（0700）：补建路径不得把它放宽到 0750——
             // 「不改既存权限」必须对两侧都成立，否则等于悄悄扩大权限面。
             Directory.CreateDirectory(dir);
             var stricter = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
@@ -293,7 +293,7 @@ public sealed class UdsSecurityDefaultsTests
 
         WithServiceGroupEnv(null, () =>
         {
-            // 缺口 2 的回潮形态：缺注入回落数据组，照样构造成功、照样按 0660 绑定，
+            // 缺口 2 的老毛病形态：缺注入回落数据组，照样构造成功、照样按 0660 绑定，
             // 「组隔离」只剩一层同组可写的空壳。必须构造期即拒。
             var ex = Assert.Throws<InvalidOperationException>(() =>
                 new UnixDomainSocketIpcTransport(
@@ -338,7 +338,7 @@ public sealed class UdsSecurityDefaultsTests
         await WithServiceGroupEnvAsync(null, async () =>
         {
             // 后台模式 socket 0600 仅属主可连，不看组：手工起后台 Worker、容器内运行缺注入不是错误。
-            // 回潮形态：把 fail-closed 一刀切到全部模式，后台端点在手起场景无故拒启。
+            // 老毛病形态：把 fail-closed 一刀切到全部模式，后台端点在手起场景无故拒启。
             var path = NewMissingDirectorySocketPath();
             try
             {
@@ -355,11 +355,11 @@ public sealed class UdsSecurityDefaultsTests
     }
 
     // ------------------------------------------------------------------
-    // 回潮守卫：把 #187 的两条缺省形态钉在源码结构上（行为用例之外的第二道）。
+    // 防老毛病再犯的检查：把 #187 的两条缺省形态钉在源码结构上（行为用例之外的第二道）。
     // ------------------------------------------------------------------
 
     /// <summary>
-    /// 对 UnixDomainSocketIpcTransport 源码（已剥注释）分类 #187 的两条回潮形态：
+    /// 对 UnixDomainSocketIpcTransport 源码（已剥注释）分类 #187 的两条老毛病形态：
     /// ① 组名解析出现「缺失即回落」分支（<c>? DefaultServiceGroupName :</c> 落在解析函数里），
     ///    或解析函数不再抛异常；② 目录创建退回不带模式的裸 <c>Directory.CreateDirectory(dir)</c>。
     /// 返回违规原因，空表示绿。
@@ -388,7 +388,7 @@ public sealed class UdsSecurityDefaultsTests
         }
 
         // 缺口 1 原形态：裸 CreateDirectory(dir)（单参）按 umask 建 0755。
-        // 用正则而非字面量：变量名重命名不该把守卫打成假红，判的是「有没有不带模式的创建」。
+        // 用正则而非字面量：变量名重命名不该把检查打成假红，判的是「有没有不带模式的创建」。
         var bareCreate = System.Text.RegularExpressions.Regex.IsMatch(
             transportSource,
             @"Directory\s*\.\s*CreateDirectory\s*\(\s*(?!path\s*,)[^,()]+\s*\)",
@@ -406,7 +406,7 @@ public sealed class UdsSecurityDefaultsTests
             TimeSpan.FromSeconds(5));
         if (!createsWithMode)
         {
-            violations.Add("socket 目录兜底创建不再显式施加 SocketDirectoryMode（0750）");
+            violations.Add("socket 目录在自动创建时不再显式施加 SocketDirectoryMode（0750）");
         }
 
         // 目录从出现起就要是 0750：创建后必须显式 SetUnixFileMode（createMode 受 umask 影响）。
@@ -423,7 +423,7 @@ public sealed class UdsSecurityDefaultsTests
         return violations;
     }
 
-    /// <summary>从指定开括号位置截取平衡的 {…} 块（守卫分类器用）。</summary>
+    /// <summary>从指定开括号位置截取平衡的 {…} 块（检查分类器用）。</summary>
     /// <param name="text">源码文本。</param>
     /// <param name="openBraceIndex">开括号下标。</param>
     /// <returns>含首尾括号的块文本。</returns>
@@ -451,14 +451,14 @@ public sealed class UdsSecurityDefaultsTests
     }
 
     /// <summary>
-    /// 防的具体回潮形态（issue #187）：① <c>ResolveServiceGroupName</c> 改回「缺失即回落
+    /// 要防的老毛病（issue #187）：① <c>ResolveServiceGroupName</c> 改回「缺失即回落
     /// <c>DefaultServiceGroupName</c>」——旧缺省值就是数据组名，组隔离静默退化成 CWE-732 原始形态；
-    /// ② <c>ListenAsync</c> 的目录兜底改回裸 <c>Directory.CreateDirectory(dir)</c>，按 umask 建 0755。
+    /// ② <c>ListenAsync</c> 的目录补建改回裸 <c>Directory.CreateDirectory(dir)</c>，按 umask 建 0755。
     /// 两条都是「行为用例在 ubuntu CI 上能绿、真实安装机上却是漏洞」的形态：行为用例判的是本机 umask 与
     /// 注入路径，源码结构判的是这两条缺省分支还在不在，故各留一道。
     /// 关联 issue #187。
     /// </summary>
-    /// <summary>结构守卫失效即红：基线必须绿，回落到缺省组名 / 裸创建 / 创建后不收紧三种突变必须被分类器判红。</summary>
+    /// <summary>结构检查失效即红：基线必须绿，回落到缺省组名 / 裸创建 / 创建后不收紧三种突变必须被分类器判红。</summary>
     [Fact]
     public void Defaults_Guard_Should_Flag_Regressed_Transport_Source()
     {
@@ -478,7 +478,7 @@ public sealed class UdsSecurityDefaultsTests
                 green.Replace(
                     "Directory.CreateDirectory(level, SocketDirectoryMode);",
                     "Directory.CreateDirectory(dir);"),
-                "目录兜底退回裸创建"),
+                "目录自动创建退回裸创建"),
             (
                 green.Replace("File.SetUnixFileMode(level, SocketDirectoryMode);", "// removed"),
                 "创建后不再收紧目录模式"),

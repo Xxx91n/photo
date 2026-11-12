@@ -3,13 +3,13 @@ using System.Text.RegularExpressions;
 namespace PhotoPrivacy.IntegrationTests;
 
 /// <summary>
-/// source-lint 守卫（承接 首脑复核登记项）：测试代码禁止 drive-relative 形态的
+/// 源码文本检查（承接 首脑复核登记项）：测试代码禁止 drive-relative 形态的
 /// verbatim 路径字面量 —— 形态为 at-verbatim 前缀 + 盘符 + 冒号 + 非分隔符字符。
 ///
 /// 背景：提交把 RuleEngineTests 里的绝对路径字面量吞成了该形态（盘符后的分隔符丢失），
 /// 而断言语义不依赖该路径（Decide 按扩展名判定），缺陷因此静默存活到首脑复核才被发现。
 /// 该形态在任何平台都不是「绝对路径」的意图写法，出现即意味着反斜杠被吞或路径写错；
-/// 本守卫把它变成 CI 红灯。整改方式：写绝对路径用完整形态（盘符 + 分隔符 + 路径），
+/// 本检查让它在 CI 里直接失败。整改方式：写绝对路径用完整形态（盘符 + 分隔符 + 路径），
 /// 写相对路径就不要带盘符。
 /// </summary>
 public sealed class TestCodeVerbatimPathGuardTests
@@ -55,7 +55,7 @@ public sealed class TestCodeVerbatimPathGuardTests
     [Fact]
     public void Guard_Should_Detect_Drive_Relative_Literal_Shape()
     {
-        // 失效即红预演（正向）：命中形态必须被抓到，否则守卫是空转。
+        // 失效即红预演（正向）：命中形态必须被抓到，否则检查是空转。
         var hit = new string(['@', '"', 'D', ':', 'h', 'o', 't', '"']);
         Assert.Matches(DriveRelativeVerbatimLiteral, hit);
     }

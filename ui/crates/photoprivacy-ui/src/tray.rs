@@ -45,8 +45,8 @@ pub struct TrayHandle {
 /// 不能当成「已安装」；否则托盘永不出现，关窗即退出。
 ///
 /// 旧 UI 先看服务管道是否存活、再看安装态；启动前还没有连接态，这里只按安装态判定，
-/// 「管道存活但探测为未安装」的竞态不覆盖（对等核销见 #61）。
-// Design(#49): 托盘只在后台模式且服务未安装、且用户未关闭托盘时显示；服务已安装（含 Unknown）不得留下托盘，
+/// 「管道存活但探测为未安装」的竞态不覆盖。
+// 托盘只在后台模式且服务未安装、且用户未关闭托盘时显示；服务已安装（含 Unknown）不得留下托盘，
 // 无服务管理实现的平台（FreeBSD）不按安装态抑制。
 pub fn should_show_tray_icon(
     state: ServiceRuntimeState,
@@ -63,7 +63,7 @@ pub fn should_show_tray_icon(
 /// 的无入口状态（旧 UI 用 `trayReady` 表达同一约束）。
 ///
 /// `show_tray_icon` 直接取 [`should_show_tray_icon`] 的结果（已含 `ui.hide_tray_icon`）。
-// Design(#49): 运行期安装/卸载服务不重建托盘（旧 ServiceModeController 的模式切换编排不迁移，对等核销见 #61）。
+// 运行期安装/卸载服务不重建托盘（旧模式切换机制不迁移）。
 pub fn install(show_tray_icon: bool, i18n: Rc<Catalog>, locale: &str) -> Option<TrayHandle> {
     if !show_tray_icon {
         return None;
@@ -82,7 +82,7 @@ pub fn install(show_tray_icon: bool, i18n: Rc<Catalog>, locale: &str) -> Option<
 /// 托盘可用（含配置开关与运行模式门控）、且托盘真的建起来时，才不建窗口。
 /// 旧签名的 `!HideTrayIcon` 已折叠进 `show_tray_icon`，这里只保留可达的三项。
 /// 服务模式下 `show_tray_icon` 为 false，窗口必须出现，否则用户没有任何入口。
-// Design(#49): 静默启动要求托盘实际可用且未被配置关闭；服务模式与托盘创建失败都必须显式出窗。
+// 静默启动要求托盘实际可用且未被配置关闭；服务模式与托盘创建失败都必须显式出窗。
 pub fn should_start_hidden(
     hide_main_window_on_startup: bool,
     show_tray_icon: bool,
@@ -93,10 +93,9 @@ pub fn should_start_hidden(
 
 impl TrayHandle {
     /// 构建托盘图标、原生菜单与左键/退出命令。
-    // Design(#49): 托盘文案归新栈 i18n（#60 落地后存续出处随换栈主线）；语言切换经 `poll` 原位改写。
+    // 托盘文案走本地化模块；语言切换经 `poll` 原位改写。
     fn build(i18n: Rc<Catalog>, locale: &str) -> anyhow::Result<Self> {
-        // 旧菜单还有 Pause/Resume；本票 AC 只要求显示/退出，Worker 暂停/恢复控制不在本票范围，
-        // 对等核销时需在 #61 的清单里显式处置。
+        // 旧菜单还有 Pause/Resume；这里只要求显示/退出，Worker 暂停/恢复控制不在本范围。
         let open_window = MenuItem::new(i18n.get(locale, k::TRAY_OPEN_WINDOW), true, None);
         let exit = MenuItem::new(i18n.get(locale, k::TRAY_EXIT), true, None);
         let menu = Menu::new();

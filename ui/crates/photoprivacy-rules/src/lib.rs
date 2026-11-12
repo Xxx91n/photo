@@ -182,7 +182,7 @@ impl GroupSet {
 }
 
 /// 完整的 `rules.json` 键值资产：五族 × 六组 = 30 个布尔键。
-// Design(#49): rules.json 是新旧 UI 共用的键值资产——键名与键集由 C# FormatRulesStore 定义，本 crate 只镜像。
+// rules.json 是新旧 UI 共用的键值资产——键名与键集由 C# FormatRulesStore 定义，本 crate 只镜像。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FormatRules {
     values: BTreeMap<String, bool>,

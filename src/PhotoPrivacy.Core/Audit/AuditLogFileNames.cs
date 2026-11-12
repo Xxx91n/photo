@@ -5,10 +5,9 @@ namespace PhotoPrivacy.Core.Audit;
 /// <summary>
 /// 审计文件名日期基准的唯一入口（#129 决策）。按本地「今天」分卷命名，写入端
 /// （JsonLineAuditLogger）、IPC 回填（WorkerIpcRequestHandler）、UI tail（feed.rs audit_path）
-/// 三处统一走本口径；行内 <c>timestamp_utc</c> 仍是 UTC，文件名日期只做按日分卷键，
+/// 三处统一走本规则；行内 <c>timestamp_utc</c> 仍是 UTC，文件名日期只做按日分卷键，
 /// 与 #102 的绝对时刻水位比较正交。
 /// </summary>
-// Design(#208): 审计文件名日期基准统一取本地日期，写入端与 IPC 回填、UI tail 三处同口径；UTC 口径只保留在行内 timestamp_utc，不进文件名。
 public static class AuditLogFileNames
 {
     /// <summary>

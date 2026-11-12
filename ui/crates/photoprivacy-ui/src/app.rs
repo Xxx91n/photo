@@ -10,10 +10,10 @@ use crate::service_page::{ServiceCommand, ServiceFeedback, ServiceSnapshot};
 use crate::theme::{self, Theme, ThemeMode};
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, App, Bounds, BoxShadow, ClipboardItem, Context, CursorStyle, Div, FocusHandle,
-    FontWeight, IntoElement, KeyBinding, KeyDownEvent, MouseButton, PathPromptOptions, Pixels,
-    Render, Rgba, ScrollHandle, ScrollStrategy, Stateful, StyleRefinement, Styled, Subscription,
-    UniformListScrollHandle, Window, actions, div, px, uniform_list,
+    AnyElement, App, AppContext, Bounds, BoxShadow, ClipboardItem, Context, CursorStyle, Div,
+    FocusHandle, FontWeight, IntoElement, KeyBinding, KeyDownEvent, MouseButton, PathPromptOptions,
+    Pixels, Render, Rgba, ScrollHandle, ScrollStrategy, Stateful, StyleRefinement, Styled,
+    Subscription, UniformListScrollHandle, Window, actions, div, px, uniform_list,
 };
 use photoprivacy_ipc::{
     ConnectFailureCause, ConnectionSnapshot, ConnectionState, ServiceReachability, WorkerMode,
@@ -35,7 +35,7 @@ const SAVE_STATUS_TTL: Duration = Duration::from_secs(3);
 /// 复制反馈显示时长。
 const COPY_FEEDBACK_TTL: Duration = Duration::from_secs(2);
 
-// Design(#219): Tab/Shift+Tab 绑定到焦点遍历动作，动作回调只调 window.focus_next/prev；
+// Tab/Shift+Tab 绑定到焦点遍历动作，动作回调只调 window.focus_next/prev；
 // Enter/Space 激活沿用 gpui 内建的合成点击（focusable + on_click 控件），不再自管按键。
 actions!(photoprivacy_ui, [FocusNext, FocusPrev]);
 
@@ -64,7 +64,7 @@ pub(crate) fn focus_ring(ring: Rgba) -> impl FnOnce(StyleRefinement) -> StyleRef
 }
 
 /// 配置页可聚焦控件登记：稳定句柄（跨渲染身份不变）+ 布局探针（供滚动揭示取坐标）。
-// Design(#219): Tab/Shift+Tab 移焦后必须把聚焦控件滚入 config-scroll 视口，否则焦点环在
+// Tab/Shift+Tab 移焦后必须把聚焦控件滚入 config-scroll 视口，否则焦点环在
 // 视口外不可见、键盘用户失位；探针不设 overflow，滚轮 delta 恒为 0 且不吞事件，
 // 只借 track_scroll 记录控件窗口坐标。
 #[derive(Default)]
@@ -198,7 +198,7 @@ impl ConfigUiState {
                     Some(error) => SaveState::SavedWorkerDown(error),
                     None => SaveState::Saved,
                 };
-                // Design(#82): 只有成功态按 TTL 淡出。失败态（配置已落盘但 Worker 未重载）
+                // 只有成功态按 TTL 淡出。失败态（配置已落盘但 Worker 未重载）
                 // 常驻到下一次保存成功——否则阻断原因随 3 s 消失，用户被绕回「请前往配置页」，
                 // 看不到「ExifTool 缺失 / 目录不可写」这类真正原因。
                 self.save_status_deadline = if reload_failed {
@@ -223,7 +223,7 @@ impl ConfigUiState {
         // 旧 UI 的 ResolveExifToolPath：首次加载时当前路径不存在则探测并显示提示；
         // 外部回灌/保存回读不清掉已有提示（旧 UI 只在启动时设置 hint）。
         if auto_detect_exiftool {
-            // Design(#82): 空路径 = 按运行时探测，只探测给提示，绝不写回 config.exiftool.path——
+            // 空路径 = 按运行时探测，只探测给提示，绝不写回 config.exiftool.path——
             // UI 是 config.json 的写入方，写回会把「探测」冻结成绝对路径，包换个目录就指向旧位置。
             if config.exiftool.path.trim().is_empty() {
                 self.exiftool_hint = detect_exiftool_path(&config.exiftool.path);
@@ -484,7 +484,7 @@ pub struct AppDeps {
     pub config_path: PathBuf,
     pub rules: Rc<RefCell<RulesEditor>>,
     pub i18n: Rc<Catalog>,
-    /// `--open-page` 指定的启动页；None 时默认总览（虚拟环境截图取证用，#32）。
+    /// `--open-page` 指定的启动页；None 时默认总览（虚拟环境测试截图用）。
     pub open_page: Option<Page>,
 }
 
@@ -517,7 +517,7 @@ enum StartTimeoutCause {
     TrueTimeout,
 }
 
-/// 1053 归因判据（#202 / #218）：UI 此刻确实连着后台 Worker，且两边的审计目录相同，
+/// 1053 归因判断规则：UI 此刻确实连着后台 Worker，且两边的审计目录相同，
 /// 才能断定服务 Worker 是撞上同一份目录的准入门而让位，1053 是确定成因而非猜测；
 /// 不连后台 Worker 或目录不同都保持真超时归因。
 ///
@@ -582,7 +582,7 @@ fn service_audit_directory(config_path: &Path) -> Option<String> {
         .map(|config| config.audit.log_directory)
 }
 
-/// 1053 归因判据的三态结论（CodeRabbit 返修）：`Unknown` 表示服务侧配置读不到/解析失败，
+/// 1053 归因判断的三态结论：`Unknown` 表示服务侧配置读不到/解析失败，
 /// 无法证明两个目录是否相同。它与"确定不同"必须分开——读盘失败若被当成 `Mismatched`
 /// 缓存下来，配置事后修好也不会重算，1053 会被长期误判成真超时。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -593,7 +593,7 @@ enum AuditDirsMatch {
 }
 
 impl AuditDirsMatch {
-    /// 判据消费方只关心"能否确定目录相同"（`Unknown` 一律保守当不成立）。
+    /// 调用方只关心"能否确定目录相同"（`Unknown` 一律保守当不成立）。
     fn is_matched(self) -> bool {
         matches!(self, Self::Matched)
     }
@@ -630,7 +630,7 @@ fn connected_audit_dirs_match(config: &AppConfig, config_path: &Path) -> bool {
     audit_dirs_match_verdict(config, config_path).is_matched()
 }
 
-/// 1053 归因判据的缓存键（CodeRabbit 返修）：反馈身份 + UI 侧配置 + 配置路径。任一变化
+/// 1053 归因判断的缓存键：反馈身份 + UI 侧配置 + 配置路径。任一变化
 /// 都需要重算——反馈换了就是新的 1053 事件，配置目录或配置路径换了则服务侧读的目录可能
 /// 已经不是同一个。
 #[derive(Clone, PartialEq, Eq)]
@@ -738,11 +738,34 @@ pub struct AppView {
     i18n: Rc<Catalog>,
     /// 复制反馈：记录触发反馈的按钮 ID 与截止时间，仅该按钮显示"已复制"。
     copy_feedback: Option<(String, Instant)>,
-    /// 1053 归因判据缓存（CodeRabbit 返修）：`feedback_banner` 处在渲染路径上，若每帧都调
+    /// 1053 归因判断缓存：`feedback_banner` 处在渲染路径上，若每帧都调
     /// `connected_audit_dirs_match` 就会每帧 `is_file()` + 读 `config.json`，慢盘/网络配置文件
     /// 会把渲染拖住。这里按"反馈身份 + UI 侧配置 + 配置路径"缓存结果，只在键变化时重算一次。
     audit_dirs_match_cache: RefCell<Option<(AuditDirsMatchKey, bool)>>,
     _appearance_subscription: Subscription,
+}
+
+/// 日志行悬浮提示：消息列单行截断的长文本（message + 部分清理说明）在 tooltip 里给全文（#283）。
+/// 主题用主视图的 theme_mode（手动切换的 light/dark 要跟主界面一致，不能恒跟系统）。
+struct LogRowTooltip {
+    text: String,
+    mode: ThemeMode,
+}
+
+impl Render for LogRowTooltip {
+    fn render(&mut self, window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = Theme::resolve(self.mode, theme::is_dark(window.appearance()));
+        div()
+            .max_w(px(560.))
+            .p(px(10.))
+            .rounded(px(6.))
+            .bg(theme.surface_raised)
+            .border_1()
+            .border_color(theme.border)
+            .text_size(px(12.))
+            .text_color(theme.text)
+            .child(self.text.clone())
+    }
 }
 
 impl AppView {
@@ -778,7 +801,7 @@ impl AppView {
         let config_registry = Rc::new(RefCell::new(FocusRegistry::default()));
         let mut fields = HashMap::new();
         for id in FieldId::ALL {
-            // Design(#219): 输入框句柄经登记表创建（tab_stop 已置），Tab/Shift+Tab 依序经过全部字段。
+            // 输入框句柄经登记表创建（tab_stop 已置），Tab/Shift+Tab 依序经过全部字段。
             let focus = config_registry
                 .borrow_mut()
                 .focus_handle(id.element_id(), cx);
@@ -877,7 +900,7 @@ impl AppView {
             .map(|(entry, _)| *entry)
     }
 
-    // Design(#219): 虚拟列表只把可见行的复制按钮登记进 tab 链，末个可见行再按 Tab 会在
+    // 虚拟列表只把可见行的复制按钮登记进 tab 链，末个可见行再按 Tab 会在
     // 到达后续行之前回绕——移焦后检测回绕（焦点不再是日志行按钮），其后（前）仍有行就
     // 滚动揭示相邻行并聚焦其复制按钮；已是过滤列表首/末行则不接管，Tab 照常离开列表。
     // 返回 true 表示本次 Tab 已完全处置（列表内步进或边界跟进），调用方不再 focus_next/prev。
@@ -987,7 +1010,7 @@ impl AppView {
                         }
                         if this.service_snapshots.has_changed().unwrap_or(false) {
                             this.service = this.service_snapshots.borrow_and_update().clone();
-                            // 1053 判据缓存跟随快照换新（CodeRabbit 返修）：新 feedback 是新的
+                            // 1053 判断缓存跟随快照换新：新 feedback 是新的
                             // 1053 事件，可能对应期间被外部改过的配置，不能复用上一条反馈的结论。
                             *this.audit_dirs_match_cache.borrow_mut() = None;
                             changed = true;
@@ -997,7 +1020,7 @@ impl AppView {
                             let shared = this.config_state.borrow();
                             if shared.config != this.config {
                                 this.config = shared.config.clone();
-                                // 配置变更同样作废 1053 判据缓存（CodeRabbit 返修）：
+                                // 配置变更同样作废 1053 判断缓存：
                                 // 服务侧读的目录可能已被改写，旧结论不再可信。
                                 *this.audit_dirs_match_cache.borrow_mut() = None;
                                 let lengths: Vec<(FieldId, usize)> = FieldId::ALL
@@ -2244,7 +2267,7 @@ impl AppView {
             ConnectionState::Disconnected => self.t(k::STATUS_DISCONNECTED),
         };
 
-        // Design(#82): 保存已落盘但未生效（或保存本身失败）时，原因必须在概览页常驻可见，
+        // 保存已落盘但未生效（或保存本身失败）时，原因必须在概览页常驻可见，
         // 并可直接点回配置页。以前它只是配置页里一条 3 s 淡出的状态文本，用户在概览页只看到
         // 「请前往配置页设置监控目录」，被绕回同一步。
         let reload_block = match &self.save_state {
@@ -2259,9 +2282,9 @@ impl AppView {
             _ => None,
         };
 
-        // Design(#82): 连接失败行优先呈现编排结论的分类文案——服务授权拒绝与 Worker 缺失
+        // 连接失败行优先呈现连接结果的分类文案——服务授权拒绝与 Worker 缺失
         // 是两种截然不同的处境（#169 落地后关票，决策归档），统一归到心跳的 os error 2 会让未授权用户无从采取正确动作。
-        // 无分类时维持 last_error 原样（未分类错误的兜底口径不变）。
+        // 无分类时维持 last_error 原样（未分类错误的保底处理规则不变）。
         let failure_line = match &self.snapshot.connect_failure {
             Some(cause) => Some((
                 connect_failure_text(&self.i18n, &self.config.ui.locale, cause),
@@ -2631,10 +2654,21 @@ impl AppView {
         cx: &mut Context<Self>,
     ) -> Div {
         let tone = Self::tone_color(entry.tone, theme);
-        let copy_text = format!(
+        // #283：消息列单行截断，复制与悬浮 tooltip 都给全文兜底（说明可能很长）。
+        let mut copy_text = format!(
             "[{}] {} {} {}",
             entry.time_text, entry.display_event, entry.source_path_masked, entry.message
         );
+        let tooltip_text = match &entry.partial_note {
+            Some(note) => {
+                copy_text.push('\n');
+                copy_text.push_str(note);
+                format!("{}\n{}", entry.message, note)
+            }
+            None => entry.message.clone(),
+        };
+        let has_tooltip_text = !tooltip_text.is_empty();
+        let theme_mode = self.theme_mode.get();
         let button_id = format!("copy-log-{entry_index}");
         let row_focus = self.log_copy_handle(entry_index, cx);
         div()
@@ -2680,12 +2714,45 @@ impl AppView {
                     .child(entry.source_path_masked.clone()),
             )
             .child(
+                // #283：部分清理族（GIF/PSD/视频）成功事件在消息列下方补一行说明，
+                // 让用户知道“清干净”其实是“还有残留”；普通事件只有 message 一行。
+                // 行高保持 40px：两行小字号文字在 uniform_list 固定行内纵向居中，
+                // 不破虚拟列表的等高假设。说明文案是 Worker 写进 data.partial_clean
+                // 的原文（单一来源在 WipeStrategyResolver.PartialCleanNote），不在这里
+                // 二次翻译。
                 div()
+                    .id(("log-msg", entry_index)) // tooltip 挂在 Stateful 元素上，ID 按行唯一
                     .flex_1()
-                    .truncate()
-                    .text_size(px(12.))
-                    .text_color(theme.text)
-                    .child(entry.message.clone()),
+                    .flex()
+                    .flex_col()
+                    .justify_center()
+                    .overflow_hidden()
+                    // #283：长文本悬停看全文；闭包持有副本，空文本行不挂（免得悬停出空白气泡）。
+                    .when(has_tooltip_text, |el| {
+                        el.tooltip(move |_, cx| {
+                            cx.new(|_| LogRowTooltip {
+                                text: tooltip_text.clone(),
+                                mode: theme_mode,
+                            })
+                            .into()
+                        })
+                    })
+                    .child(
+                        div()
+                            .truncate()
+                            .text_size(px(12.))
+                            .text_color(theme.text)
+                            .child(entry.message.clone()),
+                    )
+                    .when_some(entry.partial_note.clone(), |el, note| {
+                        el.child(
+                            div()
+                                .truncate()
+                                .text_size(px(11.))
+                                .text_color(theme.text_faint)
+                                .child(note),
+                        )
+                    }),
             )
             .child(self.copy_button(
                 button_id,
@@ -2728,7 +2795,7 @@ impl AppView {
             Some(focus) => button.track_focus(&focus),
             None => button.focusable().tab_stop(true),
         };
-        // Design(#219): 复制按钮是可交互控件，必须入焦点链（track_focus/focusable + tab_stop
+        // 复制按钮是可交互控件，必须入焦点链（track_focus/focusable + tab_stop
         // + 焦点环）；Enter/Space 经 gpui 合成点击与鼠标同效。无底色描边取默认强调色。
         button
             .focus(focus_ring(theme.accent))
@@ -2877,7 +2944,7 @@ impl AppView {
         div().h(px(1.)).bg(theme.border)
     }
 
-    /// 1053 归因判据（带缓存）：`feedback_banner` 每帧渲染都会问一次"两边审计目录是否相同"，
+    /// 1053 归因判断（带缓存）：`feedback_banner` 每帧渲染都会问一次"两边审计目录是否相同"，
     /// 直接调 `connected_audit_dirs_match` 等于每帧 `is_file()` + 读 `config.json`（CodeRabbit
     /// 返修：UI 线程同步读盘会拖住渲染）。缓存键变化才重算，命中缓存时零磁盘 IO。
     ///
@@ -2943,7 +3010,7 @@ impl AppView {
         let worker_mode = self.snapshot.worker_mode;
         // #218：连后台 Worker 还不够，两边审计目录相同才成立——服务读的是安装时的
         // config.json，UI 这份可能已被改成别的目录，此时 1053 只能算真超时。
-        // 只有 1053 才会用到这个判据：先短路掉 exit_code 判断，渲染路径上不做无谓的读盘；
+        // 只有 1053 才会用到这个判断：先短路掉 exit_code 判断，渲染路径上不做无谓的读盘；
         // 1053 这一支走 `audit_dirs_match` 的缓存，同一份反馈重复渲染不再碰磁盘
         // （CodeRabbit 返修：UI 线程每帧读盘会阻塞渲染）。
         let audit_dirs_match = exit_code == Some(1053) && self.audit_dirs_match(feedback);
@@ -3478,7 +3545,7 @@ mod tests {
         assert_eq!(element_ids.len(), FIELD_SPECS.len(), "element_id 不可重复");
     }
 
-    /// 防的回潮形态：#169 之前未授权用户最终只看到统一的「连接 Worker 失败: os error 2」，
+    /// 避免出现未授权用户最终只看到统一的「连接 Worker 失败: os error 2」，
     /// 三态文案映射错位会把这层混同原样带回（未授权被引导去重装、缺 Worker 被引导去找安装者）。
     #[test]
     fn connect_failure_texts_map_to_distinct_guidance() {
@@ -3488,7 +3555,7 @@ mod tests {
             connect_failure_text(&catalog, "zh-CN", &ConnectFailureCause::ServiceAccessDenied);
         assert!(denied.contains("未被授权"), "denied: {denied}");
         // 授权拒绝的行动指引按平台分键（CodeRabbit 返修）：Windows 指向安装脚本的
-        // -AuthorizedUsers 集合，Unix 指向 0660+共享组边界——两平台都不混入 os error 口径。
+        // -AuthorizedUsers 集合，Unix 指向 0660+共享组边界——两平台都不混入 os error 说法。
         if cfg!(windows) {
             assert!(denied.contains("-AuthorizedUsers"), "denied: {denied}");
         } else {
@@ -3496,7 +3563,7 @@ mod tests {
         }
         assert!(
             !denied.contains("os error"),
-            "授权拒绝文案不得混入端点缺失的 os error 口径: {denied}"
+            "授权拒绝文案不得混入端点缺失的 os error 提示: {denied}"
         );
 
         let startup = connect_failure_text(
@@ -3531,8 +3598,8 @@ mod tests {
         assert!(en_startup.contains("spawn: boom"), "en: {en_startup}");
     }
 
-    /// 防的回潮形态：重载失败原因随 `SAVE_STATUS_TTL` 一起消失，用户被绕回「请前往配置页」。
-    // Design(#82): 失败态不挂 3 s TTL，只有成功态按 TTL 淡出。
+    /// 避免重载失败原因随 `SAVE_STATUS_TTL` 一起消失，导致用户被绕回「请前往配置页」。
+    // 失败态不挂 3 s TTL，只有成功态按 TTL 淡出。
     #[test]
     fn save_failure_status_stays_visible_instead_of_expiring() {
         let mut state = ConfigUiState::new(Some(AppConfig::default()));
@@ -3558,7 +3625,7 @@ mod tests {
         assert_eq!(state.save_status_deadline, None);
     }
 
-    /// 防的具体回潮形态（CodeRabbit #155 Major）：加载时把空的 `exiftool.path` 填成探测到的绝对路径，
+    /// 避免加载时把空的 `exiftool.path` 填成探测到的绝对路径，
     /// UI 一保存就写进 config.json——发布包换个目录解压后 Worker 仍指向旧位置。
     #[test]
     fn blank_exiftool_path_is_not_written_back_on_load() {
@@ -3606,7 +3673,7 @@ mod tests {
         assert_eq!(state.exiftool_hint.as_deref(), Some(expected_hint.as_str()));
 
         // 前后带空白的目录同样不能触发写回：detect_exiftool_path 先 trim 再解析，
-        // set_config 必须用同一口径判断 is_dir，否则目录值会被替换成 exe 绝对路径。
+        // set_config 必须用同一规则判断 is_dir，否则目录值会被替换成 exe 绝对路径。
         let padded = format!("  {}  ", dir.display());
         let mut padded_config = AppConfig::default();
         padded_config.exiftool.path = padded.clone();
@@ -3993,6 +4060,44 @@ mod tests {
             .unwrap();
         assert_eq!(page, Page::Logs, "复制按钮的 Enter 不应切换页面");
         assert_eq!(log_len, 1, "复制不应改动日志缓冲");
+    }
+
+    /// 带部分清理说明的日志行复制时说明也要能拿到（#283）：
+    /// GIF/PSD/视频成功事件在消息列下方补说明行，复制文本追加完整说明原文。
+    #[test]
+    fn copy_log_row_includes_partial_clean_note() {
+        let (mut cx, window) = setup();
+        let any_window: AnyWindowHandle = window.into();
+        let record = photoprivacy_logs::parse_line(
+            r#"{"event_type":"file_processing_succeeded","level":"INFO","timestamp_utc":"2026-11-12T01:02:03.0000000Z","source_path_masked":"C:/p.gif","message":"attempt=1;wipe_result=Cleaned_Modified","data":{"partial_clean":"部分清理：C2PA(JUMBF) 保留"}}"#,
+        )
+        .expect("带 partial_clean 的样例审计行应可解析");
+        window
+            .update(&mut cx, |view, _, _| {
+                view.log_state.borrow_mut().logs.push_batch(vec![record]);
+                view.rebuild_visible();
+            })
+            .unwrap();
+
+        // 与 tab_reaches_log_copy_button_and_enter_copies 同款导航：日志页 + 11 跳到首行复制按钮。
+        for _ in 0..4 {
+            press_tab(&mut cx, any_window, true);
+        }
+        press_activation_key(&mut cx, any_window, "enter");
+        draw(&mut cx, any_window);
+        for _ in 0..11 {
+            press_tab(&mut cx, any_window, true);
+        }
+        press_activation_key(&mut cx, any_window, "enter");
+        draw(&mut cx, any_window);
+
+        let clipboard = cx.read(|cx| cx.read_from_clipboard().and_then(|item| item.text()));
+        assert!(
+            clipboard
+                .as_ref()
+                .is_some_and(|text| text.contains("部分清理：C2PA(JUMBF) 保留")),
+            "剪贴板应包含部分清理说明，实际 {clipboard:?}"
+        );
     }
 
     /// 输入框的 FocusHandle 接管焦点态，且作为 tab stop 进出不陷获（AC2/AC4）。

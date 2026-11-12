@@ -127,7 +127,7 @@ public sealed class PollingFallbackScanner : IDisposable
 
         try
         {
-            // 快照深度与 FSW 监听深度同源：include_subdirectories=false 时兜底只盯顶层，
+            // 快照深度与 FSW 监听深度同源：include_subdirectories=false 时补漏扫只盯顶层，
             // 否则监听范围外新建的子目录文件仍会被上报处理（#109）。
             foreach (var file in WatchFolderEnumeration.EnumerateFiles(_rootPath, _includeSubdirectories))
             {

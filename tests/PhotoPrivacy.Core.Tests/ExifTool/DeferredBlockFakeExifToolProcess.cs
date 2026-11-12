@@ -7,7 +7,7 @@ namespace PhotoPrivacy.Core.Tests.ExifTool;
 /// 但**带文件参数的块**（探测 / 擦除）写入后不立刻产出，等用例逐块、逐段放行。
 ///
 /// 为什么不复用 <see cref="ProtocolLevelFakeExifToolProcess"/>：它把「一块的回显到 <c>{ready}</c> 之间
-/// 插不进别块的行」当作回放前提（单线程块处理队列），那正是 #39 登记为未实测的假设。要锁死
+/// 插不进别块的行」当作回放前提（单线程块处理队列），那正是 #226 已真进程实测覆盖的假设（原登记 #39，StayOpenConcurrentBlockTests）。要锁死
 /// 「marker 互为前缀时归属不串块」（#111），必须能注入该假设<b>之外</b>的时序，故本假件把块产出时机交给用例。
 ///
 /// 交给用例的只有时序，语义仍是协议的：回显文本取自命令块里的 <c>-echo1</c>（不认识任何 marker 名字、
@@ -119,7 +119,7 @@ internal sealed class DeferredBlockFakeExifToolProcess : IExifToolProcess
         return Task.CompletedTask;
     }
 
-    /// <summary>产出第 index 块的 <c>-echo1</c> 回显（该块开始处理的锚点）。</summary>
+    /// <summary>产出第 index 块的 <c>-echo1</c> 回显（该块开始处理的参照点）。</summary>
     public void EmitEcho(int index) => Emit(index, BlockPart.Echo);
 
     /// <summary>产出第 index 块的数据行（只有 <c>-json</c> 块有；擦除块无数据行）。</summary>
@@ -192,7 +192,7 @@ internal sealed class DeferredBlockFakeExifToolProcess : IExifToolProcess
 
     /// <summary>
     /// 块里是否含「待解析文件」参数——探测 / 擦除块有，健康 / 版本探针没有。
-    /// 判定与 <see cref="ProtocolLevelFakeExifToolProcess"/> 同口径（非选项 token，且不是 -echo1 的回显目标）。
+    /// 判定与 <see cref="ProtocolLevelFakeExifToolProcess"/> 同一规则（非选项 token，且不是 -echo1 的回显目标）。
     /// </summary>
     private static bool HasFileInput(IReadOnlyList<string> lines)
     {

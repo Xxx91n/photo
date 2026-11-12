@@ -3,7 +3,7 @@
 #
 # 用途：在 macOS（实机或 CI macOS runner 虚拟环境）对 launchd 服务安装链做端到端断言：
 #   安装 → 注册 → 常驻（KeepAlive 重启）→ 日志 → 停止 → 启动 → 卸载 → 清理。
-# 操作与判定口径对齐 ui/crates/photoprivacy-service/src/unix.rs：
+# 操作和判断标准与 ui/crates/photoprivacy-service/src/unix.rs 一致：
 #   - 安装走 scripts/install-launchd-service.sh（MacOps::install 同款，仅跳过 osascript 提权包装——
 #     本 harness 本身要求 root 运行）；
 #   - 停止/启动/卸载用 MacOps 同款 launchctl 命令串；
@@ -124,7 +124,7 @@ rec() {
 }
 
 capture() {
-  # capture <证据文件> <命令...>：命令原样输出留证（失败不中断 harness，退出码记入证据）
+  # capture <证据文件> <命令...>：命令原样输出留证据（失败不中断 harness，退出码记入证据）
   local out="$EVIDENCE_DIR/$1"
   shift
   local rc=0
@@ -138,7 +138,7 @@ capture() {
 
 # ---------- GUI 用户（安装脚本 --gui-user 的显式语义） ----------
 # harness 要求 sudo 从 GUI 用户运行，SUDO_USER 即调用者；这里显式传给安装脚本，让 --gui-user 的显式
-# 分支（指定用户不存在/加不进组必须让安装失败）在 CI 里真的被走到，而不是全程只靠 SUDO_USER 推断兜底
+# 分支（指定用户不存在/加不进组必须让安装失败）在 CI 里真的被走到，而不是全程只靠 SUDO_USER 推断
 # （评审 nit：安装调用漏传 --gui-user，显式语义零覆盖）。
 GUI_USER="${SUDO_USER:-}"
 INSTALL_GUI_ARGS=()
@@ -146,9 +146,9 @@ if [[ -n "$GUI_USER" ]]; then
   INSTALL_GUI_ARGS=(--gui-user "$GUI_USER")
 fi
 
-# 显式空 --gui-user 必须硬失败（评审 R5 回归锚点）：早前它会静默落进「未解析到 GUI 用户」的告警分支
+# 显式空 --gui-user 必须直接报错（评审 R5 定下的回归参照点）：早前它会静默落进「未解析到 GUI 用户」的告警分支
 # 并以 exit 0 收场，调用方会把「没给名字」误判成「IPC 权限已供给完成」。安装脚本在参数解析阶段就拒绝，
-# 早于任何账户/目录副作用，因此可以在铺发布包之前安全地跑这条负向自证。
+# 早于任何账户/目录副作用，因此可以在铺发布包之前安全地跑这条负向验证。
 if bash "$INSTALL_SCRIPT" --gui-user "" >/dev/null 2>&1; then
   rec FAIL "install-launchd-service.sh 接受了空 --gui-user（期望非零退出）"
 else
@@ -295,7 +295,7 @@ ui_probe_report() {
   fi
   local uid user_dir report out rc
   uid="$(id -u "$SUDO_USER")"
-  # GUI 用户只拿专用子目录可写，root 侧证据文件不交出去（CWE-59，与 ui_shot 同口径）；
+  # GUI 用户只拿专用子目录可写，root 侧证据文件不交出去（CWE-59，与 ui_shot 同一套规则）；
   # 报告由 root 收回证据根（rename 不跟随符号链接，无截断面）。
   user_dir="$EVIDENCE_DIR/ui-user"
   mkdir -p "$user_dir"
@@ -379,7 +379,7 @@ ui_shot() {
   chown "$GUI_USER" "$shot_dir" 2>/dev/null || true
   # 安装后 config.json 对 GUI 不可读（0750/0640 服务账户:数据组，#167 配置写入边界）；
   # 截图脚本自行退回最小默认配置（只开 #174 静默开关），这里不再以 root 复制受保护配置，
-  # 避免把配置字节交给 GUI 或为取证放宽安装目录权限。
+  # 避免把配置字节交给 GUI 或为留证据放宽安装目录权限。
   local rc=0
   run_with_timeout 60 "$out" launchctl asuser "$uid" sudo -u "$GUI_USER" \
     bash "$SHOT_SCRIPT" --install-dir "$INSTALL_DIR" --tag "$tag" --out-dir "$shot_dir" || rc=$?
@@ -401,21 +401,21 @@ new_pid_alive() {
 }
 
 cleanup() {
-  # 兜底：任一环节失败也不留加载中的服务（与产品卸载语义一致：unload + rm plist；
+  # 保底：任一环节失败也不留加载中的服务（与产品卸载语义一致：unload + rm plist；
   # 对已卸载态幂等——失败一律吞掉）。
   launchctl unload -w "$PLIST_PATH" >/dev/null 2>&1 || true
   rm -f "$PLIST_PATH" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
-# ---------- 0. 环境留证（虚拟环境/实机识别） ----------
+# ---------- 0. 环境留证据（虚拟环境/实机识别） ----------
 capture 00-env.txt uname -a
 capture 00-env.txt sw_vers
 if [[ "$UI_SHOTS" != 1 ]]; then
   rec INFO "UI Service 页截图未启用（需要截图证据请传 --ui-shots）"
 fi
 
-# ---------- 1. staging：按用户口径把发布包解压进安装目录 ----------
+# ---------- 1. staging：按目标用户的规则把发布包解压进安装目录 ----------
 capture 01-staging.txt echo "release dir: ${RELEASE_DIR}"
 mkdir -p "$INSTALL_DIR"
 set +e
@@ -434,7 +434,7 @@ else
   exit 1
 fi
 
-# UI 层取证基线：安装前 = 未安装态（Service 页同源探测 + 截图）
+# UI 层留证据基线：安装前 = 未安装态（Service 页同源探测 + 截图）
 ui_probe_report pre-install
 ui_shot pre-install
 
@@ -470,7 +470,7 @@ else
 fi
 
 if [[ ! -f "$PLIST_PATH" ]]; then
-  rec FAIL "plist 未写入 ${PLIST_PATH}——后续生命周期断言无意义，提前收口"
+  rec FAIL "plist 未写入 ${PLIST_PATH}——后续生命周期断言无意义，提前退出"
   echo "---- summary ----" | tee -a "$SUMMARY_FILE"
   echo "PASS=${PASS_COUNT} FAIL=${FAIL_COUNT}" | tee -a "$SUMMARY_FILE"
   exit 1
@@ -503,7 +503,7 @@ else
 fi
 OLD_PID="$STABLE_PID"
 
-# UI 层取证：运行中态（Service 页同源探测 + 截图），在 KeepAlive 试验前取稳定态
+# UI 层留证据：运行中态（Service 页同源探测 + 截图），在 KeepAlive 试验前取稳定态
 ui_probe_report running 1
 ui_shot running
 
@@ -605,7 +605,7 @@ if wait_until 30 test -S "$SERVICE_SOCKET"; then
 
   # R1 的功能面 + GUI 组边界：GUI_USER 是 `SUDO_USER` 的受控投影（`set -u` 下裸 `$SUDO_USER`
   # 会直接终止脚本）。root 直登或 `SUDO_USER=root` 无法代表真实 GUI 用户，与 ui_probe_report
-  # 同口径记 FAIL，而不是静默跳过——否则汇总会在「组边界根本没验」时仍显示全绿（fail-closed）。
+  # 按同一标准记 FAIL，而不是静默跳过——否则汇总会在「组边界根本没验」时仍显示全绿（fail-closed）。
   if [[ -z "$GUI_USER" || "$GUI_USER" == "root" ]]; then
     rec FAIL "GUI 组边界未验证：需经 sudo 从 GUI 用户运行（GUI_USER 缺失或为 root）"
   else
@@ -630,7 +630,7 @@ if wait_until 30 test -S "$SERVICE_SOCKET"; then
   # 组隔离的第二道事实：socket 访问组与数据组必须是两条不同 GID 的组记录。
   # 同名/同 GID 的崩坏形态会让 GUI 用户虽然只进了 socket 组，却继承数据组对 hot/quarantine 的 2770
   # 组写（#180 评审 Major：安装器早期把数据组 GID 复用给 socket 组）。这里按 dscl 记录对拍，
-  # 不依赖安装器自述。放在「服务已起来」分支内：安装失败时早已提前收口，不产出脱离上下文的 PASS。
+  # 不依赖安装器自述。放在「服务已起来」分支内：安装失败时早已提前退出，不产出脱离上下文的 PASS。
   SOCKET_GID="$(group_primary_gid "$SOCKET_GROUP")"
   SERVICE_GID="$(group_primary_gid "$SERVICE_GROUP")"
   if [[ -n "$SOCKET_GID" && -n "$SERVICE_GID" \
@@ -662,7 +662,7 @@ else
 fi
 expect_state Stopped "停止后状态=已安装未运行（plist 仍在、不再加载）"
 
-# UI 层取证：已停止态
+# UI 层留证据：已停止态
 ui_probe_report stopped
 ui_shot stopped
 
@@ -708,11 +708,11 @@ else
   rec FAIL "卸载 15s 后仍有 Worker 进程残留"
 fi
 
-# UI 层取证：卸载后 = 未安装态
+# UI 层留证据：卸载后 = 未安装态
 ui_probe_report uninstalled
 ui_shot uninstalled
 
-# ---------- 8. 收口 ----------
+# ---------- 8. 收尾清理 ----------
 capture 10-final.txt launchctl list "$SERVICE_LABEL"
 capture 10-final.txt launchctl print "system/${SERVICE_LABEL}"
 {

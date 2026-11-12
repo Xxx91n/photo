@@ -7,7 +7,7 @@ using PhotoPrivacy.Core.Rules;
 namespace PhotoPrivacy.Core.Tests.Pipeline;
 
 /// <summary>
-/// （不变量②数据零意外丢失）：备份面镜像相对路径布局 + 冲突分流行为测试。
+/// （用户文件不许意外丢）：备份面镜像相对路径布局 + 冲突分流行为测试。
 ///
 /// 原 bug：RuleEngine 备份槽位只取文件名——<c>hot/vacation/IMG_0001.jpg</c> 与
 /// <c>hot/work/IMG_0001.jpg</c> 解析到同一 <c>{bak}/IMG_0001.jpg.bak</c>，
@@ -15,8 +15,8 @@ namespace PhotoPrivacy.Core.Tests.Pipeline;
 ///
 /// 三场景（issue Acceptance criteria #1）：
 /// 1. 双子目录同名文件 → 两个备份都在且内容各自正确（镜像布局结构性消歧）；
-/// 2. 同文件重处理（内容未变）→ 同槽位+内容相同跳过（承接"保留最新"合法语义，不产生旁路版本）；
-/// 3. 同文件内容变化后重处理 → 写 名字.时间戳.扩展名 旁路版本，原槽位绝不覆盖。
+/// 2. 同文件重处理（内容未变）→ 同槽位+内容相同跳过（承接"保留最新"合法语义，不另存一份）；
+/// 3. 同文件内容变化后重处理 → 另存一份为 名字.时间戳.扩展名，原槽位绝不覆盖。
 ///
 /// 用真实 LocalFileOperations + 真实 FileTaskPipeline + 磁盘临时目录（非回放式 fake），
 /// 断言的是盘上实物，不是调用记录。
@@ -97,7 +97,7 @@ public sealed class BackupMirrorLayoutTests : IDisposable
         Assert.Equal(new byte[] { 0xFF, 0xD8, 0xCC, 0x03 }, File.ReadAllBytes(slot));
     }
 
-    // ── 场景 3：内容变化 → 旁路版本，绝不静默覆盖 ─────────────────────────
+    // ── 场景 3：内容变化 → 另存一份，绝不静默覆盖 ─────────────────────────
 
     [Fact]
     public async Task HandleAsync_Content_Changed_Should_Write_Sidecar_And_Keep_Original_Slot()
@@ -119,7 +119,7 @@ public sealed class BackupMirrorLayoutTests : IDisposable
         // 原槽位绝不覆盖：仍是第一次的真原始。
         Assert.Equal(slotBytesV1, File.ReadAllBytes(slot));
 
-        // 旁路版本产生：名字.时间戳.扩展名，内容为第二次源。
+        // 另存的文件出现：名字.时间戳.扩展名，内容为第二次源。
         var sidecarEvent = audit.Events.Single(e => e.EventType == "backup_sidecar_versioned");
         var sidecar = sidecarEvent.Data!["sidecar"];
         Assert.StartsWith(Path.Combine(_backupRoot, "work", "diverge.jpg."), sidecar);
@@ -152,7 +152,7 @@ public sealed class BackupMirrorLayoutTests : IDisposable
     [Fact]
     public void ResolveBackupSlot_SiblingPrefix_Trap_Should_Fall_Back_To_Unsorted()
     {
-        // "/a/repo" vs "/a/repo-backup" 兄弟目录陷阱：源不在监控根子树内 → 兜底 _unsorted + 短哈希。
+        // "/a/repo" vs "/a/repo-backup" 兄弟目录陷阱：源不在监控根子树内 → 退路 _unsorted + 短哈希。
         var hot = Path.Combine(Path.GetTempPath(), "pp-rbs-root");
         var outside = Path.Combine(Path.GetTempPath(), "pp-rbs-root-backup", "IMG_0002.jpg");
 
@@ -167,8 +167,18 @@ public sealed class BackupMirrorLayoutTests : IDisposable
     public void ResolveBackupSlot_Should_Normalize_Reserved_Windows_Names()
     {
         var hot = Path.Combine(Path.GetTempPath(), "pp-rbs-res");
-        var slot = BackupPathResolver.ResolveBackupSlot(
-            Path.Combine(hot, "CON.jpg"), hot, Path.Combine(hot, "bak"), ".bak");
+        var source = Path.Combine(hot, "CON.jpg");
+
+        // 部分宿主（Windows Server 2022 + .NET 10 实测）的 GetFullPath 会把保留设备名归一成
+        // \\.\CON，原文路径到不了解析器；这时钉住安全退路（_unsorted），别假装通过。
+        if (!Path.GetFullPath(source).EndsWith("CON.jpg", StringComparison.OrdinalIgnoreCase))
+        {
+            var fallback = BackupPathResolver.ResolveBackupSlot(source, hot, Path.Combine(hot, "bak"), ".bak");
+            Assert.Contains(BackupPathResolver.FallbackDirName, fallback);
+            return;
+        }
+
+        var slot = BackupPathResolver.ResolveBackupSlot(source, hot, Path.Combine(hot, "bak"), ".bak");
 
         Assert.NotNull(slot);
         Assert.EndsWith("_CON.jpg.bak", slot);
@@ -188,7 +198,7 @@ public sealed class BackupMirrorLayoutTests : IDisposable
         Assert.Equal(Path.Combine("D:", "bak", "work", "IMG.jpg.20260916-021530-1.bak"), second);
     }
 
-    // ── retention 兜底：镜像子树递归可见 + 空目录清理（新增语义锁定）──
+    // ── retention 保底：镜像子树递归可见 + 空目录清理（新增语义锁定）──
 
     [Fact]
     public void EnforceMaxSize_Should_See_Mirror_Subtree_Backups_And_Cleanup_Empty_Dirs()
@@ -208,7 +218,7 @@ public sealed class BackupMirrorLayoutTests : IDisposable
         Assert.True(File.Exists(Path.Combine(nested, "IMG.jpg.20260916-021530.bak")));
         Assert.False(Directory.Exists(empty));
 
-        // 超上限：镜像子树内的旁路版本也必须能被 size 兜底清掉（AllDirectories 生效证明）。
+        // 超上限：镜像子树内另存的文件也必须能被 size 保底清掉（AllDirectories 生效证明）。
         var all = new List<string>
         {
             Path.Combine(_backupRoot, "vacation", "IMG.jpg.bak"),
@@ -224,9 +234,9 @@ public sealed class BackupMirrorLayoutTests : IDisposable
         var survivors = Directory.EnumerateFiles(_backupRoot, "*.bak", SearchOption.AllDirectories)
             .Select(f => new FileInfo(f))
             .ToList();
-        // 锁定语义 = 递归枚举让 size 兜底对镜像子树生效（删除顺序按最旧优先，不断言幸存个数）。
+        // 锁定语义 = 递归枚举让 size 保底对镜像子树生效（删除顺序按最旧优先，不断言幸存个数）。
         Assert.True(survivors.Sum(f => f.Length) <= 1024,
-            $"size 兜底未递归生效：{string.Join("; ", survivors.Select(f => $"{f.Name}:{f.Length}"))}");
+            $"size 保底未递归生效：{string.Join("; ", survivors.Select(f => $"{f.Name}:{f.Length}"))}");
         Assert.NotEmpty(survivors); // 远未超限时不误删光
     }
 

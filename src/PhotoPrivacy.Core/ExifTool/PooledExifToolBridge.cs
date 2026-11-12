@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using PhotoPrivacy.Core.Audit;
 using PhotoPrivacy.Core.Configuration;
 
@@ -27,7 +28,6 @@ public sealed class PooledExifToolBridge : IExifToolBridge, IDisposable
     // 原来只看 _bridges[0]，但派发从 index 1 起轮转，第一个文件往往落在 _bridges[1]，
     // bridge[0] 可能整个生命周期都没启动过 → 恒报 unknown。版本对同一 ExifTool 二进制
     // 是同一值，取任一非 unknown 的子桥值语义等价。
-    // Design(#82): 池化桥上报「首个已解析出的版本」，不再锚定 _bridges[0]。
     public string VersionText
     {
         get
@@ -51,7 +51,6 @@ public sealed class PooledExifToolBridge : IExifToolBridge, IDisposable
     /// 已知单点：若子桥 0 的可执行文件路径本身失效，其余子桥同样起不来（配置共享同一路径），
     /// 因此不为这一情形扩散到整池。
     /// </summary>
-    // Design(#82): 版本解析只启动 _bridges[0]，不为一次状态查询拉起整池。
     public Task EnsureVersionAsync(CancellationToken cancellationToken)
         => _bridges[0].EnsureVersionAsync(cancellationToken);
 
@@ -100,19 +99,28 @@ public sealed class PooledExifToolBridge : IExifToolBridge, IDisposable
         }
     }
 
+    /// <summary>
+    /// 逐个释放子桥；<c>_parallelGate</c> 有意不 Dispose（#126，与 <see cref="ExifToolBridge.Dispose"/>
+    /// 同一族）：在途 <see cref="WipeMetadataAsync"/> 的 finally Release 可能跨过停机/重载对旧池的
+    /// Dispose，先 Dispose 会命中 Release 抛 ObjectDisposedException，或把挂在 WaitAsync 上的
+    /// 等待者永久吊住。信号量无非托管资源，随 GC 与进程退出收尾。
+    /// </summary>
     public void Dispose()
     {
         foreach (var bridge in _bridges)
         {
             (bridge as IDisposable)?.Dispose();
         }
-        _parallelGate.Dispose();
     }
 }
 
 public static class PooledExifToolBridgeFactory
 {
-    public static IExifToolBridge BuildFromConfig(AppConfig config, IAuditLogger audit, IReadOnlyDictionary<string, bool>? wipeRules = null)
+    /// <param name="processLogger">
+    /// 透传给每个 <see cref="ProcessExifToolProcess"/> 的日志器（#37）：停机期 stdin 管道已断的
+    /// 预期异常降 Debug、非预期失败留 Warning 痕——该类自身不持有审计/生命周期缝，只能走日志。
+    /// </param>
+    public static IExifToolBridge BuildFromConfig(AppConfig config, IAuditLogger audit, IReadOnlyDictionary<string, bool>? wipeRules = null, ILogger? processLogger = null)
     {
         if (config.ExifTool.DryRun)
         {
@@ -122,22 +130,22 @@ public static class PooledExifToolBridgeFactory
         var poolSize = Math.Max(1, config.ExifTool.StayOpenPoolSize);
         if (poolSize == 1)
         {
-            return BuildSingle(config, audit, wipeRules);
+            return BuildSingle(config, audit, wipeRules, processLogger);
         }
 
         var bridges = new List<IExifToolBridge>(poolSize);
         for (var i = 0; i < poolSize; i++)
         {
-            bridges.Add(BuildSingle(config, audit, wipeRules));
+            bridges.Add(BuildSingle(config, audit, wipeRules, processLogger));
         }
 
         return new PooledExifToolBridge(bridges, config.ExifTool.MaxParallelDrain);
     }
 
-    private static IExifToolBridge BuildSingle(AppConfig config, IAuditLogger audit, IReadOnlyDictionary<string, bool>? wipeRules)
+    private static IExifToolBridge BuildSingle(AppConfig config, IAuditLogger audit, IReadOnlyDictionary<string, bool>? wipeRules, ILogger? processLogger)
     {
         return new ExifToolBridge(
-            process: new ProcessExifToolProcess(),
+            process: new ProcessExifToolProcess(logger: processLogger),
             config: config,
             wipeRules: wipeRules,
             logger: null,

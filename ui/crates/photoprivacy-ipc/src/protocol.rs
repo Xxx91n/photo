@@ -16,7 +16,7 @@ pub mod methods {
     pub const GET_RECENT_LOGS: &str = "GetRecentLogs";
 }
 
-// Design(#49): IPC JSON 行协议是新旧 UI 的唯一主缝——方法名与字段语义冻结，新能力只以 method 名扩展。
+// IPC JSON 行协议连接两端——方法名与字段语义保持稳定，新能力只以 method 名扩展。
 #[derive(Debug, Clone, Serialize)]
 pub struct Request<'a> {
     pub method: &'a str,
@@ -32,6 +32,16 @@ impl<'a> Request<'a> {
             method,
             id,
             v: Some(PROTOCOL_VERSION),
+        }
+    }
+
+    /// 指定协议版本发送请求：版本协商下调后的重试会用它（#42：会话/启动顺序边界，
+    /// UI 可能先于 Worker 启动，双方必须对齐到都会说的版本）。
+    pub fn with_version(method: &'a str, id: Option<&'a str>, version: i32) -> Self {
+        Self {
+            method,
+            id,
+            v: Some(version),
         }
     }
 }
@@ -207,14 +217,14 @@ mod tests {
 
     #[test]
     fn method_surface_is_exactly_the_client_declared_set() {
-        // 防（source-lint，#102）：B′ 清空水位方案零协议改动——清空只走本地水位过滤，
-        // 不新增 IPC method。守卫范围：本文件 `methods` 模块声明的常量面必须恰为 UI
+        // 防：清空水位方案零协议改动——清空只走本地水位过滤，
+        // 不新增 IPC method。检查范围：本文件 `methods` 模块声明的常量面必须恰为 UI
         // 实际使用的五个方法（dotnet 侧契约全集另有 Pause/Resume/Shutdown，见
-        // docs/agents/ipc-contract.md，不经此模块）。守卫边界：只解析模块体到第一个
+        // docs/agents/ipc-contract.md，不经此模块）。检查边界：只解析模块体到第一个
         // `}`，抓任意可见性（pub / pub(crate) / pub(super)…）的声明，带非字符串字面量的
-        // pub 项直接 panic 红——绕过常量以内联字符串调 `Request::new` 的新方法不触发；
-        // 真要扩协议必须先走 ipc-contract.md 的契约同步三件套（协议文档 + 本文件 +
-        // 两端契约测试），此守卫逼那次改动显式改这里，防止 B′ 回潮成静默扩协议。
+        // pub 项直接 panic 报错——绕过常量以内联字符串调 `Request::new` 的新方法不触发；
+        // 真要扩协议必须先走 ipc-contract.md 的契约同步（协议文档 + 本文件 +
+        // 两端契约测试），此检查要求改动显式改这里，防止悄悄扩协议。
         let source = include_str!("protocol.rs");
         let module = source
             .split("pub mod methods")

@@ -1,10 +1,12 @@
 use crate::endpoints::Endpoint;
-use crate::protocol::{self, MAX_RESPONSE_BYTES, Request, Response, Status, methods};
+use crate::protocol::{
+    self, MAX_RESPONSE_BYTES, PROTOCOL_VERSION, Request, Response, Status, methods,
+};
 use crate::verify::{ServerGuard, ServerPeer, UnverifiablePolicy, VerifyOutcome};
 use std::fmt;
 use std::io;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU64, Ordering};
 use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 use tokio::time::{Instant, timeout};
@@ -19,7 +21,7 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(3);
 const CONNECT_RETRY_INTERVAL: Duration = Duration::from_millis(25);
 
 // ------------------------------------------------------------------
-// #7 / CWE-732：IPC 客户端请求掩码（与服务端拆位后的授权用户掩码同值，双端同构）
+// #7 / CWE-732：IPC 客户端请求掩码（与服务端按位去掉 0x4 后的授权用户掩码同值，双端同构）
 // ------------------------------------------------------------------
 
 /// FILE_GENERIC_READ（winnt.h）：READ_DATA|READ_ATTRIBUTES|READ_EA|READ_CONTROL|SYNCHRONIZE。
@@ -27,7 +29,7 @@ const FILE_GENERIC_READ: u32 = 0x0012_0089;
 /// FILE_GENERIC_WRITE（winnt.h）：WRITE_DATA|APPEND_DATA|WRITE_ATTRIBUTES|WRITE_EA|READ_CONTROL|SYNCHRONIZE。
 /// APPEND_DATA(0x4) 与 FILE_CREATE_PIPE_INSTANCE 同值——微软 Named Pipe 文档登记的位碰撞缺陷源。
 const FILE_GENERIC_WRITE: u32 = 0x0012_0116;
-/// FILE_CREATE_PIPE_INSTANCE：仅服务端建例需要；客户端请求掩码必须剥除（#7），否则对拆位后的
+/// FILE_CREATE_PIPE_INSTANCE：仅服务端建例需要；客户端请求掩码必须剥除（#7），否则对按位去掉 0x4 后的
 /// 服务端 DACL 连接被 AccessCheck 整体拒绝（UI 完全连不上服务 Worker）。
 const FILE_CREATE_PIPE_INSTANCE: u32 = 0x0000_0004;
 /// IPC 客户端请求掩码（#7）：FILE_GENERIC_READ|WRITE 剥除 0x4 后的 0x0012019B，与 C# 侧
@@ -37,14 +39,14 @@ pub const IPC_CLIENT_DESIRED_ACCESS: u32 =
     FILE_GENERIC_READ | (FILE_GENERIC_WRITE & !FILE_CREATE_PIPE_INSTANCE);
 
 // 打开 flags 的本地常量（winnt.h/winbase.h 值；不 import windows_sys 是为了在非 Windows 编译面
-// 也能用测试钉住组合——审查返修 M1：漏 SECURITY_SQOS_PRESENT 会让 Identification 级别失效）。
-// 叶常量可达性口径（审查返修 M-R1 + CI 返修）：flags 叶常量经 pub 的 IPC_CLIENT_OPEN_FLAGS
+// 也能用测试钉住组合——漏 SECURITY_SQOS_PRESENT 会让 Identification 级别失效）。
+// 叶常量可达性说明：flags 叶常量经 pub 的 IPC_CLIENT_OPEN_FLAGS
 // 初始化式可达（非 Windows lib 面不判死码）；OPEN_EXISTING 是 dwCreationDisposition 实参
 // 而非 flag，仅 connect_once（cfg(windows)）使用，故单独 cfg——非 Windows 面不编译，
 // Windows 面经调用点可达。
 /// FILE_FLAG_OVERLAPPED（winbase.h）：tokio IOCP 注册所需。
 const FILE_FLAG_OVERLAPPED: u32 = 0x4000_0000;
-/// OPEN_EXISTING（winbase.h）：管道客户端打开语义（不存在即失败，不创建）；仅 windows 打开路径使用（CI 返修：非 Windows 面零引用会撞 dead_code）。
+/// OPEN_EXISTING（winbase.h）：管道客户端打开语义（不存在即失败，不创建）；仅 windows 打开路径使用。
 #[cfg(windows)]
 const OPEN_EXISTING: u32 = 3;
 /// SECURITY_SQOS_PRESENT（winnt.h）：SQOS 位生效开关——微软 CreateFileW 文档的前置条件，
@@ -52,15 +54,15 @@ const OPEN_EXISTING: u32 = 3;
 const SECURITY_SQOS_PRESENT: u32 = 0x0010_0000;
 /// SECURITY_IDENTIFICATION（winnt.h）：冒充级别=仅识别——服务端不可对客户端 ImpersonateNamedPipeClient 冒充。
 const SECURITY_IDENTIFICATION: u32 = 0x0001_0000;
-/// IPC 客户端打开 flags（#7）：SQOS 三件套，与 tokio ClientOptions::new 默认 flags 同构（1.54.1 源码核实）。
+/// IPC 客户端打开 flags：SQOS 三件套，与 tokio ClientOptions::new 默认 flags 同构（1.54.1 源码核实）。
 /// pub：与 IPC_CLIENT_DESIRED_ACCESS 同理——非 Windows 编译面（无 windows 打开路径）不判死码，
 /// 三个 flags 叶常量经本常量可达。
 pub const IPC_CLIENT_OPEN_FLAGS: u32 =
     SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION | FILE_FLAG_OVERLAPPED;
 
 /// ReloadConfig 会停 watcher → 重建 bridge → 重启 watcher；旧 UI 的 3s 读超时覆盖不了，
-/// 会把「正在重载」误判成 Worker 掉线。契约要求 ≥6s，这里取 10s 留余量。
-// Design(#49): ReloadConfig 的读超时独立于普通请求（10s），避免热重载被 3s 超时误杀。
+/// 会把「正在重载」误判成 Worker 掉线。要求 ≥6s，这里取 10s 留余量。
+// ReloadConfig 的读超时独立于普通请求（10s），避免热重载被 3s 超时误杀。
 pub const RELOAD_CONFIG_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug)]
@@ -96,7 +98,7 @@ impl std::error::Error for IpcError {}
 
 // Worker 服务端同一时刻只预建一个管道实例，并发连接会撞 ERROR_PIPE_BUSY，属主重建实例时还有极短的
 // 「无实例」窗口（ERROR_FILE_NOT_FOUND）。
-// Design(#49): 所有 IPC 请求共用一把异步锁（单飞），连接阶段对 busy/not-found 重试到连接超时。
+// 所有 IPC 请求共用一把异步锁（单飞），连接阶段对 busy/not-found 重试到连接超时。
 pub struct IpcClient {
     connect_timeout: Duration,
     request_timeout: Duration,
@@ -104,6 +106,12 @@ pub struct IpcClient {
     next_id: AtomicU64,
     /// 服务端身份核验作用域（#7 残余①）：仅后台端点的连接被核验，服务端点不叠加（D3）。
     server_guard: Option<Arc<ServerGuard>>,
+    /// 服务端申报的协议版本（首次成功往返后观察），-1 表示尚未观察（#42：会话/启动顺序
+    /// 边界的版本协商）。会话版本取 min(客户端自身版本, 服务端版本)，与之不等时下调
+    /// 后续请求，而不上调——不会把客户端带到服务端不会说的版本。
+    observed: AtomicI32,
+    /// 版本不一致的告警是否已经记过，避免每条心跳都刷一次 stderr。
+    warned: AtomicBool,
 }
 
 impl Default for IpcClient {
@@ -120,6 +128,8 @@ impl IpcClient {
             gate: tokio::sync::Mutex::new(()),
             next_id: AtomicU64::new(1),
             server_guard: None,
+            observed: AtomicI32::new(-1),
+            warned: AtomicBool::new(false),
         }
     }
 
@@ -137,6 +147,34 @@ impl IpcClient {
     pub fn with_server_guard(mut self, guard: Arc<ServerGuard>) -> Self {
         self.server_guard = Some(guard);
         self
+    }
+
+    // 会话/启动顺序边界——UI 可能先于 Worker 启动；首次成功往返后观察服务端 V，
+    // 会话版本取 min(自身, 服务端)，与之不等时下调并记一次告警；收到 protocol_version_mismatch
+    // 拒收且响应携带更低 V 时，用对齐后版本重新建连重试一次，不让新旧版本混杂的窗口期
+    // 把 UI 永远拒在 Worker 之外。
+    /// 本次会话该用的协议版本。首次成功往返前按自身版本发送；观察到服务端 V 后，会话
+    /// 版本取 min(自身, 服务端)，与之不等时下调（UI 可能先于
+    /// Worker 启动，双方首次建连必须对齐到都会说的版本，不能按各自版本各走各的）。
+    fn negotiated_version(&self) -> i32 {
+        let observed = self.observed.load(Ordering::Relaxed);
+        if observed < 0 {
+            PROTOCOL_VERSION
+        } else {
+            observed.min(PROTOCOL_VERSION)
+        }
+    }
+
+    /// 记录服务端申报的协议版本；与自身版本不等时记一次下调告警，后续请求按 min 对齐。
+    /// 只记一次告警，避免每条心跳都刷 stderr。
+    fn observe_server_version(&self, server_version: i32) {
+        self.observed.store(server_version, Ordering::Relaxed);
+        if server_version != PROTOCOL_VERSION && !self.warned.swap(true, Ordering::Relaxed) {
+            let negotiated = self.negotiated_version();
+            eprintln!(
+                "[photoprivacy-ipc] 协议版本不一致：客户端 v{PROTOCOL_VERSION}，服务端 v{server_version}，本次会话已按 v{negotiated} 运行"
+            );
+        }
     }
 
     pub async fn status(&self, endpoint: &Endpoint) -> Result<(Status, Option<i32>), IpcError> {
@@ -200,52 +238,76 @@ impl IpcClient {
         let _gate = self.gate.lock().await;
         let id = format!("ui-{}", self.next_id.fetch_add(1, Ordering::Relaxed));
 
-        let mut stream = self.connect(endpoint).await?;
-        let mut payload = serde_json::to_vec(&Request::new(method, Some(id.as_str())))
-            .expect("请求序列化不应失败");
-        payload.push(b'\n');
+        // 最多两轮：首轮按自身版本发送；若被服务端按 fail-closed 拒收（协议版本不一致）且
+        // 响应里携带了更低的服务端版本，就下调到 min(自身, 服务端)、重新建连、重试一次
+        //（#42 会话/启动顺序边界：版本协商不能让新旧版本混杂的窗口期里 UI 永远连不上 Worker）。
+        let mut retried = false;
+        loop {
+            let version = self.negotiated_version();
 
-        let line = timeout(request_timeout, async {
-            stream.write_all(&payload).await?;
-            stream.flush().await?;
-            protocol::read_bounded_line(&mut stream, MAX_RESPONSE_BYTES).await
-        })
-        .await
-        .map_err(|_| IpcError::Timeout)?
-        .map_err(IpcError::Io)?;
+            let mut stream = self.connect(endpoint).await?;
+            let request = Request::with_version(method, Some(id.as_str()), version);
+            let mut payload = serde_json::to_vec(&request).expect("请求序列化不应失败");
+            payload.push(b'\n');
 
-        let line = match line {
-            Some(line) if !line.is_empty() => line,
-            Some(_) => {
-                return Err(IpcError::Io(io::Error::new(
-                    io::ErrorKind::UnexpectedEof,
-                    "Worker 关闭连接但没有响应",
-                )));
+            let line = timeout(request_timeout, async {
+                stream.write_all(&payload).await?;
+                stream.flush().await?;
+                protocol::read_bounded_line(&mut stream, MAX_RESPONSE_BYTES).await
+            })
+            .await
+            .map_err(|_| IpcError::Timeout)?
+            .map_err(IpcError::Io)?;
+
+            let line = match line {
+                Some(line) if !line.is_empty() => line,
+                Some(_) => {
+                    return Err(IpcError::Io(io::Error::new(
+                        io::ErrorKind::UnexpectedEof,
+                        "Worker 关闭连接但没有响应",
+                    )));
+                }
+                None => return Err(IpcError::Oversize),
+            };
+
+            let response: Response = serde_json::from_str(&line).map_err(IpcError::Protocol)?;
+            if let Some(server_version) = response.v {
+                self.observe_server_version(server_version);
             }
-            None => return Err(IpcError::Oversize),
-        };
+            if response.ok {
+                return Ok(response);
+            }
 
-        let response: Response = serde_json::from_str(&line).map_err(IpcError::Protocol)?;
-        if !response.ok {
+            if !retried
+                && response.message.as_deref() == Some("protocol_version_mismatch")
+                && response.v.is_some()
+            {
+                retried = true;
+                continue;
+            }
+
             return Err(IpcError::Rejected(
                 response.message.clone().unwrap_or_default(),
             ));
         }
-        Ok(response)
     }
 
     async fn connect(&self, endpoint: &Endpoint) -> Result<Stream, IpcError> {
         let deadline = Instant::now() + self.connect_timeout;
         let mut transient: Option<String> = None;
+        // 最近一次可重试的连接层错误：预算耗尽时用它保留「端点缺失/忙」的真实原因，
+        // 而不是一律报超时（#7 残余⑤ 据此只在端点真的不存在时才换名再试）。
+        let mut last_connect_error: Option<io::Error> = None;
         loop {
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
-                return Err(identity_exhausted(endpoint, transient));
+                return Err(identity_exhausted(endpoint, transient, last_connect_error));
             }
             // 每次尝试都套上剩余预算：Unix 非阻塞 connect 可能等到可写（EINPROGRESS），
             // 不设上限会让一次探测挂到 OS 级连接超时，远超 700ms 的连接预算。
             // #7：服务端身份核验并入同一次尝试——核验失败不属于「连接没建立」，
-            // 但同受连接预算约束（AC4 超时语义不变）。
+            // 但同受连接预算约束（AC4 的预算不变；预算耗尽时保留最近一次连接层错误，
+            // 见 identity_exhausted）。
             match timeout(
                 remaining,
                 attempt_connect(endpoint, self.server_guard.as_deref()),
@@ -268,8 +330,11 @@ impl IpcClient {
                     if !retryable || Instant::now() >= deadline {
                         return Err(IpcError::Connect(err));
                     }
+                    last_connect_error = Some(err);
                 }
-                Err(_elapsed) => return Err(identity_exhausted(endpoint, transient)),
+                Err(_elapsed) => {
+                    return Err(identity_exhausted(endpoint, transient, last_connect_error));
+                }
             }
             tokio::time::sleep(CONNECT_RETRY_INTERVAL).await;
         }
@@ -277,8 +342,14 @@ impl IpcClient {
 }
 
 /// 连接预算耗尽：本轮出现过瞬时核验失败（进程已退出）时，按连接失败上报并记 warning
-/// （AC2 的原因可观测 + AC5 不升级为授权失败）；否则保持原有的超时语义（AC4）。
-fn identity_exhausted(endpoint: &Endpoint, transient: Option<String>) -> IpcError {
+/// （AC2 的原因可观测 + AC5 不升级为授权失败）；否则按最近一次连接层错误上报（端点缺失/
+/// 忙），没有连接层错误才保持原有的超时语义（AC4）。保留真实错误让 #7 残余⑤ 能区分
+/// 「通告名不存在」与「端点还在但这一拍超时」——只有前者才该换静态名。
+fn identity_exhausted(
+    endpoint: &Endpoint,
+    transient: Option<String>,
+    last_connect_error: Option<io::Error>,
+) -> IpcError {
     match transient {
         Some(reason) => {
             eprintln!(
@@ -287,7 +358,7 @@ fn identity_exhausted(endpoint: &Endpoint, transient: Option<String>) -> IpcErro
             );
             IpcError::Connect(io::Error::new(io::ErrorKind::TimedOut, reason))
         }
-        None => IpcError::Timeout,
+        None => last_connect_error.map_or(IpcError::Timeout, IpcError::Connect),
     }
 }
 
@@ -364,16 +435,15 @@ fn probe_server_peer(stream: &Stream) -> ServerPeer {
 }
 
 // 旧 UI 的客户端带 `PipeOptions.CurrentUserOnly`，连接后校验管道属主 == 当前用户。该选项在服务模式下
-// 自相矛盾（服务 Worker 以 LocalSystem 运行，属主是 SYSTEM，用户 UI 必然被拒）——换栈调研 §2.6 已把
-// 「Windows 服务模式管道认证」登记为既有缺陷，属主边界改由服务端 DACL 承担，客户端不复制该校验。
-// Design(#49): IPC 认证以 OS 身份为边界（服务端 DACL），客户端不做属主校验。
+// 自相矛盾（服务 Worker 以 LocalSystem 运行，属主是 SYSTEM，用户 UI 必然被拒）——属主边界改由服务端 DACL 承担，客户端不复制该校验。
+// IPC 认证以 OS 身份为边界（服务端 DACL），客户端不做属主校验。
 //
-// #7 残余①（后台管道同用户抢先建面）由本文件 + verify.rs 闭环：连接建立后、首笔业务请求之前
+// 后台管道同用户抢先建由本文件 + verify.rs 解决：连接建立后、首笔业务请求之前
 // 核验服务端进程身份（UI 拉起的 Worker PID 优先、进程镜像路径回退），失败即作废该连接；
-// 服务管道不叠加（命名熵 + 拆位 DACL + HKLM 通告已闭环，D3）。
+// 服务管道不叠加（命名随机 + 按位去掉 0x4 的 DACL + HKLM 通告）。
 //
-// #7 起客户端改以细粒度掩码打开（IPC_CLIENT_DESIRED_ACCESS）：tokio 1.54 的 ClientOptions 无
-// desired_access 重载（#7 票内评论所述 API 不存在，docs.rs 核实），故自写原生 CreateFileW 再经
+// 客户端改以细粒度掩码打开（IPC_CLIENT_DESIRED_ACCESS）：tokio 1.54 的 ClientOptions 无
+// desired_access 重载，故自写原生 CreateFileW 再经
 // NamedPipeClient::from_raw_handle 交还 tokio IOCP 注册；busy/not-found 重试仍由上层 connect 的
 // 预算循环承担（错误码不变）。打开 flags 与 tokio ClientOptions::new 默认值同构（1.54.1 源码核实）：
 // share=0、OPEN_EXISTING、SQOS 三件套 SECURITY_SQOS_PRESENT|SECURITY_IDENTIFICATION|
@@ -381,7 +451,7 @@ fn probe_server_peer(stream: &Stream) -> ServerPeer {
 // Identification 级别不在文档化行为内（.NET 侧 TokenImpersonationLevel.Identification 内部同样生成
 // PRESENT 位）。与 C# 侧对齐：防伪服务端（预蹲者）对客户端发起 ImpersonateNamedPipeClient 冒充；
 // 产品服务端从不冒充客户端，收紧不改变合法链路。
-// Design(#7): 客户端请求掩码剥除 FILE_CREATE_PIPE_INSTANCE（0x4），SQOS 三件套固定 Identification 冒充级别。
+// 客户端请求掩码剥除 FILE_CREATE_PIPE_INSTANCE（0x4），SQOS 三件套固定 Identification 冒充级别。
 #[cfg(windows)]
 async fn connect_once(endpoint: &Endpoint) -> io::Result<Stream> {
     use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
@@ -436,7 +506,7 @@ pub(crate) fn is_retryable(err: &io::Error) -> bool {
     #[cfg(windows)]
     {
         // ERROR_PIPE_BUSY = 231（实例被占用）、ERROR_FILE_NOT_FOUND = 2（属主重建实例的空窗）。
-        // 与 .NET NamedPipeClientStream.Connect 一致：两者都重试，直到调用方的超时兜底。
+        // 与 .NET NamedPipeClientStream.Connect 一致：两者都重试，直到调用方的超时保底。
         if matches!(err.raw_os_error(), Some(231) | Some(2)) {
             return true;
         }
@@ -467,6 +537,27 @@ pub fn is_service_access_denied(err: &IpcError) -> bool {
     #[cfg(not(windows))]
     {
         io_err.kind() == io::ErrorKind::PermissionDenied
+    }
+}
+
+/// 端点不存在（连接层）：只用于「通告名失效后是否换静态名再试」的判断（#7 残余⑤）。
+/// 忙（属主重建实例的空窗）与超时都不算——这两种失败说明端点还在，换名只会多撞一个面；
+/// 授权拒绝（raw 5 / PermissionDenied）也不是「不存在」，必须保留 #169 的真实原因。
+pub fn is_endpoint_missing(err: &IpcError) -> bool {
+    let IpcError::Connect(io_err) = err else {
+        return false;
+    };
+    #[cfg(windows)]
+    {
+        // ERROR_FILE_NOT_FOUND = 2；ERROR_PIPE_BUSY(231) 不算：实例还在，只是被占。
+        io_err.raw_os_error() == Some(2)
+    }
+    #[cfg(not(windows))]
+    {
+        matches!(
+            io_err.kind(),
+            io::ErrorKind::NotFound | io::ErrorKind::ConnectionRefused
+        )
     }
 }
 
@@ -529,8 +620,54 @@ mod tests {
     }
 
     #[test]
+    fn endpoint_missing_is_only_the_connect_layer_not_found() {
+        // 防（#7 残余⑤）：把「端点还在但这一拍忙/超时」也判成不存在——UI 会在健康服务
+        // 只是慢一拍时换静态名，白白打开预蹲面。只有连接层的「找不到」才允许换名。
+        #[cfg(windows)]
+        {
+            assert!(is_endpoint_missing(&IpcError::Connect(
+                io::Error::from_raw_os_error(2)
+            )));
+            assert!(!is_endpoint_missing(&IpcError::Connect(
+                io::Error::from_raw_os_error(231)
+            )));
+            assert!(!is_endpoint_missing(&IpcError::Connect(
+                io::Error::from_raw_os_error(5)
+            )));
+        }
+        #[cfg(unix)]
+        {
+            assert!(is_endpoint_missing(&IpcError::Connect(io::Error::from(
+                io::ErrorKind::NotFound
+            ))));
+            assert!(!is_endpoint_missing(&IpcError::Connect(io::Error::from(
+                io::ErrorKind::PermissionDenied
+            ))));
+        }
+        // 超时/协议/授权类错误都不携带「端点不存在」的信号。
+        assert!(!is_endpoint_missing(&IpcError::Timeout));
+        assert!(!is_endpoint_missing(&IpcError::Rejected("no".to_string())));
+    }
+
+    #[test]
+    fn budget_exhaustion_keeps_the_last_connect_error() {
+        // 防（#7 残余⑤）：预算耗尽一律报 Timeout —— 「通告名压根不存在」和「这一拍
+        // 慢/忙」被混成一种，UI 要么永远不换名，要么在健康服务慢一拍时乱换名。
+        let endpoint = Endpoint::Pipe("pp-t7-budget".into());
+        let last = io::Error::from_raw_os_error(2);
+        match identity_exhausted(&endpoint, None, Some(last)) {
+            IpcError::Connect(err) => assert_eq!(err.raw_os_error(), Some(2)),
+            other => panic!("expected Connect(last), got {other:?}"),
+        }
+        assert!(matches!(
+            identity_exhausted(&endpoint, None, None),
+            IpcError::Timeout
+        ));
+    }
+
+    #[test]
     fn client_desired_access_drops_create_pipe_instance_bit() {
-        // 防（#7/CWE-732 回潮）：客户端掩码带回 0x4 —— 对拆位后的服务端 DACL 连接被整体拒绝
+        // 防：客户端掩码带回 0x4 —— 对按位去掉 0x4 后的服务端 DACL 连接被整体拒绝
         // （UI 完全连不上服务 Worker）；位级值必须与 C# 侧 WindowsServicePipeAcl.ServiceClientAccessMask
         // 同构（FILE_GENERIC_READ|WRITE 去位 = 0x0012019B）。
         assert_eq!(0, IPC_CLIENT_DESIRED_ACCESS & FILE_CREATE_PIPE_INSTANCE);
@@ -543,7 +680,7 @@ mod tests {
 
     #[test]
     fn client_open_flags_pin_sqos_identification_and_overlapped() {
-        // 防（#7 审查返修 M1 回潮）：漏 SECURITY_SQOS_PRESENT —— Identification 级别不在微软
+        // 防：漏 SECURITY_SQOS_PRESENT —— Identification 级别不在微软
         // CreateFileW 文档化行为内，伪服务端（预蹲者）仍可冒充客户端；漏 FILE_FLAG_OVERLAPPED
         // ——tokio IOCP 注册失败。组合必须与 tokio ClientOptions::new 默认 flags 同构。
         assert_eq!(
@@ -607,6 +744,89 @@ mod tests {
         assert!(
             attempts >= 2,
             "应在连接预算内重试，实际接受 {attempts} 次连接"
+        );
+    }
+
+    #[test]
+    fn negotiated_version_starts_at_own_and_only_shifts_down() {
+        // #42：首次往返前按自身版本发；观察到服务端 V 后，会话版本取 min——服务端更高时
+        // 会话留在客户端版本，服务端更低时才下调，绝不把客户端带到服务端不会说的版本。
+        let client = IpcClient::new();
+        assert_eq!(client.negotiated_version(), PROTOCOL_VERSION);
+
+        client.observe_server_version(2);
+        assert_eq!(client.negotiated_version(), PROTOCOL_VERSION);
+
+        client.observe_server_version(0);
+        assert_eq!(client.negotiated_version(), 0);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn version_mismatch_is_downshifted_with_one_retry() {
+        // #42：客户端 v1 与服务端 v0 不一致时，首轮被 fail-closed 拒收且响应携带服务端
+        // V:0；客户端下调到 v0、重新建连、重试一次，会话最终可用；两轮请求版本应为 [1, 0]。
+        use std::sync::Mutex;
+        use tokio::io::AsyncReadExt;
+
+        let dir = std::env::temp_dir().join(format!("pp-t42-negotiate-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("创建临时目录");
+        let path = dir.join("worker.sock");
+        let listener = tokio::net::UnixListener::bind(&path).expect("绑定测试 socket");
+
+        let received = Arc::new(Mutex::new(Vec::<i32>::new()));
+        let received_for_serve = received.clone();
+
+        let serve = tokio::spawn(async move {
+            for _ in 0..2 {
+                let (mut stream, _) = match listener.accept().await {
+                    Ok(pair) => pair,
+                    Err(_) => return,
+                };
+                let mut buf = [0u8; 1024];
+                let n = match stream.read(&mut buf).await {
+                    Ok(n) => n,
+                    Err(_) => return,
+                };
+                let parsed: Option<serde_json::Value> = serde_json::from_str::<serde_json::Value>(
+                    String::from_utf8_lossy(&buf[..n]).trim(),
+                )
+                .ok();
+                let Some(v) = parsed
+                    .as_ref()
+                    .and_then(|val| val.get("v"))
+                    .and_then(|v| v.as_i64())
+                    .map(|v| v as i32)
+                else {
+                    return;
+                };
+                received_for_serve.lock().expect("锁").push(v);
+
+                let reply = if v == 1 {
+                    // 服务端 v0 按 fail-closed 拒收客户端申报的 v1，回带自身版本 v0
+                    r#"{"ok":false,"message":"protocol_version_mismatch","id":"ui-1","v":0}"#
+                } else {
+                    r#"{"ok":true,"id":"ui-2","v":0}"#
+                };
+                let _ = stream.write_all(reply.as_bytes()).await;
+                drop(stream);
+            }
+        });
+
+        let endpoint = Endpoint::UnixSocket(path.clone());
+        let client = IpcClient::new();
+        let ok = client.is_alive(&endpoint).await;
+
+        // 客户端返回后，停止等待后续连接，避免测试因首轮异常而挂起
+        serve.abort();
+        let _ = serve.await;
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert!(ok, "版本协商下调重试后，会话应恢复可用");
+        assert_eq!(
+            *received.lock().expect("锁"),
+            vec![1, 0],
+            "首轮按自身版本发送，被拒收后按 min 对齐版本重新建连重试"
         );
     }
 }

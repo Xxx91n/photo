@@ -4,7 +4,7 @@ using System.Text;
 namespace PhotoPrivacy.Core.Runtime;
 
 /// <summary>
-/// 单写者准入门（#162）：同一有效审计目录同时至多一个常驻 Worker 持锁写 processed.ndjson。
+/// 单写者准入门（#162）：常驻 Worker 触碰审计文件前必须过本门，同一有效审计目录同时至多一个常驻 Worker 持锁写 processed.ndjson。
 /// 锁身份 = 有效审计目录（与 FileProcessedRecordStore 的目录回退逐字对齐），
 /// 锁生命周期 = 进程生命周期（Mutex/flock 随持有者消亡自动释放，无 stale lock、无 PID 探活）。
 /// 拿不到锁的 Worker 必须让位干净退出（日志 + 审计留痕由 Program 层负责），禁止静默降级凑合跑，
@@ -12,10 +12,9 @@ namespace PhotoPrivacy.Core.Runtime;
 /// 门自身异常（权限/环境）同样让位：无法确证独占就不写审计——fail-safe 方向是宁可不起，
 /// 不是带着未知争用风险放行。
 /// 残余：锁身份的别名归一只解析最终链接目标，路径中间分量的别名（subst/逐段符号链接）未逐段展开，
-/// 该形态下两侧仍可能各持一锁；真正的防线还有审计文件自身的 FileShare 语义兜底。
+/// 该形态下两侧仍可能各持一锁；真正的防线还有审计文件自身的 FileShare 语义保底。
 /// 服务/后台探测编排的体验面归 #58。
 /// </summary>
-// Design(#82): 常驻 Worker 触碰审计文件前必须过本准入门；拿不到锁或门异常一律让位（禁静默降级/禁带险放行），编排预防归 #58。
 public static class SingleWriterGate
 {
     /// <summary>

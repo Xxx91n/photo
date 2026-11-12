@@ -34,7 +34,7 @@ $RegistryAdvertisedValueName = "ServicePipeName"
 $ErrorActionPreference = "Stop"
 
 # worker 归属匹配的纯函数（#218 CodeRabbit 返修）：与 verify-windows-service.ps1 共用同一份，
-# 避免"卸载脚本里一套口径、回归断言里另一套"。随包发布由 scripts/publish-app.ps1 一并复制。
+# 避免"卸载脚本里一套规则、回归断言里另一套"。随包发布由 scripts/publish-app.ps1 一并复制。
 . (Join-Path $PSScriptRoot "service-worker-match.ps1")
 
 # Auto-detect exe and config relative to this script (release/<rid>/scripts/)
@@ -97,11 +97,10 @@ switch ($Action.ToLower()) {
       Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
       Remove-ServiceCompat $ServiceName
     }
-    if ($PSVersionTable.PSEdition -eq "Core") {
-      New-Service -Name $ServiceName -BinaryPathName $binPath -DisplayName "PhotoPrivacy Cleaner" -StartupType Automatic
-    } else {
-      sc.exe create $ServiceName binPath= $binPath start= auto
-    }
+    # 两种运行时都有 New-Service，统一走它。早先 Desktop 分支用 `sc.exe create`，
+    # 在 Windows PowerShell 5.1 里把带空格的 binPath 传给原生程序会被重新拆词，
+    # 服务注册不成功（含空格的安装路径才会暴露）。New-Service 直接写 SCM，不受这个影响。
+    New-Service -Name $ServiceName -BinaryPathName $binPath -DisplayName "PhotoPrivacy Cleaner" -StartupType Automatic
     # 先登记 SID 再启动服务：服务首次建管道时即按最新授权集合构建 DACL（重装/升级覆盖旧值）。
     if (-not (Test-Path $RegistryPath)) { New-Item -Path $RegistryPath -Force | Out-Null }
     New-ItemProperty -Path $RegistryPath -Name $RegistryValueName -Value $InstallerSid -PropertyType String -Force | Out-Null
@@ -171,7 +170,7 @@ switch ($Action.ToLower()) {
       $serviceConfirmedGone = $true
       Write-Host "Not found"
     }
-    # 兜底：SCM 删服务不会结束已经脱离的进程（Stop-Service 超时、进程不响应 SERVICE_STOP 时
+    # 保底：SCM 删服务不会结束已经脱离的进程（Stop-Service 超时、进程不响应 SERVICE_STOP 时
     # 会留下孤儿 worker，占住审计目录并让下次安装的命名管道抢占失败，#218）。
     # 归属限定（CodeRabbit 返修）：只清"本次安装"的 worker——命令行必须是 `--mode service`
     # 且 `--config` 命中上面收集到的归属路径。服务不存在时，另一个同名服务 / 另一份安装留下的

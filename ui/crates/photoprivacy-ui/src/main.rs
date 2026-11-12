@@ -9,7 +9,7 @@ mod log_service;
 mod rules_page;
 mod service_page;
 mod theme;
-// Design(#49): gpui 无内建托盘（T4 已接受自建/第三方），托盘用 tray-icon 原生菜单实现。
+// gpui 无内建托盘，托盘用 tray-icon 原生菜单实现。
 mod tray;
 mod ui_options;
 mod worker_connection;
@@ -40,7 +40,7 @@ PhotoPrivacy 新 UI（gpui）
   --config  启动后台 Worker 时传入的配置路径（默认同目录 config/config.json，与旧 UI 一致始终传入）
   --worker  后台 Worker 可执行文件路径（默认同目录 PhotoPrivacyWorker[.exe]，存在才用）
   --open-page  启动即打开指定页（overview|config|service|logs|rules，默认 overview）
-  --service-probe-report  把 Service 页同源服务探测结果写成 JSON（state 字段）后退出，不建窗不连 Worker（虚拟环境取证用）
+  --service-probe-report  把 Service 页同源服务探测结果写成 JSON（state 字段）后退出，不建窗不连 Worker（虚拟环境测试用）
   --service-probe-ipc  与 --service-probe-report 联用：追加客户端解析到的端点与 IPC 连通三态（Reachable|Denied|Unavailable）
 ";
 
@@ -48,7 +48,7 @@ PhotoPrivacy 新 UI（gpui）
 const EVENT_POLL_INTERVAL: Duration = Duration::from_millis(200);
 
 /// 探针 JSON 的最小字符串转义：端点路径与错误文本可能含反斜杠/引号/换行，
-/// 直接拼进去会让 `--service-probe-ipc` 的产出无法被解析（取证脚本按行读 JSON）。
+/// 直接拼进去会让 `--service-probe-ipc` 的产出无法被解析（测试脚本按行读 JSON）。
 fn json_string(raw: &str) -> String {
     let mut out = String::with_capacity(raw.len() + 2);
     out.push('"');
@@ -57,7 +57,7 @@ fn json_string(raw: &str) -> String {
             '\\' => out.push_str("\\\\"),
             '"' => out.push_str("\\\""),
             // 其余控制字符（\n \r \t 及 C0/C1）一律降级为空格：探针 JSON 是单行格式，
-            // 留着裸控制字符会让按行读取的取证脚本拿到非法 JSON。
+            // 留着裸控制字符会让按行读取的测试脚本拿到非法 JSON。
             c if c.is_control() => out.push(' '),
             other => out.push(other),
         }
@@ -119,7 +119,7 @@ impl Args {
 
 // 平台后端在这里就地装配，替代 gpui_platform 聚合 crate（原因见 ui/Cargo.toml）。
 #[cfg(target_os = "windows")]
-// Design(#49): 平台后端由本 crate 装配，禁止再引入 gpui_platform 聚合 crate。
+// 平台后端由本 crate 装配，禁止再引入 gpui_platform 聚合 crate。
 fn application() -> gpui::Application {
     let platform = std::rc::Rc::new(
         gpui_windows::WindowsPlatform::new(false).expect("初始化 Windows 图形后端失败"),
@@ -146,9 +146,9 @@ fn audit_fallback_directory() -> PathBuf {
 
 /// 启动建窗判定：静默启动（#59）与显式 `--open-page`（#168）同时命中时的优先序。
 ///
-/// 显式 CLI 请求覆盖静默默认（#174）：静默配置下给出 `--open-page` 仍建窗并停到指定页，
-/// 否则 #168 的取证脚本 `scripts/capture-ui-service-page.sh` 在配了静默启动的机器上取不到窗口。
-/// 未给 `--open-page` 时维持 #59 语义——静默即不建窗，等托盘唤起。
+/// 显式 CLI 请求覆盖静默默认：静默配置下给出 `--open-page` 仍建窗并停到指定页，
+/// 否则测试脚本在配了静默启动的机器上取不到窗口。
+/// 未给 `--open-page` 时静默即不建窗，等托盘唤起。
 fn should_open_main_window(start_hidden: bool, open_page: Option<app::Page>) -> bool {
     !start_hidden || open_page.is_some()
 }
@@ -162,10 +162,9 @@ fn main() -> anyhow::Result<()> {
         .enable_all()
         .build()?;
 
-    // Design(#82): Service 页同源探测结果落 JSON 后即退出——虚拟环境（CI macOS runner）
-    // 机器可读取证入口；不建窗、不连 Worker，探测链与 Service 页首拍一致。只读探针不受
-    // 单实例守卫约束：并存 UI 不应挡掉报告产出（CodeRabbit 审查意见；launchd 取证链落地
-    // 于已关闭的 #32，存续出处改指 #82 的验证门禁域）。
+    // Service 页同源探测结果落 JSON 后即退出——虚拟环境
+    // 机器可读测试入口；不建窗、不连 Worker，探测链与 Service 页首拍一致。只读探针不受
+    // 单实例控制约束：并存 UI 不应挡掉报告产出。
     if let Some(report_path) = &args.service_probe_report {
         let probe_options = ConnectOptions::discover()
             .with_overrides(args.config_path.clone(), args.worker_path.clone());
@@ -174,30 +173,45 @@ fn main() -> anyhow::Result<()> {
             probe_options.config_path.clone(),
         );
         let probe_state = probe_manager.state();
-        // 决策本体随 #167 关闭已落地（macOS 服务端点与 IPC 探针）；标记改指仍存续的治理票
-        // #82（死指针清理 / 验证门禁域），正文保留决策本身。
-        // Design(#82): 只报 state 时，「安装态/探测态都对、但 UI 侧连不上」这类端点随身份
-        // 分裂的缺陷在取证链里完全隐形。--service-probe-ipc 追加客户端实际解析到的端点与
-        // IPC 连通三态，供 verify 脚本以 GUI 用户（非服务用户）身份断言同一 socket 可达。
+        // 只报 state 时，「安装态/探测态都对、但 UI 侧连不上」这类端点随身份
+        // 分裂的缺陷在测试链里完全隐形。--service-probe-ipc 追加客户端实际解析到的端点与
+        // IPC 连通三态，供验证脚本以 GUI 用户（非服务用户）身份断言同一 socket 可达。
         let mut report = format!("{{\"state\":\"{:?}\"", probe_state);
         if args.service_probe_ipc {
-            match photoprivacy_ipc::current_service_endpoint(
+            // 与产品客户端同一条候选链：通告名 → 静态名（端点不存在才换下一个）。
+            // 只探首个候选会在「陈旧通告名 + 服务已回绑静态名」（#7 残余⑤）时
+            // 报 Unavailable，和 UI 实际能连上相矛盾，S4 取证会变成假阴性。
+            let endpoints = photoprivacy_ipc::current_service_endpoints(
                 photoprivacy_ipc::current_platform(),
                 photoprivacy_ipc::current_home().as_deref(),
-            ) {
-                Some(endpoint) => {
-                    let client = IpcClient::with_connect_timeout(Duration::from_millis(700));
-                    let (verdict, detail) = match runtime.block_on(client.status(&endpoint)) {
-                        Ok((status, _)) => ("Reachable".to_string(), format!("{status:?}")),
+            );
+            if endpoints.is_empty() {
+                report.push_str(",\"endpoint\":null,\"ipc\":\"Unresolved\"");
+            } else {
+                let client = IpcClient::with_connect_timeout(Duration::from_millis(700));
+                let mut observed = None;
+                for endpoint in endpoints {
+                    match runtime.block_on(client.status(&endpoint)) {
+                        Ok((status, _)) => {
+                            observed =
+                                Some((endpoint, "Reachable".to_string(), format!("{status:?}")));
+                            break;
+                        }
                         Err(err) => {
                             let verdict = if photoprivacy_ipc::is_service_access_denied(&err) {
                                 "Denied"
                             } else {
                                 "Unavailable"
                             };
-                            (verdict.to_string(), err.to_string())
+                            let missing = photoprivacy_ipc::is_endpoint_missing(&err);
+                            observed = Some((endpoint, verdict.to_string(), err.to_string()));
+                            if !missing {
+                                break;
+                            }
                         }
-                    };
+                    }
+                }
+                if let Some((endpoint, verdict, detail)) = observed {
                     report.push_str(&format!(
                         ",\"endpoint\":{},\"ipc\":{},\"ipc_detail\":{}",
                         json_string(&endpoint.display()),
@@ -205,7 +219,6 @@ fn main() -> anyhow::Result<()> {
                         json_string(&detail)
                     ));
                 }
-                None => report.push_str(",\"endpoint\":null,\"ipc\":\"Unresolved\""),
             }
         }
         report.push_str("}\n");
@@ -213,7 +226,7 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    // 单实例守卫：与旧 UI 同名同命名空间，任一入口已运行时，第二个实例只唤起不重开。
+    // 单实例检查：与旧 UI 同名同命名空间，任一入口已运行时，第二个实例只唤起不重开。
     let guard = SingleInstanceGuard::acquire(UI_INSTANCE_NAME);
     if !guard.is_owner() {
         let notified = runtime.block_on(notify_existing_instance(Duration::from_millis(500)));
@@ -244,7 +257,7 @@ fn main() -> anyhow::Result<()> {
         options.worker_path.clone(),
         options.config_path.clone(),
     ));
-    // Design(#49): 启动路径在 main 线程同步首探安装态，上限 PROBE_TIMEOUT；托盘与静默启动据此在建窗前定档。
+    // 启动路径在 main 线程同步首探安装态，上限 PROBE_TIMEOUT；托盘与静默启动据此在建窗前定档。
     let initial_service_state = service_manager.state();
     let (service_snapshots, service_commands) =
         service_page::start(runtime.handle(), service_manager, initial_service_state);
@@ -267,7 +280,7 @@ fn main() -> anyhow::Result<()> {
         config_event_tx,
     );
 
-    // Design(#209): 清空水位落 config.json 同目录（T1/#136 落地），启动喂给 backfill 过滤、清空时更新。
+    // 清空水位落 config.json 同目录，启动喂给 backfill 过滤、清空时更新。
     let log_service = log_service::start(
         runtime.handle(),
         audit_config,
@@ -421,7 +434,7 @@ fn spawn_event_pump(
 }
 
 /// 唤起已有窗口，或在托盘驻守后重建窗口。
-// Design(#49): gpui 无窗口隐藏 API——关窗驻守销毁窗口，托盘唤起时重建；主题与日志状态跨重建保留，
+// gpui 无窗口隐藏 API——关窗驻守销毁窗口，托盘唤起时重建；主题与日志状态跨重建保留，
 // 窗口位置/尺寸会重置为居中（旧 UI 是隐藏/显示，尺寸沿用）。
 fn show_main_window(cx: &mut AsyncApp, deps: app::AppDeps) {
     let windows = cx.update(|cx| cx.windows());

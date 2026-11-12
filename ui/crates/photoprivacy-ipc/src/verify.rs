@@ -14,8 +14,8 @@
 //! 的信任域，本加固不宣称防同用户恶意软件。PID 快照核验存在固有的 PID 复用窗口（拿 PID 后
 //! 到 OpenProcess 之前），镜像是 speed bump 而非不可伪造凭据；签名核验（WinVerifyTrust）
 //! 未入首版。
-// Design(#7): 后台管道客户端在首笔业务请求前核验服务端进程身份（PID 优先、镜像路径回退），
-// 核验失败即作废连接；服务管道不叠加（熵 + 拆位 + HKLM 通告已闭环）。
+// 后台管道客户端在首笔业务请求前核验服务端进程身份（PID 优先、镜像路径回退），
+// 核验失败即作废连接；服务管道不叠加（随机名 + 权限控制 + 注册表通告）。
 
 use crate::endpoints::Endpoint;
 use std::path::{Path, PathBuf};
@@ -385,7 +385,7 @@ mod tests {
 
     #[test]
     fn pid_mismatch_with_foreign_image_is_rejected() {
-        // 防（#7 残余①回潮）：同用户抢先建的管道被当成 Worker——PID 不符且镜像不是
+        // 防：同用户抢先建的管道被当成 Worker——PID 不符且镜像不是
         // PhotoPrivacyWorker.exe 时必须作废连接，而不是放行后把状态页交给冒充者。
         let verifier = make_verifier(
             Some(4242),
@@ -524,7 +524,7 @@ mod tests {
 
     #[test]
     fn unverifiable_warning_is_claimed_once_per_guard() {
-        // 防（#7 AC2 噪声回潮）：fail-open 告警按连接重打——macOS 无期望 PID 时心跳与 1s
+        // 防：fail-open 告警按连接重打——macOS 无期望 PID 时心跳与 1s
         // 版本轮询共用同一 guard，每拍一条 stderr 会把日志刷爆。
         let guard = ServerGuard::new(
             Endpoint::Pipe("PhotoPrivacyCleaner.Background".into()),

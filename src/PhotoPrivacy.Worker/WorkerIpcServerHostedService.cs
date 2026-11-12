@@ -47,7 +47,7 @@ public sealed class WorkerIpcServerHostedService : BackgroundService
 
         // 背景端点不可解析 fail-closed（#201）：Linux 背景/CLI 形态在 XDG_RUNTIME_DIR 缺失
         // （容器、root shell、无 logind 会话）时解析为 null——不得静默挂在「活着但没有端点」
-        // （#187 同款口径），也不得回落与 UI 解析不同的落点（端点分裂 = UI 永远发现不了）。
+        // （#187 同款规则），也不得回落与 UI 解析不同的落点（端点分裂 = UI 永远发现不了）。
         // 非零退出码停宿主，诊断点明变量名与会话外语境的注入动作。
         if (endpoint is null)
         {
@@ -119,8 +119,8 @@ public sealed class WorkerIpcServerHostedService : BackgroundService
 
             // #187：服务模式组名 fail-closed（缺注入即拒启）不得让进程「活着但没有端点」——
             // 宿主静默跑着、UI 只见连不上，安装现场无从判断是配置缺失还是服务没起。停宿主让服务管理器
-            // 看到「起了又停」；非零退出码与 MetadataCleanerWorker 的致命配置路径同口径（Environment.ExitCode=1），
-            // 否则服务管理器与实机取证只能看到一次干净退出、判成正常停机。
+            // 看到「起了又停」；非零退出码与 MetadataCleanerWorker 的致命配置路径同一规则（Environment.ExitCode=1），
+            // 否则服务管理器与实机排查只能看到一次干净退出、判成正常停机。
             Environment.ExitCode = 1;
             _lifetime.StopApplication();
             return;

@@ -12,8 +12,8 @@ public static class BackupRetentionService
             return;
 
         // 镜像相对路径布局后备份分散于子目录树，
-        // 旁路版本（名字.时间戳.bak）与 _unsorted 兜底槽位均以 .bak 结尾，
-        // 必须 AllDirectories 递归才能兑现 size/TTL 兜底。
+        // 另存的文件（名字.时间戳.bak）与 _unsorted 退路槽位均以 .bak 结尾，
+        // 必须 AllDirectories 递归才能兑现 size/TTL 保底。
         var files = EnumerateBackupFiles(backupDirectory);
         DeleteExpiredTtl(files, retainDays);
         EnforceSizeLimit(files, maxSizeBytes);
@@ -39,7 +39,7 @@ public static class BackupRetentionService
         }, cancellationToken).ConfigureAwait(false);
     }
 
-    /// <summary>递归枚举备份根下所有 .bak 备份（含镜像子目录、旁路版本、_unsorted 兜底）。</summary>
+    /// <summary>递归枚举备份根下所有 .bak 备份（含镜像子目录、另存的文件、_unsorted 退路）。</summary>
     private static List<FileInfo> EnumerateBackupFiles(string backupDirectory)
     {
         try
@@ -50,7 +50,7 @@ public static class BackupRetentionService
         }
         catch
         {
-            // 权限/竞态导致的枚举失败按空集处理——retention 是尽力而为的兜底，不反噬主流程。
+            // 权限/竞态导致的枚举失败按空集处理——retention 是尽力而为的保底，不反噬主流程。
             return new List<FileInfo>();
         }
     }
@@ -81,7 +81,7 @@ public static class BackupRetentionService
         }
         catch
         {
-            // 同 EnumerateBackupFiles：兜底尽力而为。
+            // 同 EnumerateBackupFiles：保底尽力而为。
         }
     }
 

@@ -5,13 +5,13 @@ on:
   pull_request:
 
 jobs:
-  # dotnet 测试多平台矩阵（#9）：ubuntu/windows/macos 三平台同口径跑 test job；
+  # dotnet 测试多平台矩阵（#9）：ubuntu/windows/macos 三平台按同一套规则跑 test job；
   # fail-fast 关闭——一次 run 同时暴露全部平台的失败，便于按平台分票处置。
   # Windows 腿排除 WindowsServicePipeAclTests / ServicePipeNameEntropyTests（如实登记，#9）：
   # 本票在 CI 实证（run 41962838592 / 41964334172 / 41965777267 / 41967967629）——这两类
   # 真跑即挂死整个 test host：trx 0 完成、blame-hang(4m) dump 显示 xunit runner 与 VSTest
   # 各层全部阻塞等待、线程池空闲、测试执行线程缺席（xunit v2 2.9.3 + runner.visualstudio
-  # 3.1.4 + .NET 10 windows 宿主的执行层挂起，与测试体无关，本仓不可修）。基线口径本就是
+  # 3.1.4 + .NET 10 windows 宿主的执行层挂起，与测试体无关，本仓不可修）。基线规则本来就是
   # 「Windows 专属断言不入 CI，归人工 S4 实机复测」（两类头注释原文）；ubuntu/macos 腿
   # 全量真跑（Windows 专属用例早退），windows 腿跑其余全部 20 类（基线为 0 dotnet 覆盖）。
   # timeout-minutes: 25 封顶——.NET 10 dotnet test 的默认 1h 运行超时层先于 VSTest blame-hang
@@ -38,6 +38,61 @@ jobs:
           dotnet-version: "10.0.201"
       - name: Run tests (exclude Smoke/ExifTool)
         run: dotnet test PhotoPrivacy.sln --configuration Release --filter "Category!=Smoke&Category!=ExifTool${{ matrix.pipe_identity_isolation && '&FullyQualifiedName!~WindowsServicePipeAclTests&FullyQualifiedName!~ServicePipeNameEntropyTests' || '' }}"
+
+  # ExifTool 真进程实测（#39）：stay_open stdin 并发块语义——「块按写入顺序整块处理、
+  # 回显与 {ready} 一一对应」的假设由 StayOpenConcurrentBlockTests 在真进程上以多并发写
+  # 验证。默认 test job 排除 Category=ExifTool（无 ExifTool 环境），本 job 双平台下载钉扎版
+  # （13.61，URL/SHA256 与 publish.sh / publish-app.ps1 各自通道同源）真跑该类测试；
+  # ver 门禁步保证「无 ExifTool 静默跳过=假绿」不会发生在门禁里（#82：不得静默 skip）。
+  exiftool-stayopen:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.201"
+      - name: Install pinned ExifTool 13.61 (URL/SHA256 同各自 publish 脚本)
+        shell: bash
+        run: |
+          set -e
+          mkdir -p "$RUNNER_TEMP/exiftool39"
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            # Windows 发行形态（publish-app.ps1 同源）：exiftool-13.61_64.zip，
+            # 包内可执行文件名 exiftool(-k).exe 须改为 exiftool.exe（命令行用）。
+            curl -fsSL --retry 3 --max-time 300 -o "$RUNNER_TEMP/exiftool39/et.zip" \
+              "https://master.dl.sourceforge.net/project/exiftool/exiftool-13.61_64.zip?viasf=1"
+            echo "ab75b37515385a753aa60a58f68ffffe1ff81e43b319df9540978fb19e0580e5  $RUNNER_TEMP/exiftool39/et.zip" | sha256sum -c -
+            # git-bash 的 GNU tar 不认 zip、也把盘符路径当远程主机：解压用系统自带 bsdtar + 相对路径
+            mkdir -p "$RUNNER_TEMP/exiftool39/unz"
+            cd "$RUNNER_TEMP/exiftool39"
+            /c/Windows/System32/tar.exe -xf et.zip -C unz
+            mv "unz/exiftool-13.61_64/exiftool(-k).exe" exiftool.exe
+            mv "unz/exiftool-13.61_64/exiftool_files" exiftool_files
+            echo "$RUNNER_TEMP/exiftool39" >> "$GITHUB_PATH"
+          else
+            curl -fsSL --retry 3 --max-time 300 -o "$RUNNER_TEMP/exiftool39/Image-ExifTool-13.61.tar.gz" \
+              "https://downloads.sourceforge.net/project/exiftool/Image-ExifTool-13.61.tar.gz"
+            echo "df7f42c14b4f58a60bec39feae0ee9593000ee27e44920d2b0a21c6627de0baa  $RUNNER_TEMP/exiftool39/Image-ExifTool-13.61.tar.gz" | sha256sum -c -
+            tar -xzf "$RUNNER_TEMP/exiftool39/Image-ExifTool-13.61.tar.gz" -C "$RUNNER_TEMP/exiftool39"
+            echo "$RUNNER_TEMP/exiftool39/Image-ExifTool-13.61" >> "$GITHUB_PATH"
+          fi
+      - name: Verify exiftool -ver == 13.61 (假绿门禁)
+        shell: bash
+        run: |
+          ver="$(exiftool -ver | tr -d '\r')"
+          echo "exiftool -ver -> $ver"
+          [ "$ver" = "13.61" ]
+      - name: Run ExifTool-category tests (real stay_open process)
+        run: dotnet test PhotoPrivacy.sln --configuration Release --filter "Category=ExifTool"
 
   # rust 四 crate 矩阵（#9）：ubuntu 之外补 macOS——Windows 侧由 ui-check 覆盖
   # 测试（service/ui 原有，ipc/logs/rules 随 #9 补齐），不另建 Windows job。
@@ -73,7 +128,7 @@ jobs:
         run: cargo test -p photoprivacy-ipc -p photoprivacy-logs -p photoprivacy-rules -p photoprivacy-service --locked
 
   # UI crate：MSVC 目标做 check（build.rs 不嵌清单），另以 windows-gnu 做一次 release 构建——
-  # 这是发布链的实际产出路径（publish-app.ps1 同口径，见 ui/crates/photoprivacy-ui/build.rs 与 #61）。
+  # 这是发布链的实际产出路径（与 publish-app.ps1 一致，见 ui/crates/photoprivacy-ui/build.rs 与 #61）。
   ui-check:
     runs-on: windows-latest
     permissions:
@@ -128,9 +183,14 @@ jobs:
   # 端到端发布链验证（#10）：CI 只跑测试不跑 publish，发布链坏在 main 上要等发版才暴露
   # （#164 先例）。用 linux-x64 单 RID 代表性验证整条链：cargo release 构建 UI + dotnet
   # publish Worker + ExifTool 下载/SHA256 校验/内置 + 产物结构核验，与 release.yml 的
-  # build job 同口径（同走 scripts/publish.sh，Linux 系统依赖同 #84）。不传 artifact，
+  # build job 同一套做法（同走 scripts/publish.sh，Linux 系统依赖同 #84）。不传 artifact，
   # 只作门禁。
+  # 触发条件（#12 成本评估）：ci.yml 是 on: push + on: pull_request 双事件叠加，PR 内每推
+  # 一提交，这条重活（cargo release + dotnet publish R2R + 11MB ExifTool 下载）会跑两遍。
+  # 收紧为 PR 事件或 main 分支 push 才跑：PR 迭代省一半开销，main 合入后仍跑全链路保底；
+  # feature 分支直推不跑——合入走 PR（main 分支），发布链由 PR 与 main 两处覆盖。
   publish-e2e:
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -171,20 +231,5 @@ jobs:
           test -f release/linux-x64/ExifTool/exiftool
           test -d release/linux-x64/ExifTool/lib
           test -f release/PhotoPrivacy-0.1.0-ci-linux-x64.tar.gz
-          # 内置 ExifTool 必须可执行且为钉扎版本（#164 同类下载链回归在此兜底）
+          # 内置 ExifTool 必须可执行且为钉扎版本（#164 那类下载链回归就靠这里拦住）
           [ "$(release/linux-x64/ExifTool/exiftool -ver)" = "13.61" ]
-
-  markers:
-    runs-on: ubuntu-latest
-    # CodeRabbit 返修（#193）：显式只读最小权限——与 test/rust/ui-check 的 contents: read
-    # 同口径；check-design-markers.sh 的 gh api 只读 open issue，不给多余写面。
-    permissions:
-      contents: read
-      issues: read
-    steps:
-      - uses: actions/checkout@v4
-      - name: Design markers must point to open issues
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-        run: bash scripts/check-design-markers.sh

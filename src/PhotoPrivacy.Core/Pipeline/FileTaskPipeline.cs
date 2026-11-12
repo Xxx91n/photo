@@ -226,6 +226,9 @@ public sealed class FileTaskPipeline
                                 tempPath = null;
                             }
 
+                            // issue #8：部分清理族（gif/psd/视频）的成功事件必须带尾巴标注，
+                            // 不许让 GIF 和 JPEG 在审计里不可区分。
+                            var partialNote = WipeStrategyResolver.PartialCleanNote(sourcePath);
                             await _audit.WriteAsync(
                                 new AuditEvent(
                                     "file_processing_succeeded",
@@ -234,7 +237,9 @@ public sealed class FileTaskPipeline
                                     Guid.NewGuid().ToString("N"),
                                     sourcePath,
                                     $"attempt={attempt};wipe_result=Cleaned_Modified",
-                                    null),
+                                    partialNote is null
+                                        ? null
+                                        : new Dictionary<string, string> { ["partial_clean"] = partialNote }),
                                 cancellationToken);
                             if (processedKey is not null)
                             {
@@ -318,7 +323,7 @@ public sealed class FileTaskPipeline
     /// 1. 源或槽位为符号链接/ReparsePoint → 拒绝并写可见告警（fail-closed，Borg create 语义）；
     /// 2. 槽位不存在 → 直接原子写入；
     /// 3. 槽位存在且内容相同 → 跳过（幂等，承接"同文件重处理保留最新"的合法语义）；
-    /// 4. 槽位存在且内容不同 → 写 <c>名字.时间戳.扩展名</c> 旁路版本（绝不覆盖）。
+    /// 4. 槽位存在且内容不同 → 另存一份为 <c>名字.时间戳.扩展名</c>（绝不覆盖）。
     /// </summary>
     private async Task WriteBackupAsync(string sourcePath, string backupSlot, CancellationToken cancellationToken)
     {
@@ -353,7 +358,7 @@ public sealed class FileTaskPipeline
 
         if (BackupPathResolver.ContentsEqual(sourcePath, backupSlot))
         {
-            // 同槽位+内容相同 → 跳过（幂等，不产旁路版本）。
+            // 同槽位+内容相同 → 跳过（幂等，不另存一份）。
             await _audit.WriteAsync(
                 new AuditEvent(
                     "backup_skipped",
@@ -367,7 +372,7 @@ public sealed class FileTaskPipeline
             return;
         }
 
-        // 槽位存在且内容分歧 → 旁路版本（绝不静默覆盖）。
+        // 槽位存在且内容分歧 → 另存一份（绝不静默覆盖）。
         var sidecar = BackupPathResolver.ResolveSidecarPath(
             backupSlot, _config.Backup.Suffix, DateTimeOffset.UtcNow, File.Exists);
         await _fileOperations.AtomicCopyAsync(sourcePath, sidecar, overwrite: false, cancellationToken).ConfigureAwait(false);

@@ -66,7 +66,7 @@ public sealed record AppConfig(
         Rules: new RuleOptions(
             // 宣称收敛：allowed_extensions 与 WipeStrategyResolver.ExtensionFamilyMap
             // 映射面一一对应（集合差=0，由 FormatCoverageReconciliationTests 入 CI 钉死）。
-            // 映射面之外的格式（webp/gif/PSD/长尾 RAW 变体等）明确“不支持”：立即跳过并记
+            // 映射面之外的格式（长尾 RAW 变体、工程文件等）明确“不支持”：立即跳过并记
             // wipe_skipped_unknown 审计事件，绝不静默处理。
             AllowedExtensions: [
             // JPEG family
@@ -78,8 +78,10 @@ public sealed record AppConfig(
             ".rw2", ".pef", ".srw", ".sr2",
             // HEIF / AVIF
             ".heic", ".heif", ".hif", ".avif",
-            // PNG
-            ".png", ".apng",
+            // PNG / WebP / GIF
+            ".png", ".apng", ".webp", ".gif",
+            // PSD（issue #8：复用 Png 族命令，部分清理）
+            ".psd",
             // Video (MOV/MP4)
             ".mov", ".mp4", ".m4v", ".qt", ".3gp", ".3g2",
             // PDF

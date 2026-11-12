@@ -93,9 +93,6 @@ public sealed class RuleEngineTests
     /// 并落 wipe_skipped_unknown 审计（见 UnsupportedFormatPipelineTests）。
     /// </summary>
     [Theory]
-    [InlineData(".webp")]
-    [InlineData(".psd")]
-    [InlineData(".gif")]
     [InlineData(".ori")]
     [InlineData(".mpo")]
     [InlineData(".x3f")]
@@ -152,7 +149,7 @@ public sealed class RuleEngineTests
 
     // ---------------------------------------------------------------------------------------
     // 排除清单真通配（* / ?）行为测试。
-    // 语义边界 = 纯文件名匹配（与收敛前一致）；大小写口径 = OrdinalIgnoreCase（与收敛前一致）；
+    // 语义边界 = 纯文件名匹配（与收敛前一致）；大小写规则 = OrdinalIgnoreCase（与收敛前一致）；
     // 断言全部走 RuleEngine.Decide 的公共行为（Reason 字段），不读源码文本。
     // 注意：allowed_extensions 先于 excluded_patterns 判定，故探针文件名的扩展名必须在放行面内，
     // 否则会提前以 extension_not_allowed 返回、根本走不到排除清单（helper 已显式放行 .jpg/.tmp）。

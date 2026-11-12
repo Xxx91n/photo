@@ -16,7 +16,7 @@ PhotoPrivacy 自动清除热文件夹中图片/视频/PDF 的隐私元数据（E
 
 ### 文件监听
 - **主监听**：`FileSystemWatcher` 事件驱动（inotify/ReadDirectoryChangesW）
-- **降级兜底**：可选轮询补偿扫描器（`PollingFallbackScanner`），定期比对文件快照，补偿 FSW 漏事件
+- **漏事件保底**：可选轮询补偿扫描器（`PollingFallbackScanner`），定期比对文件快照，补偿 FSW 漏事件
 - **错误恢复**：FSW Error 事件自动重建 watcher + 强制轮询重扫
 
 ### ExifTool 桥接
@@ -24,12 +24,14 @@ PhotoPrivacy 自动清除热文件夹中图片/视频/PDF 的隐私元数据（E
 - Probe + Wipe 两阶段：先 `-json` 探测元数据，有隐私字段才执行 `-all=` 清除
 - 支持连接池（`stay_open_pool_size`）并发处理
 - **随包内置**：发布包在 `<包根>/ExifTool/` 带一份固定版本（Windows 为自带 Perl 运行时的 `exiftool.exe` + `exiftool_files/`；Linux/macOS 为 `exiftool` 脚本 + `lib/`，需目标机有 `perl`）。配置模板的 `exiftool.path` 留空即按运行时探测：内置目录优先，其次系统安装位置
-- **自带 ExifTool（#33）**：`exiftool.path` 也可直接填一个**安装目录**（对齐 ExifToolGUI 的 `ETOverrideDir` 做法），运行时解析出目录内的 `exiftool.exe` / `exiftool`；构建发版时用 `--exiftool-path-override <目录>`（`publish.sh`）或 `-ExifToolPathOverride <目录>`（`publish-app.ps1`）直接打包该目录、跳过下载。发布脚本钉死的 SHA256 由 `scripts/verify-exiftool-download.sh` 与官方 `exiftool.org/checksums.txt` 对账（CI 在发布脚本变更时触发，另做周常巡检）
+- **自带 ExifTool（#33）**：`exiftool.path` 也可直接填一个**安装目录**（对齐 ExifToolGUI 的 `ETOverrideDir` 做法），运行时解析出目录内的 `exiftool.exe` / `exiftool`；构建发版时用 `--exiftool-path-override <目录>`（`publish.sh`）或 `-ExifToolPathOverride <目录>`（`publish-app.ps1`）直接打包该目录、跳过下载。发布脚本钉死的 SHA256 由 `scripts/verify-exiftool-download.sh` 与官方 `exiftool.org/checksums.txt` 核对（CI 在发布脚本变更时触发，另做周常巡检）
 
 ### 格式支持
-- **34 种扩展名**（与擦除策略映射表一一对应）：JPEG（jpg/jpeg/jpe/jps/jph）、TIFF/DNG、RAW（cr2/cr3/arw/nef/orf/raf/rw2/pef/srw/sr2）、PNG/APNG、HEIF/AVIF、MOV/MP4（mov/mp4/m4v/qt/3gp/3g2）、PDF、EPS/PS/AI
-- **不支持格式明确跳过**：映射面之外的格式（如 `.webp`、`.gif`、`.psd`、长尾 RAW 变体）不做任何清理，立即跳过并写入 `wipe_skipped_unknown` 审计事件（fail-closed，绝不静默处理）
-- 数字口径由 CI 断言钉死：`allowed_extensions` ⊆ `ExtensionFamilyMap` 且集合差 = 0（含本行数字），宣称与实现脱钩即红灯
+- **37 种扩展名**（与擦除策略映射表一一对应）：JPEG（jpg/jpeg/jpe/jps/jph）、TIFF/DNG、RAW（cr2/cr3/arw/nef/orf/raf/rw2/pef/srw/sr2）、PNG/APNG/WebP/GIF/PSD、HEIF/AVIF、MOV/MP4（mov/mp4/m4v/qt/3gp/3g2）、PDF、EPS/PS/AI
+- **不支持格式明确跳过**：映射面之外的格式（如长尾 RAW 变体）不做任何清理，立即跳过并写入 `wipe_skipped_unknown` 审计事件（fail-closed，绝不静默处理）
+- **GIF 属部分清理**：注释 / XMP / ICC 能删；C2PA（JUMBF）、Plain Text、MIDI 块 ExifTool 13.61 删不掉（静默保留，审计不谎报已删）。依据：docs/research/exiftool-jxl-webp-psd-gif-apng.md §3.3
+- **PSD 属部分清理**：EXIF / XMP / IPTC / ICC（IRB 内）能删；版权标记、URL、分辨率、打印参数、缩略图（0x040C）以及图层内容、图层名、图层修改时间删不掉。依据：docs/research/exiftool-jxl-webp-psd-gif-apng.md §3.4（含 42 图层真实样本实测）
+- 数字由 CI 断言钉死：`allowed_extensions` ⊆ `ExtensionFamilyMap` 且集合差 = 0（含本行数字），宣称与实现脱钩就 CI 失败
 
 ### Worker 健壮性
 - **指数退避重试**：瞬态异常自动 1s→2s→4s→...→60s 退避，连续 10 次失败才停止宿主
@@ -175,7 +177,7 @@ dotnet run --project src/PhotoPrivacy.Worker/PhotoPrivacy.Worker.csproj -- --mod
 ## Build EXE / Package
 
 > **发布前必须先测试**：发布脚本内含 `dotnet publish`（Worker）与 `cargo build`（GUI 入口）但跳过完整 test 验证。
-> 推荐使用 `release-readiness.ps1`（含 test + smoke + publish 完整 gate）代替直接 publish。
+> 推荐使用 `release-readiness.ps1`（含 test + smoke + publish 的完整检查）代替直接 publish。
 > 直接 publish 而不先 test 会导致 bug 已修但发布的二进制仍是旧版。
 
 Windows（GUI 入口走 cargo 的 windows-gnu target，需 MinGW `windres` 在 PATH 或 `WINDRES` 环境变量）：
@@ -204,6 +206,6 @@ powershell -ExecutionPolicy Bypass -File scripts/verify-force-kill-cleanup.ps1 -
 
 ## Notes
 
-- 监听实现严格使用事件驱动（`FileSystemWatcher`/inotify），不使用轮询作为主监听方式。可选的 `PollingFallbackScanner` 仅作为降级兜底补偿 FSW 漏事件。
+- 监听实现严格使用事件驱动（`FileSystemWatcher`/inotify），不使用轮询作为主监听方式。可选的 `PollingFallbackScanner` 仅作为漏事件时的保底补偿。
 - ExifTool 使用 `stay_open` 单进程桥接。
 - 不要修改 `ExifToolGUI` 目录任何文件，本项目仅读取并执行指定 ExifTool 路径。
