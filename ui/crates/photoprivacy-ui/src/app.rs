@@ -2721,6 +2721,7 @@ impl AppView {
                 // 的原文（单一来源在 WipeStrategyResolver.PartialCleanNote），不在这里
                 // 二次翻译。
                 div()
+                    .id(("log-msg", entry_index)) // tooltip 挂在 Stateful 元素上，ID 按行唯一
                     .flex_1()
                     .flex()
                     .flex_col()
