@@ -407,6 +407,31 @@
   历史 UI 帧 `K2-locale-ar.png` 等仍在 `photo-smoke-113r2\evidence\`
   （锚：`git show 4db2583:docs/agents/ui-smoke-evidence.sha256`）。
 
+### #279 已知限制：Linux polkit 认证取消在 LXDE/lxqt/KDE 代理下报 Failed（上游不回传取消，受限支持）
+
+> 定位窗口：#206 实机取证（PR #277）+ #279 研究核实（2026-11-12）。支持口径（用户裁决，
+> 2026-11-12）：LXDE 算**受限支持**，本条登记为已知缺陷，不在应用侧改代码。
+
+- **现象**：LXDE（lxpolkit 0.5.5+）下从服务页点安装/启动/停止/卸载，认证弹窗点 Cancel 或按
+  Escape 后，服务状态不变（无误装误停），界面却显示 Failed / Not authorized 而非 Cancelled；
+  `pkexec` 退出码 127。MATE polkit 与 polkit-gnome 下同样操作正确显示 Cancelled（退出码 126）。
+- **根因**（上游源码已核实）：lxpolkit 的 `on_completed` 在「未授权且已取消」时直接
+  `g_simple_async_result_complete`，全程不 `set_error`；polkit 只把认证代理回传的
+  `POLKIT_ERROR_CANCELLED` 标成 dismissed，`pkexec` 只有 dismissed 才退出 126，其余一律 127。
+  取消信息在认证代理这一层就丢了，应用侧无从恢复。
+- **同病代理**：lxqt-policykit 与 polkit-kde-agent-1 当前 master 同病（取消同样不回
+  `POLKIT_ERROR_CANCELLED`）。正确回 126 的只有 polkit-gnome 和 MATE polkit。
+- **我们不改什么**：不把 127 一律当取消，也不靠界面状态猜。127 同时代表真正的未授权、
+  程序不存在等错误，吞掉会把安全问题藏起来。`ui/crates/photoprivacy-service/src/unix.rs`
+  的 126=取消、127=失败映射如实，不动（单测 `linux_pkexec_not_authorized_is_a_failure`、
+  `linux_cancelled_pkexec_stays_cancelled` 锁死）。
+- **给用户的指引**：LXDE/lxqt/KDE 桌面下取消提权后看到 Failed 属预期，服务状态以页面状态行
+  为准；需要正确的取消反馈可换用 polkit-gnome 或 MATE 的 polkit 代理。
+- **上游跟进**：已报 lxde/lxsession
+  [#57](https://github.com/lxde/lxsession/issues/57)（2026-11-12，带源码分析与修复建议）；
+  Debian 侧同款缺陷 [#894746](https://bugs.debian.org/894746) 自 2018-04 挂起至今，
+  对上游回音不抱高预期。
+
 ### K 组取证指引（原名「K 组人工验收指引」，#113 定形，#125 换用桌面截图通道）
 
 > **勘误（2026-10-31，#125）**：本节原先写「gpui 窗口的界面呈现只能由人眼判」，前提取自
