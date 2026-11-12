@@ -47,11 +47,11 @@ public static class WipeStrategyResolver
         // 字节级不变；见研究文档 §3.4）
         ["psd"] = WipeFormatFamily.Png,
 
-        // 视频六个扩展名继续留着（#8 拍板，#268 复核）：真机实测只覆盖普通封装的六个
-        // 小样本，能注入的顶层信息删净了、画面数据没动；官方自己说视频是「删掉大部分
-        // 顶层元数据」，所以按部分清理处理，不承诺删干净。带 EXIF 的相机视频、C2PA、
-        // 分片 MP4 这三类还没测过，MQV 真样本造不出来；依据见
-        // docs/research/exiftool-mp4-mov-m4v-3gp.md §12。
+        // 视频六个扩展名继续留着（#8 拍板，#268 本机实测）：iPhone 录像的 GPS / 设备
+        // 信息、C2PA 官方样本的 JUMBF 都删得掉，画面数据字节不变、全量解码通过；
+        // 官方自己说视频是「删掉大部分顶层元数据」，所以按部分清理处理。
+        // 分片 MP4（moof）ExifTool 13.61 写不了，会走清理失败，见
+        // docs/research/exiftool-mp4-mov-m4v-3gp.md §12.3。
         // MOV/MP4
         ["mov"] = WipeFormatFamily.Video, ["mp4"] = WipeFormatFamily.Video,
         ["m4v"] = WipeFormatFamily.Video, ["qt"] = WipeFormatFamily.Video,

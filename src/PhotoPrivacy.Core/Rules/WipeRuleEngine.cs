@@ -161,7 +161,8 @@ public static class WipeRuleEngine
                 case WipeFormatFamily.Video:
                     // 全删 + 日期置零：日期字段留着，值改成 0；播放用的时基和时长不动。
                     // 少数播放器会把 0 显示成 1904 或空白，是显示问题，不是文件坏了。
-                    // 实测依据见 docs/research/exiftool-mp4-mov-m4v-3gp.md §5。
+                    // ExifTool 13.61 写不了分片 MP4（moof），会直接报错、文件原样不动。
+                    // 实测依据见 docs/research/exiftool-mp4-mov-m4v-3gp.md §5、§12.3。
                     parts.Add("-All=");
                     if (stripTime)
                     {

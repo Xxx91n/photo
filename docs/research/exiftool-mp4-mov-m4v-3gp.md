@@ -1,5 +1,7 @@
 # ExifTool 13.61 对 MP4 / MOV / M4V / 3GP / 3G2 的支持与擦除风险评估
 
+> §1–§11 主体是 2026-11-09 那轮的记录。#268 在 2026-11-12 又用真样本在本机补测了四个证据缺口，结果见 §12；前后说法不一致的地方，以 §12 为准。
+
 资料核对日期：2026-11-09
 
 实测环境：WSL（bash + Perl 5.38.2）+ ExifTool 13.61（源码取自 tag `13.61`）+ ffmpeg 7.0.2 static（johnvansickle 构建）。样本全部是我用 ffmpeg 生成的（h264+aac，3gp/3g2 用 h263，3g2 音轨为 AMR-NB），共 6 个：`sample.mp4` / `sample.mov` / `sample.m4v` / `sample.3gp` / `qt3g2.3g2` / `qt-test.qt`（.qt 为注入后 .mov 的复制）。文中字节数都是这些样本的值，**换样本会变**。官方 `exiftool.org` 当前线上版本正好是 13.61，与本地源码同版（[exiftool.org 主页](https://exiftool.org/)：Download Version 13.61 - Nov. 5, 2026）。
@@ -119,7 +121,7 @@ R/W（官方表），实测注入全删净、mdat 不变、解码 OK。残留：
 
 ## 9. 落地建议
 
-> 下面第 1、2、3 条后来由 #268 定下来了，过程和结论见 §12。这里保留当时写下的原样，不改。
+> 下面第 1、2、3 条后来由 #268 用真样本在本机跑完了，过程、样本和结果见 §12。这里保留当时写下的原样，不改。
 
 **六个都留**（.mov/.mp4/.m4v/.qt/.3gp/.3g2），命令保持 `-All= -Time:All=`，不必改。理由：真实参数串实测删净全部可注入元数据、mtime 置零不伤播放、mdat 字节级不变、官方与源码双向印证。
 
@@ -183,51 +185,77 @@ ffmpeg -v error -i FILE -f null -     # 全量解码
 - `src/PhotoPrivacy.Core/Configuration/AppConfig.cs:84`（六扩展名已在 allowed_extensions）
 - `src/PhotoPrivacy.Core/ExifTool/ExifToolCommandBuilder.cs:72-79`（真实执行 = EffectiveArgs + `-overwrite_original`）
 
-## 12. 四个没测过的地方，结论是什么（#268，2026-11-12）
+## 12. 四个证据缺口的本机实测（#268，2026-11-12）
 
-§9 列了几件「还欠的」，这张票把它们和两句产品说法一起定下来。票里给了两条路：补真机测试，或者写书面结论。这次走**书面结论**，为什么这么选，先说清楚，免得以后有人以为我们测过：
+§9 那几件「还欠的」，这一节用真样本跑完了。先交代清楚拿什么测、样本哪来的，别把构造样本当成设备直出。
 
-1. 真样本拿不到。相机直出、本身就带 EXIF 的 mov，带 C2PA（JUMBF）的视频，还有真正的 MQV 文件，仓库里一份都没有；§6.6 也写了，ffmpeg 没有 MQV 的封装器，造不出真 MQV。
-2. 分片 MP4 得靠 ffmpeg 造（`-movflags frag_keyframe+empty_moov` 那一类），而 CI 里跑 ExifTool 真进程的那个 job 只保证有钉住的 ExifTool 13.61，流程里没装 ffmpeg，样本不能指望它来生成。
-3. 就算硬写测试，也只能拿手搓的字节当样本；测过了不等于真视频测过了，反而容易让人误以为这四项有证据了。
+### 12.0 怎么测的
 
-所以四项的结论都一样：**现在还没测过，算已知限制，这次不补测试，也不许在产品里说「删干净了」**。下面逐条写清楚现在知道什么、还差什么、以后真拿到样本怎么测。
+- **擦除命令**：`exiftool -All= -Time:All= -overwrite_original FILE`，跟 `WipeRuleEngine` 的 Video 分支和 `ExifToolCommandBuilder` 拼出来的一字一样。
+- **ExifTool 13.61，两条通道**：一条是 CI 发布产物 `release-linux-x64`（Release run `43169200573`，main 分支，2026-11-12 跑成功）里自带的 `<包根>/ExifTool/exiftool`；另一条是 WSL 里的 13.61 源码版，跟 §1–§11 那轮实测同款。两条结果对得上，逐项数字见 §12.7。
+- **ffmpeg / ffprobe 7.0.2 static**（johnvansickle），用来造样本、看轨道、全量解码。
+- **判法**：擦前擦后各读一次 `-G1 -a -s -n` 比标签；把所有顶层 `mdat` 载荷拼起来算 md5，看画面数据动没动；`ffprobe` 看双轨和时长；`ffmpeg -v error -i F -f null -` 全量解码看文件坏没坏。
+- **应用本身没在本机编译**，用的是 CI 编译好的发布产物；本机实测的是产品拼出来的那条 ExifTool 命令。样本和实测用的脚本放在仓外 `C:\photo-verify\t268\`，没进仓库（体积大，出处是别人的公开样本）。
+- 样本清单（SHA256 用来对照，想复现照着下）：
+  - `c2pa-truepic-zoetrope.mp4`，15,456,823 字节，`23db1d7891973ad0eed6f87967abc2e748663afddacfb0ceb839aa20848cfff3` —— C2PA 官方公开测试文件仓库 `c2pa-org/public-testfiles` 的 `legacy/1.4/video/mp4/truepic-20230212-zoetrope.mp4`。
+  - `meta.mov`（iPhone X，769,836 字节，`f5fa5c0b0b920f3280bc8ad01c407506d2c52ef9ca3490f48b90eca7f36aac6d`）、`meta.mp4`（2,170,486 字节，`224ab1bf37fd4030531ccba266bce0153f847481204cb65e9b30f8000de82aa2`）、`embedded-in-heic.mov`（iPhone 15 Pro，7,455,132 字节，`df7d777dc4c1a27782363a4b8c280786980d017c33c470ea23eceb1744d18d54c`）—— `mindeng/nom-exif` 仓库 `testdata/` 里的真实设备录像。另外还下过 `auth.mov` 和 `sony-a7-xavc.MP4` 一起看。
+  - `fragmented.mp4`，56,240 字节，`66e4891ae410e9fafecff03fd593a56a1dacc99f475501aa3423ddd310bd538c` —— 本机 ffmpeg 造的分片 MP4，见 §12.3。
+  - `constructed.mqv`，27,662 字节，`efe9b2f31d0ca72e0fc8b15a50c97510382f7501d1cba365fa965c3c19d524c7` —— 本机 ffmpeg 造 MOV 后改 ftyp 品牌，见 §12.4。
+
+一句话先给结果：**C2PA 实测能删；分片 MP4 实测写不了（清理会失败）；MQV 按官方品牌构造的样本实测能擦；相机视频的 GPS 和设备信息实测删净，但这些设备压根不带 EXIF 结构。**下面逐项摆数字。
 
 ### 12.1 相机直出、本来就带 EXIF 的视频
 
-- **现在知道**：干净的 mp4/mov/m4v/3gp 上，`-EXIF:Make` 这类写入全被拒，报 `0 image files updated` 且没有警告（§3 表格最后一行）；`WriteQuickTime.pl` 的 `%movMap` / `%mp4Map` 根本没有 EXIF 的写入目标，只有 HEIC 的映射里有。官方支持表标 R/W3，说的是文件里已有 EXIF 结构时才能改。
-- **还差什么**：一台相机拍出来、里面本来就带 EXIF 的 mov，用真实参数串擦完，EXIF 是不是真没了，没人跑过。
-- **对用户**：这类文件可能还留着 EXIF。视频按部分清理处理，日志和 README 都不说「EXIF 已删净」。
-- **以后怎么测**：找一段相机原始 mov → `exiftool -G1 -a -s` 确认 EXIF 在 → 跑 `exiftool -All= -Time:All= -overwrite_original` → 再读回比对，同时用 ffprobe 和全量解码确认还能播。
+- **实测了什么**：上面那几个真实设备样本，ExifTool 13.61 读出来的 `[EXIF]` 组全是 **0 行**。iPhone X、iPhone 15 Pro、Sony A7 这些相机拍的视频不带 EXIF 结构，隐私信息放在 `[Keys]` / `[ItemList]` / `[UserData]` / GPS 里。
+- **擦除结果**：对 `meta.mov` / `meta.mp4` / `embedded-in-heic.mov` 跑真实命令，全部 `1 image files updated`；GPS 标签 6 / 4 / 6 行全部归零，`[Keys]` 里的 Make、Model、Software、CreationDate、GPSCoordinates 全删，日期置零；三个样本的 mdat 载荷 md5 前后一模一样（`a6cb8053…` / `99a214c8…` / `1636bb40…`）；ffprobe 双轨和时长不变，全量解码 exit 0。
+- **「已有 EXIF 结构时删不删得掉」这一条仍没测成**：往干净 MP4 写 `-EXIF:Make` 被拒（§3 复验：`0 image files updated`）；想按 HEIF 品牌造一个带 EXIF 结构的视频也没成——给 ftyp 加字节会让 stco 里的偏移全错位，ExifTool 报 `Chunk offset in stco atom is outside media data`；只换品牌不换大小则进不了 HEIC 的写入路径，报 `unchanged`。
+- **结论**：现役常见设备的视频没有 EXIF 结构，真正要删的隐私信息实测删净了；「EXIF-in-video 的删除路径」在能拿到的样本上触发不了，文档不写「EXIF 已删净」，但也不用把它当日常风险。以后真拿到一份带 `[EXIF]` 组的相机视频，照 §12.0 那套跑一遍就能补上。
 
-### 12.2 C2PA（JUMBF）
+### 12.2 C2PA（JUMBF）—— 实测能删
 
-- **现在知道**：官方支持表给 QuickTime 系标 R/D，`-listd` 的可删组里有 JUMBF，也就是按官方说法能删。
-- **还差什么**：没有带 JUMBF 盒的真视频样本，`-All=` 到底删没删，没验过。GIF 那边有个测试盯着「C2PA 删不掉」这件事（`GifC2paPreservationTests`），视频这边没有，别把 GIF 的结论搬过来。
-- **对用户**：不承诺删 C2PA。
-- **以后怎么测**：拿一份带 C2PA 的 mp4，擦前擦后比 JUMBF 盒还在不在；顺便把该删的顶层信息也一起比，确认命令确实干了活。
+- **样本**：Truepic 给 C2PA 官方公开测试文件造的 MP4。擦前 ExifTool 读出 24 行 `[JUMBF]`、50 行 `[CBOR]`，顶层有个 30,192 字节的 `uuid` 盒装 manifest；顶层盒依次是 ftyp / uuid / free / mdat / moov。
+- **擦除**：`1 image files updated`。擦后 `[JUMBF]` 0 行、`[CBOR]` 0 行，那个 uuid 盒整个没了，文件小 30,310 字节，顶层盒重排成 ftyp / free / moov / mdat。
+- **画面**：mdat 载荷 md5 `3bd69eeedf1329efd1fb2c86164657c3` 前后一致；ffprobe 双轨、7.408489 s 不变；全量解码 exit 0。
+- **结论**：官方支持表标的 R/D 属实，`-All=` 能把 JUMBF 删掉。之前「不承诺删 C2PA」的说法撤回，README 已改。别把 GIF 那边 `GifC2paPreservationTests` 盯着的「C2PA 删不掉」套到视频上——两个容器引擎不一样，实测结果也相反。
 
-### 12.3 分片 MP4（moof）
+### 12.3 分片 MP4（moof）—— 实测写不了，不是部分清理
 
-- **现在知道**：§4 那六个样本都是普通封装（一个 moov 配一段 mdat），画面数据擦前擦后 md5 一样、全量解码通过。
-- **还差什么**：录像笔、DASH 常用的是分片 MP4，一个 moof 配一段 mdat，元数据可能散在每个分片里。`-All=` 能不能覆盖到、会不会把分片写坏，完全没测过。
-- **对用户**：这类文件也按部分清理处理，不承诺删净。
-- **以后怎么测**：用 ffmpeg 造分片样本，跑真实参数串，逐段读元数据，再全量解码确认没坏。
+- **样本**：本机 ffmpeg 用 `-movflags frag_keyframe+empty_moov+default_base_moof -frag_duration 500000` 造的 4 秒文件，9 组 moof + mdat，末尾 mfra；ffprobe 双轨、4.133333 s。
+- **擦除**：exit 1，报 `Error: Can't yet handle movie fragments when writing`，`0 image files updated`。文件一个字节没动：9 个 mdat 载荷 md5 前后一致（`60781b03fcb7ab8ad6bfb4934724759d`）、114 个标签一行不少、顶层盒序不变，解码正常。
+- **产品里会怎样**：`FileTaskPipeline` 会写一条 `file_processing_failed`（Error）；隔离区开着的话，还会复制一份到隔离区并记 `file_quarantined`。也就是说录像笔、DASH 生成的分片 MP4 会**清理失败**，不是「部分清理」，更不会记成成功。
+- **结论**：ExifTool 13.61 写不了带 movie fragments 的文件。之前写的「这类文件也按部分清理处理」是错的，已改，README 也写清楚了。升级 ExifTool 时要重看这条。想处理这类文件，目前得先转成普通 MP4 再放进监控文件夹。
 
-### 12.4 MQV 真样本
+### 12.4 MQV —— 品牌合规的构造样本能擦，设备直出的真样本没找到
 
-- **现在知道**：官方支持表 R/W，`-listwf` 里有 MQV。§6.6 试过把 mov 改名成 .mqv，ExifTool 认成 MQV 也能擦，但文件内容其实还是 MOV，不能算 MQV 实测。
-- **还差什么**：没有封装器，造不出真 MQV。
-- **对用户**：`.mqv` 不在我们认的 37 个扩展名里（§2 那六个才是），这条不影响现在的行为，也不为它改名单。
-- **以后怎么测**：哪天有人给了真 MQV 文件，再按 §4 那套跑一遍。
+- **真样本**：网上搜到的几个 `.mqv` 全是占位货——4 字节、11 字节的文本，TrID 的 XML 定义，还有一个 C# 源码文件，没一个带 `ftypmqt ` 头。Sony CLIÉ 是 2000–2005 年的设备，公开录像基本绝迹。
+- **构造样本**：ffmpeg 造 2 秒 MOV，只把 ftyp 的主品牌和一个兼容品牌改成 `mqt `（盒大小不变，后面的偏移不用重算），扩展名 `.mqv`。ExifTool 读出来的 MajorBrand 原文是 `Sony / Mobile QuickTime (.MQV) US Patent 7,477,830 (Sony Corp)`，FileType 报 MQV；注入 Title / Artist / Comment / GPSCoordinates 成功。
+- **擦除**：`1 image files updated`。`[ItemList]` 的 Title / Artist / Comment / GPSCoordinates、`[XMP-*]`、Composite 的 GPS 全删，`uuid` 盒消失，日期置零；mdat 载荷 md5 `509a18dabf3659da11ef081eb4490f5a` 前后一致；ffprobe 双轨、全量解码 exit 0。
+- **结论**：MQV 这条 QuickTime 分支的擦除路径跑得通。但这不是设备直出的老 MQV，只算「品牌合规、有视频轨」的构造样本；`.mqv` 本来也不在我们认的 37 个扩展名里，不为它改名单。
 
-### 12.5 两句产品说法，定下来
+### 12.5 几句产品说法，按实测定下来
 
 - **不许说「全部清除」**：审计成功事件已经带 `partial_clean` 说明（#271），日志页能读到并显示，鼠标悬停看全文、复制也带上（#283 / PR #285）。讲清理结果的地方没有「全部清除」这四个字。规则页有个开关叫「全部清除」（`strip_all` 的中文标签），那是开关名字，意思是「打开全删模式」，不是在讲结果；十种语言各有自己的开关名，跟这张票的视频证据不是一回事，这回不动。真要改这个开关名，得连十种语言和规则页冒烟一起做，另开票，别塞进这张票。
 - **`-Time:All=` 的置零语义，写进文档**：日期字段不删，只把值改成 0；少数播放器会显示 1904 年或空白；播放用的 timeScale、时长、音画轨道、画面数据都不受影响（§5 六个样本实测）。完整说明写进 README（含 1904 那一句）；日志里那行小字只留最短的一句「拍摄日期改成 0，不影响播放」，字多了反而看不清，鼠标悬停能看全文、复制也带得上。理由很实在：用户看到日期变成 1904 会以为文件坏了，得提前讲明白。
+- **分片 MP4 会失败，要跟用户说清楚**：§12.3 实测 ExifTool 13.61 写不了这类文件，会记 `file_processing_failed`、按设置进隔离区，不是「删掉一部分」。这句写进 README，别让用户以为文件被清过了。
+- **C2PA 能删，别再说「不承诺删」**：§12.2 用官方真样本实测 JUMBF 全删，README 里「带 C2PA 的视频还没测过」那句已删掉；但测的是 13.61，ExifTool 升级要重看。
 
-### 12.6 最后改成什么
+### 12.6 最后落成什么
 
-六个扩展名继续留着，命令一行不改（`-All= -Time:All=`），视频继续算部分清理。跟用户有关的三项（带 EXIF 的相机视频、C2PA、分片 MP4）写进 README；MQV 不在我们认的扩展名里，只在上面 §12.4 记着。日志里那句说明换成不看英文原文也能懂的话。哪天真拿到样本，按上面每节的「以后怎么测」补真机测试；补之前，谁都别在产品里写「全删干净」。
+六个扩展名继续留着，命令一行不改（`-All= -Time:All=`），视频继续算部分清理。
 
-票评论里补的那条「日志页要显示 `partial_clean`」，#283 已经做完（PR #285 合进这张票的基线，代码在 `ui/crates/photoprivacy-logs/src/model.rs` 和 `ui/crates/photoprivacy-ui/src/app.rs`），本票核对过，不重做。
+四条缺口的落点：C2PA 实测能删；分片 MP4 实测写不了，属于清理失败；MQV 构造样本实测能擦，设备直出的真样本仍缺；相机视频实测删净 GPS 和设备信息，但这些设备不带 EXIF 结构，那条删除路径还是没样本。现在不能说的话有三句：「全部清除」「EXIF 已删净」「分片 MP4 只是部分清理」。
+
+日志里那句说明换成不看英文原文也能懂的话（`PartialCleanNote`）。票评论里补的「日志页要显示 `partial_clean`」，#283 已经做完（PR #285 合进这张票的基线，代码在 `ui/crates/photoprivacy-logs/src/model.rs` 和 `ui/crates/photoprivacy-ui/src/app.rs`），本票核对过，不重做。
+
+### 12.7 用 CI 发布产物自带的那份 ExifTool 复验
+
+Release run `43169200573` 出的 `release-linux-x64` 里有 `<包根>/ExifTool/`，本机 `perl ExifTool/exiftool -ver` 报 **13.61**。四个样本再用这份走一遍同一条命令，结果和 §12.1–§12.4 对得上：
+
+| 样本 | 擦除 | 关键标签 | mdat 载荷 md5 | 全量解码 |
+| --- | --- | --- | --- | --- |
+| C2PA 官方 MP4 | `1 image files updated` | `[JUMBF]` 24 → 0 | `3bd69e…` 前后一致 | exit 0 |
+| 分片 MP4 | exit 1，`Can't yet handle movie fragments when writing`，0 updated | `[QuickTime]` 47 行一行没动 | `60781b…` 前后一致（9 段） | exit 0 |
+| 构造的 MQV | `1 image files updated` | 这一轮没注入元数据，删标签的效果见 §12.4 | `509a18…` 前后一致 | exit 0 |
+| iPhone X 的 MOV | `1 image files updated` | `[Keys]` 5 → 0 | `a6cb80…` 前后一致 | exit 0 |
+
+产物和实测用的脚本都没进仓库：产物在仓外 `C:\photo-verify\t268\ci\`，三份逐项数字在 `work/report.json`、`work/final-report.json`、`work-ci/ci-report.json`。仓库里只留结论和数字，CI 那边没有对应的自动测试——样本是外部公开文件和本机造的文件，不适合当固定夹具塞进仓库。
