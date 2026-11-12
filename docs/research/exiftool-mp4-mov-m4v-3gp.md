@@ -1,6 +1,6 @@
 # ExifTool 13.61 对 MP4 / MOV / M4V / 3GP / 3G2 的支持与擦除风险评估
 
-> §1–§11 主体是 2026-11-09 那轮的记录。#268 在 2026-11-12 又用真样本在本机补测了四个证据缺口，结果见 §12；前后说法不一致的地方，以 §12 为准。
+> §1–§11 主体是 2026-11-09 那轮的记录。#268 在 2026-11-12 又下载样本在本机补测了这四个缺口（其中两项只能造样本、一项删除路径仍没测成），结果见 §12；前后说法不一致的地方，以 §12 为准。
 
 资料核对日期：2026-11-09
 
@@ -109,6 +109,8 @@ R/W（官方表），实测注入全删净、mdat 不变、解码 OK。残留：
 
 ## 8. 横向风险清单
 
+> 表里「未实测」是 2026-11-09 当时的状态。分片 MP4、C2PA、相机视频后来在本机补测过，见 §12；这张表保留原样。
+
 | 风险项 | 现状 | 说明 |
 |---|---|---|
 | 播放安全 | 实测安全 | 六样本 mdat md5 不变、时长/轨道不变、全量解码 OK；日期置零不碰 timeScale |
@@ -121,7 +123,7 @@ R/W（官方表），实测注入全删净、mdat 不变、解码 OK。残留：
 
 ## 9. 落地建议
 
-> 下面第 1、2、3 条后来由 #268 用真样本在本机跑完了，过程、样本和结果见 §12。这里保留当时写下的原样，不改。
+> 下面第 1、2、3 条后来由 #268 补测和定稿了，过程、样本和结果见 §12（有两项没拿到设备直出的真样本，一处删除路径仍没测成）。这里保留当时写下的原样，不改。
 
 **六个都留**（.mov/.mp4/.m4v/.qt/.3gp/.3g2），命令保持 `-All= -Time:All=`，不必改。理由：真实参数串实测删净全部可注入元数据、mtime 置零不伤播放、mdat 字节级不变、官方与源码双向印证。
 
@@ -191,8 +193,8 @@ ffmpeg -v error -i FILE -f null -     # 全量解码
 
 ### 12.0 怎么测的
 
-- **擦除命令**：`exiftool -All= -Time:All= -overwrite_original FILE`，跟 `WipeRuleEngine` 的 Video 分支和 `ExifToolCommandBuilder` 拼出来的一字一样。
-- **ExifTool 13.61，两条通道**：一条是 CI 发布产物 `release-linux-x64`（Release run `43169200573`，main 分支，2026-11-12 跑成功）里自带的 `<包根>/ExifTool/exiftool`；另一条是 WSL 里的 13.61 源码版，跟 §1–§11 那轮实测同款。两条结果对得上，逐项数字见 §12.7。
+- **擦除命令**：`exiftool -All= -Time:All= -overwrite_original FILE`，参数跟 `WipeRuleEngine` 的 Video 分支和 `ExifToolCommandBuilder` 拼出来的一字一样。**通道不同**：§12.1–§12.4 跑的是单次命令行调用，产品走 `-stay_open` 块协议（`-execute` + `{ready}`）。这个差别在分片 MP4 上很要紧，§12.3 单独按产品的块格式复验过。
+- **ExifTool 13.61，两条通道**：一条是 CI 发布产物 `release-linux-x64`（Release run `43169200573`，main 分支，2026-11-12 跑成功）里自带的 `<包根>/ExifTool/exiftool`；另一条是 WSL 里的 13.61 源码版，跟 §1–§11 那轮实测同款。两条通道在关键结论上一致；CI 通道只复验了四个样本、MQV 那轮没注入元数据，逐项数字见 §12.7。
 - **ffmpeg / ffprobe 7.0.2 static**（johnvansickle），用来造样本、看轨道、全量解码。
 - **判法**：擦前擦后各读一次 `-G1 -a -s -n` 比标签；把所有顶层 `mdat` 载荷拼起来算 md5，看画面数据动没动；`ffprobe` 看双轨和时长；`ffmpeg -v error -i F -f null -` 全量解码看文件坏没坏。
 - **应用本身没在本机编译**，用的是 CI 编译好的发布产物；本机实测的是产品拼出来的那条 ExifTool 命令。样本和实测用的脚本放在仓外 `C:\photo-verify\t268\`，没进仓库（体积大，出处是别人的公开样本）。
@@ -213,7 +215,7 @@ ffmpeg -v error -i FILE -f null -     # 全量解码
 
 ### 12.2 C2PA（JUMBF）—— 实测能删
 
-- **样本**：Truepic 给 C2PA 官方公开测试文件造的 MP4。擦前 ExifTool 读出 24 行 `[JUMBF]`、50 行 `[CBOR]`，顶层有个 30,192 字节的 `uuid` 盒装 manifest；顶层盒依次是 ftyp / uuid / free / mdat / moov。
+- **样本**：Truepic 给 C2PA 官方公开测试文件造的 MP4。擦前 ExifTool 读出 24 行 `[JUMBF]`、50 行 `[CBOR]`，顶层有个 `uuid` 盒装 manifest；顶层盒依次是 ftyp / uuid / free / mdat / moov。
 - **擦除**：`1 image files updated`。擦后 `[JUMBF]` 0 行、`[CBOR]` 0 行，那个 uuid 盒整个没了，文件小 30,310 字节，顶层盒重排成 ftyp / free / moov / mdat。
 - **画面**：mdat 载荷 md5 `3bd69eeedf1329efd1fb2c86164657c3` 前后一致；ffprobe 双轨、7.408489 s 不变；全量解码 exit 0。
 - **结论**：官方支持表标的 R/D 属实，`-All=` 能把 JUMBF 删掉。之前「不承诺删 C2PA」的说法撤回，README 已改。别把 GIF 那边 `GifC2paPreservationTests` 盯着的「C2PA 删不掉」套到视频上——两个容器引擎不一样，实测结果也相反。
@@ -222,8 +224,9 @@ ffmpeg -v error -i FILE -f null -     # 全量解码
 
 - **样本**：本机 ffmpeg 用 `-movflags frag_keyframe+empty_moov+default_base_moof -frag_duration 500000` 造的 4 秒文件，9 组 moof + mdat，末尾 mfra；ffprobe 双轨、4.133333 s。
 - **擦除**：exit 1，报 `Error: Can't yet handle movie fragments when writing`，`0 image files updated`。文件一个字节没动：9 个 mdat 载荷 md5 前后一致（`60781b03fcb7ab8ad6bfb4934724759d`）、114 个标签一行不少、顶层盒序不变，解码正常。
-- **产品里会怎样**：`FileTaskPipeline` 会写一条 `file_processing_failed`（Error）；隔离区开着的话，还会复制一份到隔离区并记 `file_quarantined`。也就是说录像笔、DASH 生成的分片 MP4 会**清理失败**，不是「部分清理」，更不会记成成功。
-- **结论**：ExifTool 13.61 写不了带 movie fragments 的文件。之前写的「这类文件也按部分清理处理」是错的，已改，README 也写清楚了。升级 ExifTool 时要重看这条。想处理这类文件，目前得先转成普通 MP4 再放进监控文件夹。
+- **按产品的块格式复验**：照 `ExifToolCommandBuilder.BuildWipeTaskBlock` 的真实内容（`-All=` / `-Time:All=` / `-overwrite_original` / 路径 / `-echo1` / `TASK_DONE_1` / `-execute`）喂给 `-stay_open True -@ -`，CI 产物那份 ExifTool 的 stdout 是 `TASK_DONE_1`、`0 image files updated`、`1 files weren't updated due to errors`、`{ready}`——**`{ready}` 照样到了**，错误只在 stderr；文件 md5 `1a8ab577…` 前后一致、大小 56,240 不变。同样的块喂 C2PA 样本是 `1 image files updated`、文件确实变小，说明块格式本身没问题。原始输出在仓外 `work-stayopen/result.json`。
+- **产品里会怎样（重要）**：`ExifToolBridge` 只拿 `{ready}` 当块结束（`OnStdoutLine` → `CompleteBlockJustEchoed` → `TrySetResult`），stderr 那句错误不会变成异常；`WipeMetadataAsync` 之后只看文件有没有变，没变就记一句诊断警告，最后**无条件 `return WipeResult.Cleaned_Modified`**（`ExifToolBridge.cs:402`、`:411`）。于是 `FileTaskPipeline` 会写 `file_processing_succeeded` 加 `partial_clean`，**文件其实一个字节没动，也不会进隔离区**。`file_processing_failed` 只在抛异常时才写，这条路径不抛。这一段是按代码路径推出来的，没有跑完整的 Worker 端到端；块协议的实测只证明了 `{ready}` 照样到、文件没动。
+- **结论**：单次命令行调用是 exit 1 的硬失败；产品的常驻通道按代码路径会把同一个文件**记成清理成功**，这是审计谎报，既不是「部分清理」也不是「清理失败」。本票只把证据和结论写清楚，**没改产品代码**——修 `ExifToolBridge` 让这类报错变成失败是另一个活，要另开票并经确认。升级 ExifTool 时要重看「写不了」这一条；修好之前，分片 MP4 先转成普通 MP4 再放进监控文件夹。
 
 ### 12.4 MQV —— 品牌合规的构造样本能擦，设备直出的真样本没找到
 
@@ -235,21 +238,21 @@ ffmpeg -v error -i FILE -f null -     # 全量解码
 ### 12.5 几句产品说法，按实测定下来
 
 - **不许说「全部清除」**：审计成功事件已经带 `partial_clean` 说明（#271），日志页能读到并显示，鼠标悬停看全文、复制也带上（#283 / PR #285）。讲清理结果的地方没有「全部清除」这四个字。规则页有个开关叫「全部清除」（`strip_all` 的中文标签），那是开关名字，意思是「打开全删模式」，不是在讲结果；十种语言各有自己的开关名，跟这张票的视频证据不是一回事，这回不动。真要改这个开关名，得连十种语言和规则页冒烟一起做，另开票，别塞进这张票。
-- **`-Time:All=` 的置零语义，写进文档**：日期字段不删，只把值改成 0；少数播放器会显示 1904 年或空白；播放用的 timeScale、时长、音画轨道、画面数据都不受影响（§5 六个样本实测）。完整说明写进 README（含 1904 那一句）；日志里那行小字只留最短的一句「拍摄日期改成 0，不影响播放」，字多了反而看不清，鼠标悬停能看全文、复制也带得上。理由很实在：用户看到日期变成 1904 会以为文件坏了，得提前讲明白。
-- **分片 MP4 会失败，要跟用户说清楚**：§12.3 实测 ExifTool 13.61 写不了这类文件，会记 `file_processing_failed`、按设置进隔离区，不是「删掉一部分」。这句写进 README，别让用户以为文件被清过了。
+- **`-Time:All=` 的置零语义，写进文档**：日期字段不删，只把值改成 0；少数播放器会显示 1904 年或空白；播放用的 timeScale、时长、音画轨道、画面数据都不受影响（§5 六个样本实测）。完整说明写进 README（含 1904 那一句）；日志里那行说明只提「拍摄日期改成 0，不影响播放」，不把 1904 那一串塞进去，字多了反而看不清；鼠标悬停能看全文、复制也带得上。理由很实在：用户看到日期变成 1904 会以为文件坏了，得提前讲明白。
+- **分片 MP4 擦不掉、还可能被记成成功，要跟用户说清楚**：§12.3 两条通道都实测过。README 写明「擦不掉、先转普通 MP4」，别让用户以为文件被清过了。修 bridge 是另一个活，本票没动。
 - **C2PA 能删，别再说「不承诺删」**：§12.2 用官方真样本实测 JUMBF 全删，README 里「带 C2PA 的视频还没测过」那句已删掉；但测的是 13.61，ExifTool 升级要重看。
 
 ### 12.6 最后落成什么
 
 六个扩展名继续留着，命令一行不改（`-All= -Time:All=`），视频继续算部分清理。
 
-四条缺口的落点：C2PA 实测能删；分片 MP4 实测写不了，属于清理失败；MQV 构造样本实测能擦，设备直出的真样本仍缺；相机视频实测删净 GPS 和设备信息，但这些设备不带 EXIF 结构，那条删除路径还是没样本。现在不能说的话有三句：「全部清除」「EXIF 已删净」「分片 MP4 只是部分清理」。
+四条缺口的落点：C2PA 实测能删；分片 MP4 实测写不了（产品通道还会误记成功，见 §12.3）；MQV 构造样本实测能擦，设备直出的真样本仍缺；相机视频实测删净 GPS 和设备信息，但这些设备不带 EXIF 结构，那条删除路径还是没样本。现在不能说的话有三句：「全部清除」「EXIF 已删净」「分片 MP4 只是部分清理」。
 
 日志里那句说明换成不看英文原文也能懂的话（`PartialCleanNote`）。票评论里补的「日志页要显示 `partial_clean`」，#283 已经做完（PR #285 合进这张票的基线，代码在 `ui/crates/photoprivacy-logs/src/model.rs` 和 `ui/crates/photoprivacy-ui/src/app.rs`），本票核对过，不重做。
 
 ### 12.7 用 CI 发布产物自带的那份 ExifTool 复验
 
-Release run `43169200573` 出的 `release-linux-x64` 里有 `<包根>/ExifTool/`，本机 `perl ExifTool/exiftool -ver` 报 **13.61**。四个样本再用这份走一遍同一条命令，结果和 §12.1–§12.4 对得上：
+Release run `43169200573` 出的 `release-linux-x64` 里有 `<包根>/ExifTool/`，本机 `perl ExifTool/exiftool -ver` 报 **13.61**。四个样本再用这份走一遍同一条命令，关键结论和 §12.1–§12.4 一致（MQV 这一轮没注入元数据，删标签的效果见 §12.4）：
 
 | 样本 | 擦除 | 关键标签 | mdat 载荷 md5 | 全量解码 |
 | --- | --- | --- | --- | --- |
@@ -258,4 +261,8 @@ Release run `43169200573` 出的 `release-linux-x64` 里有 `<包根>/ExifTool/`
 | 构造的 MQV | `1 image files updated` | 这一轮没注入元数据，删标签的效果见 §12.4 | `509a18…` 前后一致 | exit 0 |
 | iPhone X 的 MOV | `1 image files updated` | `[Keys]` 5 → 0 | `a6cb80…` 前后一致 | exit 0 |
 
-产物和实测用的脚本都没进仓库：产物在仓外 `C:\photo-verify\t268\ci\`，三份逐项数字在 `work/report.json`、`work/final-report.json`、`work-ci/ci-report.json`。仓库里只留结论和数字，CI 那边没有对应的自动测试——样本是外部公开文件和本机造的文件，不适合当固定夹具塞进仓库。
+另外按产品真实的 `-stay_open` 块格式（`{ready}` 结束）单独复验过一次，分片 MP4 和 C2PA 的逐行输出在仓外 `work-stayopen/result.json`；结论见 §12.3。
+
+产物和实测用的脚本都没进仓库：产物在仓外 `C:\photo-verify\t268\ci\`，三份记录是 `work/report.json`（第一轮，mdat 指标有缺陷，只当过程记录）、`work/final-report.json` 和 `work-ci/ci-report.json`（正文数字以这两份为准）。
+
+这些数字是一次实测的记录，不是产品的功能宣称，所以没有对应的 CI 断言：样本是别人的公开文件和本机造的文件，不适合当固定夹具塞进仓库。词表里「说了什么，机器就得真的做到什么」那条管的是 README 的 37 种扩展名（`FormatCoverageReconciliationTests` 钉着）和 `PartialCleanNote` 的行为测试，这两处没动。
