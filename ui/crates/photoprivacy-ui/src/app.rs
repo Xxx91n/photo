@@ -746,14 +746,15 @@ pub struct AppView {
 }
 
 /// 日志行悬浮提示：消息列单行截断的长文本（message + 部分清理说明）在 tooltip 里给全文（#283）。
-/// 主题跟随当前窗口外观（tooltip 视图独立于主视图生命周期，不复用主视图的 theme_mode）。
+/// 主题用主视图的 theme_mode（手动切换的 light/dark 要跟主界面一致，不能恒跟系统）。
 struct LogRowTooltip {
     text: String,
+    mode: ThemeMode,
 }
 
 impl Render for LogRowTooltip {
     fn render(&mut self, window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        let theme = Theme::resolve(ThemeMode::System, theme::is_dark(window.appearance()));
+        let theme = Theme::resolve(self.mode, theme::is_dark(window.appearance()));
         div()
             .max_w(px(560.))
             .p(px(10.))
@@ -2666,6 +2667,8 @@ impl AppView {
             }
             None => entry.message.clone(),
         };
+        let has_tooltip_text = !tooltip_text.is_empty();
+        let theme_mode = self.theme_mode.get();
         let button_id = format!("copy-log-{entry_index}");
         let row_focus = self.log_copy_handle(entry_index, cx);
         div()
@@ -2723,12 +2726,15 @@ impl AppView {
                     .flex_col()
                     .justify_center()
                     .overflow_hidden()
-                    // #283：长文本悬停看全文；闭包持有副本，任何行都挂（失败事件的 ex.Message 同样会截断）。
-                    .tooltip(move |_, cx| {
-                        cx.new(|_| LogRowTooltip {
-                            text: tooltip_text.clone(),
+                    // #283：长文本悬停看全文；闭包持有副本，空文本行不挂（免得悬停出空白气泡）。
+                    .when(has_tooltip_text, |el| {
+                        el.tooltip(move |_, cx| {
+                            cx.new(|_| LogRowTooltip {
+                                text: tooltip_text.clone(),
+                                mode: theme_mode,
+                            })
+                            .into()
                         })
-                        .into()
                     })
                     .child(
                         div()
