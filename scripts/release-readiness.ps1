@@ -1,4 +1,4 @@
-param(
+﻿param(
   [string]$Version = "0.1.0-preview",
   [string]$Runtime = "win-x64",
   [string]$IncludeForceKillCheck = "false"
@@ -43,9 +43,15 @@ function Invoke-ScriptWithCapture([string]$Label, [string]$ScriptPath, [string]$
 }
 
 Write-Host "[1/3] dotnet test PhotoPrivacy.sln"
+# 两类管道测试在 Windows 上会挂死测试宿主（xunit v2 + .NET 10 Windows 宿主，见 ci.yml 注释），
+# 与 CI 的 Windows 腿用同一过滤；Linux/macOS 仍全量跑。
+$windowsFilter = ""
+if ($env:OS -eq "Windows_NT") {
+  $windowsFilter = ' --filter "FullyQualifiedName!~WindowsServicePipeAclTests&FullyQualifiedName!~ServicePipeNameEntropyTests"'
+}
 # dotnet test 经临时包装脚本纳入 Invoke-ScriptWithCapture，失败打印双尾部后 throw（四步全链路捕获）。
 $testScript = Join-Path ([System.IO.Path]::GetTempPath()) ("photo-ready-dotnet-test-" + [Guid]::NewGuid().ToString("N") + ".ps1")
-[System.IO.File]::WriteAllText($testScript, '& dotnet test "' + $repoRoot + '\PhotoPrivacy.sln"' + [Environment]::NewLine + 'exit $LASTEXITCODE', (New-Object System.Text.UTF8Encoding($false)))
+[System.IO.File]::WriteAllText($testScript, '& dotnet test "' + $repoRoot + '\PhotoPrivacy.sln"' + $windowsFilter + [Environment]::NewLine + 'exit $LASTEXITCODE', (New-Object System.Text.UTF8Encoding($false)))
 try {
   Invoke-ScriptWithCapture -Label "dotnet test" -ScriptPath $testScript -ArgumentString ""
 }

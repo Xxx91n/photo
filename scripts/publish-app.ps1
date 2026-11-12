@@ -63,36 +63,45 @@ if (-not $windres) {
   throw "windres not found in PATH or at known MinGW locations; the windows-gnu build needs MinGW windres (or set the WINDRES environment variable)"
 }
 
-rustup target add $uiTarget
-if ($LASTEXITCODE -ne 0) {
-  throw "rustup target add $uiTarget failed"
+# Windows PowerShell 5.1 会把原生命令的 stderr 当终止错误（ErrorActionPreference=Stop），
+# 而 rustup/cargo/dotnet 的进度恰好走 stderr。调用期间临时放宽为 Continue，退出码照常
+# 校验（throw 不受该设置影响）；PowerShell 7 下行为不变。
+$savedPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+  rustup target add $uiTarget
+  if ($LASTEXITCODE -ne 0) {
+    throw "rustup target add $uiTarget failed"
+  }
+
+  Write-Host "Building new UI (cargo, $uiTarget) + publishing PhotoPrivacy.Worker ..."
+  Write-Host "Runtime: $Runtime | Framework: $resolvedFramework"
+
+  cargo build --release --locked --target $uiTarget --manifest-path (Join-Path $repoRoot "ui" | Join-Path -ChildPath "Cargo.toml") -p photoprivacy-ui
+  if ($LASTEXITCODE -ne 0) {
+    throw "cargo build (photoprivacy-ui) failed"
+  }
+
+  $workerPublishDir = Join-Path $targetDir "worker"
+  New-Item -ItemType Directory -Force -Path $workerPublishDir | Out-Null
+
+  dotnet publish (Join-Path $repoRoot "src" | Join-Path -ChildPath "PhotoPrivacy.Worker" | Join-Path -ChildPath "PhotoPrivacy.Worker.csproj") `
+    -c Release `
+    -f $resolvedFramework `
+    -r $Runtime `
+    --self-contained $selfContainedValue `
+    /p:PublishSingleFile=true `
+    /p:IncludeNativeLibrariesForSelfExtract=true `
+    /p:PublishTrimmed=false `
+    /p:Version=$Version `
+    /p:UseAppHost=true `
+    -o $workerPublishDir
+  if ($LASTEXITCODE -ne 0) {
+    throw "dotnet publish (worker) failed"
+  }
 }
-
-Write-Host "Building new UI (cargo, $uiTarget) + publishing PhotoPrivacy.Worker ..."
-Write-Host "Runtime: $Runtime | Framework: $resolvedFramework"
-
-cargo build --release --locked --target $uiTarget --manifest-path (Join-Path $repoRoot "ui" | Join-Path -ChildPath "Cargo.toml") -p photoprivacy-ui
-if ($LASTEXITCODE -ne 0) {
-  throw "cargo build (photoprivacy-ui) failed"
-}
-
-$workerPublishDir = Join-Path $targetDir "worker"
-New-Item -ItemType Directory -Force -Path $workerPublishDir | Out-Null
-
-dotnet publish (Join-Path $repoRoot "src" | Join-Path -ChildPath "PhotoPrivacy.Worker" | Join-Path -ChildPath "PhotoPrivacy.Worker.csproj") `
-  -c Release `
-  -f $resolvedFramework `
-  -r $Runtime `
-  --self-contained $selfContainedValue `
-  /p:PublishSingleFile=true `
-  /p:IncludeNativeLibrariesForSelfExtract=true `
-  /p:PublishTrimmed=false `
-  /p:Version=$Version `
-  /p:UseAppHost=true `
-  -o $workerPublishDir
-
-if ($LASTEXITCODE -ne 0) {
-  throw "dotnet publish (worker) failed"
+finally {
+  $ErrorActionPreference = $savedPreference
 }
 
 # Copy install scripts to release/<rid>/scripts/

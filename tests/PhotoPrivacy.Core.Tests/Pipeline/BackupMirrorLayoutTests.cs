@@ -167,8 +167,18 @@ public sealed class BackupMirrorLayoutTests : IDisposable
     public void ResolveBackupSlot_Should_Normalize_Reserved_Windows_Names()
     {
         var hot = Path.Combine(Path.GetTempPath(), "pp-rbs-res");
-        var slot = BackupPathResolver.ResolveBackupSlot(
-            Path.Combine(hot, "CON.jpg"), hot, Path.Combine(hot, "bak"), ".bak");
+        var source = Path.Combine(hot, "CON.jpg");
+
+        // 部分宿主（Windows Server 2022 + .NET 10 实测）的 GetFullPath 会把保留设备名归一成
+        // \\.\CON，原文路径到不了解析器；这时钉住安全退路（_unsorted），别假装通过。
+        if (!Path.GetFullPath(source).EndsWith("CON.jpg", StringComparison.OrdinalIgnoreCase))
+        {
+            var fallback = BackupPathResolver.ResolveBackupSlot(source, hot, Path.Combine(hot, "bak"), ".bak");
+            Assert.Contains(BackupPathResolver.FallbackDirName, fallback);
+            return;
+        }
+
+        var slot = BackupPathResolver.ResolveBackupSlot(source, hot, Path.Combine(hot, "bak"), ".bak");
 
         Assert.NotNull(slot);
         Assert.EndsWith("_CON.jpg.bak", slot);
