@@ -103,7 +103,7 @@ public static class WipeStrategyResolver
             "gif" => "部分清理：C2PA(JUMBF)、Plain Text、MIDI 块保留（ExifTool 删不掉）",
             "psd" => "部分清理：版权标记、URL、分辨率、打印参数、缩略图、图层内容保留",
             "mov" or "mp4" or "m4v" or "qt" or "3gp" or "3g2"
-                => "部分清理：视频只删得掉大部分顶层信息，编码器指纹还在；拍摄日期改成 0，不影响播放",
+                => "部分清理：视频只删得掉大部分顶层信息，编码器指纹还在；开了时间清理时，拍摄日期改成 0，不影响播放",
             _ => null,
         };
     }

@@ -31,7 +31,7 @@ PhotoPrivacy 自动清除热文件夹中图片/视频/PDF 的隐私元数据（E
 - **不支持格式明确跳过**：映射面之外的格式（如长尾 RAW 变体）不做任何清理，立即跳过并写入 `wipe_skipped_unknown` 审计事件（fail-closed，绝不静默处理）
 - **GIF 属部分清理**：注释 / XMP / ICC 能删；C2PA（JUMBF）、Plain Text、MIDI 块 ExifTool 13.61 删不掉（静默保留，审计不谎报已删）。依据：docs/research/exiftool-jxl-webp-psd-gif-apng.md §3.3
 - **PSD 属部分清理**：EXIF / XMP / IPTC / ICC（IRB 内）能删；版权标记、URL、分辨率、打印参数、缩略图（0x040C）以及图层内容、图层名、图层修改时间删不掉。依据：docs/research/exiftool-jxl-webp-psd-gif-apng.md §3.4（含 42 图层真实样本实测）
-- **视频属部分清理**（mov/mp4/m4v/qt/3gp/3g2）：用真样本实测过（ExifTool 13.61，命令 `-All= -Time:All=`）——iPhone 录像的 GPS、设备型号、软件名、创建时间全删，C2PA（JUMBF）官方测试样本也删干净，画面数据字节不变、全量解码通过；编码器指纹还在，官方说法本来就是「删掉大部分顶层元数据」。拍摄日期不删，只把值改成 0，少数播放器会显示 1904 年或空白，播放不受影响。**分片 MP4（moof，录像笔 / DASH 常见）擦不掉**：ExifTool 13.61 会报错、文件一个字节不动；产品的常驻通道看不出这条错误，按代码路径会把文件记成已清理（这一条没跑端到端实测）。别直接处理这类文件，先转成普通 MP4，详见 docs/research/exiftool-mp4-mov-m4v-3gp.md §12.3。带 EXIF 结构的视频删除路径仍没样本可测（常见设备压根不带 EXIF 结构）；样本、哈希和逐项数字见 docs/research/exiftool-mp4-mov-m4v-3gp.md §12
+- **视频属部分清理**（mov/mp4/m4v/qt/3gp/3g2）：用真样本实测过（ExifTool 13.61，命令 `-All= -Time:All=`）——iPhone 录像的 GPS、设备型号、软件名、创建时间全删，C2PA（JUMBF）官方测试样本也删干净，画面数据字节不变、全量解码通过；编码器指纹还在，官方说法本来就是「删掉大部分顶层元数据」。默认规则下，拍摄日期不删，只把值改成 0，少数播放器会显示 1904 年或空白，播放不受影响。**分片 MP4（moof，录像笔 / DASH 常见）擦不掉**：ExifTool 13.61 会报错、文件一个字节不动；产品的常驻通道看不出这条错误，按代码路径会把文件记成已清理（这一条没跑端到端实测）。别直接处理这类文件，先转成普通 MP4，详见 docs/research/exiftool-mp4-mov-m4v-3gp.md §12.3。带 EXIF 结构的视频删除路径仍没样本可测（这五个真实设备样本用 family 0 复核也没读到 EXIF 结构）；样本、哈希和逐项数字见 docs/research/exiftool-mp4-mov-m4v-3gp.md §12
 - 数字由 CI 断言钉死：`allowed_extensions` ⊆ `ExtensionFamilyMap` 且集合差 = 0（含本行数字），宣称与实现脱钩就 CI 失败
 
 ### Worker 健壮性
