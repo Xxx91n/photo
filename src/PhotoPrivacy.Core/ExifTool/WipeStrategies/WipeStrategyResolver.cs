@@ -51,7 +51,7 @@ public static class WipeStrategyResolver
         // 信息、C2PA 官方样本的 JUMBF 都删得掉，画面数据字节不变、全量解码通过；
         // 官方自己说视频是「删掉大部分顶层元数据」，所以按部分清理处理。
         // 分片 MP4（moof）ExifTool 13.61 写不了；产品的 stay_open 通道只看 {ready}，
-        // 目前会把这类文件误记成已清理（审计谎报，待另票修），见研究文档 §12.3。
+        // 按代码推会误记成已清理（审计谎报，未跑端到端实测，待另票修），见研究文档 §12.3。
         // MOV/MP4
         ["mov"] = WipeFormatFamily.Video, ["mp4"] = WipeFormatFamily.Video,
         ["m4v"] = WipeFormatFamily.Video, ["qt"] = WipeFormatFamily.Video,
