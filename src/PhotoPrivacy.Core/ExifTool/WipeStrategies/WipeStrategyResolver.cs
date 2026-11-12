@@ -47,6 +47,11 @@ public static class WipeStrategyResolver
         // 字节级不变；见研究文档 §3.4）
         ["psd"] = WipeFormatFamily.Png,
 
+        // 视频六个扩展名继续留着（#8 拍板，#268 复核）：真机实测只覆盖普通封装的六个
+        // 小样本，能注入的顶层信息删净了、画面数据没动；官方自己说视频是「删掉大部分
+        // 顶层元数据」，所以按部分清理处理，不承诺删干净。带 EXIF 的相机视频、C2PA、
+        // 分片 MP4 这三类还没测过，MQV 真样本造不出来；依据见
+        // docs/research/exiftool-mp4-mov-m4v-3gp.md §12。
         // MOV/MP4
         ["mov"] = WipeFormatFamily.Video, ["mp4"] = WipeFormatFamily.Video,
         ["m4v"] = WipeFormatFamily.Video, ["qt"] = WipeFormatFamily.Video,
@@ -98,7 +103,7 @@ public static class WipeStrategyResolver
             "gif" => "部分清理：C2PA(JUMBF)、Plain Text、MIDI 块保留（ExifTool 删不掉）",
             "psd" => "部分清理：版权标记、URL、分辨率、打印参数、缩略图、图层内容保留",
             "mov" or "mp4" or "m4v" or "qt" or "3gp" or "3g2"
-                => "部分清理：官方说明 Most top-level metadata is removed，编码器指纹等部分顶层元数据保留",
+                => "部分清理：视频只删得掉大部分顶层信息，编码器指纹还在；拍摄日期改成 0，不影响播放",
             _ => null,
         };
     }
