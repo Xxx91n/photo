@@ -47,6 +47,11 @@ public static class WipeStrategyResolver
         // 字节级不变；见研究文档 §3.4）
         ["psd"] = WipeFormatFamily.Png,
 
+        // 视频六个扩展名继续留着（#8 拍板，#268 本机实测）：iPhone 录像的 GPS / 设备
+        // 信息、C2PA 官方样本的 JUMBF 都删得掉，画面数据字节不变、全量解码通过；
+        // 官方自己说视频是「删掉大部分顶层元数据」，所以按部分清理处理。
+        // 分片 MP4（moof）ExifTool 13.61 写不了；产品的 stay_open 通道只看 {ready}，
+        // 按代码推会误记成已清理（审计谎报，未跑端到端实测，待另票修），见研究文档 §12.3。
         // MOV/MP4
         ["mov"] = WipeFormatFamily.Video, ["mp4"] = WipeFormatFamily.Video,
         ["m4v"] = WipeFormatFamily.Video, ["qt"] = WipeFormatFamily.Video,
@@ -98,7 +103,7 @@ public static class WipeStrategyResolver
             "gif" => "部分清理：C2PA(JUMBF)、Plain Text、MIDI 块保留（ExifTool 删不掉）",
             "psd" => "部分清理：版权标记、URL、分辨率、打印参数、缩略图、图层内容保留",
             "mov" or "mp4" or "m4v" or "qt" or "3gp" or "3g2"
-                => "部分清理：官方说明 Most top-level metadata is removed，编码器指纹等部分顶层元数据保留",
+                => "部分清理：视频只删得掉大部分顶层信息，编码器指纹还在；开了时间清理时，拍摄日期改成 0，不影响播放",
             _ => null,
         };
     }
