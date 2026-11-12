@@ -57,17 +57,23 @@ internal static class RealExifToolFixture
         return target;
     }
 
-    /// <summary>读回文件里的 EXIF:Make；擦除后应当为空串。</summary>
-    public static async Task<string> ReadMakeAsync(string exifToolPath, string targetPath)
+    /// <summary>一次性 exiftool 读取文本标签（-s3 单值）；读取失败按异常上抛，不做静默回退。</summary>
+    public static async Task<string> ReadTextTagAsync(string exifToolPath, string targetPath, string tagArgs)
     {
-        var read = await RunOneShotAsync(exifToolPath, new[] { "-s3", "-EXIF:Make", targetPath });
+        var read = await RunOneShotAsync(exifToolPath, new[] { "-s3", tagArgs, targetPath });
         if (read.ExitCode != 0)
         {
             throw new InvalidOperationException(
-                $"读取 EXIF:Make 失败（exit={read.ExitCode}）：{Truncate(read.Stderr)}");
+                $"读取 {tagArgs} 失败（exit={read.ExitCode}）：{read.Stderr}");
         }
 
         return read.Stdout.Trim();
+    }
+
+    /// <summary>读回文件里的 EXIF:Make；擦除后应当为空串。</summary>
+    public static async Task<string> ReadMakeAsync(string exifToolPath, string targetPath)
+    {
+        return await ReadTextTagAsync(exifToolPath, targetPath, "-EXIF:Make");
     }
 
     /// <summary>

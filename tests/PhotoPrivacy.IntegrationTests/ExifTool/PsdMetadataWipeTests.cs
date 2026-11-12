@@ -92,8 +92,8 @@ public sealed class PsdMetadataWipeTests : IntegrationTestBase
                 target
             });
             Assert.Equal(0, write.ExitCode);
-            Assert.Equal(TagMarker, await ReadTextTagAsync(exifToolPath, target, "-EXIF:Make"));
-            Assert.Equal(XmpTitleMarker, await ReadTextTagAsync(exifToolPath, target, "-XMP-dc:Title"));
+            Assert.Equal(TagMarker, await RealExifToolFixture.ReadTextTagAsync(exifToolPath, target, "-EXIF:Make"));
+            Assert.Equal(XmpTitleMarker, await RealExifToolFixture.ReadTextTagAsync(exifToolPath, target, "-XMP-dc:Title"));
 
             var tagged = new PsdSections(await File.ReadAllBytesAsync(target));
             Assert.Contains(ResourceExif, tagged.ResourceIds);
@@ -108,9 +108,9 @@ public sealed class PsdMetadataWipeTests : IntegrationTestBase
             // 隐私资源：EXIF / XMP 删掉；ExifTool 读回不到。
             Assert.DoesNotContain(ResourceExif, wiped.ResourceIds);
             Assert.DoesNotContain(ResourceXmp, wiped.ResourceIds);
-            Assert.True(string.IsNullOrWhiteSpace(await ReadTextTagAsync(exifToolPath, target, "-EXIF:Make")),
+            Assert.True(string.IsNullOrWhiteSpace(await RealExifToolFixture.ReadTextTagAsync(exifToolPath, target, "-EXIF:Make")),
                 "擦除后 EXIF:Make 还能读到");
-            Assert.True(string.IsNullOrWhiteSpace(await ReadTextTagAsync(exifToolPath, target, "-XMP-dc:Title")),
+            Assert.True(string.IsNullOrWhiteSpace(await RealExifToolFixture.ReadTextTagAsync(exifToolPath, target, "-XMP-dc:Title")),
                 "擦除后 XMP-dc:Title 还能读到");
 
             // 部分清理承诺：IRB 标量与 ICC 原样保留（ICC 字节级不变）。
@@ -197,18 +197,5 @@ public sealed class PsdMetadataWipeTests : IntegrationTestBase
             Assert.Equal(end, pos);
             return blocks;
         }
-    }
-
-    /// <summary>一次性 exiftool 读取文本标签（-s3 单值）；读取失败按异常上抛，不做静默回退。</summary>
-    private static async Task<string> ReadTextTagAsync(string exifToolPath, string targetPath, string tagArgs)
-    {
-        var read = await RealExifToolFixture.RunOneShotAsync(exifToolPath, new[] { "-s3", tagArgs, targetPath });
-        if (read.ExitCode != 0)
-        {
-            throw new InvalidOperationException(
-                $"读取 {tagArgs} 失败（exit={read.ExitCode}）：{read.Stderr}");
-        }
-
-        return read.Stdout.Trim();
     }
 }

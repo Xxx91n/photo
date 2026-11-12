@@ -10,10 +10,10 @@ use crate::service_page::{ServiceCommand, ServiceFeedback, ServiceSnapshot};
 use crate::theme::{self, Theme, ThemeMode};
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, App, Bounds, BoxShadow, ClipboardItem, Context, CursorStyle, Div, FocusHandle,
-    FontWeight, IntoElement, KeyBinding, KeyDownEvent, MouseButton, PathPromptOptions, Pixels,
-    Render, Rgba, ScrollHandle, ScrollStrategy, Stateful, StyleRefinement, Styled, Subscription,
-    UniformListScrollHandle, Window, actions, div, px, uniform_list,
+    AnyElement, App, AppContext, Bounds, BoxShadow, ClipboardItem, Context, CursorStyle, Div,
+    FocusHandle, FontWeight, IntoElement, KeyBinding, KeyDownEvent, MouseButton, PathPromptOptions,
+    Pixels, Render, Rgba, ScrollHandle, ScrollStrategy, Stateful, StyleRefinement, Styled,
+    Subscription, UniformListScrollHandle, Window, actions, div, px, uniform_list,
 };
 use photoprivacy_ipc::{
     ConnectFailureCause, ConnectionSnapshot, ConnectionState, ServiceReachability, WorkerMode,
@@ -743,6 +743,28 @@ pub struct AppView {
     /// 会把渲染拖住。这里按"反馈身份 + UI 侧配置 + 配置路径"缓存结果，只在键变化时重算一次。
     audit_dirs_match_cache: RefCell<Option<(AuditDirsMatchKey, bool)>>,
     _appearance_subscription: Subscription,
+}
+
+/// 日志行悬浮提示：消息列单行截断的长文本（message + 部分清理说明）在 tooltip 里给全文（#283）。
+/// 主题跟随当前窗口外观（tooltip 视图独立于主视图生命周期，不复用主视图的 theme_mode）。
+struct LogRowTooltip {
+    text: String,
+}
+
+impl Render for LogRowTooltip {
+    fn render(&mut self, window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = Theme::resolve(ThemeMode::System, theme::is_dark(window.appearance()));
+        div()
+            .max_w(px(560.))
+            .p(px(10.))
+            .rounded(px(6.))
+            .bg(theme.surface_raised)
+            .border_1()
+            .border_color(theme.border)
+            .text_size(px(12.))
+            .text_color(theme.text)
+            .child(self.text.clone())
+    }
 }
 
 impl AppView {
@@ -2631,16 +2653,18 @@ impl AppView {
         cx: &mut Context<Self>,
     ) -> Div {
         let tone = Self::tone_color(entry.tone, theme);
-        // #283：部分清理说明不进表格列，但复制要能拿到完整信息（说明可能被单行截断）。
-        let copy_text = match &entry.partial_note {
-            Some(note) => format!(
-                "[{}] {} {} {}\n{}",
-                entry.time_text, entry.display_event, entry.source_path_masked, entry.message, note
-            ),
-            None => format!(
-                "[{}] {} {} {}",
-                entry.time_text, entry.display_event, entry.source_path_masked, entry.message
-            ),
+        // #283：消息列单行截断，复制与悬浮 tooltip 都给全文兜底（说明可能很长）。
+        let mut copy_text = format!(
+            "[{}] {} {} {}",
+            entry.time_text, entry.display_event, entry.source_path_masked, entry.message
+        );
+        let tooltip_text = match &entry.partial_note {
+            Some(note) => {
+                copy_text.push('\n');
+                copy_text.push_str(note);
+                format!("{}\n{}", entry.message, note)
+            }
+            None => entry.message.clone(),
         };
         let button_id = format!("copy-log-{entry_index}");
         let row_focus = self.log_copy_handle(entry_index, cx);
@@ -2699,6 +2723,13 @@ impl AppView {
                     .flex_col()
                     .justify_center()
                     .overflow_hidden()
+                    // #283：长文本悬停看全文；闭包持有副本，任何行都挂（失败事件的 ex.Message 同样会截断）。
+                    .tooltip(move |_, cx| {
+                        cx.new(|_| LogRowTooltip {
+                            text: tooltip_text.clone(),
+                        })
+                        .into()
+                    })
                     .child(
                         div()
                             .truncate()

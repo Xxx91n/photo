@@ -72,8 +72,8 @@ public sealed class WebpMetadataWipeTests : IntegrationTestBase
             await File.WriteAllBytesAsync(target, Convert.FromBase64String(SampleWebpBase64));
 
             // 前置自检：EXIF / XMP 真的落盘了，且容器结构符合预期，否则后面判定失去意义。
-            Assert.Equal(TagMarker, await ReadTextTagAsync(exifToolPath, target, "-EXIF:Make"));
-            Assert.Equal(XmpTitleMarker, await ReadTextTagAsync(exifToolPath, target, "-XMP-dc:Title"));
+            Assert.Equal(TagMarker, await RealExifToolFixture.ReadTextTagAsync(exifToolPath, target, "-EXIF:Make"));
+            Assert.Equal(XmpTitleMarker, await RealExifToolFixture.ReadTextTagAsync(exifToolPath, target, "-XMP-dc:Title"));
             var before = ParseRiffChunks(await File.ReadAllBytesAsync(target));
             Assert.Contains("EXIF", before.Keys);
             Assert.Contains("XMP ", before.Keys);
@@ -100,9 +100,9 @@ public sealed class WebpMetadataWipeTests : IntegrationTestBase
             Assert.Equal(before["VP8 "], vp8After);
 
             // 双保险：擦后 ExifTool 读回不到隐私标签。
-            Assert.True(string.IsNullOrWhiteSpace(await ReadTextTagAsync(exifToolPath, target, "-EXIF:Make")),
+            Assert.True(string.IsNullOrWhiteSpace(await RealExifToolFixture.ReadTextTagAsync(exifToolPath, target, "-EXIF:Make")),
                 "擦除后 EXIF:Make 还能读到");
-            Assert.True(string.IsNullOrWhiteSpace(await ReadTextTagAsync(exifToolPath, target, "-XMP-dc:Title")),
+            Assert.True(string.IsNullOrWhiteSpace(await RealExifToolFixture.ReadTextTagAsync(exifToolPath, target, "-XMP-dc:Title")),
                 "擦除后 XMP-dc:Title 还能读到");
         }
         finally
@@ -144,18 +144,5 @@ public sealed class WebpMetadataWipeTests : IntegrationTestBase
         }
 
         return chunks;
-    }
-
-    /// <summary>一次性 exiftool 读取文本标签（-s3 单值）；读取失败按异常上抛，不做静默回退。</summary>
-    private static async Task<string> ReadTextTagAsync(string exifToolPath, string targetPath, string tagArgs)
-    {
-        var read = await RealExifToolFixture.RunOneShotAsync(exifToolPath, new[] { "-s3", tagArgs, targetPath });
-        if (read.ExitCode != 0)
-        {
-            throw new InvalidOperationException(
-                $"读取 {tagArgs} 失败（exit={read.ExitCode}）：{read.Stderr}");
-        }
-
-        return read.Stdout.Trim();
     }
 }
