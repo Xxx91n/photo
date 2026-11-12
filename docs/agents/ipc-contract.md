@@ -306,5 +306,3 @@ UI 可能先于 Worker 启动，双方通过请求/响应的 `v` 字段交换协
 ## 改动规则
 
 协议扩展**只加 method 名**，不改既有字段语义（#49 定下的规矩）。改完同步：本文件、`ui/crates/photoprivacy-ipc/src/protocol.rs`、对应 Rust 测试与 .NET 侧契约测试。
-
-> AI生成
