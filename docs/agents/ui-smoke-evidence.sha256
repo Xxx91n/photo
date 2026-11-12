@@ -1,21 +1,45 @@
-# 证据清单 — #5 后台 Worker（--mode background）实机验证（2026-11-11，Windows 实机，单轮）。
-# 实物：C:/photo-verify5/evidence；未上传，删除后无法从哈希还原。
-# 起始基准：f715c53de409f3e66e8d06004d6964868cda6826；旧轮（#4/#206 三组）从 git 历史取：
-#   git show f715c53de409f3e66e8d06004d6964868cda6826:docs/agents/ui-smoke-evidence.sha256
-# 包：Release run 43008869529 / ref main / head 同基准 / 0.1.0-preview / create_release=false / win-x64；本地未编译。
-# 验证命令：在 C:/photo-verify5/evidence 内执行 sha256sum --check <repo>/docs/agents/ui-smoke-evidence.sha256
-# 逐文件时刻与通道、逐项结论见 v5-round-notes.txt。
+# 证据清单 — #289 规则页 strip_all 列名十语言冒烟（2026-11-13，Windows 实机，单轮）。
+# 实物：C:/photo-verify/issue289/evidence；未上传，删除后无法从哈希还原。
+# 起始基准：1b9119c5e6a7fae77b64a9f10af43e6a14e1719e；旧轮（#5 后台 Worker）从 git 历史取：
+#   git show 1b9119c5e6a7fae77b64a9f10af43e6a14e1719e:docs/agents/ui-smoke-evidence.sha256
+# 包：Release run 43287332127 / ref t289-strip-all-label / head 13271bf / 0.1.0-preview / create_release=false / win-x64；本地未编译。
+# round1-rejected/ 装的是首轮被否的帧（es/pt/ru 长文案压列），用于对照，结论以主清单帧为准。
+# 验证命令：在 C:/photo-verify/issue289/evidence 内执行 sha256sum --check <repo>/docs/agents/ui-smoke-evidence.sha256
+# 逐项结论与做法见 s289-round-notes.txt。
 
-e4c08fc4e7a9ae4af76d8105679d30ee9d1c39a159d93e1194594419f82340bc  v5-01-ui-connected.png
-88fb5ef62d5647dc491b02b8e31a9e9645308f5459396212d44db22ca966228f  v5-02-ui-logpage.png
-56cc6bc5835a55f3bc865ec588e66b3a24a56a10e9f47d5aa5ae5c334dc7d3d2  v5-03-ui-after-worker-stop.png
-70f29637db7be0bda9219455c04978dc85cb0cacc80899f997c047869ef89fbb  v5-04-ui-overview-disconnected.png
-2145ece28ca3445158544b49f2931591569c2804009690cb3d1b74b6bbc5e57c  v5-after-ui-start.txt
-f6ed30f82ad38d265a6d8876b515209bd0b3ff33de6af1ea52ba469a49c30044  v5-cleanup.txt
-a891fdec60d2869d1b6e74054cd13a486c8255d4646f4567effbd1d057238f2b  v5-drop2.txt
-5dbf3f0d61c4ac9b8f64039cfbd20e0736a06b24f8517aaceea7eef0c4876575  v5-env.txt
-708a9bb8fde9843fb27aa5869a8107b87f79452769867420092bac706de87699  v5-round-notes.txt
-494d09d4b75b611f7294bbc630ef2685d9019a7470c4a9663afb5cddbb5421c9  v5-stop.txt
-375c5f8d88444556eeebe357a7a72284c3238284e00b141243700b73fa134605  v5-worker-launch.txt
-e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  v5-worker-stderr.log
-40afb78391920c6cb385fdd3d5ad0257a6817163035982af536d4b16f75a01b8  v5-worker-stdout.log
+0a21db84b0662deb7872da88394dbd9883ce8ca8a94a9cec54f1d6409fec444f  s289-rules-zh-CN.png
+d1914c19e738b24c5563e6ac147d3cd943fd9a8f7ce6842f6890b81cbfc4c5de  hdrzoom-zh-CN.png
+c2867abdfdf9a181fc7cb18f28126ef9947682ae282d85a3dc3ef28c721a8dc5  s289-rules-en.png
+79dcfef244111b701b5e396ad9ce4b36dcf439a73101247b47e8585fdcab2f06  hdrzoom-en.png
+de52a2c975827cf149207d715ef06276bd3e00a50db42af3974a013c747c8bbd  s289-rules-ja.png
+748085142354868afd811f7ef5d9908b40313743c97c3439d92622345e315375  hdrzoom-ja.png
+3dfc4acbd360071b9d5e6028c0c8eb73b8d5be14ab634cf80b8d84f412916ff0  s289-rules-ko.png
+1eff50d5d61a033fd2db7ff5f1837753d07d7b936e22e7b902ddee3483324b58  hdrzoom-ko.png
+07c6a9d7a975cfa4d296e073fb9d48f6d78ee6dc3adea20025f985897a40cd0f  s289-rules-de.png
+0ae4ddb847fd358fa9d090b0e11f6035c72e07522a53e91d2a6f879e219380a8  hdrzoom-de.png
+e9f7b6c3ee6a6e7cd23c9bf57b67902619554eca764e9029659e5a5772229cb7  s289-rules-fr.png
+7562805e9415a5e49eb83267c665e7bdcac5a52b60233961ff6bdbc38941a885  hdrzoom-fr.png
+f6231a86796b27789047ea71c4a098d5e54a69a43a0345290a9b5748d3314821  s289-rules-es.png
+e3516f8ee4cfbeadbec2210503054d8d8d3c3c6b13b5fa4946d9b745c52ec297  hdrzoom-es.png
+bcaee2f4e411b0df0623b3088d7a8c24b405558c51236b63a2c7fbca80bbd755  s289-rules-pt.png
+9a84c0a13fe42f2807e13c63c9365e92f00596ce261e5b39317662bca51985ae  hdrzoom-pt.png
+f92d628832e1353907dedb0b7baaf5a1f8f9c89058377825508c86de1bb18bfc  s289-rules-ru.png
+06cd084657041497198ba14507ccc2220e035f78d0079e34d06ced3fee80e821  hdrzoom-ru.png
+cdebfd96d2dcf148d9b656731e2aee1b35807f3d1d59940639525518aa3d4126  s289-rules-ar.png
+08b6e9d4265562ddf6e66d610b14cf3eacb447e627aabfd18e3fe6f7f5e50460  hdrzoom-ar.png
+4dceecb989a267182cec588f671fd1a1ecb69859ec7e5b15ddac6a542c160b7f  s289-func3-toggle.png
+67149b3e2be06eec0e505d786e234d1d836335ef8b68a74978961353bdc6696b  s289-func3-saved.png
+4647e760e153a200b80e6ecac3b3cff6e64e4b3c886e3ef5781aedf1cb86bc47  s289-cleanup.txt
+896cad037dad37f8cc45ccf9f4bf8cae67e4452a100dbf9d613f4341223e1d37  s289-round-notes.txt
+04a7d1791c616e4f55fe8bf8d26f1b129e720835050766c3db0c9bb8722ea115  round1-rejected/s289-rules-es.png
+cc540aa54334045f9e3c6db8805b13f35537977111e624c2d8bfc3d250b8c550  round1-rejected/s289-rules-pt.png
+fe4289406d456585dbc78e0ce65eae00d0029865fbabab5f1e43686d445efd32  round1-rejected/s289-rules-ru.png
+832a2ad9527edbdf69954a79b55741a8bd2141ba934926229bb12ecfb922e9dc  round1-rejected/zoom-es.png
+c069fc4242eabc9472b3f17841d525ce46787bc16200a572f5876d18708e2755  round1-rejected/zoom-pt.png
+c453805ed97de5ef10642e38177fd44ad539adb2f4f4e618d23a08650103ad0f  round1-rejected/zoom-ru.png
+ab7240bb4d81a12e9446f96d061f867353108ece7541a6c5ba236da307c1f0e2  round1-rejected/zoom2-es.png
+7c2c3720d5e8c008cb0723dadafa9bee15bfbfe57dd23b03e44d612863fbb540  round1-rejected/zoom2-pt.png
+7c043b96e037c1dc648006456089858acbdaa54b8ef0753c1e681cb7b3530f8a  round1-rejected/zoom2-ru.png
+dfdedfad7d1332bcab4e8922d53adaf5a5bcc9edc947593af9282c20895ca286  round1-rejected/zoom3-es.png
+c69f3e001e86157f1a57b040d36bc07f0a6056f9e1f2d8217624b572f3b74541  round1-rejected/zoom3-pt.png
+86196f12e3122a1308a1f87ee3a1fd1ad70631b60d9f499dc756136687909a4f  round1-rejected/zoom3-ru.png
