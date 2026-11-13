@@ -323,7 +323,7 @@
       "family": "Famille",
       "extensions": "Extensions",
       "enabled": "Activé",
-      "strip_all": "Tout effacer",
+      "strip_all": "Effacer au maximum",
       "preserve_icc": "Préserver ICC",
       "strip_exif": "EXIF",
       "strip_xmp": "XMP",

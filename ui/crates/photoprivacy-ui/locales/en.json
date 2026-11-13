@@ -331,7 +331,7 @@
       "family": "Family",
       "extensions": "Extensions",
       "enabled": "Enabled",
-      "strip_all": "Strip all",
+      "strip_all": "Strip all removable",
       "preserve_icc": "Preserve ICC",
       "strip_exif": "EXIF",
       "strip_xmp": "XMP",

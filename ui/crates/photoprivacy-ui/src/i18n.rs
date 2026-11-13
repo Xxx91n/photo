@@ -388,6 +388,40 @@ mod tests {
         }
     }
 
+    /// #289：rules.col.strip_all 是开关名（打开全删模式），不是清理结果的承诺；
+    /// 任何语言都不得再用旧文案「全部清除」及其直译——视频按 ExifTool 官方说法
+    /// 只删大部分顶层元数据，属部分清理（#268 定调）。
+    /// 断言用 trim 后全等而非 contains：更长的诚实说法可能以旧词开头，
+    /// contains 会把合法文案误报成回退。
+    #[test]
+    fn strip_all_column_names_do_not_promise_a_full_wipe() {
+        let banned = [
+            "全部清除",
+            "全削除",
+            "전체 삭제",
+            "Strip all",
+            "Alle löschen",
+            "Tout effacer",
+            "Borrar todo",
+            "Remover tudo",
+            "Удалить всё",
+            "حذف الكل",
+        ];
+        let catalog = Catalog::embedded();
+        for (locale, strings) in &catalog.locales {
+            let value = strings
+                .get("rules.col.strip_all")
+                .unwrap_or_else(|| panic!("{locale} 缺 rules.col.strip_all"));
+            for old in &banned {
+                assert_ne!(
+                    value.trim(),
+                    *old,
+                    "{locale} 的 strip_all 列名仍是结果承诺式旧文案：{value}"
+                );
+            }
+        }
+    }
+
     /// AC1：10 语言键集与 en.json 全等（键值复用，含内嵌退路语义等效）。
     #[test]
     fn all_ten_locales_have_exactly_the_en_key_set() {

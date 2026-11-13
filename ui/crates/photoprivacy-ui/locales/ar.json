@@ -323,7 +323,7 @@
       "family": "العائلة",
       "extensions": "الامتدادات",
       "enabled": "مفعّل",
-      "strip_all": "حذف الكل",
+      "strip_all": "حذف كل ما يمكن",
       "preserve_icc": "الحفاظ على ICC",
       "strip_exif": "EXIF",
       "strip_xmp": "XMP",

@@ -331,7 +331,7 @@
       "family": "格式族",
       "extensions": "扩展名",
       "enabled": "启用",
-      "strip_all": "全部清除",
+      "strip_all": "能删的都删",
       "preserve_icc": "保留 ICC",
       "strip_exif": "EXIF",
       "strip_xmp": "XMP",
