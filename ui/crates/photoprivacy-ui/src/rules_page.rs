@@ -12,11 +12,19 @@ use photoprivacy_rules::{Family, Group, Notice, RulesEditor};
 
 const FAMILY_WIDTH: f32 = 90.;
 const EXTENSIONS_WIDTH: f32 = 170.;
-// #289：strip_all 列名改成「能删的都删」式说法后，10px 表头字号下原来 54px 的列宽
-// 装不住最长的列名（现在最长的是 en「Strip all removable」），实机冒烟实测压到了
-// 相邻列；加宽到 88px，warning 列仍是 flex_1 弹性，吃下六列加宽的增量。
-const TOGGLE_WIDTH: f32 = 88.;
+// 只有 strip_all 列名变长了（#289：能删的都删式说法，最长是 en「Strip all removable」），
+// 10px 表头字号下 54px 装不住；其余五列保持原宽，六个开关列全按 88px 会在
+// 820px 最小窗口下把 warning 列挤出可见区（CodeRabbit PR #296 指出）。
+const TOGGLE_WIDTH: f32 = 54.;
+const STRIP_ALL_WIDTH: f32 = 88.;
 const ROW_HEIGHT: f32 = 44.;
+
+fn group_width(group: Group) -> f32 {
+    match group {
+        Group::StripAll => STRIP_ALL_WIDTH,
+        _ => TOGGLE_WIDTH,
+    }
+}
 
 fn family_key(family: Family) -> &'static str {
     match family {
@@ -217,7 +225,7 @@ fn table_header(app: &AppView, theme: &Theme) -> Div {
         )
         .children(Group::ALL.into_iter().map(|group| {
             div()
-                .w(px(TOGGLE_WIDTH))
+                .w(px(group_width(group)))
                 .flex()
                 .justify_center()
                 .child(app.t(group_key(group)))
@@ -260,7 +268,7 @@ fn family_row(
         row = row.child(
             div()
                 .id(format!("rule-{}-{}", family.key(), group.key()))
-                .w(px(TOGGLE_WIDTH))
+                .w(px(group_width(group)))
                 .flex()
                 .items_center()
                 .justify_center()
