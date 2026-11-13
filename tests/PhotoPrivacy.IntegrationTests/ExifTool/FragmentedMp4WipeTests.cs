@@ -274,7 +274,8 @@ public sealed class FragmentedMp4WipeTests : IntegrationTestBase
 
         // 布局：ftyp | moov | moof1 | mdat1 | moof2 | mdat2
         // trun.data_offset 相对 moof 起点（tfhd default-base-is-moof）：moof 盒 + mdat 盒头 8 字节。
-        const int moofBoxLength = 64;
+        // moof 盒 = 8 头 + mfhd(16) + traf(8 + tfhd(16) + tfdt(16) + trun(24)) = 88。
+        const int moofBoxLength = 88;
         var mdat1PayloadStart = (uint)(ftyp.Length + moov.Length + moofBoxLength + 8);
         if (mdat1ChunkOffset is null)
         {
@@ -297,14 +298,17 @@ public sealed class FragmentedMp4WipeTests : IntegrationTestBase
 
     private static byte[] BuildMoof(int sequenceNumber, uint baseMediaDecodeTime, int dataOffset) => Box("moof",
         Box("mfhd", U32(0), U32((uint)sequenceNumber)),
-        Box("tfdt", U32(0), U32(baseMediaDecodeTime)), // version 0：32 位 baseMediaDecodeTime
-        // trun flags 0x00000201 = data-offset-present | sample-size-present；1 个样本、16 字节
-        Box("trun", U32(0x00000201), U32(1), I32(dataOffset), U32(MdatPayloadLength)));
+        // ISO 14496-12 §8.8：媒体分片的轨道信息在 traf 里，tfdt/trun 不能直接挂 moof 下。
+        Box("traf",
+            Box("tfhd", U32(0x020000), U32(1)), // default-base-is-moof + track_ID 1
+            Box("tfdt", U32(0), U32(baseMediaDecodeTime)), // version 0：32 位 baseMediaDecodeTime
+            // trun flags 0x00000201 = data-offset-present | sample-size-present；1 个样本、16 字节
+            Box("trun", U32(0x00000201), U32(1), I32(dataOffset), U32(MdatPayloadLength))));
 
     /// <summary>解析顶层盒并断言分片布局：ftyp 打头、moov 在 moof 之前、恰好两个 moof/mdat，尺寸自洽。</summary>
     private static void AssertFragmentedLayout(byte[] data)
     {
-        var boxes = ParseTopLevelBoxes(data);
+        var boxes = ParseBoxes(data);
         Assert.True(boxes.Count >= 5, $"顶层盒数量不足：{boxes.Count}");
         Assert.Equal("ftyp", boxes[0].Type);
         Assert.Equal("moov", boxes[1].Type);
@@ -316,9 +320,18 @@ public sealed class FragmentedMp4WipeTests : IntegrationTestBase
         var moovPayload = data[(boxes[1].Offset + 8)..(boxes[1].Offset + boxes[1].Length)];
         Assert.True(FindFourcc(moovPayload, new byte[] { 0xA9, (byte)'n', (byte)'a', (byte)'m' }),
             "moov 内找不到 ©nam 标题盒，样本元数据构造失效");
+
+        // 分片内部结构（CodeRabbit #295）：moof → traf → tfhd/tfdt/trun（ISO 14496-12 §8.8）。
+        // 没有 traf/tfhd 的扁平 moof 不是合法媒体分片——顶层盒自检抓不住这种畸形，必须往下钻一层。
+        var moofPayload = data[(boxes[2].Offset + 8)..(boxes[2].Offset + boxes[2].Length)];
+        var moofChildren = ParseBoxes(moofPayload);
+        Assert.Equal(new[] { "mfhd", "traf" }, moofChildren.Select(b => b.Type).ToArray());
+        var trafPayload = moofPayload[(moofChildren[1].Offset + 8)..(moofChildren[1].Offset + moofChildren[1].Length)];
+        Assert.Equal(new[] { "tfhd", "tfdt", "trun" }, ParseBoxes(trafPayload).Select(b => b.Type).ToArray());
     }
 
-    private static List<(string Type, int Offset, int Length)> ParseTopLevelBoxes(byte[] data)
+    /// <summary>解析一段完整盒序列（顶层或某个盒的载荷）；尺寸必须自洽且恰好铺满。</summary>
+    private static List<(string Type, int Offset, int Length)> ParseBoxes(byte[] data)
     {
         var boxes = new List<(string, int, int)>();
         var pos = 0;
