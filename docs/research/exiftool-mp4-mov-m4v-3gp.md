@@ -204,14 +204,14 @@ ffmpeg -v error -i FILE -f null -     # 全量解码
   - `fragmented.mp4`，56,240 字节，`66e4891ae410e9fafecff03fd593a56a1dacc99f475501aa3423ddd310bd538c` —— 本机 ffmpeg 造的分片 MP4，见 §12.3。
   - `constructed.mqv`，27,662 字节，`efe9b2f31d0ca72e0fc8b15a50c97510382f7501d1cba365fa965c3c19d524c7` —— 本机 ffmpeg 造 MOV 后改 ftyp 品牌，见 §12.4。
 
-一句话先给结果：**C2PA 实测能删；分片 MP4 实测写不了（产品通道还会把它记成成功，见 §12.3）；MQV 按官方品牌构造的样本实测能擦；相机视频的 GPS 和设备信息实测删净，这五个样本用 family 0 复核也没读到 EXIF 结构，EXIF 删除路径仍没测成。**下面逐项摆数字。
+一句话先给结果：**C2PA 实测能删；分片 MP4 实测写不了（产品通道还会把它记成成功，见 §12.3）；MQV 按官方品牌构造的样本实测能擦；相机视频的 GPS 和设备信息实测删净，这五个样本用 family 0 复核 ExifTool 未读到 EXIF 标签，EXIF 删除路径仍没测成。**下面逐项摆数字。
 
-### 12.1 相机直出视频：找带 EXIF 结构的样本，没找到
+### 12.1 相机直出视频：找能读出 EXIF 标签的样本，没找到
 
-- **实测了什么**：`-G1 -a -s -n` 下五个真实设备样本（iPhone X、iPhone 15 Pro、Sony A7 等）没有 `IFD0` / `ExifIFD` 这类 EXIF 位置组，隐私信息放在 `[Keys]` / `[ItemList]` / `[UserData]` / GPS 里。`-G1` 不显示 family 0 的 `[EXIF]` 组名，光数 `[EXIF]` 零行证明不了没有 EXIF 结构，所以又用 `-G0 -a -s -n -EXIF:All` 复核：五个样本的 stdout 都是 **0 行标签**，`-G0` 全量组分布只有 `[Composite] [ExifTool] [File] [QuickTime]`，没有 `[EXIF]`（先前看到的那一行是 stderr 的 `ExtractEmbedded` 警告，不是标签）。复核的原始输出（`-G0` / `-G1` 组分布、stdout、stderr）在仓外 `work/g0-recheck.txt`。也就是说 ExifTool 读不到这些样本里的 EXIF 结构；它读不出的私有结构是否存在，这里不打包票。
+- **实测了什么**：`-G1 -a -s -n` 下五个真实设备样本（iPhone X、iPhone 15 Pro、Sony A7 等）没有 `IFD0` / `ExifIFD` 这类 EXIF 位置组，隐私信息放在 `[Keys]` / `[ItemList]` / `[UserData]` / GPS 里。`-G1` 不显示 family 0 的 `[EXIF]` 组名，光数 `[EXIF]` 零行不够，所以又用 `-G0 -a -s -n -EXIF:All` 复核：五个样本的 stdout 都是 **0 行标签**，`-G0` 全量组分布只有 `[Composite] [ExifTool] [File] [QuickTime]`，没有 `[EXIF]`（先前看到的那一行是 stderr 的 `ExtractEmbedded` 警告，不是标签）。复核的原始输出（`-G0` / `-G1` 组分布、stdout、stderr）在仓外 `work/g0-recheck.txt`。也就是说 ExifTool 未读到 EXIF 标签；它读不出的私有结构是否存在，这里不打包票。
 - **擦除结果**：对 `meta.mov` / `meta.mp4` / `embedded-in-heic.mov` 跑真实命令，全部 `1 image files updated`；GPS 标签 6 / 4 / 6 行全部归零，`[Keys]` 里的 Make、Model、Software、CreationDate、GPSCoordinates 全删，日期置零；三个样本的 mdat 载荷 md5 前后一模一样（`a6cb8053…` / `99a214c8…` / `1636bb40…`）；ffprobe 双轨和时长不变，全量解码 exit 0。
 - **「已有 EXIF 结构时删不删得掉」这一条仍没测成**：往干净 MP4 写 `-EXIF:Make` 被拒（§3 复验：`0 image files updated`）；想按 HEIF 品牌造一个带 EXIF 结构的视频也没成——给 ftyp 加字节会让 stco 里的偏移全错位，ExifTool 报 `Chunk offset in stco atom is outside media data`；只换品牌不换大小则进不了 HEIC 的写入路径，报 `unchanged`。
-- **结论**：这五个真实设备样本里 ExifTool 读不到 EXIF 结构，真正要删的隐私信息实测删净了；「EXIF-in-video 的删除路径」在能拿到的样本上触发不了，文档不写「EXIF 已删净」，但也不用把它当日常风险。这里用的是 `-G0` 复核，不是 `-G1` 数 `[EXIF]` 行。以后拿到一份用 `-G0 -EXIF:All` 能读出标签的相机视频，照 §12.0 那套跑一遍补上。
+- **结论**：这五个真实设备样本里 ExifTool 未读到 EXIF 标签，真正要删的隐私信息实测删净了；「EXIF-in-video 的删除路径」在能拿到的样本上触发不了，文档不写「EXIF 已删净」，但也不用把它当日常风险。这里用的是 `-G0` 复核，不是 `-G1` 数 `[EXIF]` 行。以后拿到一份用 `-G0 -EXIF:All` 能读出标签的相机视频，照 §12.0 那套跑一遍补上。
 
 ### 12.2 C2PA（JUMBF）—— 实测能删
 
@@ -246,7 +246,7 @@ ffmpeg -v error -i FILE -f null -     # 全量解码
 
 六个扩展名继续留着，命令一行不改（`-All= -Time:All=`），视频继续算部分清理。
 
-四条缺口的落点：C2PA 实测能删；分片 MP4 实测写不了（产品通道按代码路径会误记成功，没跑 Worker 端到端，见 §12.3）；MQV 构造样本实测能擦，设备直出的真样本仍缺；相机视频实测删净 GPS 和设备信息，这五个样本用 family 0 复核也没读到 EXIF 结构，那条删除路径还是没样本。现在不能说的话有三句：「全部清除」「EXIF 已删净」「分片 MP4 只是部分清理」。
+四条缺口的落点：C2PA 实测能删；分片 MP4 实测写不了（产品通道按代码路径会误记成功，没跑 Worker 端到端，见 §12.3）；MQV 构造样本实测能擦，设备直出的真样本仍缺；相机视频实测删净 GPS 和设备信息，这五个样本用 family 0 复核 ExifTool 未读到 EXIF 标签，那条删除路径还是没样本。现在不能说的话有三句：「全部清除」「EXIF 已删净」「分片 MP4 只是部分清理」。
 
 日志里那句说明换成不看英文原文也能懂的话（`PartialCleanNote`）。票评论里补的「日志页要显示 `partial_clean`」，#283 已经做完（PR #285 合进这张票的基线，代码在 `ui/crates/photoprivacy-logs/src/model.rs` 和 `ui/crates/photoprivacy-ui/src/app.rs`），本票核对过，不重做。
 
