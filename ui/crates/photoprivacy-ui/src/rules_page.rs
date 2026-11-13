@@ -13,12 +13,13 @@ use photoprivacy_rules::{Family, Group, Notice, RulesEditor};
 const FAMILY_WIDTH: f32 = 90.;
 const EXTENSIONS_WIDTH: f32 = 170.;
 // 只有 strip_all 与 preserve_icc 两列的文案够长（#289：能删的都删式说法 + 各语言
-// 「保留 ICC」），10px 表头字号下 54px 装不住；其余四列维持 54px。六列全按 88px
-// 会在 820px 最小窗口下把 warning 列挤出可见区（CodeRabbit PR #296 指出），
-// 88 + 72 的总宽在最小窗口下仍给 warning 留约 88px。
+// 「保留 ICC」）。宽度按实机帧的墨迹实测定：strip_all 最长约 91px（fr「Effacer au
+// maximum」），preserve_icc 最长约 72px（ru「Сохранить ICC」），各留 6px 左右余量。
+// 其余四列维持 54px。六列全按 88px 会在 820px 最小窗口下把 warning 列挤出可见区
+// （CodeRabbit PR #296 指出）；104 + 76 的总宽在最小窗口下仍给 warning 留约 92px。
 const TOGGLE_WIDTH: f32 = 54.;
-const STRIP_ALL_WIDTH: f32 = 88.;
-const PRESERVE_ICC_WIDTH: f32 = 72.;
+const STRIP_ALL_WIDTH: f32 = 104.;
+const PRESERVE_ICC_WIDTH: f32 = 76.;
 const ROW_HEIGHT: f32 = 44.;
 
 fn group_width(group: Group) -> f32 {
