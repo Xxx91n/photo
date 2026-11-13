@@ -1,4 +1,5 @@
 ﻿using System.Collections.Concurrent;
+using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
@@ -363,7 +364,11 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
         var wipeMarker = $"TASK_DONE_{id}";
         var wipeTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         // 擦除块的完成判定取本块的 {ready}（块结束），-echo1 回显只当「进入该块」的参照点、不作完成信号；判定依赖「块按写入顺序整块处理、回显与 {ready} 一一对应」，这一 stdin 顺序假设已由真进程多并发写实测覆盖（StayOpenConcurrentBlockTests；证伪力=并发路径没有失败，残余见该类注释）。
-        _pending[wipeMarker] = new PendingBlock(wipeTcs, PendingCompletion.BlockReady);
+        // 本块 stdout 窗口（#288）：ExifTool 对每个 -execute 块都会打汇总行（「N image files updated」
+        // /「N files weren't updated due to errors」，-q -q 下实测仍输出，#268）。{ready} 只代表
+        // 「块处理完了」，不代表「写成功了」——写没写成要看汇总行，所以擦除块也要收行。
+        var wipePending = new PendingBlock(wipeTcs, PendingCompletion.BlockReady, new System.Text.StringBuilder());
+        _pending[wipeMarker] = wipePending;
 
         FileInfo? beforeInfo = null;
         long beforeLength = -1;
@@ -408,7 +413,59 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
             // best-effort post-check
         }
 
+        // #288：ExifTool 明确说写不了（「0 image files updated」+「files weren't updated due to errors」，
+        // 分片 MP4 即此形态，#268 实测）时文件一字未动，绝不能结成 Cleaned_Modified 让审计谎报成功。
+        // 汇总行缺了认不出来（旧版本/异常形态）时不做新判定，维持旧行为作为退路——上面那句
+        // 「文件未变」的诊断警告仍会报——不在汇总行不可信时扩大误伤面。
+        var wipeSummary = ParseWipeSummary(wipePending.TakeOutput());
+        if (wipeSummary is { FilesUpdated: 0, UpdateErrors: > 0 })
+        {
+            _logger.LogError(
+                "ExifTool refused to write {Path}: {Errors} files weren't updated due to errors (stderr: {Stderr}); file left untouched.",
+                targetPath,
+                wipeSummary.Value.UpdateErrors,
+                string.IsNullOrWhiteSpace(_process.LastStderrLine) ? "<none>" : _process.LastStderrLine);
+            return WipeResult.Failed_WriteError;
+        }
+
         return WipeResult.Cleaned_Modified;
+    }
+
+    private static readonly Regex WipeSummaryUpdatedRegex =
+        new(@"(\d+)\s+image files? updated", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
+    private static readonly Regex WipeSummaryErrorRegex =
+        new(@"(\d+)\s+files? weren't updated due to errors", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
+
+    private readonly record struct WipeSummaryOutcome(int FilesUpdated, int UpdateErrors);
+
+    /// <summary>
+    /// 解析一个擦除块的 ExifTool 汇总行（stdout 窗口，#288）。同类行出现多次取最后一次；
+    /// 两类行都没认出来返回 null，调用方不做新判定、维持旧行为。
+    /// </summary>
+    private static WipeSummaryOutcome? ParseWipeSummary(string output)
+    {
+        var updated = MatchLastCapturedNumber(WipeSummaryUpdatedRegex, output) ?? 0;
+        var errors = MatchLastCapturedNumber(WipeSummaryErrorRegex, output) ?? 0;
+        if (updated == 0 && errors == 0)
+        {
+            return null;
+        }
+
+        return new WipeSummaryOutcome(updated, errors);
+    }
+
+    private static int? MatchLastCapturedNumber(Regex regex, string output)
+    {
+        Match? last = null;
+        foreach (Match match in regex.Matches(output))
+        {
+            last = match;
+        }
+
+        return last is not null
+            && int.TryParse(last.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value)
+            ? value
+            : null;
     }
 
     /// <summary>
@@ -843,8 +900,9 @@ public sealed class ExifToolBridge : IExifToolBridge, IDisposable
 
     /// <summary>
     /// stdout pump 的归属点：一句 stdout 要么是某命令块的 <c>-echo1</c> 回显（认领成「该块已开始处理」），
-    /// 要么是「最近被回显那一块」窗口内的输出（收进它的收集器，只有探测块收），要么是块结束信号
-    /// <c>{ready}</c> —— 后者不带块身份，交给 <see cref="CompleteBlockJustEchoed"/> 按位置结清。
+    /// 要么是「最近被回显那一块」窗口内的输出（收进它的收集器；探测块收探测 JSON，擦除块收
+    /// 汇总行——#288），要么是块结束信号 <c>{ready}</c> —— 后者不带块身份，交给
+    /// <see cref="CompleteBlockJustEchoed"/> 按位置结清。
     ///
     /// marker 认领一律<b>整行相等</b>：擦除 / 探测的 id 是桥内自增整数，marker 之间互为前缀
     /// （<c>TASK_DONE_1</c> ⊂ <c>TASK_DONE_12</c>、<c>PROBE_DONE_1</c> ⊂ <c>PROBE_DONE_10</c>，

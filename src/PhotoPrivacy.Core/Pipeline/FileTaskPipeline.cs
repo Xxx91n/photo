@@ -17,6 +17,14 @@ public sealed class FileTaskPipeline
     private readonly HashSet<string> _inflight = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _gate = new();
 
+    /// <summary>
+    /// 隔离选名与落盘的串行闸（#288，CodeRabbit #294 意见 3）：不同源路径的 HandleAsync 可并发，
+    /// 两个同名文件同时进失败分支时，若「File.Exists 选名」与「Move」之间没锁，两侧都会选中
+    /// 同一隔离目标，后一次 Move 先删后移会丢掉先前隔离的原件。选名+Move 必须同锁串行，
+    /// 审计写锁外。
+    /// </summary>
+    private readonly object _quarantineGate = new();
+
     public FileTaskPipeline(
         AppConfig config,
         RuleEngine ruleEngine,
@@ -247,9 +255,24 @@ public sealed class FileTaskPipeline
                             }
                             return;
 
+                        case WipeResult.Failed_WriteError:
+                            // #288：ExifTool 明确说写不了（「0 image files updated」+「files weren't
+                            // updated due to errors」，分片 MP4 即此形态）——文件一字未动，绝不许按
+                            // file_processing_succeeded 收场。确定性错误，重试必然同样失败，不进重试。
+                            // 终态收场在 FinalizeWriteErrorAsync 里做：审计与隔离自身的失败都不回灌
+                            // 重试（CodeRabbit #294 意见 1 及其追评 A/B）。
+                            await FinalizeWriteErrorAsync(target, sourcePath, cancellationToken);
+                            return;
+
                         default:
                             throw new InvalidOperationException($"Unexpected wipe result: {result}");
                     }
+                }
+                catch (OperationCanceledException)
+                {
+                    // 关停/取消不是失败：不得误记 file_processing_failed / file_retry_scheduled
+                    // （CodeRabbit #294 意见 1 追评 C），取消语义原样上抛。
+                    throw;
                 }
                 catch (Exception ex)
                 {
@@ -295,16 +318,7 @@ public sealed class FileTaskPipeline
                 }
             }
 
-            if (_config.Quarantine.Enabled)
-            {
-                _fileOperations.EnsureDirectory(_config.Quarantine.Directory);
-                var failedFilePath = target;
-                var destination = Path.Combine(_config.Quarantine.Directory, Path.GetFileName(failedFilePath));
-                _fileOperations.Move(failedFilePath, destination);
-                await _audit.WriteAsync(
-                    new AuditEvent("file_quarantined", AuditLevel.Warn, DateTimeOffset.UtcNow, Guid.NewGuid().ToString("N"), sourcePath, destination, null),
-                    cancellationToken);
-            }
+            await QuarantineAsync(target, sourcePath, cancellationToken);
         }
         finally
         {
@@ -315,6 +329,136 @@ public sealed class FileTaskPipeline
             }
 
             ExitInflight(sourcePath);
+        }
+    }
+
+    /// <summary>
+    /// 按设置把失败文件挪进隔离区并写 <c>file_quarantined</c> 审计事件；未启用隔离时只跳过。
+    /// 重试耗尽与 #288 的 ExifTool 写错误两条失败路径共用。终态收场：隔离自身的失败不向调用方
+    /// 抛——否则写错误分支会被拖进擦除重试（CodeRabbit #294 意见 1），只在「确实没隔离成」
+    /// （Move 落盘阶段失败）时单独落 <c>file_quarantine_failed</c>（追评 B：Move 成功后的审计
+    /// 写失败不得谎报隔离失败，文件其实已隔离，审计缺口按仓内口径可容忍）。
+    /// 隔离目标绝不覆盖已隔离文件（意见 2：LocalFileOperations.Move 目标存在会先删后移，
+    /// 同名隔离会丢先前隔离的原件，且写错误分支没有备份、丢了就没了）：槽位被占时按备份
+    /// 侧车的既有模式另存 <c>名字.时间戳.扩展名</c>，同秒碰撞加 <c>-N</c> 序号；选名与 Move
+    /// 同持 <see cref="_quarantineGate"/>（意见 3：并发同名隔离下 File.Exists 选名与 Move
+    /// 之间的 TOCTOU 窗口同效），审计写锁外。
+    /// </summary>
+    private async Task QuarantineAsync(string failedFilePath, string sourcePath, CancellationToken cancellationToken)
+    {
+        if (!_config.Quarantine.Enabled)
+        {
+            return;
+        }
+
+        // destination 先按原名目标预置：目录创建就失败时事件里也有「打算写哪儿」可查
+        // （CodeRabbit #294 意见 4：quarantine_target 要记实际目标路径，不能记源路径）。
+        var destination = Path.Combine(_config.Quarantine.Directory, Path.GetFileName(failedFilePath));
+        try
+        {
+            _fileOperations.EnsureDirectory(_config.Quarantine.Directory);
+            lock (_quarantineGate)
+            {
+                destination = Path.Combine(_config.Quarantine.Directory, Path.GetFileName(failedFilePath));
+                if (File.Exists(destination))
+                {
+                    destination = BackupPathResolver.ResolveSidecarPath(
+                        destination,
+                        Path.GetExtension(failedFilePath),
+                        DateTimeOffset.UtcNow,
+                        File.Exists);
+                }
+
+                _fileOperations.Move(failedFilePath, destination);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // 关停取消不得记成隔离失败——原样上抛，让取消语义回到调用方。
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // 确实没隔离成（Move 落盘阶段失败）：单独记账，不回灌进擦除重试。
+            // quarantine_target 记实际选定（或预置的原名）目标路径，不记源路径（意见 4）。
+            // file_quarantine_failed 自身的写入再失败也吞掉——报告通道失效时无更优解。
+            try
+            {
+                await _audit.WriteAsync(
+                    new AuditEvent("file_quarantine_failed", AuditLevel.Error, DateTimeOffset.UtcNow, Guid.NewGuid().ToString("N"), sourcePath,
+                        $"quarantine_target={destination};{ex.Message}", null),
+                    cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                // 审计缺口可容忍（#229 同款取舍）。
+            }
+
+            return;
+        }
+
+        // Move 已成功：文件已安全隔离。此处审计写失败只是缺口（不谎报隔离失败），不回灌重试。
+        try
+        {
+            await _audit.WriteAsync(
+                new AuditEvent("file_quarantined", AuditLevel.Warn, DateTimeOffset.UtcNow, Guid.NewGuid().ToString("N"), sourcePath, destination, null),
+                cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            // 审计缺口可容忍（#229 同款取舍）。
+        }
+    }
+
+    /// <summary>
+    /// #288 写错误的终态收场（CodeRabbit #294 意见 1 及追评 A）：失败事件与隔离的自身失败
+    /// 一律不回灌进擦除重试——确定性错误重试必然同样失败，审计通道失效时重擦也救不回结论。
+    /// 审计与隔离分开各兜各的：审计失败是报告缺口，不连坐数据安全动作（隔离照做）；
+    /// 审计写入失败按仓内口径视为可容忍缺口（#229 同款取舍：结论已定，缺口只是「没报告」）。
+    /// </summary>
+    private async Task FinalizeWriteErrorAsync(string failedFilePath, string sourcePath, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _audit.WriteAsync(
+                new AuditEvent(
+                    "file_processing_failed",
+                    AuditLevel.Error,
+                    DateTimeOffset.UtcNow,
+                    Guid.NewGuid().ToString("N"),
+                    sourcePath,
+                    "wipe_result=Failed_WriteError;exiftool_refused_to_write",
+                    null),
+                cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            // 审计缺口可容忍：结论（失败）已定，重试擦除无意义；隔离（数据安全）仍照做。
+        }
+
+        try
+        {
+            await QuarantineAsync(failedFilePath, sourcePath, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            // QuarantineAsync 已终态化（非取消失败不外抛）；到这里的异常同样不回灌重试。
         }
     }
 

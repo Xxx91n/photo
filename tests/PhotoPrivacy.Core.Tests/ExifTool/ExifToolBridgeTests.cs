@@ -36,6 +36,66 @@ public sealed class ExifToolBridgeTests
     }
 
     [Fact]
+    public async Task WipeMetadataAsync_Should_Return_Failed_WriteError_When_Summary_Reports_Write_Error()
+    {
+        // 要防的老毛病（#288）：ExifTool 写不了分片 MP4（moof）时 {ready} 照常到、stderr 报
+        // 「Can't yet handle movie fragments when writing」、文件一字未动（#268 实测的真实回包形态）。
+        // 桥不能只把 {ready} 当「写成功」，必须读本块汇总行——「0 updated + errors」必须结成
+        // Failed_WriteError，让审计按失败记账，而不是谎报 Cleaned_Modified。
+        var process = new ProtocolLevelFakeExifToolProcess
+        {
+            WipeSummaryLines = ["0 image files updated", "1 files weren't updated due to errors"],
+            LastStderrLine = "Error: Can't yet handle movie fragments when writing - fragmented.mp4",
+        };
+        var bridge = new ExifToolBridge(process, Config);
+        await bridge.StartAsync(CancellationToken.None);
+
+        var result = await bridge.WipeMetadataAsync(
+            Path.Combine(Path.GetTempPath(), "pp-bridge", "fragmented.mp4"),
+            CancellationToken.None);
+
+        Assert.Equal(WipeResult.Failed_WriteError, result);
+        Assert.Equal(0, bridge.PendingCount);
+    }
+
+    [Fact]
+    public async Task WipeMetadataAsync_Should_Keep_Cleaned_Modified_When_Summary_Reports_Update()
+    {
+        // #288 的另一半：汇总行说写成了（「1 image files updated」）的正常文件不受新判定影响，
+        // 仍按 Cleaned_Modified 收场——失败判定只盯「0 updated + errors」。
+        var process = new ProtocolLevelFakeExifToolProcess
+        {
+            WipeSummaryLines = ["1 image files updated"],
+        };
+        var bridge = new ExifToolBridge(process, Config);
+        await bridge.StartAsync(CancellationToken.None);
+
+        var result = await bridge.WipeMetadataAsync(
+            Path.Combine(Path.GetTempPath(), "pp-bridge", "normal.jpg"),
+            CancellationToken.None);
+
+        Assert.Equal(WipeResult.Cleaned_Modified, result);
+        Assert.Equal(0, bridge.PendingCount);
+    }
+
+    [Fact]
+    public async Task WipeMetadataAsync_Should_Keep_Cleaned_Modified_When_Summary_Lines_Are_Missing()
+    {
+        // 汇总行缺了认不出来（旧版本 ExifTool / 异常输出形态）时不做新判定，维持旧行为：
+        // fail-open、不扩大误伤面，「文件未变」的诊断警告仍在。空窗口也必须按此收场。
+        var process = new ProtocolLevelFakeExifToolProcess();
+        var bridge = new ExifToolBridge(process, Config);
+        await bridge.StartAsync(CancellationToken.None);
+
+        var result = await bridge.WipeMetadataAsync(
+            Path.Combine(Path.GetTempPath(), "pp-bridge", "no-summary.jpg"),
+            CancellationToken.None);
+
+        Assert.Equal(WipeResult.Cleaned_Modified, result);
+        Assert.Equal(0, bridge.PendingCount);
+    }
+
+    [Fact]
     public async Task WipeMetadataAsync_Should_Not_Return_Cleaned_Before_Block_Ready_Signal()
     {
         // 要防的老毛病（issue #97）：桥一匹配 TASK_DONE_ 回显就完成等待——回显是 ExifTool 在
