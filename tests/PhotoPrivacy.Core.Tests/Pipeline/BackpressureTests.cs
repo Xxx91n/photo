@@ -13,31 +13,29 @@ public sealed class BackpressureTests
     [Fact]
     public async Task Channel_Full_WaitAsync_Suspends_Producer_Until_Consumer_Drains()
     {
-        await using var channel = new HotFolderChannel(capacity: 4);
+        // Overall test budget: a hang fails fast with a clear cancellation instead of stalling CI.
+        using var testTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var ct = testTimeout.Token;
 
+        await using var channel = new HotFolderChannel(capacity: 4);
         // Fill channel to capacity (sync writes succeed immediately)
         for (var i = 0; i < 4; i++)
         {
-            await channel.WriteAsync($"path-{i}", CancellationToken.None);
+            await channel.WriteAsync($"path-{i}", ct);
         }
-
-        // Next WriteAsync should suspend (channel full, FullMode=Wait)
-        var producerTask = channel.WriteAsync("path-overflow", CancellationToken.None);
-        await Task.Delay(50, CancellationToken.None); // give producer time to run
-
-        Assert.False(producerTask.IsCompleted);
-        Assert.True(producerTask.Status == TaskStatus.WaitingForActivation ||
-                    producerTask.Status == TaskStatus.Running ||
-                    producerTask.Status == TaskStatus.WaitingToRun);
-
-        // Drain one item → producer resumes
-        _ = await channel.Reader.ReadAsync(CancellationToken.None);
-
-        // Producer should now complete within timeout
-        await producerTask.WaitAsync(TimeSpan.FromSeconds(2), CancellationToken.None);
+        // Next WriteAsync should suspend (channel full, FullMode=Wait).
+        // Observable signal instead of a fixed sleep + Task.Status peeking:
+        // while nobody drains the channel, the producer must stay incomplete
+        // for the whole observation window. If it finishes first, backpressure is broken.
+        var producerTask = channel.WriteAsync("path-overflow", ct);
+        var observationWindow = Task.Delay(TimeSpan.FromMilliseconds(250), ct);
+        var firstFinished = await Task.WhenAny(producerTask, observationWindow);
+        Assert.Same(observationWindow, firstFinished);
+        // Drain one item → producer resumes and completes within the test budget.
+        _ = await channel.Reader.ReadAsync(ct);
+        await producerTask.WaitAsync(ct);
         Assert.True(producerTask.IsCompletedSuccessfully);
     }
-
     [Fact]
     public async Task Channel_FullMode_Wait_Does_Not_Drop_Items()
         {
