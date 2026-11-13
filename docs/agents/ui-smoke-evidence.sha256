@@ -2,35 +2,29 @@
 # 实物：C:/photo-verify/issue289/evidence；未上传，删除后无法从哈希还原。
 # 起始基准：1b9119c5e6a7fae77b64a9f10af43e6a14e1719e；旧轮（#5 后台 Worker）从 git 历史取：
 #   git show 1b9119c5e6a7fae77b64a9f10af43e6a14e1719e:docs/agents/ui-smoke-evidence.sha256
-# 包：Release run 43287332127 / ref t289-strip-all-label / head 13271bf / 0.1.0-preview / create_release=false / win-x64；本地未编译。
-# round1-rejected/ 装的是首轮被否的帧（es/pt/ru 长文案压列），用于对照，结论以主清单帧为准。
+# 包：Release run 43371863345 / ref t289-strip-all-label / head 96b8cf6 / 0.1.0-preview / create_release=false / win-x64；本地未编译。
+# 本轮主证据是 820x600 最小窗口帧（s289-820-*）+ 默认尺寸抽查（s289-default-*）+ 表头墨迹量化日志。
+# round1-rejected/ 装的是首轮被否的帧（六列全 88px 时 es/pt/ru 压列），用于对照，结论以主清单帧为准。
 # 验证命令：在 C:/photo-verify/issue289/evidence 内执行 sha256sum --check <repo>/docs/agents/ui-smoke-evidence.sha256
-# 逐项结论与做法见 s289-round-notes.txt。
+# 逐项结论与三轮迭代经过见 s289-round-notes.txt。
 
-0a21db84b0662deb7872da88394dbd9883ce8ca8a94a9cec54f1d6409fec444f  s289-rules-zh-CN.png
-d1914c19e738b24c5563e6ac147d3cd943fd9a8f7ce6842f6890b81cbfc4c5de  hdrzoom-zh-CN.png
-c2867abdfdf9a181fc7cb18f28126ef9947682ae282d85a3dc3ef28c721a8dc5  s289-rules-en.png
-79dcfef244111b701b5e396ad9ce4b36dcf439a73101247b47e8585fdcab2f06  hdrzoom-en.png
-de52a2c975827cf149207d715ef06276bd3e00a50db42af3974a013c747c8bbd  s289-rules-ja.png
-748085142354868afd811f7ef5d9908b40313743c97c3439d92622345e315375  hdrzoom-ja.png
-3dfc4acbd360071b9d5e6028c0c8eb73b8d5be14ab634cf80b8d84f412916ff0  s289-rules-ko.png
-1eff50d5d61a033fd2db7ff5f1837753d07d7b936e22e7b902ddee3483324b58  hdrzoom-ko.png
-07c6a9d7a975cfa4d296e073fb9d48f6d78ee6dc3adea20025f985897a40cd0f  s289-rules-de.png
-0ae4ddb847fd358fa9d090b0e11f6035c72e07522a53e91d2a6f879e219380a8  hdrzoom-de.png
-e9f7b6c3ee6a6e7cd23c9bf57b67902619554eca764e9029659e5a5772229cb7  s289-rules-fr.png
-7562805e9415a5e49eb83267c665e7bdcac5a52b60233961ff6bdbc38941a885  hdrzoom-fr.png
-f6231a86796b27789047ea71c4a098d5e54a69a43a0345290a9b5748d3314821  s289-rules-es.png
-e3516f8ee4cfbeadbec2210503054d8d8d3c3c6b13b5fa4946d9b745c52ec297  hdrzoom-es.png
-bcaee2f4e411b0df0623b3088d7a8c24b405558c51236b63a2c7fbca80bbd755  s289-rules-pt.png
-9a84c0a13fe42f2807e13c63c9365e92f00596ce261e5b39317662bca51985ae  hdrzoom-pt.png
-f92d628832e1353907dedb0b7baaf5a1f8f9c89058377825508c86de1bb18bfc  s289-rules-ru.png
-06cd084657041497198ba14507ccc2220e035f78d0079e34d06ced3fee80e821  hdrzoom-ru.png
-cdebfd96d2dcf148d9b656731e2aee1b35807f3d1d59940639525518aa3d4126  s289-rules-ar.png
-08b6e9d4265562ddf6e66d610b14cf3eacb447e627aabfd18e3fe6f7f5e50460  hdrzoom-ar.png
-4dceecb989a267182cec588f671fd1a1ecb69859ec7e5b15ddac6a542c160b7f  s289-func3-toggle.png
-67149b3e2be06eec0e505d786e234d1d836335ef8b68a74978961353bdc6696b  s289-func3-saved.png
+0a27e3454505110aa831fd0f48e994b2a403c50eab64296a281e4d10fc2f062a  s289-820-zh-CN.png
+32298a2676a4e4e470676d37491ec63b5f4a20c14b8475cab656f73bd2cbeda4  s289-820-en.png
+8fb84dfb1aabb125a15223205028f761431b9e9b0b06db79289b613fe00c665a  s289-820-ja.png
+254c6e93a3d71f7173925050b1451326621aba72aaf508cca3efd8fe1b570eef  s289-820-ko.png
+8b4aaf1ed294fcfbba264d39fa80994fd80848bac6471a308dc557808ee47dc7  s289-820-de.png
+8951c9c6a7821d9087dee056441c32cc35ea8578441cac28800035dcac6a1ca5  s289-820-fr.png
+3481c9d1b9a78075558203005395c57382628a44c4d848a8db33c846c7f640c1  s289-820-es.png
+35b87177e2293b0ddfc38fd035449888a1f890972170e75e80659c43e482204c  s289-820-pt.png
+f0eb5036812abdc00dfb93af510db32025111292e7fdb43ead9501f8354cccef  s289-820-ru.png
+06e7a9d98b917df3b7d8495316f98a828bb858e4675056096fa0dcff3e5b9a8c  s289-820-ar.png
+33ace99fffe5d29a2cd1c3cfb71661425e63dbe4507b5b68fb1a98689518ba05  s289-default-zh-CN.png
+6af5799a55377b82319d57d6b316a89950917996a406b0394da93e79220fdc4b  s289-default-en.png
+174d9423e3eefe3489f60948fb02a4752eee8e247865126a02376050f7184ad1  s289-measure-820.txt
+925bc6062772a82d77542c1aafd166fc5b644ea83b08c76244c8bc6495a7522b  s289-func-final-toggle.png
+7b23d4a5340a48738e5bfe2e55fc5f7fd04f6ebf5f2c39b4448ed3eba79fefe4  s289-func-final-saved.png
 4647e760e153a200b80e6ecac3b3cff6e64e4b3c886e3ef5781aedf1cb86bc47  s289-cleanup.txt
-896cad037dad37f8cc45ccf9f4bf8cae67e4452a100dbf9d613f4341223e1d37  s289-round-notes.txt
+64faab64b21e0c4e613c65993afcf510df4f91c1206ba745af3e18a0aa0cbf07  s289-round-notes.txt
 04a7d1791c616e4f55fe8bf8d26f1b129e720835050766c3db0c9bb8722ea115  round1-rejected/s289-rules-es.png
 cc540aa54334045f9e3c6db8805b13f35537977111e624c2d8bfc3d250b8c550  round1-rejected/s289-rules-pt.png
 fe4289406d456585dbc78e0ce65eae00d0029865fbabab5f1e43686d445efd32  round1-rejected/s289-rules-ru.png
